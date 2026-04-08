@@ -9,8 +9,11 @@
   const STATE = {
     translated: false,
     cache: new Map(),       // 段落文字 → 譯文
-    // 記錄每個被替換過的元素與它原本的 innerHTML，供還原使用
-    replaced: [],           // [{ el, originalHTML }]
+    // 記錄每個被替換過的元素與它原本的 innerHTML，供還原使用。
+    // v0.36 起改為 Map，key 是 element，value 是 originalHTML。這樣同一個
+    // element 被多個 fragment 單位改動時，只會快照一次「真正的原始 HTML」，
+    // 不會被後續 fragment 的中途狀態污染。
+    originalHTML: new Map(), // el → originalHTML
   };
 
   // ─── Toast 提示 （Shadow DOM 隔離） ─────────────────────
@@ -284,6 +287,85 @@
     return false;
   }
 
+  // ─── Mixed-content fragment 偵測 （v0.36 新增） ─────────────
+  // 當一個 block 元素同時含有自己的直接文字 + block 後代（例如 Stratechery 編號
+  // 列表的 `<li>引言文字<ul>...</ul></li>` 結構）時，舊版 walker 會 SKIP 整個
+  // 外層 block 讓 walker 下降，結果引言文字就被孤立、完全沒被收成段落。
+  //
+  // v0.36 起改為 mixed-content 策略：一個 block 若同時含直接文字 + block 後代,
+  // walker 仍然 SKIP 外層讓子 block 各自獨立收成段落,但另外把外層自己的
+  // inline-level 直接子節點切成一或多個 "fragment" 段落單位。
+  //
+  // fragment 單位的形狀: { kind: 'fragment', el, startNode, endNode }
+  // 代表 `el` 這個元素裡,從 startNode 到 endNode（含）這段連續的直接子節點,
+  // 他們全部都是 inline-level。序列化/注入時只碰這段，不動其他 block 子孫。
+
+  /**
+   * 判斷一個 node 是否可以納入 inline-run（連續的 inline 子節點區段）。
+   * 規則：
+   *   - 文字節點 → 是
+   *   - HARD_EXCLUDE_TAGS (script/style/...) → 否（整個排除）
+   *   - BLOCK_TAGS_SET 中的 tag → 否（這是子 block,讓 walker 獨立處理）
+   *   - 本身含 block 後代（例如 <ul><li>...</li></ul>）→ 否（視為 block-run)
+   *   - 其他 element → 是（視為 inline,包括 <a>、<strong>、<span>、<br> 等）
+   */
+  function isInlineRunNode(child) {
+    if (child.nodeType === Node.TEXT_NODE) return true;
+    if (child.nodeType !== Node.ELEMENT_NODE) return false; // comment、cdata 等略過
+    if (HARD_EXCLUDE_TAGS.has(child.tagName)) return false;
+    if (BLOCK_TAGS_SET.has(child.tagName)) return false;
+    if (containsBlockDescendant(child)) return false;
+    return true;
+  }
+
+  /**
+   * 把一個 block 元素的直接子節點切成連續的 inline-run，每個 run 對應一個
+   * fragment 段落單位（前提是 run 有實質文字內容）。
+   *
+   * 注意：要用 `Array.from(el.childNodes)` 快照,因為後續翻譯注入會動 childNodes,
+   * 但收集時我們只關心此刻的結構。startNode / endNode 則保留 live Node 參考
+   * （不是 index),這樣即使 DOM 被其他 fragment 改動,我們仍能指到正確節點。
+   */
+  function extractInlineFragments(el) {
+    const fragments = [];
+    const children = Array.from(el.childNodes);
+    let runStart = null;
+    let runEnd = null;
+
+    const flushRun = () => {
+      if (!runStart) return;
+      // 檢查 run 內是否有實質文字（字母 / CJK / 數字）
+      let text = '';
+      let n = runStart;
+      while (n) {
+        text += n.textContent || '';
+        if (n === runEnd) break;
+        n = n.nextSibling;
+      }
+      if (/[A-Za-zÀ-ÿ\u0400-\u04FF\u3400-\u9fff0-9]/.test(text)) {
+        fragments.push({
+          kind: 'fragment',
+          el,
+          startNode: runStart,
+          endNode: runEnd,
+        });
+      }
+      runStart = null;
+      runEnd = null;
+    };
+
+    for (const child of children) {
+      if (isInlineRunNode(child)) {
+        if (!runStart) runStart = child;
+        runEnd = child;
+      } else {
+        flushRun();
+      }
+    }
+    flushRun();
+    return fragments;
+  }
+
   // 是否含有需要保留的媒體元素（圖片/影片/SVG/canvas/picture)
   function containsMedia(el) {
     return !!el.querySelector('img, picture, video, svg, canvas, audio');
@@ -380,10 +462,34 @@
   }
 
   function serializeWithPlaceholders(el) {
+    return serializeNodeIterable(el.childNodes);
+  }
+
+  /**
+   * Fragment 版序列化:只處理 [startNode, endNode] 這段連續的直接子節點
+   * （v0.36 新增,配合 mixed-content block 的 fragment 段落單位)。
+   */
+  function serializeFragmentWithPlaceholders(unit) {
+    const nodes = [];
+    let cur = unit.startNode;
+    while (cur) {
+      nodes.push(cur);
+      if (cur === unit.endNode) break;
+      cur = cur.nextSibling;
+    }
+    return serializeNodeIterable(nodes);
+  }
+
+  /**
+   * 共用的序列化核心:把一個 node iterable 遞迴序列化成
+   * 「文字 + slots」。無論是整個 element 的 childNodes,還是 fragment
+   * 的局部 node 範圍,都走這條路徑。
+   */
+  function serializeNodeIterable(topLevelNodes) {
     const slots = [];
     let out = '';
-    function walk(node) {
-      for (const child of node.childNodes) {
+    function walk(nodeList) {
+      for (const child of nodeList) {
         if (child.nodeType === Node.TEXT_NODE) {
           out += child.nodeValue;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
@@ -405,16 +511,16 @@
             slots.push(shell);
             // 遞迴序列化子節點,可能產生巢狀的 ⟦M⟧…⟦/M⟧
             out += PH_OPEN + idx + PH_CLOSE;
-            walk(child);
+            walk(child.childNodes);
             out += PH_OPEN + '/' + idx + PH_CLOSE;
           } else {
             // 不保留外殼，但仍要把它的子文字串接進來
-            walk(child);
+            walk(child.childNodes);
           }
         }
       }
     }
-    walk(el);
+    walk(topLevelNodes);
     return { text: out.replace(/\s+/g, ' ').trim(), slots };
   }
 
@@ -588,8 +694,16 @@
     // stats（可選,v0.30 新增）：若傳入一個物件,walker 會在每個分支結尾遞增對應
     // 的計數 key,供 debug API / Playwright 測試診斷「為什麼某節點被跳過」。
     // 正常翻譯流程呼叫時不傳 stats,每個分支只多一次 null 檢查,效能影響可忽略。
+    //
+    // 回傳的單位是物件陣列,每個單位型態之一:
+    //   { kind: 'element',  el }
+    //   { kind: 'fragment', el, startNode, endNode }
+    // v0.36 前只有 element 形式；v0.36 起新增 fragment 型態處理 mixed-content
+    // block（既有自己的直接文字、又含 block 後代的結構）。
     const results = [];
     const seen = new Set();
+    // 記錄哪些元素已經處理過 fragment 抽取，避免同一 element 被 walker 多次觸發
+    const fragmentExtracted = new Set();
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
       acceptNode(el) {
@@ -613,10 +727,21 @@
           if (stats) stats.invisible = (stats.invisible || 0) + 1;
           return NodeFilter.FILTER_REJECT;
         }
-        // 葉子優先：如果這個 block 內含其他 block tag，讓 walker 下降處理子節點，
-        // 避免父層被當成翻譯單位、用 textContent 把子層元素（含圖片）清光。
+        // Mixed-content 處理：如果這個 block 內含其他 block tag,讓 walker 下降
+        // 處理子 block；**但同時**把這個 element 自己的直接 inline 子節點切成
+        // 一或多個 fragment 單位獨立翻譯,避免像 Stratechery 編號列表
+        // （<li>引言+<ul>子項目</ul></li>）的引言文字被孤立。
         if (containsBlockDescendant(el)) {
           if (stats) stats.hasBlockDescendant = (stats.hasBlockDescendant || 0) + 1;
+          if (!fragmentExtracted.has(el)) {
+            fragmentExtracted.add(el);
+            const frags = extractInlineFragments(el);
+            for (const f of frags) {
+              results.push(f);
+              seen.add(f.startNode);
+              if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
+            }
+          }
           return NodeFilter.FILTER_SKIP;
         }
         if (!isCandidateText(el)) {
@@ -629,7 +754,7 @@
     });
     let node;
     while ((node = walker.nextNode())) {
-      results.push(node);
+      results.push({ kind: 'element', el: node });
       seen.add(node);
     }
 
@@ -641,7 +766,7 @@
       if (!isVisible(el)) return;
       if (!isCandidateText(el)) return;
       if (stats) stats.includedBySelector = (stats.includedBySelector || 0) + 1;
-      results.push(el);
+      results.push({ kind: 'element', el });
     });
 
     return results;
@@ -649,26 +774,44 @@
 
   // ─── 翻譯流程 ────────────────────────────────────────
   const CHUNK_SIZE = 20; // 每批送 Gemini 的段數（越小回饋越即時，但總請求數越多）
+  const DEFAULT_MAX_CONCURRENT = 10; // content.js 側並發上限（與 background 的 rate limiter 雙重保險）
 
   async function translatePage() {
     if (STATE.translated) {
       restorePage();
       return;
     }
-    const elements = collectParagraphs();
-    if (elements.length === 0) {
+    const units = collectParagraphs();
+    if (units.length === 0) {
       showToast('error', '找不到可翻譯的內容', { autoHideMs: 3000 });
       return;
     }
-    const total = elements.length;
+    const total = units.length;
     showToast('loading', `翻譯中… 0 / ${total}`, {
       progress: 0,
       startTimer: true,
     });
 
+    // 讀取並發上限設定(若讀取失敗就用 default)
+    let maxConcurrent = DEFAULT_MAX_CONCURRENT;
+    try {
+      const { maxConcurrentBatches } = await chrome.storage.sync.get('maxConcurrentBatches');
+      if (Number.isFinite(maxConcurrentBatches) && maxConcurrentBatches > 0) {
+        maxConcurrent = maxConcurrentBatches;
+      }
+    } catch (_) { /* 保持 default */ }
+
     // 對每個段落都先序列化成「文字 + slots」，文字內含 ⟦N⟧…⟦/N⟧ 佔位符。
     // 沒有可保留 inline 元素的段落 slots 為空陣列，行為等同舊版純文字翻譯。
-    const serialized = elements.map(el => {
+    // v0.36 起 units 可能含 element 或 fragment 兩種型態,要分別處理。
+    const serialized = units.map(unit => {
+      if (unit.kind === 'fragment') {
+        // Fragment 只涵蓋 parent 內一段連續的 inline 子節點,沒有 block 後代。
+        // 一律走 serializer（會偵測內部有無 placeholder 元素,無則 slots=[]）。
+        return serializeFragmentWithPlaceholders(unit);
+      }
+      // element 模式（預設）
+      const el = unit.el;
       if (containsMedia(el)) {
         // 含媒體的段落不做佔位符 — 走舊的 text-node 替換路徑，避免複雜度爆炸
         return { text: el.innerText.trim(), slots: [] };
@@ -683,64 +826,131 @@
     let done = 0;
     // 本次翻譯的 token / 成本累計（只算真的打 API 的部分，快取命中 = 0)
     const pageUsage = { inputTokens: 0, outputTokens: 0, costUSD: 0, cacheHits: 0 };
+
+    // 建立所有批次任務
+    const jobs = [];
+    for (let i = 0; i < texts.length; i += CHUNK_SIZE) {
+      jobs.push({
+        start: i,
+        texts: texts.slice(i, i + CHUNK_SIZE),
+        units: units.slice(i, i + CHUNK_SIZE),
+        slots: slotsList.slice(i, i + CHUNK_SIZE),
+      });
+    }
+
+    // 並行翻譯：concurrency pool。若某批失敗,該批被標記並繼續其他批。
+    // 注意:回傳順序不保證,但每批注入時用自己的 els 陣列,
+    // 所以段落會注入到正確位置(按原始 DOM index)。
+    const failures = [];
     try {
-      for (let i = 0; i < texts.length; i += CHUNK_SIZE) {
-        const sliceTexts = texts.slice(i, i + CHUNK_SIZE);
-        const sliceEls = elements.slice(i, i + CHUNK_SIZE);
-
-        const response = await chrome.runtime.sendMessage({
-          type: 'TRANSLATE_BATCH',
-          payload: { texts: sliceTexts },
-        });
-        if (!response?.ok) throw new Error(response?.error || '未知錯誤');
-        const translations = response.result;
-        // 累加 token 與成本
-        if (response.usage) {
-          pageUsage.inputTokens += response.usage.inputTokens || 0;
-          pageUsage.outputTokens += response.usage.outputTokens || 0;
-          pageUsage.costUSD += response.usage.costUSD || 0;
-          pageUsage.cacheHits += response.usage.cacheHits || 0;
+      await runWithConcurrency(jobs, maxConcurrent, async (job) => {
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: 'TRANSLATE_BATCH',
+            payload: { texts: job.texts },
+          });
+          if (!response?.ok) throw new Error(response?.error || '未知錯誤');
+          const translations = response.result;
+          // 累加 token 與成本(並行寫入,但 JS 單執行緒,++ 與 += 原子,安全)
+          if (response.usage) {
+            pageUsage.inputTokens += response.usage.inputTokens || 0;
+            pageUsage.outputTokens += response.usage.outputTokens || 0;
+            pageUsage.costUSD += response.usage.costUSD || 0;
+            pageUsage.cacheHits += response.usage.cacheHits || 0;
+          }
+          // 立即注入這一批的譯文
+          translations.forEach((tr, j) => injectTranslation(job.units[j], tr, job.slots[j]));
+          done += job.texts.length;
+          showToast('loading', `翻譯中… ${done} / ${total}`, {
+            progress: done / total,
+          });
+        } catch (err) {
+          console.warn('[Shinkansen] batch failed', { start: job.start, error: err.message });
+          failures.push({ start: job.start, count: job.texts.length, error: err.message });
         }
+      });
 
-        // 立即注入這一批的譯文 → 使用者看得到頁面逐步翻譯
-        const sliceSlots = slotsList.slice(i, i + CHUNK_SIZE);
-        translations.forEach((tr, j) => injectTranslation(sliceEls[j], tr, sliceSlots[j]));
-        done += sliceTexts.length;
-
-        // 更新進度
-        showToast('loading', `翻譯中… ${done} / ${total}`, {
-          progress: done / total,
+      // 有部分失敗 → 顯示部分完成的訊息,但仍標記為已翻譯
+      if (failures.length) {
+        const failedSegs = failures.reduce((s, f) => s + f.count, 0);
+        const firstErr = failures[0].error;
+        showToast('error', `翻譯部分失敗:${failedSegs} / ${total} 段失敗`, {
+          stopTimer: true,
+          detail: firstErr.slice(0, 120),
         });
+        // 不 return;已完成的段落仍保持譯文
       }
+
       STATE.translated = true;
       // 通知 background 在 extension icon 上點亮紅點 badge
       chrome.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
-      // 組合完成訊息：主訊息只放段數，token/費用放 detail 第二行，
-      // 避免同一行過長被擠到換行。
-      const totalTokens = pageUsage.inputTokens + pageUsage.outputTokens;
-      const successMsg = `翻譯完成 （${total} 段）`;
-      let detail;
-      if (totalTokens > 0) {
-        detail = `${formatTokens(totalTokens)} tokens · ${formatUSD(pageUsage.costUSD)}`;
-      } else if (pageUsage.cacheHits === total) {
-        detail = '全部快取命中 · 本次未計費';
+
+      // 只有全部成功才顯示成功 toast(有 failures 的話上面已經顯示過錯誤 toast)
+      if (!failures.length) {
+        // 組合完成訊息：主訊息只放段數，token/費用放 detail 第二行，
+        // 避免同一行過長被擠到換行。
+        const totalTokens = pageUsage.inputTokens + pageUsage.outputTokens;
+        const successMsg = `翻譯完成 （${total} 段）`;
+        let detail;
+        if (totalTokens > 0) {
+          detail = `${formatTokens(totalTokens)} tokens · ${formatUSD(pageUsage.costUSD)}`;
+        } else if (pageUsage.cacheHits === total) {
+          detail = '全部快取命中 · 本次未計費';
+        }
+        showToast('success', successMsg, {
+          progress: 1,
+          stopTimer: true,
+          detail,
+          // 不 autoHide：讓使用者自己按 × 關閉
+        });
       }
-      showToast('success', successMsg, {
-        progress: 1,
-        stopTimer: true,
-        detail,
-        // 不 autoHide：讓使用者自己按 × 關閉
-      });
     } catch (err) {
       console.error('[Shinkansen]', err);
       showToast('error', `翻譯失敗：${err.message}`, { stopTimer: true });
     }
   }
 
-  function injectTranslation(el, translation, slots) {
+  /**
+   * 並行執行 jobs,同時最多 maxConcurrent 個任務在跑。
+   * 每個 job 執行的錯誤由 workerFn 自己處理(此函式不會 throw)。
+   */
+  async function runWithConcurrency(jobs, maxConcurrent, workerFn) {
+    const n = Math.min(maxConcurrent, jobs.length);
+    if (n === 0) return;
+    let cursor = 0;
+    const workers = [];
+    for (let w = 0; w < n; w++) {
+      workers.push((async () => {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const idx = cursor++;
+          if (idx >= jobs.length) return;
+          await workerFn(jobs[idx]);
+        }
+      })());
+    }
+    await Promise.all(workers);
+  }
+
+  /**
+   * 保證同一個 element 只快照一次原始 innerHTML,之後的覆蓋不會污染快照。
+   * 用於 fragment 同一 parent 多 fragment 的情況,以及 element 模式本身。
+   */
+  function snapshotOnce(el) {
+    if (!STATE.originalHTML.has(el)) {
+      STATE.originalHTML.set(el, el.innerHTML);
+    }
+  }
+
+  function injectTranslation(unit, translation, slots) {
     if (!translation) return;
+    // v0.36: unit 可能是 { kind: 'element', el } 或 { kind: 'fragment', el, startNode, endNode }
+    if (unit.kind === 'fragment') {
+      return injectFragmentTranslation(unit, translation, slots);
+    }
+    const el = unit.el;
     // 保留原本的 innerHTML 供還原
-    STATE.replaced.push({ el, originalHTML: el.innerHTML });
+    snapshotOnce(el);
 
     // 路徑 A：有 slots(段落內含連結 / 樣式 inline 元素）→ 反序列化成 fragment
     // 若 LLM 把 placeholder 弄丟，fallback 到純文字 textContent。
@@ -764,8 +974,32 @@
 
     if (containsMedia(el)) {
       // 元素內含圖片/影片等媒體 → 用 text-node 替換策略，保留媒體不動
+      // 要同時跳過：
+      //   (1) <script>/<style>/<noscript>/<code>/<pre> 底下的文字節點
+      //   (2) CSS display:none / visibility:hidden 的隱形祖先底下的文字節點
+      // 歷史教訓 （v0.33 / v0.34）：Wikipedia 的 #coordinates 有兩個坑
+      //   (a) 內含 inline <style>（295 字元 CSS），比可見文字還長 → v0.33 用
+      //       HARD_EXCLUDE_TAGS 過濾修掉
+      //   (b) 同時含 .geo-dms（可見 DMS 格式）與 .geo-nondefault > .geo-dec
+      //       （隱形的十進制格式，display:none）。DMS 文字被切成 "Coordinates"
+      //       / "35°41′02″N" / "139°46′28″E" 多個短節點；.geo-dec 是一個長字串。
+      //       v0.33 過掉 STYLE 之後，剩下最長的反而是隱形的 .geo-dec，譯文又
+      //       塞進看不到的地方 → v0.34 加上 isVisible 過濾修掉
       const textNodes = [];
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          let p = node.parentElement;
+          while (p && p !== el) {
+            if (HARD_EXCLUDE_TAGS.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+            const cs = p.ownerDocument?.defaultView?.getComputedStyle?.(p);
+            if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            p = p.parentElement;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
       let n;
       while ((n = walker.nextNode())) {
         if (n.nodeValue && n.nodeValue.trim()) textNodes.push(n);
@@ -791,12 +1025,60 @@
     el.setAttribute('data-shinkansen-translated', '1');
   }
 
+  /**
+   * Fragment 版注入:只替換 parent 內 [startNode, endNode] 這段連續子節點,
+   * 不動其他 block 子孫。v0.36 新增,配合 mixed-content block 的段落單位。
+   *
+   * 注意:不在 parent el 上設 data-shinkansen-translated,因為同一個 parent
+   * 底下可能還有其他 fragment 或 block 子孫需要被 walker 看到。重複翻譯的
+   * 保護靠 STATE.translated 的頁面層級 flag。
+   */
+  function injectFragmentTranslation(unit, translation, slots) {
+    if (!translation) return;
+    const { el, startNode, endNode } = unit;
+
+    // 若 startNode 已經不在 parent 下（可能前面的 fragment 早一步把它搬走了，
+    // 理論上不會發生因為 fragment 之間是 disjoint 的,但保險）,略過本次注入。
+    if (!startNode || startNode.parentNode !== el) return;
+
+    // 同一個 parent 只快照一次原始 HTML,後續 fragment 或 element 注入都沿用
+    snapshotOnce(el);
+
+    // 建出新內容（fragment DocumentFragment 或 Text node）
+    let newContent;
+    if (slots && slots.length > 0) {
+      const { frag, ok } = deserializeWithPlaceholders(translation, slots);
+      if (ok) {
+        newContent = frag;
+      } else {
+        const cleaned = stripStrayPlaceholderMarkers(translation);
+        newContent = document.createTextNode(cleaned);
+      }
+    } else {
+      newContent = document.createTextNode(translation);
+    }
+
+    // 移除 startNode..endNode 之間（含兩端）的所有節點,然後在原位置 insert
+    const anchor = endNode ? endNode.nextSibling : null;
+    const toRemove = [];
+    let cur = startNode;
+    while (cur) {
+      toRemove.push(cur);
+      if (cur === endNode) break;
+      cur = cur.nextSibling;
+    }
+    for (const n of toRemove) {
+      if (n.parentNode === el) el.removeChild(n);
+    }
+    el.insertBefore(newContent, anchor);
+  }
+
   function restorePage() {
-    STATE.replaced.forEach(({ el, originalHTML }) => {
+    STATE.originalHTML.forEach((originalHTML, el) => {
       el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
     });
-    STATE.replaced = [];
+    STATE.originalHTML.clear();
     STATE.translated = false;
     // 通知 background 清掉 extension icon 的紅點
     chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
@@ -849,10 +1131,35 @@
     return parts.join(' > ');
   }
 
-  // 序列化安全的單位摘要（debug API 內部共用）
-  function unitSummary(el, i) {
+  // 序列化安全的單位摘要（debug API 內部共用）。
+  // v0.36 起 unit 是 { kind, el, startNode?, endNode? } 物件而非 raw element。
+  // 回傳格式對舊測試保持相容: tag / textPreview / textLength / hasMedia /
+  // selectorPath 仍存在, 另外新增 kind 欄位供 fragment 單位識別。
+  function unitSummary(unit, i) {
+    if (unit.kind === 'fragment') {
+      // 把 fragment 範圍內的所有節點串成純文字,計長度/預覽
+      let text = '';
+      let n = unit.startNode;
+      while (n) {
+        text += n.textContent || '';
+        if (n === unit.endNode) break;
+        n = n.nextSibling;
+      }
+      const trimmed = text.trim();
+      return {
+        index: i,
+        kind: 'fragment',
+        tag: unit.el.tagName,
+        textLength: trimmed.length,
+        textPreview: trimmed.slice(0, 200),
+        hasMedia: false, // fragment 本質上是 inline-run,不會跨 block 媒體容器
+        selectorPath: buildSelectorPath(unit.el),
+      };
+    }
+    const el = unit.el;
     return {
       index: i,
+      kind: 'element',
       tag: el.tagName,
       textLength: (el.innerText || '').trim().length,
       textPreview: (el.innerText || '').trim().slice(0, 200),
@@ -871,9 +1178,9 @@
     // 讓自動化測試能夠精準診斷「為什麼某節點被跳過」,取代先前靠鏡像 probe 計數的做法
     collectParagraphsWithStats() {
       const stats = {};
-      const els = collectParagraphs(document.body, stats);
+      const units = collectParagraphs(document.body, stats);
       return {
-        units: els.map(unitSummary),
+        units: units.map(unitSummary),
         skipStats: stats,
       };
     },
@@ -885,7 +1192,7 @@
     getState() {
       return {
         translated: STATE.translated,
-        replacedCount: STATE.replaced.length,
+        replacedCount: STATE.originalHTML.size,
         cacheSize: STATE.cache.size,
       };
     },

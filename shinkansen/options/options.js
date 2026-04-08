@@ -10,7 +10,7 @@ const DEFAULT_SYSTEM_PROMPT = `你是一位專業的翻譯助理。請將使用�
 const DEFAULTS = {
   apiKey: '',
   geminiConfig: {
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     serviceTier: 'DEFAULT',
     temperature: 0.3,
     topP: 0.95,
@@ -19,14 +19,64 @@ const DEFAULTS = {
     systemInstruction: DEFAULT_SYSTEM_PROMPT,
   },
   pricing: {
-    inputPerMTok: 0.10,
-    outputPerMTok: 0.40,
+    inputPerMTok: 0.30,
+    outputPerMTok: 2.50,
   },
   targetLanguage: 'zh-TW',
   domainRules: { whitelist: [], blacklist: [] },
   autoTranslate: true,
   debugLog: false,
+  tier: 'tier1',
+  safetyMargin: 0.1,
+  maxRetries: 3,
+  rpmOverride: null,
+  tpmOverride: null,
+  rpdOverride: null,
+  maxConcurrentBatches: 10,
 };
+
+// Tier 對照表(與 lib/tier-limits.js 內容一致。options.js 是普通 script 不走 ES module,
+// 只能複製一份)
+const TIER_LIMITS = {
+  free: {
+    'gemini-2.5-pro':        { rpm: 5,   tpm: 250000,   rpd: 100 },
+    'gemini-2.5-flash':      { rpm: 10,  tpm: 250000,   rpd: 250 },
+    'gemini-2.5-flash-lite': { rpm: 15,  tpm: 250000,   rpd: 1000 },
+    'gemini-2.0-flash':      { rpm: 15,  tpm: 1000000,  rpd: 200 },
+  },
+  tier1: {
+    'gemini-2.5-pro':        { rpm: 150, tpm: 1000000,  rpd: 1000 },
+    'gemini-2.5-flash':      { rpm: 300, tpm: 2000000,  rpd: 1500 },
+    'gemini-2.5-flash-lite': { rpm: 300, tpm: 2000000,  rpd: 1500 },
+    'gemini-2.0-flash':      { rpm: 300, tpm: 4000000,  rpd: 1500 },
+  },
+  tier2: {
+    'gemini-2.5-pro':        { rpm: 1000, tpm: 2000000, rpd: 10000 },
+    'gemini-2.5-flash':      { rpm: 2000, tpm: 4000000, rpd: 10000 },
+    'gemini-2.5-flash-lite': { rpm: 2000, tpm: 4000000, rpd: 10000 },
+    'gemini-2.0-flash':      { rpm: 2000, tpm: 4000000, rpd: 10000 },
+  },
+};
+
+function applyTierToInputs(tier, model) {
+  const rpmEl = $('rpm');
+  const tpmEl = $('tpm');
+  const rpdEl = $('rpd');
+  if (tier === 'custom') {
+    rpmEl.readOnly = false;
+    tpmEl.readOnly = false;
+    rpdEl.readOnly = false;
+    return;
+  }
+  rpmEl.readOnly = true;
+  tpmEl.readOnly = true;
+  rpdEl.readOnly = true;
+  const table = TIER_LIMITS[tier] || {};
+  const limits = table[model] || { rpm: 60, tpm: 1000000, rpd: 1000 };
+  rpmEl.value = limits.rpm;
+  tpmEl.value = limits.tpm;
+  rpdEl.value = limits.rpd;
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,6 +101,19 @@ async function load() {
   $('whitelist').value = (s.domainRules.whitelist || []).join('\n');
   $('blacklist').value = (s.domainRules.blacklist || []).join('\n');
   $('debugLog').checked = s.debugLog;
+
+  // 效能與配額
+  $('tier').value = s.tier || 'tier1';
+  applyTierToInputs($('tier').value, s.geminiConfig.model);
+  // 若有 override 則把 override 填進去覆蓋 tier 預設
+  if (s.rpmOverride) $('rpm').value = s.rpmOverride;
+  if (s.tpmOverride) $('tpm').value = s.tpmOverride;
+  if (s.rpdOverride) $('rpd').value = s.rpdOverride;
+  const marginPct = Math.round((s.safetyMargin || 0.1) * 100);
+  $('safetyMargin').value = marginPct;
+  $('safetyMarginLabel').textContent = marginPct;
+  $('maxConcurrentBatches').value = s.maxConcurrentBatches || 10;
+  $('maxRetries').value = s.maxRetries || 3;
 }
 
 async function save() {
@@ -74,6 +137,14 @@ async function save() {
       blacklist: $('blacklist').value.split('\n').map(s => s.trim()).filter(Boolean),
     },
     debugLog: $('debugLog').checked,
+    tier: $('tier').value,
+    safetyMargin: Number($('safetyMargin').value) / 100,
+    maxRetries: Number($('maxRetries').value) || 3,
+    maxConcurrentBatches: Number($('maxConcurrentBatches').value) || 10,
+    // 只有 custom tier 才寫入 override(其他 tier 的數字從對照表讀,不存)
+    rpmOverride: $('tier').value === 'custom' ? (Number($('rpm').value) || null) : null,
+    tpmOverride: $('tier').value === 'custom' ? (Number($('tpm').value) || null) : null,
+    rpdOverride: $('tier').value === 'custom' ? (Number($('rpd').value) || null) : null,
   };
   await chrome.storage.sync.set(settings);
   $('save-status').textContent = '✓ 已儲存';
@@ -81,6 +152,17 @@ async function save() {
 }
 
 $('save').addEventListener('click', save);
+
+// Tier 或 Model 變更 → 自動更新 RPM/TPM/RPD 顯示
+$('tier').addEventListener('change', () => {
+  applyTierToInputs($('tier').value, $('model').value);
+});
+$('model').addEventListener('change', () => {
+  applyTierToInputs($('tier').value, $('model').value);
+});
+$('safetyMargin').addEventListener('input', () => {
+  $('safetyMarginLabel').textContent = $('safetyMargin').value;
+});
 
 $('reset-defaults').addEventListener('click', async () => {
   if (!confirm('確定要回復所有預設設定嗎？\n\nAPI Key 會被保留，翻譯快取與累計使用統計不受影響。\n此操作無法復原。')) return;

@@ -5,8 +5,54 @@ import { translateBatch } from './lib/gemini.js';
 import { getSettings } from './lib/storage.js';
 import { debugLog } from './lib/logger.js';
 import * as cache from './lib/cache.js';
+import { RateLimiter } from './lib/rate-limiter.js';
+import { getLimitsForSettings } from './lib/tier-limits.js';
 
 console.log('[Shinkansen] background service worker started');
+
+// ─── Rate Limiter(全域 singleton) ──────────────────────
+// 三維度 sliding window,同時約束 RPM / TPM / RPD。
+// 設定變更時會透過 storage.onChanged 重新套用上限。
+let limiter = null;
+
+async function initLimiter() {
+  const settings = await getSettings();
+  const limits = getLimitsForSettings(settings);
+  limiter = new RateLimiter(limits);
+  debugLog('info', 'rate limiter initialized', {
+    tier: settings.tier,
+    model: settings.geminiConfig.model,
+    rpm: limits.rpm,
+    tpm: limits.tpm,
+    rpd: limits.rpd,
+    safetyMargin: limits.safetyMargin,
+  });
+}
+initLimiter();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync') return;
+  // 只要設定類相關欄位變動就重新套用上限
+  const relevant = ['tier', 'geminiConfig', 'safetyMargin', 'rpmOverride', 'tpmOverride', 'rpdOverride'];
+  if (relevant.some(k => k in changes)) {
+    getSettings().then(settings => {
+      const limits = getLimitsForSettings(settings);
+      if (limiter) {
+        limiter.updateLimits(limits);
+        debugLog('info', 'rate limiter limits updated', limits);
+      } else {
+        limiter = new RateLimiter(limits);
+      }
+    });
+  }
+});
+
+/** 簡易 input token 估算:英文約 4 字元/token、中文約 1.5 字元/token,取中間值 3.5 偏保守。 */
+function estimateInputTokens(texts) {
+  let total = 0;
+  for (const t of texts) total += t?.length || 0;
+  return Math.ceil(total / 3.5);
+}
 
 // ─── 啟動時：版本檢查，版本變更則清空快取 ───────────────────
 (async () => {
@@ -176,11 +222,16 @@ async function handleTranslate(payload, sender) {
     misses: missingTexts.length,
   });
 
-  // 2. 缺的部分送 Gemini
+  // 2. 缺的部分送 Gemini(透過 rate limiter 節流)
   let fresh = [];
   let batchUsage = { inputTokens: 0, outputTokens: 0 };
   let batchCostUSD = 0;
   if (missingTexts.length) {
+    // 先過 rate limiter 取得一個 slot(會自動等待到 RPM/TPM/RPD 都有餘裕)
+    if (!limiter) await initLimiter();
+    const estTokens = estimateInputTokens(missingTexts);
+    await limiter.acquire(estTokens, /* priority */ 1);
+
     const t0 = Date.now();
     const res = await translateBatch(missingTexts, settings);
     fresh = res.translations;

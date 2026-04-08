@@ -18,9 +18,10 @@
       <label>
         模型
         <select id="model">
-          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
           <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+          <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
           <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
           <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
         </select>
       </label>
@@ -48,6 +49,49 @@
         <input type="number" id="outputPerMTok" step="0.01" min="0" placeholder="0.40">
       </label>
       <p class="muted">參考：gemini-2.0-flash $0.10 / $0.40;gemini-2.5-pro $1.25 / $10.00;gemini-2.5-flash $0.30 / $2.50(實際以官方為準）。</p>
+    </section>
+
+    <section>
+      <h2>效能與配額（並行翻譯）</h2>
+      <p class="muted">v0.35 起支援並行翻譯。dispatcher 根據你的 Gemini API 付費層級自動套用 RPM / TPM / RPD 上限,避免踩到 429 rate limit。</p>
+      <label>
+        Gemini API 層級
+        <select id="tier">
+          <option value="free">Free(免費)</option>
+          <option value="tier1">Tier 1(付費,已啟用 billing)</option>
+          <option value="tier2">Tier 2(累積消費 $250+,首次付款 30 天後)</option>
+          <option value="custom">自訂(手動填入下方三個數字)</option>
+        </select>
+        <small class="muted">層級與對應上限見 <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" rel="noopener">Gemini API Rate Limits</a>。切換層級時下方數值會自動更新。</small>
+      </label>
+      <div class="triple">
+        <label>
+          RPM(每分鐘請求)
+          <input type="number" id="rpm" step="1" min="1" readonly>
+        </label>
+        <label>
+          TPM(每分鐘 input tokens)
+          <input type="number" id="tpm" step="1000" min="1000" readonly>
+        </label>
+        <label>
+          RPD(每日請求)
+          <input type="number" id="rpd" step="1" min="1" readonly>
+        </label>
+      </div>
+      <label>
+        安全邊際 <span id="safetyMarginLabel">10</span>%
+        <input type="range" id="safetyMargin" min="0" max="30" step="5" value="10">
+        <small class="muted">實際使用的上限會乘以 (100% − 邊際),避免踩邊觸發 429。預設 10%。</small>
+      </label>
+      <label>
+        同時並發批次上限
+        <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
+        <small class="muted">content.js 側的並發上限,與 rate limiter 雙重保險。長文建議 5–10,短文可設 1 退化為序列翻譯。</small>
+      </label>
+      <label>
+        失敗重試次數
+        <input type="number" id="maxRetries" step="1" min="0" max="10">
+      </label>
     </section>
 
     <section>

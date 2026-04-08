@@ -5,6 +5,96 @@ import { debugLog } from './logger.js';
 
 const DELIMITER = '\n<<<SHINKANSEN_SEP>>>\n';
 const CHUNK_SIZE = 20; // 每批最多送幾段（content.js 已經會分批，這裡只是雙重保險）
+const MAX_BACKOFF_MS = 8000;
+
+/** 自訂錯誤:RPD 每日配額用盡,不應該被重試。 */
+export class DailyQuotaExceededError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'DailyQuotaExceededError';
+  }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 從 Gemini 429 的 response body 找出爆掉的維度(RPM/TPM/RPD)。
+ * 若找不到明確線索回傳 null。
+ */
+function extractQuotaDimension(json) {
+  const details = json?.error?.details;
+  if (!Array.isArray(details)) return null;
+  for (const d of details) {
+    const metric = d?.quotaMetric || d?.metric || '';
+    const id = d?.quotaId || '';
+    const haystack = `${metric} ${id}`.toLowerCase();
+    if (haystack.includes('perday') || haystack.includes('_day')) return 'RPD';
+    if (haystack.includes('tokens') && haystack.includes('minute')) return 'TPM';
+    if (haystack.includes('requests') && haystack.includes('minute')) return 'RPM';
+  }
+  return null;
+}
+
+/**
+ * fetch Gemini API,帶 429 退避重試。
+ * - 收到 429 → 讀 Retry-After header(秒數)等待後重試
+ * - Retry-After 沒給 → 指數退避 2^n * 500ms(上限 8s)
+ * - 爆的是 RPD → 丟 DailyQuotaExceededError,不 retry
+ * - 重試次數超過 maxRetries → 丟原錯誤
+ */
+async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      await debugLog('error', 'gemini fetch network error', { error: err.message, attempt });
+      if (attempt >= maxRetries) throw new Error('網路錯誤：' + err.message);
+      await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+      attempt += 1;
+      continue;
+    }
+
+    if (resp.status !== 429) return resp;
+
+    // 429 處理
+    let bodyJson = null;
+    try { bodyJson = await resp.clone().json(); } catch { /* noop */ }
+    const dim = extractQuotaDimension(bodyJson);
+    const retryAfterHeader = resp.headers.get('retry-after');
+    const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+
+    await debugLog('warn', 'gemini 429 rate limit', {
+      dimension: dim,
+      retryAfter: retryAfterHeader,
+      attempt,
+      error: bodyJson?.error?.message,
+    });
+
+    if (dim === 'RPD') {
+      throw new DailyQuotaExceededError('今日 Gemini API 配額已用盡(RPD 達上限),請明天再試或升級付費層級。');
+    }
+
+    if (attempt >= maxRetries) {
+      const msg = bodyJson?.error?.message || `HTTP 429(${dim || '未知維度'})`;
+      throw new Error(msg);
+    }
+
+    const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+      ? retryAfterSec * 1000 + 100
+      : Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt));
+    await sleep(waitMs);
+    attempt += 1;
+  }
+}
 
 /**
  * 批次翻譯文字陣列（會自動切成多批送出）。
@@ -77,17 +167,8 @@ async function translateChunk(texts, settings) {
   await debugLog('info', 'gemini request', { model, serviceTier, segments: texts.length });
 
   const t0 = Date.now();
-  let resp;
-  try {
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    await debugLog('error', 'gemini fetch failed', { error: err.message });
-    throw new Error('網路錯誤：' + err.message);
-  }
+  const maxRetries = typeof settings?.maxRetries === 'number' ? settings.maxRetries : 3;
+  const resp = await fetchWithRetry(url, body, { maxRetries });
 
   const json = await resp.json();
   const ms = Date.now() - t0;
