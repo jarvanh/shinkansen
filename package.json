@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "test:edo": "playwright test edo-detection.spec.js"
+    "test:regression": "playwright test test/regression/",
+    "test:version": "playwright test test/version-check.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0"
