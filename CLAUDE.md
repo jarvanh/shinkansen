@@ -120,6 +120,19 @@
 - **原因**：parse 路徑與 prompt 規則若同時定義同一件事容易互相衝突；全文 replace 也容易誤傷譯文中合法的全形內容（例如譯文裡的「２０２５」若被強制打回「2025」就壞掉了）。
 - **唯一例外**：範圍嚴格鎖在佔位符 `⟦…⟧` 標記內部（用 regex 明確包住 `⟦` 與 `⟧`）的清理可以接受——因為佔位符是協定層的元資料，不是譯文。
 
+### 8. Bug 修法必須是「結構性通則」，不可以是「站點 / edge case 特判」
+
+- **測試樣本少 ≠ 可以用特判矇過**：Jimmy 目前反覆測試的頁面不到 10 個（Gmail、Wikipedia、Twitter/X、Medium、Stratechery、幾封 email newsletter），每一個 bug 都代表一**類**真實世界網頁排版會遇到的問題，不是孤立事件。修法必須是「這一**類**結構特徵 → 這一**類**處理邏輯」，不是「這個網站 → 特判」。
+- **判斷標準**：問自己「這條規則描述的是 DOM / CSS 的結構特徵，還是某個網站 / class / selector 的身份？」
+  - ✅ 可以：`el` 自己 computed `font-size < 1px` → 這是 MJML / Mailjet / 任何 `font-size:0` inline-block-gap 技巧的結構特徵
+  - ✅ 可以：sentinel 區分「`<br>` 語意換行」vs「source HTML 排版 `\n`」→ 描述的是空白的語意來源
+  - ❌ 不可以：`el.matches('.ambox, .box-AI-generated')` → 綁定 Wikipedia 特定 class name
+  - ❌ 不可以：`if (location.hostname === 'mail.google.com')` → 綁定站點身份
+  - ❌ 不可以：內容品味判斷（「這段維護警告讀者該不該看」），這類交給 system prompt（見硬規則 6）
+- **找不到通用規則時的正確反應**：**停下來追問根因**，不要先加一個可以矇過當下測試頁的特判。寧可花時間看 DOM、用 Chrome MCP 實地診斷，也不要為了「這個頁面先修好」留下特判技術債。特判會在下一個類似結構的網站上再炸一次，而且屆時很難追查。
+- **舊路徑也要跟著更新**：遇到某個注入路徑的 bug 時，要主動檢查「其他類似路徑是不是也有同樣的 pattern 問題」。例如 v0.54 修 `replaceNodeInPlace` 時應該一併檢查 `plainTextFallback` 與 `replaceTextInPlace` 有沒有共用同一個「寫入目標解析」邏輯——三條路徑不該各自實作自己的 MJML 檢測。共用 helper 才能確保下次 MJML 排版變種不會在其中一條路徑先炸。
+- **歷史教訓**：v0.51–v0.53 三輪都試圖修 Wikipedia ambox，前兩輪（serialize normalize、slot dedup + plainTextFallback）都是把新規則當 edge case 在疊，沒有回頭審視 `replaceNodeInPlace` 這個**通用 injection 路徑**的根本問題。v0.54 才是真正的通則（「fragment 由 slots 重建，正常情況整段覆蓋就對了」），但三條注入路徑當時沒統一，v0.55 才補上。往後遇到注入 / 段落偵測 / 序列化相關 bug，先問「是不是所有同類路徑都需要一起改」。
+
 ---
 
 ## 規則變更流程（重要）
