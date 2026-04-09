@@ -1100,6 +1100,66 @@
   const MAX_CHARS_PER_BATCH = 3500;      // 字元預算，作為 token proxy（≈ 1000 英文 tokens，留 output headroom）
   const DEFAULT_MAX_CONCURRENT = 10; // content.js 側並發上限（與 background 的 rate limiter 雙重保險）
 
+  // ─── v0.69: 術語表一致化 ──────────────────────────────
+  // 門檻常數（與 storage.js 的 glossary 設定對應，但 content.js 不 import ES module，
+  // 所以在這裡先定義預設值，translatePage 會從 settings 讀取覆蓋）
+  const GLOSSARY_SKIP_THRESHOLD_DEFAULT = 1;
+  const GLOSSARY_BLOCKING_THRESHOLD_DEFAULT = 5;
+  const GLOSSARY_TIMEOUT_DEFAULT = 60000; // v0.70: 60s — Structured Output 對長文可能需要 30-50 秒
+
+  /** SHA-1 hash（content script 版本，不依賴 ES module import）。 */
+  async function sha1(text) {
+    const buf = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest('SHA-1', buf);
+    return Array.from(new Uint8Array(digest))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  /**
+   * 從偵測到的段落 units 中萃取「術語擷取用的壓縮輸入」。
+   * 只取 heading、每段第一句、figcaption、表格 caption、頁面 title，
+   * 壓縮到原文的 20–30%，召回率仍高（名詞通常在首次出現時就會被抓到）。
+   */
+  function extractGlossaryInput(units) {
+    const parts = [];
+
+    // 頁面 title
+    const title = document.title?.trim();
+    if (title) parts.push(title);
+
+    for (const unit of units) {
+      const el = unit.kind === 'fragment' ? unit.parent : unit.el;
+      if (!el) continue;
+      const tag = el.tagName;
+
+      // heading（h1–h6）：全文取用
+      if (/^H[1-6]$/.test(tag)) {
+        const txt = el.innerText?.trim();
+        if (txt) parts.push(txt);
+        continue;
+      }
+
+      // figcaption / table caption
+      if (tag === 'FIGCAPTION' || tag === 'CAPTION') {
+        const txt = el.innerText?.trim();
+        if (txt) parts.push(txt);
+        continue;
+      }
+
+      // 一般段落：只取第一句（到第一個句號、問號、驚嘆號、或前 200 字元）
+      const fullText = el.innerText?.trim();
+      if (!fullText) continue;
+      const sentenceMatch = fullText.match(/^[^.!?。！？]*[.!?。！？]/);
+      const firstSentence = sentenceMatch ? sentenceMatch[0] : fullText.slice(0, 200);
+      if (firstSentence.length >= 10) {
+        parts.push(firstSentence);
+      }
+    }
+
+    return parts.join('\n');
+  }
+
   // Greedy 打包：依原順序累加段落，超過任一門檻就封口。
   // - 字元數 > MAX_CHARS_PER_BATCH 的超大段落獨佔一批（不切段落本身，避免破壞語意）。
   // - 順序維持原始 DOM index，確保注入位置正確。
@@ -1146,8 +1206,9 @@
    * 由呼叫者 (translatePage) 自己處理,rescan 路徑則走靜默/補抓 toast。
    *
    * onProgress: 可選 callback(done, total),每批完成時呼叫一次
+   * glossary: v0.69 可選的術語對照表,帶入則每批翻譯都會附上
    */
-  async function translateUnits(units, { onProgress } = {}) {
+  async function translateUnits(units, { onProgress, glossary } = {}) {
     const total = units.length;
     // 對每個段落都先序列化成「文字 + slots」,文字內含 ⟦N⟧…⟦/N⟧ 佔位符。
     // 沒有可保留 inline 元素的段落 slots 為空陣列,行為等同舊版純文字翻譯。
@@ -1192,7 +1253,7 @@
       try {
         const response = await chrome.runtime.sendMessage({
           type: 'TRANSLATE_BATCH',
-          payload: { texts: job.texts },
+          payload: { texts: job.texts, glossary: glossary || null },
         });
         if (!response?.ok) throw new Error(response?.error || '未知錯誤');
         const translations = response.result;
@@ -1228,13 +1289,123 @@
       return;
     }
     const total = units.length;
+
+    // ─── v0.69: 術語表前置流程 ────────────────────────────
+    // 讀取術語表設定（門檻值）
+    let glossaryEnabled = true;
+    let skipThreshold = GLOSSARY_SKIP_THRESHOLD_DEFAULT;
+    let blockingThreshold = GLOSSARY_BLOCKING_THRESHOLD_DEFAULT;
+    let glossaryTimeout = GLOSSARY_TIMEOUT_DEFAULT;
+    try {
+      const { glossary: gc } = await chrome.storage.sync.get('glossary');
+      if (gc) {
+        glossaryEnabled = gc.enabled !== false;
+        skipThreshold = gc.skipThreshold ?? skipThreshold;
+        blockingThreshold = gc.blockingThreshold ?? blockingThreshold;
+        glossaryTimeout = gc.timeoutMs ?? glossaryTimeout;
+      }
+    } catch (_) { /* 保持 default */ }
+
+    // 先序列化拿到 texts，用來估算批次數
+    const preSerialized = units.map(unit => {
+      if (unit.kind === 'fragment') return { text: (unit.parent?.innerText || '').trim() };
+      return { text: (unit.el?.innerText || '').trim() };
+    });
+    const preTexts = preSerialized.map(s => s.text);
+
+    // 估算批次數（用簡化版打包邏輯計算，不需要完整的 slotsList）
+    let batchCount = 0;
+    {
+      let chars = 0, segs = 0;
+      for (const t of preTexts) {
+        const len = t.length;
+        if (len > MAX_CHARS_PER_BATCH) { batchCount++; chars = 0; segs = 0; continue; }
+        if (chars + len > MAX_CHARS_PER_BATCH || segs >= MAX_UNITS_PER_BATCH) {
+          batchCount++; chars = 0; segs = 0;
+        }
+        chars += len; segs++;
+      }
+      if (segs > 0) batchCount++;
+    }
+
+    let glossary = null;
+
+    if (glossaryEnabled && batchCount > skipThreshold) {
+      // 需要建術語表
+      const compressedText = extractGlossaryInput(units);
+      const inputHash = await sha1(compressedText);
+      console.log(`[Shinkansen] glossary: batchCount=${batchCount}, mode=${batchCount > blockingThreshold ? 'blocking' : 'fire-and-forget'}, compressedChars=${compressedText.length}, hash=${inputHash.slice(0, 8)}`);
+
+      if (batchCount > blockingThreshold) {
+        // ─── 長文：阻塞等術語表 ─────────────────────
+        showToast('loading', '建立術語表⋯', { progress: 0, startTimer: true });
+        try {
+          const glossaryResult = await Promise.race([
+            chrome.runtime.sendMessage({
+              type: 'EXTRACT_GLOSSARY',
+              payload: { compressedText, inputHash },
+            }),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('術語表逾時')), glossaryTimeout)
+            ),
+          ]);
+          if (glossaryResult?.ok && glossaryResult.glossary?.length > 0) {
+            glossary = glossaryResult.glossary;
+            console.log(`[Shinkansen] glossary ready: ${glossary.length} terms`
+              + (glossaryResult.fromCache ? ' (cached)' : ''));
+          } else if (glossaryResult?.ok) {
+            console.warn('[Shinkansen] glossary returned ok but empty (no terms extracted)',
+              glossaryResult.fromCache ? '[FROM CACHE — 上次的空結果被快取了，請清除快取再試]' : '',
+              glossaryResult._diag ? `diag: ${glossaryResult._diag}` : '',
+              `usage: in=${glossaryResult.usage?.inputTokens || 0} out=${glossaryResult.usage?.outputTokens || 0}`);
+          } else {
+            console.warn('[Shinkansen] glossary returned not ok:', glossaryResult?.error, glossaryResult?._diag);
+          }
+        } catch (err) {
+          console.warn('[Shinkansen] glossary failed/timeout, proceeding without', err.message);
+        }
+      } else {
+        // ─── 中檔：fire-and-forget，第一批不等 ──────────
+        // 術語表請求在背景跑，透過 Promise 存起來供後續批次使用
+        const glossaryPromise = chrome.runtime.sendMessage({
+          type: 'EXTRACT_GLOSSARY',
+          payload: { compressedText, inputHash },
+        }).then(res => {
+          if (res?.ok && res.glossary?.length > 0) {
+            console.log(`[Shinkansen] glossary arrived (async): ${res.glossary.length} terms`);
+            return res.glossary;
+          }
+          return null;
+        }).catch(err => {
+          console.warn('[Shinkansen] glossary async failed', err.message);
+          return null;
+        });
+        // 把 promise 存到 STATE 上，translateUnits 的 mid-flight 策略會用到
+        STATE._glossaryPromise = glossaryPromise;
+      }
+    }
+    // ─── 術語表前置流程結束 ────────────────────────────────
+
     showToast('loading', `翻譯中… 0 / ${total}`, {
       progress: 0,
       startTimer: true,
     });
 
     try {
+      // v0.69: 中檔模式 — 若有 _glossaryPromise 但 glossary 還是 null，
+      // 嘗試在送翻譯前等一小段時間讓它回來（最多 2 秒，不影響首批體驗太多）
+      if (!glossary && STATE._glossaryPromise) {
+        try {
+          glossary = await Promise.race([
+            STATE._glossaryPromise,
+            new Promise(resolve => setTimeout(() => resolve(null), 2000)),
+          ]);
+        } catch (_) { /* ignore */ }
+        STATE._glossaryPromise = null;
+      }
+
       const { done, failures, pageUsage } = await translateUnits(units, {
+        glossary,
         onProgress: (d, t) => showToast('loading', `翻譯中… ${d} / ${t}`, {
           progress: d / t,
         }),

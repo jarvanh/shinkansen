@@ -1,5 +1,6 @@
 // gemini.js — Google Gemini REST API 封裝
 // 支援批次翻譯、Service Tier (Flex/Standard/Priority)、除錯 Log。
+// v0.69: 新增 extractGlossary() 術語表擷取功能。
 
 import { debugLog } from './logger.js';
 
@@ -125,9 +126,178 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
 }
 
 /**
+ * v0.69: 術語表擷取 — 從壓縮過的文章摘要中提取專有名詞對照表。
+ * v0.70: 改為直接 fetch + AbortController（不走 fetchWithRetry），
+ *        因為術語表是 best-effort，不需要重試，且必須在有限時間內回應。
+ *
+ * @param {string} compressedText 壓縮後的文章摘要（headings + 每段首句等）
+ * @param {object} settings 完整設定
+ * @returns {Promise<{ glossary: Array<{source:string, target:string, type:string}>, usage: {inputTokens:number, outputTokens:number, cachedTokens:number} }>}
+ *
+ * 失敗（包含 JSON 格式錯誤、逾時）一律回傳空陣列 + usage，由上層 fallback。
+ */
+export async function extractGlossary(compressedText, settings) {
+  const { apiKey, geminiConfig, glossary: glossaryConfig } = settings;
+  const {
+    model,
+    serviceTier,
+    topP,
+    topK,
+    maxOutputTokens,
+  } = geminiConfig;
+
+  const glossaryPrompt = glossaryConfig?.prompt || '';
+  const glossaryTemperature = glossaryConfig?.temperature ?? 0.1;
+  const maxTerms = glossaryConfig?.maxTerms ?? 200;
+  // v0.70: fetch 層級的 timeout — Structured Output 對大輸入可能需要 30–60 秒
+  const fetchTimeoutMs = glossaryConfig?.fetchTimeoutMs ?? 55_000;
+
+  // v0.72: 保底至少 4096，作為額外防線。
+  const glossaryMaxOutput = Math.max(maxOutputTokens || 0, 4096);
+
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: compressedText }] }],
+    systemInstruction: { parts: [{ text: glossaryPrompt }] },
+    generationConfig: {
+      temperature: glossaryTemperature,
+      topP,
+      topK,
+      maxOutputTokens: glossaryMaxOutput,
+      // v0.72: 完全移除 responseMimeType: 'application/json'。
+      // 即使不帶 responseSchema，JSON mode 在某些模型版本下仍然會
+      // 提早結束生成（實測 maxOutputTokens=8192 卻只產出 316 tokens，
+      // finishReason=MAX_TOKENS）。改為純文字輸出，由 prompt 要求 JSON
+      // 格式，我們自己從回應中解析。
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
+  };
+
+  if (serviceTier && serviceTier !== 'DEFAULT') {
+    body.service_tier = serviceTier.toLowerCase();
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  await debugLog('info', 'glossary extraction request', { model, chars: compressedText.length, fetchTimeoutMs, maxOutputTokens: glossaryMaxOutput, settingsMaxOutput: maxOutputTokens });
+
+  const t0 = Date.now();
+
+  // v0.70: 直接 fetch + AbortController，不走 fetchWithRetry。
+  // 術語表是 best-effort：要嘛一次成功，要嘛放棄。不值得 retry 燒時間。
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), fetchTimeoutMs);
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(abortTimer);
+    const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';
+    await debugLog('error', `glossary extraction failed (${reason})`, { error: err.message, ms: Date.now() - t0 });
+    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `${reason}: ${err.message}` };
+  }
+  clearTimeout(abortTimer);
+
+  let json;
+  try {
+    json = await resp.json();
+  } catch (parseErr) {
+    await debugLog('error', 'glossary extraction: response body parse failed', { status: resp.status, error: parseErr.message });
+    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `resp.json() failed: ${parseErr.message}` };
+  }
+  const ms = Date.now() - t0;
+  const meta = json?.usageMetadata || {};
+  const usage = {
+    inputTokens: meta.promptTokenCount || 0,
+    outputTokens: meta.candidatesTokenCount || 0,
+    cachedTokens: meta.cachedContentTokenCount || 0,
+  };
+
+  if (!resp.ok) {
+    const errMsg = json?.error?.message || `HTTP ${resp.status}`;
+    await debugLog('error', 'glossary extraction failed (API)', { status: resp.status, error: errMsg, ms });
+    // v0.70: 回傳 _diag 供 content.js 顯示，方便從頁面 console 看到錯誤原因
+    return { glossary: [], usage, _diag: `API error ${resp.status}: ${errMsg}` };
+  }
+
+  const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const finishReason = json?.candidates?.[0]?.finishReason || 'unknown';
+  await debugLog('info', 'glossary extraction response', {
+    ms, usage: meta, rawChars: rawText.length, finishReason,
+  });
+
+  // v0.72: 不用 responseMimeType 後，模型可能在 JSON 前後附帶說明文字
+  // 或用 ```json ... ``` code fence 包裹。需要先提取 JSON 部分再 parse。
+  let jsonStr = rawText.trim();
+
+  // 移除 markdown code fence（```json ... ``` 或 ``` ... ```）
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim();
+  } else {
+    // 找第一個 [ 或 { 到最後一個 ] 或 } 之間的內容
+    const firstBracket = jsonStr.search(/[\[{]/);
+    const lastBracket = Math.max(jsonStr.lastIndexOf(']'), jsonStr.lastIndexOf('}'));
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
+    }
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (parseErr) {
+    await debugLog('warn', 'glossary JSON parse failed', {
+      error: parseErr.message, finishReason,
+      preview: rawText.slice(0, 500),
+    });
+    return { glossary: [], usage, _diag: `JSON parse error (finishReason=${finishReason}): ${parseErr.message}, preview: ${rawText.slice(0, 300)}` };
+  }
+
+  // 從各種可能的 JSON 結構中找出術語陣列
+  let entries;
+  if (Array.isArray(parsed)) {
+    entries = parsed;
+  } else if (parsed && typeof parsed === 'object') {
+    // 找第一個值是 array 的 key（模型可能用 "terms"、"glossary"、"entries" 等任何 key）
+    const arrKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+    entries = arrKey ? parsed[arrKey] : null;
+  }
+
+  if (!entries) {
+    await debugLog('warn', 'glossary result: no array found in response', {
+      type: typeof parsed,
+      keys: parsed ? Object.keys(parsed).slice(0, 5) : [],
+    });
+    return { glossary: [], usage, _diag: `no array in response: ${JSON.stringify(parsed).slice(0, 300)}` };
+  }
+
+  // 過濾有效 entry 並截斷到 maxTerms
+  const glossary = entries
+    .filter(e => e && typeof e.source === 'string' && typeof e.target === 'string' && e.source && e.target)
+    .slice(0, maxTerms);
+
+  await debugLog('info', 'glossary extraction done', {
+    totalEntries: entries.length, validTerms: glossary.length, ms, finishReason,
+  });
+
+  return { glossary, usage };
+}
+
+/**
  * 批次翻譯文字陣列（會自動切成多批送出）。
  * @param {string[]} texts 原文陣列
  * @param {object} settings 完整設定
+ * @param {Array<{source:string, target:string}>} [glossary] 可選的術語對照表（v0.69）
  * @returns {Promise<{ translations: string[], usage: { inputTokens: number, outputTokens: number, cachedTokens: number } }>}
  *
  * 註：`cachedTokens` 來自 Gemini API 回應的 `usageMetadata.cachedContentTokenCount`，
@@ -138,14 +308,14 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
  * 本地快取命中的段落根本不會送 API，而 implicit cache 命中的段落有送 API
  * 但前綴（system prompt 那一大段）被 Gemini 內部 cache 省下。
  */
-export async function translateBatch(texts, settings) {
+export async function translateBatch(texts, settings, glossary) {
   if (!texts?.length) return { translations: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 } };
   const out = new Array(texts.length);
   const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
   const chunks = packChunks(texts);
   for (const { start, end } of chunks) {
     const slice = texts.slice(start, end);
-    const { parts, usage: u } = await translateChunk(slice, settings);
+    const { parts, usage: u } = await translateChunk(slice, settings, glossary);
     for (let j = 0; j < parts.length; j++) out[start + j] = parts[j];
     usage.inputTokens += u.inputTokens;
     usage.outputTokens += u.outputTokens;
@@ -154,7 +324,7 @@ export async function translateBatch(texts, settings) {
   return { translations: out, usage };
 }
 
-async function translateChunk(texts, settings) {
+async function translateChunk(texts, settings, glossary) {
   if (!texts?.length) return [];
   const { apiKey, geminiConfig } = settings;
   const {
@@ -172,6 +342,10 @@ async function translateChunk(texts, settings) {
 
   // 若本批文字含 ⟦…⟧ 佔位符（content.js 為了保留連結 / 樣式而注入的）,
   // 在 systemInstruction 後面追加一條規則，要求 LLM 原樣保留這些標記。
+  //
+  // v0.71: 建構順序很重要——行為規則（換行、佔位符）必須緊跟在基礎翻譯指令後面，
+  // 術語表是「參考資料」放最後。若術語表夾在中間會稀釋 LLM 對佔位符規則的注意力，
+  // 導致 ⟦*N⟧ 標記洩漏到譯文裡（v0.70 的 bug）。
   let effectiveSystem = systemInstruction;
 
   // v0.50: 若本批文字含段內換行（\n，來自序列化時 <br> 的還原）,追加一條規則
@@ -186,6 +360,14 @@ async function translateChunk(texts, settings) {
 
   if (joined.indexOf('\u27E6') !== -1) {
     effectiveSystem = effectiveSystem + '\n\n額外規則（極重要，處理佔位符標記）:\n輸入中可能含有兩種佔位符標記，都是用來保留原文結構，必須原樣保留、不可翻譯、不可省略、不可改寫、不可新增、不可重排。佔位符裡的數字、斜線、星號 **必須是半形 ASCII 字元**（0-9、/、*），絕對不可改成全形（０-９、／、＊），否則程式無法配對會整段崩壞。\n\n（A）配對型 ⟦數字⟧…⟦/數字⟧（例如 ⟦0⟧Tokugawa Ieyasu⟦/0⟧)：\n- 把標記視為透明外殼。外殼「內部」的文字跟外殼「外部」的文字一樣，全部都要翻譯成繁體中文。\n- ⟦數字⟧ 與 ⟦/數字⟧ 兩個標記本身原樣保留，數字不變。\n- **配對型可以巢狀嵌套**（例如 ⟦0⟧may incorporate text from a ⟦1⟧large language model⟦/1⟧, which is ...⟦/0⟧）。巢狀代表原文是 `<b>text <a>link</a> more text</b>` 這類嵌套結構。翻譯時必須**同時**保留外層與內層兩組標記、不可扁平化成單層、不可交換順序、不可遺漏任何一層。外層與內層的內部文字全部要翻成繁體中文。\n\n（B）自閉合 ⟦*數字⟧（例如 ⟦*5⟧)：\n- 這是「原子保留」位置記號，代表原文裡有一段不可翻譯的小區塊（例如維基百科腳註參照 [2])。\n- 整個 ⟦*數字⟧ token 原樣保留，不可拆開、不可翻譯、不可省略，數字不變。\n- 它的位置代表那段內容應該插在譯文的哪裡。\n\n具體範例 1（單層）：\n輸入： ⟦0⟧Tokugawa Ieyasu⟦/0⟧ won the ⟦1⟧Battle of Sekigahara⟦/1⟧ in 1600.⟦*2⟧\n正確輸出： ⟦0⟧德川家康⟦/0⟧於 1600 年贏得⟦1⟧關原之戰⟦/1⟧。⟦*2⟧\n錯誤輸出 1： ⟦0⟧Tokugawa Ieyasu⟦/0⟧於 1600 年贏得⟦1⟧Battle of Sekigahara⟦/1⟧。⟦*2⟧（配對型內部英文沒翻）\n錯誤輸出 2： ⟦0⟧德川家康⟦/0⟧於 1600 年贏得⟦1⟧關原之戰⟦/1⟧。[2]（自閉合 ⟦*2⟧ 被擅自還原成 [2])\n\n具體範例 2（巢狀）：\n輸入： This article ⟦0⟧may incorporate text from a ⟦1⟧large language model⟦/1⟧, which is ⟦2⟧prohibited in Wikipedia articles⟦/2⟧⟦/0⟧.\n正確輸出： 本條目⟦0⟧可能包含來自⟦1⟧大型語言模型⟦/1⟧的文字，這在⟦2⟧維基百科條目中是被禁止的⟦/2⟧⟦/0⟧。\n錯誤輸出 3： 本條目可能包含來自⟦1⟧大型語言模型⟦/1⟧的文字，這在⟦2⟧維基百科條目中是被禁止的⟦/2⟧。（外層 ⟦0⟧…⟦/0⟧ 被扁平化丟掉）';
+  }
+
+  // v0.69/v0.71: 術語對照表放在 systemInstruction 最末端。
+  // 這是「參考資料」而非「行為規則」，放最後不會干擾佔位符 / 換行等關鍵規則。
+  if (glossary && glossary.length > 0) {
+    const lines = glossary.map(e => `${e.source} → ${e.target}`).join('\n');
+    effectiveSystem = effectiveSystem +
+      '\n\n以下是本篇文章的術語對照表，遇到這些原文一律使用指定譯名，不可自行改寫：\n' + lines;
   }
 
   const body = {
@@ -261,7 +443,7 @@ async function translateChunk(texts, settings) {
     const aligned = [];
     const aggUsage = { ...chunkUsage };
     for (const seg of texts) {
-      const r = await translateChunk([seg], settings);
+      const r = await translateChunk([seg], settings, glossary);
       aligned.push(r.parts[0] || '');
       aggUsage.inputTokens += r.usage.inputTokens;
       aggUsage.outputTokens += r.usage.outputTokens;

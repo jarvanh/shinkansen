@@ -1,7 +1,7 @@
 // background.js — Shinkansen Service Worker
 // 職責：接收翻譯請求、呼叫 Gemini API、處理快取、處理快捷鍵、統一除錯 Log。
 
-import { translateBatch } from './lib/gemini.js';
+import { translateBatch, extractGlossary } from './lib/gemini.js';
 import { getSettings } from './lib/storage.js';
 import { debugLog } from './lib/logger.js';
 import * as cache from './lib/cache.js';
@@ -173,6 +173,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true;
   }
+  // v0.69: 術語表擷取請求（priority 0 插隊）
+  if (message?.type === 'EXTRACT_GLOSSARY') {
+    handleExtractGlossary(message.payload, sender)
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((err) => {
+        debugLog('error', 'glossary extraction failed', err);
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      });
+    return true;
+  }
   if (message?.type === 'CLEAR_CACHE') {
     cache.clearAll()
       .then((removed) => sendResponse({ ok: true, removed }))
@@ -217,9 +227,19 @@ async function handleTranslate(payload, sender) {
     throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
   }
   const texts = payload.texts;
+  const glossary = payload.glossary || null;  // v0.69: 可選的術語對照表
+
+  // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
+  // 確保「有術語表」與「無術語表」的翻譯分開快取。
+  let glossaryKeySuffix = '';
+  if (glossary && glossary.length > 0) {
+    const glossaryStr = glossary.map(e => `${e.source}:${e.target}`).join('|');
+    const fullHash = await cache.hashText(glossaryStr);
+    glossaryKeySuffix = '_g' + fullHash.slice(0, 12);
+  }
 
   // 1. 先撈快取
-  const cached = await cache.getBatch(texts);
+  const cached = await cache.getBatch(texts, glossaryKeySuffix);
   const missingIdxs = [];
   const missingTexts = [];
   cached.forEach((tr, i) => {
@@ -250,7 +270,7 @@ async function handleTranslate(payload, sender) {
     await limiter.acquire(estTokens, /* priority */ 1);
 
     const t0 = Date.now();
-    const res = await translateBatch(missingTexts, settings);
+    const res = await translateBatch(missingTexts, settings, glossary);
     fresh = res.translations;
     batchUsage = res.usage;
     batchCostUSD = computeCostUSD(batchUsage.inputTokens, batchUsage.outputTokens, settings.pricing);
@@ -261,8 +281,8 @@ async function handleTranslate(payload, sender) {
       usage: batchUsage,
       costUSD: batchCostUSD,
     });
-    // 3. 寫回快取
-    await cache.setBatch(missingTexts, fresh);
+    // 3. 寫回快取（帶 glossary suffix 確保有/無術語表分開存）
+    await cache.setBatch(missingTexts, fresh, glossaryKeySuffix);
     // 3.5 累計到全域使用量統計
     // v0.48: 改為累計「實付」值（套用 implicit cache 折扣後的等效 input tokens
     // 與實付費用），讓 popup 累計顯示的 token / 費用等於 Gemini 帳單實際扣款。
@@ -302,6 +322,64 @@ async function handleTranslate(payload, sender) {
       cacheHits,
     },
   };
+}
+
+// ─── v0.70: 術語表擷取處理（v0.69 建立，v0.70 加強除錯與容錯） ──
+async function handleExtractGlossary(payload, sender) {
+  console.log('[Shinkansen] handleExtractGlossary: start');
+  const settings = await getSettings();
+  if (!settings.apiKey) {
+    throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
+  }
+  const { compressedText, inputHash } = payload;
+  console.log('[Shinkansen] handleExtractGlossary: inputHash=%s, chars=%d', inputHash, compressedText?.length);
+
+  // 1. 先查術語表快取
+  const cached = await cache.getGlossary(inputHash);
+  if (cached) {
+    console.log('[Shinkansen] glossary cache hit: %d terms', cached.length);
+    debugLog('info', 'glossary cache hit', { inputHash, terms: cached.length });
+    return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
+  }
+
+  // 2. v0.70: 跳過 rate limiter — 術語表是 best-effort 單次請求，
+  //    不走 limiter 避免被卡住（之前因 limiter 或 retry 導致 15 秒 timeout）。
+  //    extractGlossary 內部已改用 AbortController 自帶 20 秒 fetch timeout。
+  console.log('[Shinkansen] glossary: calling Gemini (bypassing rate limiter)');
+
+  // 3. 呼叫 Gemini 擷取術語表
+  const result = await extractGlossary(compressedText, settings);
+  const { glossary, usage, _diag } = result;
+  console.log('[Shinkansen] glossary: Gemini returned %d terms, usage=%o%s', glossary.length, usage, _diag ? `, diag: ${_diag}` : '');
+
+  // 4. 寫入快取（只快取有內容的術語表；空結果不快取，讓下次重試有機會成功）
+  if (glossary.length > 0) {
+    await cache.setGlossary(inputHash, glossary);
+  }
+
+  // 5. 累計使用量統計
+  if (usage.inputTokens > 0 || usage.outputTokens > 0) {
+    const billedInput = Math.max(
+      0,
+      Math.round(usage.inputTokens - (usage.cachedTokens || 0) * 0.75),
+    );
+    const billedCost = computeBilledCostUSD(
+      usage.inputTokens,
+      usage.cachedTokens || 0,
+      usage.outputTokens,
+      settings.pricing,
+    );
+    await addUsage(billedInput, usage.outputTokens, billedCost);
+  }
+
+  console.log('[Shinkansen] glossary extraction complete: %d terms, cached=%s', glossary.length, false);
+  debugLog('info', 'glossary extraction complete', {
+    terms: glossary.length,
+    inputHash,
+    tabId: sender?.tab?.id,
+  });
+
+  return { glossary, usage, fromCache: false, _diag: _diag || null };
 }
 
 // ─── 快捷鍵 ────────────────────────────────────────────────

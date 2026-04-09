@@ -132,6 +132,30 @@
     </section>
 
     <section>
+      <h2>術語表一致化</h2>
+      <p class="muted">長文翻譯時，先擷取全文專有名詞建立術語對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。</p>
+      <label class="switch">
+        <input type="checkbox" id="glossaryEnabled">
+        <span>啟用術語表一致化</span>
+      </label>
+      <label>
+        術語表 Temperature
+        <input type="number" id="glossaryTemperature" step="0.1" min="0" max="2">
+        <small class="muted">控制術語擷取的穩定度，越低越穩定。預設 0.1，一般不需調整</small>
+      </label>
+      <label>
+        逾時時間（毫秒）
+        <input type="number" id="glossaryTimeout" step="1000" min="3000" max="60000">
+        <small class="muted">長文等待術語表的最長時間。超過則放棄術語表直接翻譯，預設 60000（60 秒）</small>
+      </label>
+      <label>
+        術語擷取 System Instruction
+        <textarea id="glossaryPrompt" rows="10"></textarea>
+        <small class="muted">控制 Gemini 擷取哪些類型的專有名詞。進階使用者可自行調整</small>
+      </label>
+    </section>
+
+    <section>
       <h2>網域規則</h2>
       <label>
         白名單（每行一個網域，進入時自動翻譯）
