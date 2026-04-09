@@ -227,19 +227,19 @@ async function handleTranslate(payload, sender) {
     throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
   }
   const texts = payload.texts;
-  const glossary = payload.glossary || null;  // v0.69: 可選的術語對照表
+  const referencePairs = payload.referencePairs || null;  // v0.73: 首批翻譯參考對（方案 3）
 
-  // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
-  // 確保「有術語表」與「無術語表」的翻譯分開快取。
-  let glossaryKeySuffix = '';
-  if (glossary && glossary.length > 0) {
-    const glossaryStr = glossary.map(e => `${e.source}:${e.target}`).join('|');
-    const fullHash = await cache.hashText(glossaryStr);
-    glossaryKeySuffix = '_g' + fullHash.slice(0, 12);
+  // v0.73: 有 referencePairs 時，快取 key 加上 hash 後綴，
+  // 確保「有 reference」與「無 reference」的翻譯分開快取。
+  let refKeySuffix = '';
+  if (referencePairs && referencePairs.length > 0) {
+    const refStr = referencePairs.map(p => `${p.source}:${p.target}`).join('|');
+    const fullHash = await cache.hashText(refStr);
+    refKeySuffix = '_r' + fullHash.slice(0, 12);
   }
 
   // 1. 先撈快取
-  const cached = await cache.getBatch(texts, glossaryKeySuffix);
+  const cached = await cache.getBatch(texts, refKeySuffix);
   const missingIdxs = [];
   const missingTexts = [];
   cached.forEach((tr, i) => {
@@ -270,7 +270,7 @@ async function handleTranslate(payload, sender) {
     await limiter.acquire(estTokens, /* priority */ 1);
 
     const t0 = Date.now();
-    const res = await translateBatch(missingTexts, settings, glossary);
+    const res = await translateBatch(missingTexts, settings, referencePairs);
     fresh = res.translations;
     batchUsage = res.usage;
     batchCostUSD = computeCostUSD(batchUsage.inputTokens, batchUsage.outputTokens, settings.pricing);
@@ -281,8 +281,8 @@ async function handleTranslate(payload, sender) {
       usage: batchUsage,
       costUSD: batchCostUSD,
     });
-    // 3. 寫回快取（帶 glossary suffix 確保有/無術語表分開存）
-    await cache.setBatch(missingTexts, fresh, glossaryKeySuffix);
+    // 3. 寫回快取（帶 reference suffix 確保有/無 reference 分開存）
+    await cache.setBatch(missingTexts, fresh, refKeySuffix);
     // 3.5 累計到全域使用量統計
     // v0.48: 改為累計「實付」值（套用 implicit cache 折扣後的等效 input tokens
     // 與實付費用），讓 popup 累計顯示的 token / 費用等於 Gemini 帳單實際扣款。
