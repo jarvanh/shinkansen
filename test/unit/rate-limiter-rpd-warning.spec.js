@@ -132,8 +132,9 @@ test('RPD 計數正確寫入 chrome.storage.local', async () => {
   await limiter.acquire(10);
   await limiter.acquire(10);
 
-  // 等一下讓 persistRpd 的 fire-and-forget Promise 完成
-  await new Promise(r => setTimeout(r, 50));
+  // scheduleRpdPersist 是節流版（每 10 次或 30 秒才寫入），
+  // 2 次呼叫不會立即持久化。直接呼叫 persistRpd() 強制寫入。
+  await limiter.persistRpd();
 
   // store 裡應該有一個 rateLimit_rpd_YYYYMMDD key，值為 2
   const rpdKeys = Object.keys(store).filter(k => k.startsWith('rateLimit_rpd_'));
