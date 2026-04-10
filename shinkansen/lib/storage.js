@@ -61,9 +61,9 @@ export const DEFAULT_SETTINGS = {
   geminiConfig: {
     model: 'gemini-3-flash-preview',       // v0.83: 預設模型升級至 Gemini 3 Flash
     serviceTier: 'DEFAULT',
-    temperature: 0.5,     // v0.94: 從 1.0 降為 0.5，降低 LLM 輸出不穩定風險（尤其是低效能模型）
+    temperature: 1.0,     // Gemini 3 Flash 原廠預設值
     topP: 0.95,
-    topK: 40,
+    topK: 40,             // Gemini 3 Flash 原廠預設值（Pro 系列為 64）
     maxOutputTokens: 8192,
     systemInstruction: DEFAULT_SYSTEM_PROMPT,
   },

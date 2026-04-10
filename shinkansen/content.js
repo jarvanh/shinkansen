@@ -1499,10 +1499,45 @@
     return { done, total, failures, pageUsage, rpdWarning };
   }
 
+  // ─── v1.0.7: Google Docs 偵測 ──────────────────────────────
+  // Google Docs 編輯/預覽模式使用 canvas 渲染，content script 無法存取文字。
+  // 偵測到 Google Docs 時，自動導向 /mobilebasic（行動版簡易檢視），
+  // 該模式輸出標準 HTML（<p> + <span>），Shinkansen 可直接翻譯。
+  function isGoogleDocsEditorPage() {
+    return location.hostname === 'docs.google.com'
+      && /^\/document\/d\/[^/]+\/(edit|preview|view)/.test(location.pathname);
+  }
+
+  function isGoogleDocsMobileBasic() {
+    return location.hostname === 'docs.google.com'
+      && /^\/document\/d\/[^/]+\/mobilebasic/.test(location.pathname);
+  }
+
+  function getGoogleDocsMobileBasicUrl() {
+    // 從目前的 Google Docs URL 抽出 document ID，組成 /mobilebasic URL
+    const match = location.pathname.match(/^\/document\/d\/([^/]+)/);
+    if (!match) return null;
+    return `https://docs.google.com/document/d/${match[1]}/mobilebasic`;
+  }
+
   async function translatePage() {
     if (STATE.translated) {
       restorePage();
       return;
+    }
+
+    // v1.0.7: Google Docs canvas 頁面 → 導向 mobilebasic 翻譯
+    if (isGoogleDocsEditorPage()) {
+      const mobileUrl = getGoogleDocsMobileBasicUrl();
+      if (mobileUrl) {
+        sendLog('info', 'translate', 'Google Docs detected, redirecting to mobilebasic', { mobileUrl });
+        showToast('loading', '偵測到 Google Docs，正在開啟可翻譯的閱讀版⋯');
+        chrome.runtime.sendMessage({
+          type: 'OPEN_GDOC_MOBILE',
+          payload: { url: mobileUrl },
+        }).catch(() => {});
+        return;
+      }
     }
 
     // v0.80: 翻譯進行中 → 使用者再按一次 = 取消翻譯

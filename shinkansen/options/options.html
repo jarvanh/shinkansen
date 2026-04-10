@@ -70,8 +70,33 @@
     </section>
 
     <section>
-      <h2>效能與配額（並行翻譯）</h2>
-      <p class="muted">根據你的 Gemini API 付費層級，自動控制翻譯速度，避免超出 Google 的使用量限制。你的目前層級與配額可至 <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">Gemini API Rate Limit</a> 查詢</p>
+      <h2>效能（翻譯效率調校）</h2>
+      <p class="muted">調整每批翻譯的大小與並行數量，影響翻譯速度與品質的平衡</p>
+      <label>
+        同時並發批次上限
+        <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
+        <small class="muted">同時送出幾批翻譯請求。數字越大翻越快，但也越容易撞到配額上限，長文建議 5–10，短文可設 1（逐批翻譯）</small>
+      </label>
+      <label>
+        每批段數上限
+        <input type="number" id="maxUnitsPerBatch" step="1" min="1" max="100">
+        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 12</small>
+      </label>
+      <label>
+        每批字元預算
+        <input type="number" id="maxCharsPerBatch" step="500" min="500" max="20000">
+        <small class="muted">每一批累積的原文字元數上限（與段數上限先到先封口）。數字越大每批能裝越多內容，但太大可能超出模型輸出長度限制，預設 3500</small>
+      </label>
+      <label>
+        單頁翻譯段落上限
+        <input type="number" id="maxTranslateUnits" step="100" min="0" max="10000">
+        <small class="muted">單次翻譯最多處理幾段。超大頁面（如維基百科長條目）超過此上限時，多餘段落會被略過。設為 0 表示不限制，預設 1000</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>配額（API 用量限制）</h2>
+      <p class="muted">根據你的 Gemini API 付費層級，自動控制請求頻率，避免超出 Google 的使用量限制。你的目前層級與配額可至 <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">Gemini API Rate Limit</a> 查詢</p>
       <label>
         Gemini API 層級
         <select id="tier">
@@ -102,26 +127,6 @@
         <small class="muted">實際使用的上限會乘以（100% − 邊際），避免踩邊觸發 429，預設 10%</small>
       </label>
       <label>
-        同時並發批次上限
-        <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
-        <small class="muted">同時送出幾批翻譯請求。數字越大翻越快，但也越容易撞到配額上限，長文建議 5–10，短文可設 1（逐批翻譯）</small>
-      </label>
-      <label>
-        每批段數上限
-        <input type="number" id="maxUnitsPerBatch" step="1" min="1" max="100">
-        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 12</small>
-      </label>
-      <label>
-        每批字元預算
-        <input type="number" id="maxCharsPerBatch" step="500" min="500" max="20000">
-        <small class="muted">每一批累積的原文字元數上限（與段數上限先到先封口）。數字越大每批能裝越多內容，但太大可能超出模型輸出長度限制，預設 3500</small>
-      </label>
-      <label>
-        單頁翻譯段落上限
-        <input type="number" id="maxTranslateUnits" step="100" min="0" max="10000">
-        <small class="muted">單次翻譯最多處理幾段。超大頁面（如維基百科長條目）超過此上限時，多餘段落會被略過。設為 0 表示不限制，預設 1000</small>
-      </label>
-      <label>
         失敗重試次數
         <input type="number" id="maxRetries" step="1" min="0" max="10">
         <small class="muted">單批翻譯遇到 API 錯誤（如 429 配額限制）時的最大重試次數，設為 0 表示不重試、失敗即跳過，預設 3 次</small>
@@ -133,7 +138,7 @@
       <label>
         Temperature
         <input type="number" id="temperature" step="0.1" min="0" max="2">
-        <small class="muted">控制回覆的隨機程度。數字越低翻譯越穩定一致，越高則越有創意但可能偏離原意，範圍 0–2，預設 0.5</small>
+        <small class="muted">控制回覆的隨機程度。數字越低翻譯越穩定一致，越高則越有創意但可能偏離原意，範圍 0–2，預設 1.0（Gemini 3 Flash 原廠預設值）</small>
       </label>
       <label>
         Top P
@@ -143,7 +148,7 @@
       <label>
         Top K
         <input type="number" id="topK" step="1" min="1" max="100">
-        <small class="muted">限制每次選詞時最多考慮幾個候選詞。數字越小越精準，越大越多樣，範圍 1–100，預設 64</small>
+        <small class="muted">限制每次選詞時最多考慮幾個候選詞。數字越小越精準，越大越多樣，範圍 1–100，預設 40（Gemini 3 Flash 原廠預設值，Pro 系列為 64）</small>
       </label>
       <label>
         Max Output Tokens
@@ -220,6 +225,14 @@
       <button id="save" class="primary">儲存設定</button>
       <span id="save-status"></span>
     </div>
+
+    <section class="license-section">
+      <h2>授權資訊</h2>
+      <p>Shinkansen 採用 <strong>Elastic License 2.0 (ELv2)</strong> 授權。</p>
+      <p>你可以自由查看原始碼、學習、修改、自己使用，但<strong>不能把 Shinkansen（或改寫版本）包成服務拿去賣</strong>。</p>
+      <p class="muted">完整條款請見擴充功能目錄內的 LICENSE 檔案，或參閱 <a href="https://www.elastic.co/licensing/elastic-license" target="_blank" rel="noopener">Elastic License 2.0 官方全文</a>。</p>
+      <p class="muted">作者：Jimmy Su ・ Twitter (X)：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
+    </section>
 
     </div><!-- /tab-settings -->
 

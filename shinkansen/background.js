@@ -215,6 +215,38 @@ const messageHandlers = {
     async: false,
     handler: () => { clearLogs(); },
   },
+  // v1.0.7: Google Docs — 在新分頁開啟 mobilebasic 版本並自動觸發翻譯
+  OPEN_GDOC_MOBILE: {
+    async: true,
+    handler: async (payload) => {
+      const url = payload?.url;
+      if (!url) throw new Error('missing url');
+      const tab = await chrome.tabs.create({ url });
+      debugLog('info', 'system', 'opened Google Docs mobilebasic tab', { url, tabId: tab.id });
+
+      // 等待新分頁載入完成後自動觸發翻譯
+      // 透過 onUpdated 監聽 tab 的 complete 狀態，再送 TOGGLE_TRANSLATE 訊息
+      return new Promise((resolve) => {
+        const onUpdated = (tabId, changeInfo) => {
+          if (tabId === tab.id && changeInfo.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            // 小延遲確保 content script 已完成初始化
+            setTimeout(() => {
+              chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
+            }, 500);
+            resolve({ tabId: tab.id });
+          }
+        };
+        chrome.tabs.onUpdated.addListener(onUpdated);
+
+        // 安全閥：30 秒後若尚未 complete，移除 listener 避免洩漏
+        setTimeout(() => {
+          chrome.tabs.onUpdated.removeListener(onUpdated);
+          resolve({ tabId: tab.id, timeout: true });
+        }, 30000);
+      });
+    },
+  },
   CLEAR_RPD: {
     async: true,
     handler: async () => {

@@ -18,7 +18,21 @@
 
 ## 條目
 
-(目前沒有 pending 條目)
+### v1.0.7 — 2026-04-10 — Google Docs 偵測導向 mobilebasic
+- **症狀**：在 Google Docs 編輯頁面按翻譯，應開新分頁到 `/mobilebasic` 並自動翻譯
+- **來源 URL**：`https://docs.google.com/document/d/*/edit`（任何 Google Docs 文件）
+- **修在**：`shinkansen/content.js` 的 `isGoogleDocsEditorPage()` + `translatePage()` 開頭的偵測區塊；`shinkansen/background.js` 的 `OPEN_GDOC_MOBILE` handler
+- **為什麼還不能寫測試**：
+    此功能依賴 `chrome.tabs.create()` 開新分頁 + 監聽 `tabs.onUpdated`，
+    是跨分頁的整合流程，不是單一頁面內的段落偵測/注入問題。
+    需要 Playwright 層級的 E2E 測試（用 `browser.newPage()` 模擬新分頁），
+    目前 regression suite 的 fixture 機制只測單頁注入，不覆蓋跨分頁場景。
+    此外 mobilebasic 頁面需要 Google 帳號登入才能存取私人文件，
+    CI 環境下無法重現。
+- **建議 spec 位置**：`test/e2e/gdoc-redirect.spec.js`（未來建立 e2e 資料夾時）
+- **建議測試方向**：
+    1. 單元測試：mock `location` 測 `isGoogleDocsEditorPage()` 和 `getGoogleDocsMobileBasicUrl()` 的 URL 解析邏輯
+    2. E2E 測試：用公開的 Google Docs 文件 URL 驗證導向行為
 
 <!--
 條目格式範例(實際加入時把上面那行 placeholder 刪掉):
