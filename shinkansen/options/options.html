@@ -13,15 +13,113 @@
     <h1>🚄 Shinkansen</h1>
     <p class="muted">功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a></p>
 
-    <!-- v0.86: Tab 切換列 -->
+    <!-- v0.86: Tab 切換列（v1.0.28: 設定拆為一般設定 + Gemini） -->
     <nav class="tab-bar">
-      <button class="tab-btn active" data-tab="settings">設定</button>
+      <button class="tab-btn active" data-tab="settings">一般設定</button>
+      <button class="tab-btn" data-tab="gemini">Gemini</button>
       <button class="tab-btn" data-tab="usage">用量紀錄</button>
       <button class="tab-btn" data-tab="log">Log</button>
     </nav>
 
-    <!-- ═══ 設定分頁 ═══ -->
+    <!-- ═══ 一般設定分頁 ═══ -->
     <div id="tab-settings" class="tab-panel active">
+
+    <section>
+      <h2>效能（翻譯效率調校）</h2>
+      <p class="muted">調整每批翻譯的大小與並行數量，影響翻譯速度與品質的平衡</p>
+      <label>
+        同時並發批次上限
+        <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
+        <small class="muted">同時送出幾批翻譯請求。數字越大翻越快，但也越容易撞到配額上限，長文建議 5–10，短文可設 1（逐批翻譯）</small>
+      </label>
+      <label>
+        每批段數上限
+        <input type="number" id="maxUnitsPerBatch" step="1" min="1" max="100">
+        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 12</small>
+      </label>
+      <label>
+        每批字元預算
+        <input type="number" id="maxCharsPerBatch" step="500" min="500" max="20000">
+        <small class="muted">每一批累積的原文字元數上限（與段數上限先到先封口）。數字越大每批能裝越多內容，但太大可能超出模型輸出長度限制，預設 3500</small>
+      </label>
+      <label>
+        單頁翻譯段落上限
+        <input type="number" id="maxTranslateUnits" step="100" min="0" max="10000">
+        <small class="muted">單次翻譯最多處理幾段。超大頁面（如維基百科長條目）超過此上限時，多餘段落會被略過。設為 0 表示不限制，預設 1000</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>網域規則</h2>
+      <label>
+        白名單（每行一個網域，進入時自動翻譯）
+        <textarea id="whitelist" rows="4" placeholder="en.wikipedia.org&#10;medium.com"></textarea>
+      </label>
+      <label>
+        黑名單（每行一個網域，永不翻譯）
+        <textarea id="blacklist" rows="4"></textarea>
+      </label>
+    </section>
+
+    <section>
+      <h2>語言偵測</h2>
+      <label class="switch">
+        <input type="checkbox" id="skipTraditionalChinesePage" checked>
+        <span>跳過繁體中文網頁</span>
+      </label>
+      <small class="muted">開啟時，若整頁文字以繁體中文為主，按翻譯會直接跳過。關閉後仍會逐段跳過中文段落，只翻譯外語內容。Gmail 等介面為中文但信件多為英文的網站，建議關閉此選項</small>
+    </section>
+
+    <section>
+      <h2>翻譯進度通知</h2>
+      <label>
+        通知透明度 <span id="toastOpacityLabel">90</span>%
+        <input type="range" id="toastOpacity" min="10" max="100" step="10" value="90">
+        <small class="muted">翻譯時右下角會顯示進度通知。如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>匯入 / 匯出設定</h2>
+      <p class="muted">匯出為 JSON 檔案備份，或從檔案匯入還原（API Key 不包含在匯出入範圍）</p>
+      <div class="btn-row">
+        <button id="export-settings" class="secondary">匯出設定</button>
+        <button id="import-file" class="secondary">匯入設定</button>
+        <input type="file" id="import-input" accept="application/json" hidden>
+      </div>
+    </section>
+
+    <section>
+      <h2>快捷鍵</h2>
+      <p class="muted">
+        預設 <kbd>Option</kbd> + <kbd>S</kbd> 切換目前分頁的翻譯。
+        可至 <a href="#" id="open-shortcuts">chrome://extensions/shortcuts</a> 變更。
+      </p>
+    </section>
+
+    <section>
+      <h2>回復預設設定</h2>
+      <p class="muted">將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請分別在 Popup 點「清除快取」與「重置統計」處理）。</p>
+      <button id="reset-defaults" class="secondary">回復預設設定</button>
+    </section>
+
+    <div class="actions">
+      <button id="save" class="primary">儲存設定</button>
+      <span id="save-status"></span>
+    </div>
+
+    <section class="license-section">
+      <h2>授權資訊</h2>
+      <p>Shinkansen 採用 <strong>Elastic License 2.0 (ELv2)</strong> 授權。</p>
+      <p>你可以自由查看原始碼、學習、修改、自己使用，但<strong>不能把 Shinkansen（或改寫版本）包成服務拿去賣</strong>。</p>
+      <p class="muted">完整條款請見擴充功能目錄內的 LICENSE 檔案，或參閱 <a href="https://www.elastic.co/licensing/elastic-license" target="_blank" rel="noopener">Elastic License 2.0 官方全文</a>。</p>
+      <p class="muted">作者：Jimmy Su ・ Twitter (X)：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
+    </section>
+
+    </div><!-- /tab-settings -->
+
+    <!-- ═══ Gemini 分頁（v1.0.28 從設定拆出） ═══ -->
+    <div id="tab-gemini" class="tab-panel">
 
     <section>
       <h2>Gemini API</h2>
@@ -68,31 +166,6 @@
       <label>
         Output tokens 單價（USD / 1M tokens）
         <input type="number" id="outputPerMTok" step="0.01" min="0" placeholder="2.50">
-      </label>
-    </section>
-
-    <section>
-      <h2>效能（翻譯效率調校）</h2>
-      <p class="muted">調整每批翻譯的大小與並行數量，影響翻譯速度與品質的平衡</p>
-      <label>
-        同時並發批次上限
-        <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
-        <small class="muted">同時送出幾批翻譯請求。數字越大翻越快，但也越容易撞到配額上限，長文建議 5–10，短文可設 1（逐批翻譯）</small>
-      </label>
-      <label>
-        每批段數上限
-        <input type="number" id="maxUnitsPerBatch" step="1" min="1" max="100">
-        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 12</small>
-      </label>
-      <label>
-        每批字元預算
-        <input type="number" id="maxCharsPerBatch" step="500" min="500" max="20000">
-        <small class="muted">每一批累積的原文字元數上限（與段數上限先到先封口）。數字越大每批能裝越多內容，但太大可能超出模型輸出長度限制，預設 3500</small>
-      </label>
-      <label>
-        單頁翻譯段落上限
-        <input type="number" id="maxTranslateUnits" step="100" min="0" max="10000">
-        <small class="muted">單次翻譯最多處理幾段。超大頁面（如維基百科長條目）超過此上限時，多餘段落會被略過。設為 0 表示不限制，預設 1000</small>
       </label>
     </section>
 
@@ -187,74 +260,12 @@
       </label>
     </section>
 
-    <section>
-      <h2>網域規則</h2>
-      <label>
-        白名單（每行一個網域，進入時自動翻譯）
-        <textarea id="whitelist" rows="4" placeholder="en.wikipedia.org&#10;medium.com"></textarea>
-      </label>
-      <label>
-        黑名單（每行一個網域，永不翻譯）
-        <textarea id="blacklist" rows="4"></textarea>
-      </label>
-    </section>
-
-    <section>
-      <h2>語言偵測</h2>
-      <label class="switch">
-        <input type="checkbox" id="skipTraditionalChinesePage" checked>
-        <span>跳過繁體中文網頁</span>
-      </label>
-      <small class="muted">開啟時，若整頁文字以繁體中文為主，按翻譯會直接跳過。關閉後仍會逐段跳過中文段落，只翻譯外語內容。Gmail 等介面為中文但信件多為英文的網站，建議關閉此選項</small>
-    </section>
-
-    <section>
-      <h2>翻譯進度通知</h2>
-      <label>
-        通知透明度 <span id="toastOpacityLabel">90</span>%
-        <input type="range" id="toastOpacity" min="10" max="100" step="10" value="90">
-        <small class="muted">翻譯時右下角會顯示進度通知。如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
-      </label>
-    </section>
-
-    <section>
-      <h2>匯入 / 匯出設定</h2>
-      <p class="muted">匯出為 JSON 檔案備份，或從檔案匯入還原（API Key 不包含在匯出入範圍）</p>
-      <div class="btn-row">
-        <button id="export-settings" class="secondary">匯出設定</button>
-        <button id="import-file" class="secondary">匯入設定</button>
-        <input type="file" id="import-input" accept="application/json" hidden>
-      </div>
-    </section>
-
-    <section>
-      <h2>快捷鍵</h2>
-      <p class="muted">
-        預設 <kbd>Option</kbd> + <kbd>S</kbd> 切換目前分頁的翻譯。
-        可至 <a href="#" id="open-shortcuts">chrome://extensions/shortcuts</a> 變更。
-      </p>
-    </section>
-
-    <section>
-      <h2>回復預設設定</h2>
-      <p class="muted">將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請分別在 Popup 點「清除快取」與「重置統計」處理）。</p>
-      <button id="reset-defaults" class="secondary">回復預設設定</button>
-    </section>
-
     <div class="actions">
-      <button id="save" class="primary">儲存設定</button>
-      <span id="save-status"></span>
+      <button id="save-gemini" class="primary">儲存設定</button>
+      <span id="save-gemini-status"></span>
     </div>
 
-    <section class="license-section">
-      <h2>授權資訊</h2>
-      <p>Shinkansen 採用 <strong>Elastic License 2.0 (ELv2)</strong> 授權。</p>
-      <p>你可以自由查看原始碼、學習、修改、自己使用，但<strong>不能把 Shinkansen（或改寫版本）包成服務拿去賣</strong>。</p>
-      <p class="muted">完整條款請見擴充功能目錄內的 LICENSE 檔案，或參閱 <a href="https://www.elastic.co/licensing/elastic-license" target="_blank" rel="noopener">Elastic License 2.0 官方全文</a>。</p>
-      <p class="muted">作者：Jimmy Su ・ Twitter (X)：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
-    </section>
-
-    </div><!-- /tab-settings -->
+    </div><!-- /tab-gemini -->
 
     <!-- ═══ 用量紀錄分頁 ═══ -->
     <div id="tab-usage" class="tab-panel">

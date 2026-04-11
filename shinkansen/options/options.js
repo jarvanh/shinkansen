@@ -198,6 +198,8 @@ async function save() {
 }
 
 $('save').addEventListener('click', save);
+// v1.0.28: Gemini 分頁也共用同一個 save()
+$('save-gemini').addEventListener('click', save);
 
 // ─── v0.94: 儲存狀態提示條 ──────────────────────────────────
 let saveBarHideTimer = null;
@@ -217,9 +219,11 @@ function markDirty() {
   if (bar.classList.contains('saved') && !bar.hidden) return;
   showSaveBar('dirty', '有未儲存的變更');
 }
-// 監聽設定分頁內所有 input / select / textarea 的變更
+// 監聽設定分頁與 Gemini 分頁內所有 input / select / textarea 的變更
 document.getElementById('tab-settings').addEventListener('input', markDirty);
 document.getElementById('tab-settings').addEventListener('change', markDirty);
+document.getElementById('tab-gemini').addEventListener('input', markDirty);
+document.getElementById('tab-gemini').addEventListener('change', markDirty);
 
 // 顯示/隱藏 API Key 切換（v0.63）— 讓使用者能確認貼上去的 key 沒有貼錯
 $('toggle-api-key').addEventListener('click', () => {
