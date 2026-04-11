@@ -585,32 +585,51 @@
     '颜饮驱验鸡麦龙龟齿齐复'
   );
 
+  // v1.1.8: 日文/韓文頁面不應被判定為繁中而跳過翻譯。
+  // 日文漢字字形多與繁體相同、且漢字密度高的文章（法律、古文引用）可能超過 50% 門檻，
+  // 加上沒有簡體特徵字 → 會被誤判為繁中。用 <html lang> 提前排除。
+  const NON_CHINESE_LANG_PREFIX = /^(ja|ko)\b/i;
+
   function isTraditionalChinese(text) {
+    // 日文/韓文頁面直接排除——永遠不是繁中，需要翻譯
+    const htmlLang = document.documentElement.lang || '';
+    if (NON_CHINESE_LANG_PREFIX.test(htmlLang)) return false;
+
     // 只保留字母類字元，忽略數字、標點、符號、空白
     const lettersOnly = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
     if (lettersOnly.length === 0) return false;
 
     let cjkCount = 0;
-    let hasSimplified = false;
+    let simpCount = 0;
+    let kanaCount = 0;
 
     for (const ch of lettersOnly) {
       const code = ch.codePointAt(0);
       // CJK Unified Ideographs (U+4E00–U+9FFF) + Extension A (U+3400–U+4DBF)
       if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0x3400 && code <= 0x4DBF)) {
         cjkCount++;
-        if (!hasSimplified && SIMPLIFIED_ONLY_CHARS.has(ch)) {
-          hasSimplified = true;
+        if (SIMPLIFIED_ONLY_CHARS.has(ch)) {
+          simpCount++;
         }
       }
+      // 平假名 (U+3040–U+309F) + 片假名 (U+30A0–U+30FF)
+      if ((code >= 0x3040 && code <= 0x309F) || (code >= 0x30A0 && code <= 0x30FF)) {
+        kanaCount++;
+      }
     }
+
+    // 含假名 → 日文，不是繁中（補抓 <html lang> 沒設或設錯的情況）
+    if (kanaCount > 0 && kanaCount / lettersOnly.length > 0.05) return false;
 
     // CJK 佔字母字元不到 50% → 不是中文為主的段落
     if (cjkCount / lettersOnly.length < 0.5) return false;
 
-    // 有簡體特徵字 → 是簡體中文，需要翻譯（轉繁體）
-    if (hasSimplified) return false;
+    // v1.1.7: 從 boolean 改為比例制——簡體特徵字佔 CJK 字元 ≥ 20% 才判定為簡體中文。
+    // 繁中文章常見少量簡體噪音（引用簡體原文、使用者名稱、程式碼中的中文變數名），
+    // 舊版只要出現一個簡體字就判定失敗，誤傷太多。20% 門檻容許中英混合場景。
+    if (cjkCount > 0 && simpCount / cjkCount >= 0.2) return false;
 
-    // CJK 佔多數且無簡體特徵 → 繁體中文，跳過
+    // CJK 佔多數且簡體特徵字不超過門檻 → 繁體中文，跳過
     return true;
   }
 
@@ -1726,22 +1745,29 @@
     // 這避免了繁中頁面上少數英文腳註/引用被單獨送去翻譯的問題。
     // v1.0.21: 可在設定頁關閉此檢查（元素層級的逐段繁中跳過仍然生效）。
     // Gmail 等介面語言為繁中但內容多為英文的網站，可關閉此選項。
-    try {
-      const { skipTraditionalChinesePage } = await chrome.storage.sync.get('skipTraditionalChinesePage');
-      // 預設 true（未設定時 undefined !== false → 走檢查）
-      if (skipTraditionalChinesePage !== false) {
-        const pageSample = (document.body.innerText || '').slice(0, 2000);
+    // v1.1.6: 取樣優先從 <article> / <main> / role="main" 抓文字，
+    // 避免 sidebar / nav 裡的簡體中文帳號名稱污染偵測。
+    // Medium 等網站 sidebar 含「写点儿长短文」之類的簡體使用者名稱，
+    // 一個「写」字就讓 isTraditionalChinese 判定失敗。
+    {
+      let skipCheck = false;
+      try {
+        const { skipTraditionalChinesePage } = await chrome.storage.sync.get('skipTraditionalChinesePage');
+        skipCheck = skipTraditionalChinesePage === false;
+      } catch (_) { /* 讀取失敗 → 做檢查 */ }
+
+      if (!skipCheck) {
+        // 優先從主要內容區域取樣，避免 sidebar/nav 噪音
+        const contentRoot =
+          document.querySelector('article') ||
+          document.querySelector('main') ||
+          document.querySelector('[role="main"]') ||
+          document.body;
+        const pageSample = (contentRoot.innerText || '').slice(0, 2000);
         if (pageSample.length > 20 && isTraditionalChinese(pageSample)) {
           showToast('error', '此頁面已是繁體中文，不需翻譯', { autoHideMs: 3000 });
           return;
         }
-      }
-    } catch (_) {
-      // storage 讀取失敗時 fallback 到原行為（做檢查）
-      const pageSample = (document.body.innerText || '').slice(0, 2000);
-      if (pageSample.length > 20 && isTraditionalChinese(pageSample)) {
-        showToast('error', '此頁面已是繁體中文，不需翻譯', { autoHideMs: 3000 });
-        return;
       }
     }
 

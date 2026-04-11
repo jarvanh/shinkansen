@@ -44,23 +44,15 @@ v1.0.20 將 Content Guard 從「MutationObserver 觸發」重構為「setInterva
 ### ~~v1.0.21+v1.0.22~~ — 已補偵測測試 → `test/regression/detect-grid-cell-leaf.spec.js`
 （注：排版修正部分——CSS `br { display: none }` + flex 單行——需要真實 CSS 環境，未涵蓋在此測試中）
 
-### v1.1.2+v1.1.4 — 2026-04-11 — 白名單自動翻譯（首次載入不生效 + autoTranslate 邏輯錯誤）
-- **症狀**：
-    1. v1.1.2 前：白名單網域首次載入不自動翻譯（只有 SPA 導航時才觸發）
-    2. v1.1.2 修完後：打勾「白名單自動翻譯」導致所有網站都自動翻譯（`autoTranslate` 被當全域開關）
-    3. v1.1.4 修正：`autoTranslate` 改為白名單功能的總開關——開啟 + 網域命中才翻譯
-- **修在**：shinkansen/content.js — `isDomainWhitelisted()` helper + 首次載入 + `handleSpaNavigation()` 白名單檢查
-- **為什麼還不能寫測試**：
-    `isDomainWhitelisted()` 是 IIFE 內部函式，無法從外部 import。
-    Jest 單元測試需要模擬 content script 初始化流程 + mock `chrome.storage.sync.get`，
-    目前沒有現成 test harness 支援。可抽為獨立 pure function 後再補測試。
-- **建議 spec 位置**：test/jest-unit/whitelist-auto-translate.test.cjs
-- **建議測試策略**：
-    1. 把 `isDomainWhitelisted(hostname, whitelist)` 抽成可 import 的 pure function
-    2. 測試精確比對：`medium.com` 命中 `medium.com`
-    3. 測試萬用字元：`blog.example.com` 命中 `*.example.com`
-    4. 測試不命中：`evil.com` 不命中 `medium.com`
-    5. 測試 `autoTranslate: false` 時即使白名單命中也不翻譯
+### ~~v1.1.2+v1.1.4~~ — 已補 Jest 單元測試 → `test/jest-unit/whitelist-auto-translate.test.cjs`
+（注：6 條測試涵蓋精確比對、萬用字元、根域名命中、不命中、autoTranslate OFF、白名單為空。
+未抽 pure function，改用 create-env 模式直接 eval content.js + mock chrome.storage 來測試
+isDomainWhitelisted + 首次載入自動翻譯的整合行為）
+
+### ~~v1.1.6~~ — 已補 Jest 單元測試 → `test/jest-unit/trad-chinese-article-sampling.test.cjs`
+（注：3 條測試涵蓋：有 `<article>` 時 sidebar 簡體字不影響偵測、無 `<article>` fallback
+到 body 時簡體字污染導致偵測失敗、`<main>` fallback 路徑。使用 create-env 模式
+eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 
 <!--
 條目格式範例(實際加入時把上面那行 placeholder 刪掉):
