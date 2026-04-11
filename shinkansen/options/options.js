@@ -106,7 +106,6 @@ async function load() {
   $('inputPerMTok').value = s.pricing.inputPerMTok;
   $('outputPerMTok').value = s.pricing.outputPerMTok;
   $('whitelist').value = (s.domainRules.whitelist || []).join('\n');
-  $('blacklist').value = (s.domainRules.blacklist || []).join('\n');
   $('debugLog').checked = s.debugLog;
 
   // 效能與配額
@@ -137,6 +136,8 @@ async function load() {
   $('toastOpacity').value = opacityPct;
   $('toastOpacityLabel').textContent = opacityPct;
   $('toastPosition').value = s.toastPosition || 'bottom-right';
+  // v1.1.3: Toast 自動關閉
+  $('toastAutoHide').checked = s.toastAutoHide !== false;
 
   // v1.0.21: 頁面層級繁中偵測開關
   $('skipTraditionalChinesePage').checked = s.skipTraditionalChinesePage !== false;
@@ -172,7 +173,6 @@ async function save() {
     },
     domainRules: {
       whitelist: $('whitelist').value.split('\n').map(s => s.trim()).filter(Boolean),
-      blacklist: $('blacklist').value.split('\n').map(s => s.trim()).filter(Boolean),
     },
     debugLog: $('debugLog').checked,
     tier: $('tier').value,
@@ -199,6 +199,8 @@ async function save() {
     // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
     toastOpacity: Number($('toastOpacity').value) / 100,
     toastPosition: $('toastPosition').value,
+    // v1.1.3: Toast 自動關閉
+    toastAutoHide: $('toastAutoHide').checked,
     // v1.0.21: 頁面層級繁中偵測開關
     skipTraditionalChinesePage: $('skipTraditionalChinesePage').checked,
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
@@ -348,6 +350,7 @@ function sanitizeImport(raw) {
     rpmOverride:         { type: 'number', min: 1, nullable: true },
     tpmOverride:         { type: 'number', min: 1, nullable: true },
     rpdOverride:         { type: 'number', min: 1, nullable: true },
+    toastAutoHide:       { type: 'boolean' },
   };
 
   for (const [key, rule] of Object.entries(topRules)) {
@@ -427,7 +430,7 @@ function sanitizeImport(raw) {
   if (raw.domainRules && typeof raw.domainRules === 'object') {
     const dr = raw.domainRules;
     const drClean = {};
-    for (const key of ['whitelist', 'blacklist']) {
+    for (const key of ['whitelist']) {
       if (!(key in dr)) continue;
       if (Array.isArray(dr[key]) && dr[key].every(x => typeof x === 'string')) {
         drClean[key] = dr[key];

@@ -83,7 +83,7 @@ export const DEFAULT_SETTINGS = {
     timeoutMs: 60000,                  // 術語表請求逾時（毫秒），超過則 fallback（v0.70: 60s）
     maxTerms: 200,                     // 術語表上限條目數
   },
-  domainRules: { whitelist: [], blacklist: [] },
+  domainRules: { whitelist: [] },
   autoTranslate: false,
   debugLog: false,
   // v0.35 新增：並行翻譯 rate limiter 設定
@@ -106,7 +106,10 @@ export const DEFAULT_SETTINGS = {
   // 設為 0 表示不限制。
   maxTranslateUnits: 1000,
   // v1.0.17: Toast 透明度（0.1–1.0），讓使用者在無限捲動網站上降低 toast 干擾
-  toastOpacity: 0.9,
+  toastOpacity: 0.7,
+  // v1.1.3: Toast 自動關閉——翻譯完成/錯誤等 toast 在數秒後自動消失。
+  // 預設開啟。關閉時翻譯完成 toast 需手動點 × 或點擊外部區域才會消失。
+  toastAutoHide: true,
   // v1.0.21: 頁面層級繁體中文偵測開關。開啟時若整頁文字以繁中為主則跳過不翻譯；
   // 關閉時不做頁面層級檢查（元素層級仍會個別跳過繁中段落）。
   // Gmail 等介面語言為繁中但內容多為英文的網站，可關閉此選項。
