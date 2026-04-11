@@ -16,11 +16,11 @@
 
 - **保留網頁排版**：原地替換網頁文字，保留字型、字級、顏色與排版，連結仍可點擊、粗體斜體原樣保留
 - **漸進式翻譯**：分批送出、逐批注入，頁面逐段變成中文，不必等全部翻完
-- **全文術語表一致化**：特別適合人名眾多的長文，自動確保同一個人名或專有名詞前後翻譯一致（開啟此功能會消耗少量額外 Token 及翻譯時間）
-- **翻譯快取**：相同原文只翻一次，跨頁面共用快取，節省 API 費用
+- **全文術語表一致化**（預設不開啟）：特別適合人名眾多的長文，自動確保同一個人名或專有名詞前後翻譯一致。詳見下方「術語表一致化」段落
+- **翻譯快取與即時節費報告**：雙層快取機制（本地快取 + Gemini implicit cache），翻譯完成後 toast 即時顯示 cache hit rate 與實際節省費用。詳見下方「翻譯快取與費用計算」段落
 - **三維 Rate Limiter**：RPM / TPM / RPD 滑動視窗，自動配合 Gemini API 配額
 - **用量追蹤**：記錄每次翻譯的 token 數與費用，附圖表與 CSV 匯出
-- **編輯譯文**：翻譯完成後可直接在頁面上修改譯文
+- **編輯譯文**：翻譯完成後可直接在頁面上修改譯文，適合要列印 PDF 或讓 Readwise Reader 抓取時，手動修正翻得不理想的地方
 - **還原原文**：一鍵切換回原文，隨時對照
 - **Google Docs 翻譯**：自動偵測 Google Docs，開啟可翻譯的閱讀版並翻譯（詳見下方說明）
 
@@ -34,10 +34,11 @@
 
 ## 首次設定
 
-1. 點工具列的 Shinkansen 圖示 → 「設定」
-2. 貼上你的 Gemini API Key（取得：<https://aistudio.google.com/apikey>）
-3. 預設模型 `gemini-3-flash-preview`、Service Tier `DEFAULT`
-4. 其餘參數可依需求調整（溫度、每批段數、字元預算等）
+1. 申請 Gemini API Key — 詳細步驟見 [API Key 申請教學](API-KEY-SETUP.md)
+2. 點工具列的 Shinkansen 圖示 → 「設定」
+3. 貼上你的 Gemini API Key
+4. 預設模型 `gemini-3-flash-preview`、Service Tier `DEFAULT`
+5. 其餘參數可依需求調整（溫度、每批段數、字元預算等）
 
 ## 使用方式
 
@@ -57,9 +58,54 @@ Google Docs 的編輯畫面使用 Canvas 渲染文字，一般的網頁翻譯擴
 
 注意事項：你必須有該文件的檢視權限。「行動版閱讀模式」是純閱讀，不會影響原始文件。
 
+## 翻譯快取與費用計算
+
+Shinkansen 有兩層快取機制，各自在不同階段省錢：
+
+**第一層：本地翻譯快取**——翻譯過的段落以 SHA-1 雜湊為 key 存在瀏覽器的 `chrome.storage.local` 裡。下次遇到相同原文（即使在不同網頁）直接取用，完全不呼叫 API、不花錢。Extension 版本更新時會自動清空快取，確保新版翻譯邏輯不會吃到舊結果。快取滿了會自動淘汰最久沒用的條目（LRU）。
+
+**第二層：Gemini implicit context cache**——Google 伺服器端自動做的，當連續請求的 prompt 前綴相同（例如 system prompt + 術語表）時，Gemini 會快取這段前綴，命中的 token 只收正常價格的 25%。這不需要使用者設定，Shinkansen 會自動從 API 回應中讀取命中數據。
+
+**翻譯完成後，頁面右下角的通知會即時顯示兩行數據：**
+
+- 第一行：`{計費 tokens} tokens (XX% hit)` — 計費 token 數，以及 Gemini implicit cache 的命中率（命中的 input tokens 佔全部 input tokens 的比例）
+- 第二行：`${計費金額} (XX% saved)` — 實付金額，以及相比沒有 cache 折扣時省了多少百分比
+
+如果整頁所有段落都在本地快取命中（例如重新翻譯剛翻過的頁面），toast 會直接顯示「全部快取命中 · 本次未計費」。
+
+## 術語表一致化
+
+LLM 在翻譯長文時，前後文的人名、地名翻譯容易出現不一致（例如同一個人名前面翻「強森」、後面變成「約翰森」）。開啟「術語表一致化」後，Shinkansen 會先掃描全文建立專有名詞對照表，再讓後續翻譯遵循同一套譯名。
+
+這個功能預設不開啟，建議在特別需要精準翻譯（例如人名眾多的報導、學術文章）時才手動打開。副作用是術語翻譯會跳過 system prompt 的部分指示——例如原本設定「英文人名保留不翻」，開啟術語表後會一律翻成中文。此外，建立術語表需要額外的 API 呼叫，會增加少量 token 消耗與翻譯時間。
+
+## Gemini API Rate Limit 參考（2026-04-10 擷取）
+
+### Tier 1
+
+| 模型 | RPM | TPM | RPD |
+|------|-----|-----|-----|
+| Gemini 2.5 Flash Lite | 4K | 4M | 無限制 |
+| Gemini 2.5 Flash | 1K | 1M | 10K |
+| Gemini 3.1 Flash Lite | 4K | 4M | 150K |
+| Gemini 3 Flash | 1K | 2M | 10K |
+| Gemini 2.5 Pro | 150 | 2M | 1K |
+| Gemini 3.1 Pro | 225 | 2M | 250 |
+
+### Tier 2
+
+| 模型 | RPM | TPM | RPD |
+|------|-----|-----|-----|
+| Gemini 2.5 Flash Lite | 20K | 10M | 無限制 |
+| Gemini 2.5 Flash | 2K | 3M | 100K |
+| Gemini 3.1 Flash Lite | 10K | 10M | 350K |
+| Gemini 3 Flash | 2K | 3M | 100K |
+| Gemini 2.5 Pro | 1K | 5M | 50K |
+| Gemini 3.1 Pro | 1K | 5M | 50K |
+
 ## 目前版本
 
-v1.0.26 — 完整功能清單與規格詳見 `SPEC.md`。
+v1.0.27 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 
 ## 授權
 

@@ -165,7 +165,7 @@
 
     <section>
       <h2>術語表一致化</h2>
-      <p class="muted">長文翻譯時，先擷取全文專有名詞建立術語對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。</p>
+      <p class="muted">長文翻譯時，先擷取全文專有名詞建立術語對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。預設不開啟——開啟後術語翻譯會跳過 system prompt 的部分指示（例如「英文人名保留不翻」會失效）。詳細說明見 <a href="https://github.com/jimmysu0309/shinkansen#術語表一致化" target="_blank" rel="noopener">README</a></p>
       <label class="switch">
         <input type="checkbox" id="glossaryEnabled">
         <span>啟用術語表一致化</span>
