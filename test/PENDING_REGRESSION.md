@@ -21,21 +21,8 @@
 ### ~~v1.0.7~~ — 已補 URL 解析測試 → `test/regression/pure-gdoc-url.spec.js`
 （注：跨分頁導向流程 `chrome.tabs.create()` + `tabs.onUpdated` 未涵蓋，需未來 E2E 測試）
 
-### v1.0.11 — 2026-04-10 — SPA 導航後 Option+S 誤判為「已還原原文」
-- **症狀**：在 Medium 翻譯完成後，點擊文章內的站內連結跳到新頁面，按 Option+S 會顯示「已還原原文」而不是翻譯新頁面。`STATE.translated` 沒有被重置。
-- **來源 URL**：`https://emmanuel6.medium.com/famous-photo-gallery-yellowkorner-now-sells-horrendous-ai-images-instead-of-real-art-photos-075f4321b502`（任何 Medium 文章，點擊文中連結跳到另一篇）
-- **修在**：`shinkansen/content.js` 的 SPA 導航偵測區段——新增 500ms URL 輪詢 safety net
-- **根因**：React Router 在 module 初始化時快取 `history.pushState` 原始參照，content script 的 monkey-patch（`document_idle` 才跑）攔不到框架呼叫的 pushState
-- **為什麼還不能寫測試**：
-    觸發條件是「SPA 框架在 content script patch 之前快取 pushState」，
-    需要在 fixture 頁面的 main world 預先執行 JS 模擬此行為，
-    但 Playwright 的 content script 注入時機與真實 Chrome 不同，
-    不容易重現 patch 競態。URL 輪詢本身的邏輯（字串比對 + handleSpaNavigation 呼叫）
-    太簡單，單獨測意義不大。
-- **建議 spec 位置**：`test/regression/spa-url-poll.spec.js`
-- **建議測試方向**：
-    1. 在 fixture 頁面用 `<script>` 在 main world 快取 pushState，然後呼叫快取的版本導航
-    2. 驗證 500ms 後 collectParagraphs 拿到的是新頁面的內容而非舊頁面殘留
+### ~~v1.0.11~~ — 已補 Jest 單元測試 → `test/jest-unit/spa-url-polling.test.cjs`
+（注：3 條測試涵蓋基本偵測、捲動跳過、sticky 覆蓋。Playwright E2E 的 pushState 競態重現未涵蓋）
 
 ### ~~v1.0.13+v1.0.14~~ — 已補 Content Guard 核心邏輯測試 → `test/regression/guard-content-overwrite.spec.js`
 （注：「捲動觸發覆寫」的完整 Engadget IntersectionObserver 流程未涵蓋，但 guard 的核心邏輯——快取比對 + innerHTML 修復——已鎖死）
@@ -61,24 +48,8 @@
 ### ~~v1.0.20~~ — guard 核心邏輯已由 `guard-content-overwrite.spec.js` 涵蓋
 （注：Facebook 虛擬捲動的「元素暫時斷開 DOM 再接回」場景未涵蓋——需要模擬 `el.remove()` + `parent.appendChild(el)` + 覆寫 innerHTML，驗證快取未被刪除。可在未來擴充 guard-content-overwrite.spec.js 加第二個 test case）
 
-### v1.0.23 — 2026-04-10 — SPA 續翻模式（Gmail 點進/退出 email 自動翻譯）
-- **症狀**：在 Gmail inbox 翻譯完成後，點進一封 email 不會自動翻譯信件內容；退出 email 回到 inbox 時，原本翻好的主旨/預覽恢復成英文
-- **來源 URL**：`https://mail.google.com/mail/u/0/#inbox`（Gmail 收件匣，點進任一封 email）
-- **修在**：`shinkansen/content.js`（新增 `STATE.stickyTranslate`、`handleSpaNavigation()` 優先檢查 stickyTranslate、URL 輪詢 scroll check 在 stickyTranslate 時不跳過、新增 `hashchange` 事件監聽）
-- **根因**：Gmail 使用 hash-based 路由（`#inbox` → `#inbox/FMfcg...`），不走 `pushState`，monkey-patch 和 `popstate` 攔不到。URL 輪詢能偵測到 hash 變化，但 v1.0.13 的捲動跳過邏輯在已翻譯狀態下會跳過所有 URL 變化，導致 Gmail 導航不觸發 `handleSpaNavigation()`。即使觸發，也只在白名單內才自動翻譯
-- **為什麼還不能寫測試**：
-    續翻模式涉及 SPA 導航→重設狀態→自動翻譯的完整流程，
-    需要模擬 hash change 事件（`window.dispatchEvent(new HashChangeEvent(...))`）
-    + 翻譯完成（mock API）+ 再次 hash change + 驗證第二次翻譯觸發。
-    Playwright fixture 可以模擬 hashchange，但 `translatePage()` 依賴
-    `chrome.storage.sync` 和 `chrome.runtime.sendMessage`，需要完整 mock 環境。
-- **建議 spec 位置**：`test/regression/spa-sticky-translate.spec.js`
-- **建議測試方向**：
-    1. 在 fixture 頁面 mock translatePage 為 no-op counter
-    2. 手動設 `STATE.stickyTranslate = true` + `STATE.translated = true`
-    3. `window.dispatchEvent(new HashChangeEvent('hashchange', { newURL: '...#page2' }))`
-    4. 驗證 translatePage counter 增加（自動續翻觸發）
-    5. 呼叫 restorePage，再做 hashchange，驗證 counter 不增加（續翻已關閉）
+### ~~v1.0.23~~ — 已補 Jest 單元測試 → `test/jest-unit/spa-sticky-translate.test.cjs`
+（注：3 條測試涵蓋 hashchange+sticky 觸發 translatePage、非 sticky 不觸發、restorePage 關閉 sticky。使用 jsdom + chrome API mock，不動 production code）
 
 ### ~~v1.0.21+v1.0.22~~ — 已補偵測測試 → `test/regression/detect-grid-cell-leaf.spec.js`
 （注：排版修正部分——CSS `br { display: none }` + flex 單行——需要真實 CSS 環境，未涵蓋在此測試中）

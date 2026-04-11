@@ -8,6 +8,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './test',
+  // jest-unit/ 由 jest.config.cjs 跑,不進 Playwright
+  testIgnore: ['**/jest-unit/**'],
   // extension fixture 共用 user data dir，禁止平行
   workers: 1,
   fullyParallel: false,
