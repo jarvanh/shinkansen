@@ -231,9 +231,13 @@
     toastInner.className = toastInner.className.replace(/\bpos-\S+/g, '').trim() + ' pos-' + p;
   }
 
-  chrome.storage.sync.get(['toastOpacity', 'toastPosition']).then((s) => {
+  // v1.1.3: Toast 自動關閉開關
+  let toastAutoHide = true; // 預設開啟，從 storage 讀取後覆蓋
+
+  chrome.storage.sync.get(['toastOpacity', 'toastPosition', 'toastAutoHide']).then((s) => {
     applyToastOpacity(s.toastOpacity);
     applyToastPosition(s.toastPosition);
+    if (typeof s.toastAutoHide === 'boolean') toastAutoHide = s.toastAutoHide;
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.toastOpacity) {
@@ -241,6 +245,9 @@
     }
     if (area === 'sync' && changes.toastPosition) {
       applyToastPosition(changes.toastPosition.newValue);
+    }
+    if (area === 'sync' && changes.toastAutoHide) {
+      toastAutoHide = changes.toastAutoHide.newValue ?? true;
     }
   });
 
@@ -352,24 +359,23 @@
       }, opts.autoHideMs);
     }
 
-    // v0.47: 「翻譯完成」主 toast（kind === 'success' 且沒有 autoHideMs）
-    // 註冊「點擊外部區域即關閉」的 listener。
-    // - 排除 autoHide 情境:避免「已還原原文」這種 2 秒自動消失的 toast
-    //   也被外部點擊搶先關掉,而且它本來就是次要提示。
-    // - 用 mousedown + capture 比 click 更早觸發,避免使用者點別處的
-    //   同時頁面 handler 吃掉事件。
-    // - composedPath 判斷是否點在 toastHost 內部(含 shadow DOM)。
-    //   若在內部(例如點 toast 本體 / × 按鈕)則不處理,交給原本邏輯。
-    // - 延遲到下個 tick 再註冊,避免觸發 showToast 的那次 mousedown
-    //   (如果真的是 click 觸發的話)立刻命中 listener 把自己關掉。
-    //   目前 showToast 幾乎都由快捷鍵觸發,但保險起見還是延遲。
+    // v0.47 / v1.1.3: 「翻譯完成」主 toast（kind === 'success' 且沒有 autoHideMs）。
+    // toastAutoHide 開啟時自動 5 秒消失；關閉時維持舊行為（需手動關閉）。
+    // 無論開關狀態，都註冊「點擊外部區域即關閉」的 listener 作為補充。
     if (kind === 'success' && !opts.autoHideMs) {
+      // v1.1.3: 自動關閉（預設開啟）
+      if (toastAutoHide) {
+        toastHideHandle = setTimeout(() => {
+          toastHideHandle = null;
+          hideToast();
+        }, 5000);
+      }
+      // v0.47: 點擊外部區域關閉（toastAutoHide 開關皆可用）
       setTimeout(() => {
-        // 若在延遲期間 toast 已被關掉或被新 toast 取代,就不註冊。
         if (!toastEl.className.includes('show')) return;
         toastOutsideHandler = (ev) => {
           const path = ev.composedPath ? ev.composedPath() : [];
-          if (path.includes(toastHost)) return; // 點在 toast 內部,忽略
+          if (path.includes(toastHost)) return;
           hideToast();
         };
         document.addEventListener('mousedown', toastOutsideHandler, true);
@@ -2514,7 +2520,7 @@
 
   // ─── v0.82: SPA 動態載入支援 ─────────────────────────────
   // 兩個面向：
-  //   1. SPA 導航偵測（URL 變化但無整頁重載）→ 重置翻譯狀態，白名單自動重翻
+  //   1. SPA 導航偵測（URL 變化但無整頁重載）→ 重置翻譯狀態，自動翻譯名單自動重翻
   //   2. 翻譯後 MutationObserver → 偵測動態新增段落（lazy load / AJAX 載入），
   //      受次數上限保護，避免 infinite scroll 造成成本爆炸
   //
@@ -2563,7 +2569,31 @@
   }
 
   /**
-   * SPA 導航後檢查白名單或續翻模式，決定是否自動翻譯新頁面。
+   * v1.1.2: 自動翻譯網站名單比對 helper——首次載入與 SPA 導航共用。
+   * 從 chrome.storage.sync 讀取 domainRules.whitelist，比對 location.hostname。
+   * 回傳 boolean。
+   */
+  async function isDomainWhitelisted() {
+    try {
+      const { domainRules } = await chrome.storage.sync.get('domainRules');
+      if (!domainRules?.whitelist?.length) return false;
+      const hostname = location.hostname;
+      return domainRules.whitelist.some(pattern => {
+        // 支援 *.example.com 萬用字元與精確比對
+        if (pattern.startsWith('*.')) {
+          const suffix = pattern.slice(1); // .example.com
+          return hostname === pattern.slice(2) || hostname.endsWith(suffix);
+        }
+        return hostname === pattern;
+      });
+    } catch (err) {
+      sendLog('warn', 'system', 'isDomainWhitelisted: failed to read storage', { error: err.message });
+      return false;
+    }
+  }
+
+  /**
+   * SPA 導航後檢查自動翻譯名單或續翻模式，決定是否自動翻譯新頁面。
    */
   async function handleSpaNavigation() {
     const newUrl = location.href;
@@ -2578,36 +2608,25 @@
     await new Promise(r => setTimeout(r, SPA_NAV_SETTLE_MS));
 
     // v1.0.23: 續翻模式 — 使用者曾在此頁面手動翻譯過，SPA 導航後自動續翻。
-    // 優先於白名單檢查（白名單是「永遠自動翻」，續翻是「這次 session 自動翻」）。
+    // 優先於自動翻譯名單檢查（名單是「永遠自動翻」，續翻是「這次 session 自動翻」）。
     if (wasSticky) {
       sendLog('info', 'spa', 'SPA nav: sticky translate active, auto-translating', { url: location.href });
       translatePage();
       return;
     }
 
-    // 檢查網域白名單——若在白名單內，自動翻譯新內容
+    // v1.1.4: 檢查自動翻譯名單——autoTranslate 總開關 + 網域比對都通過才翻
     try {
-      const { domainRules } = await chrome.storage.sync.get('domainRules');
-      if (domainRules?.whitelist?.length > 0) {
-        const hostname = location.hostname;
-        const isWhitelisted = domainRules.whitelist.some(pattern => {
-          // 支援 *.example.com 萬用字元與精確比對
-          if (pattern.startsWith('*.')) {
-            const suffix = pattern.slice(1); // .example.com
-            return hostname === pattern.slice(2) || hostname.endsWith(suffix);
-          }
-          return hostname === pattern;
-        });
-        if (isWhitelisted) {
-          sendLog('info', 'spa', 'SPA nav: domain whitelisted, auto-translating', { url: location.href });
-          translatePage();
-          return;
-        }
+      const { autoTranslate = false } = await chrome.storage.sync.get('autoTranslate');
+      if (autoTranslate && await isDomainWhitelisted()) {
+        sendLog('info', 'spa', 'SPA nav: domain in auto-translate list, translating', { url: location.href });
+        translatePage();
+        return;
       }
     } catch (err) {
-      sendLog('warn', 'spa', 'SPA nav: failed to check whitelist', { error: err.message });
+      sendLog('warn', 'spa', 'SPA nav: auto-translate list check failed', { error: err.message });
     }
-    // 不在白名單 → 不自動翻譯，使用者可手動按 Alt+S
+    // 不在自動翻譯名單或總開關未開 → 不自動翻譯，使用者可手動按 Alt+S
   }
 
   // ─── History API 攔截 ──────────────────────────────────
@@ -3015,4 +3034,22 @@
   chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
 
   sendLog('info', 'system', 'content script ready', { version: chrome.runtime.getManifest().version, url: location.href });
+
+  // ─── v1.1.2 / v1.1.4 修正: 首次載入時的自動翻譯 ──────────
+  // autoTranslate 是自動翻譯功能的總開關（popup 的「自動翻譯指定網站」checkbox）。
+  // 開啟時才檢查 domainRules.whitelist（自動翻譯網站名單），命中才翻譯。
+  // 關閉時即使在名單內也不自動翻譯。
+  // SPA 導航後的自動翻譯由 handleSpaNavigation() 處理，這裡只處理首次載入。
+  (async () => {
+    try {
+      const { autoTranslate = false } = await chrome.storage.sync.get('autoTranslate');
+      if (!autoTranslate) return; // 總開關未開，不自動翻譯
+      if (await isDomainWhitelisted()) {
+        sendLog('info', 'system', 'domain in auto-translate list, translating on load', { url: location.href });
+        translatePage();
+      }
+    } catch (err) {
+      sendLog('warn', 'system', 'auto-translate check failed on load', { error: err.message });
+    }
+  })();
 })();

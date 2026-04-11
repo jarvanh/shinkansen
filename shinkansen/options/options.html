@@ -65,12 +65,8 @@
     <section>
       <h2>網域規則</h2>
       <label>
-        白名單（每行一個網域，進入時自動翻譯）
+        自動翻譯網站（每行一個網域，進入時自動翻譯）
         <textarea id="whitelist" rows="4" placeholder="en.wikipedia.org&#10;medium.com"></textarea>
-      </label>
-      <label>
-        黑名單（每行一個網域，永不翻譯）
-        <textarea id="blacklist" rows="4"></textarea>
       </label>
     </section>
 
@@ -98,6 +94,11 @@
         通知透明度 <span id="toastOpacityLabel">70</span>%
         <input type="range" id="toastOpacity" min="10" max="100" step="10" value="70">
         <small class="muted">如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="toastAutoHide" checked>
+        翻譯完成後自動關閉通知
+        <small class="muted">開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉</small>
       </label>
     </section>
 
