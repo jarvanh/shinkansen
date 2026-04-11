@@ -19,11 +19,8 @@
  */
 
 const { JSDOM } = require('jsdom');
-const fs = require('fs');
-const path = require('path');
-
-const CONTENT_JS_PATH = path.resolve(__dirname, '../../shinkansen/content.js');
-const contentCode = fs.readFileSync(CONTENT_JS_PATH, 'utf-8');
+// v1.1.9: 從 helper 拿所有 content script 檔案,避免自己硬編順序。
+const { contentScriptCodes } = require('./helpers/create-env.cjs');
 
 /**
  * 建立含 sidebar + article 結構的環境。
@@ -93,7 +90,7 @@ function createEnvWithArticle(options = {}) {
     },
   };
   win.chrome = chromeMock;
-  win.eval(contentCode);
+  for (const code of contentScriptCodes) win.eval(code);
 
   return {
     dom, window: win, document: win.document,
@@ -207,7 +204,7 @@ describe('v1.1.6: 頁面層級繁中偵測 — 從 <article> 取樣', () => {
         onChanged: { addListener: jest.fn() },
       },
     };
-    win.eval(contentCode);
+    for (const code of contentScriptCodes) win.eval(code);
     env = { window: win, document: win.document, chrome: win.chrome, shinkansen: win.__shinkansen, cleanup() { win.close(); } };
 
     // 觸發翻譯
