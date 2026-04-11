@@ -7,10 +7,6 @@
 // 結構通則：Google Docs 編輯頁 URL 的 pathname 格式為
 // /document/d/<docId>/(edit|preview|view)，mobilebasic 版為
 // /document/d/<docId>/mobilebasic。解析必須正確辨識這些模式。
-//
-// <!-- SANITY-PENDING: 把 testGoogleDocsUrl 裡的 regex 從
-//      /(edit|preview|view)/ 改成 /(edit)/ 只認 edit，
-//      驗證 preview/view URL 的 isEditor 變成 false -->
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 

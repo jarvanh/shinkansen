@@ -6,9 +6,6 @@
 // 結構通則 (不綁站名): SPA 框架在捲動時覆寫已翻譯元素的 innerHTML 回原文，
 // Content Guard 從 STATE.translatedHTML 快取偵測到不符後重新套用譯文。
 // 此測試鎖死 guard 的核心邏輯：快取比對 + innerHTML 修復。
-//
-// <!-- SANITY-PENDING: 把 testRunContentGuard 裡的 el.innerHTML = savedHTML
-//      那行註解掉，驗證 guard 呼叫後元素仍為英文、restored === 0 -->
 import { test, expect } from '../fixtures/extension.js';
 import { loadFixtureResponse, getShinkansenEvaluator, runTestInject } from './helpers/run-inject.js';
 
