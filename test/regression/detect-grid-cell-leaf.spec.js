@@ -7,9 +7,6 @@
 // 檔案管理器等),cell 內容是獨立資料欄位,翻譯整個 <td> 會摧毀欄位結構。
 // grid 加入 EXCLUDE_ROLES 後整個 <td> 不進 walker,再用補抓 pass 掃
 // cell 內部的純文字 leaf 元素,個別偵測 >= 15 字的文字。
-//
-// <!-- SANITY-PENDING: 從 EXCLUDE_ROLES 移除 'grid',驗證整個 <td> 被
-//      當成翻譯單位（cell-sender / cell-subject 等出現在 units 裡） -->
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
