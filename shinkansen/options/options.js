@@ -132,13 +132,24 @@ async function load() {
   $('glossaryTimeout').value = gl.timeoutMs;
   $('glossaryPrompt').value = gl.prompt;
 
-  // v1.0.17: Toast 透明度
-  const opacityPct = Math.round((s.toastOpacity ?? 0.9) * 100);
+  // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
+  const opacityPct = Math.round((s.toastOpacity ?? 0.7) * 100);
   $('toastOpacity').value = opacityPct;
   $('toastOpacityLabel').textContent = opacityPct;
+  $('toastPosition').value = s.toastPosition || 'bottom-right';
 
   // v1.0.21: 頁面層級繁中偵測開關
   $('skipTraditionalChinesePage').checked = s.skipTraditionalChinesePage !== false;
+
+  // v1.0.29: 固定術語表
+  fixedGlossary = {
+    global: Array.isArray(s.fixedGlossary?.global) ? s.fixedGlossary.global : [],
+    byDomain: (s.fixedGlossary?.byDomain && typeof s.fixedGlossary.byDomain === 'object') ? s.fixedGlossary.byDomain : {},
+  };
+  currentDomain = '';
+  renderGlobalTable();
+  updateDomainSelect();
+  showDomainPanel('');
 }
 
 async function save() {
@@ -185,10 +196,28 @@ async function save() {
       timeoutMs: Number($('glossaryTimeout').value) || 60000,
       maxTerms: DEFAULTS.glossary.maxTerms,
     },
-    // v1.0.17: Toast 透明度
+    // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
     toastOpacity: Number($('toastOpacity').value) / 100,
+    toastPosition: $('toastPosition').value,
     // v1.0.21: 頁面層級繁中偵測開關
     skipTraditionalChinesePage: $('skipTraditionalChinesePage').checked,
+    // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
+    fixedGlossary: (() => {
+      // 同步全域表格的最新 UI 值
+      fixedGlossary.global = readGlossaryTableEntries($('fixed-global-tbody'));
+      // 同步當前網域表格的最新 UI 值
+      if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
+        fixedGlossary.byDomain[currentDomain] = readGlossaryTableEntries($('fixed-domain-tbody'));
+      }
+      // 過濾掉空的 entries（source 和 target 都為空）
+      const cleanGlobal = fixedGlossary.global.filter(e => e.source || e.target);
+      const cleanByDomain = {};
+      for (const [domain, entries] of Object.entries(fixedGlossary.byDomain)) {
+        const clean = entries.filter(e => e.source || e.target);
+        if (clean.length > 0) cleanByDomain[domain] = clean;
+      }
+      return { global: cleanGlobal, byDomain: cleanByDomain };
+    })(),
   };
   await chrome.storage.sync.set(settings);
   $('save-status').textContent = '✓ 已儲存';
@@ -200,6 +229,8 @@ async function save() {
 $('save').addEventListener('click', save);
 // v1.0.28: Gemini 分頁也共用同一個 save()
 $('save-gemini').addEventListener('click', save);
+// v1.0.29: 術語表分頁也共用同一個 save()
+$('save-glossary').addEventListener('click', save);
 
 // ─── v0.94: 儲存狀態提示條 ──────────────────────────────────
 let saveBarHideTimer = null;
@@ -224,6 +255,8 @@ document.getElementById('tab-settings').addEventListener('input', markDirty);
 document.getElementById('tab-settings').addEventListener('change', markDirty);
 document.getElementById('tab-gemini').addEventListener('input', markDirty);
 document.getElementById('tab-gemini').addEventListener('change', markDirty);
+document.getElementById('tab-glossary').addEventListener('input', markDirty);
+document.getElementById('tab-glossary').addEventListener('change', markDirty);
 
 // 顯示/隱藏 API Key 切換（v0.63）— 讓使用者能確認貼上去的 key 沒有貼錯
 $('toggle-api-key').addEventListener('click', () => {
@@ -261,6 +294,7 @@ $('safetyMargin').addEventListener('input', () => {
 $('toastOpacity').addEventListener('input', () => {
   $('toastOpacityLabel').textContent = $('toastOpacity').value;
 });
+$('toastPosition').addEventListener('change', markDirty);
 
 $('reset-defaults').addEventListener('click', async () => {
   if (!confirm('確定要回復所有預設設定嗎？\n\nAPI Key 會被保留，翻譯快取與累計使用統計不受影響。\n此操作無法復原。')) return;
@@ -437,6 +471,150 @@ $('import-input').addEventListener('change', async (e) => {
 $('open-shortcuts').addEventListener('click', (e) => {
   e.preventDefault();
   chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+});
+
+// ═══════════════════════════════════════════════════════════
+// v1.0.29: 固定術語表 CRUD
+// ═══════════════════════════════════════════════════════════
+
+// 記憶體中的固定術語表資料（load 時從 storage 讀入，save 時寫回）
+let fixedGlossary = { global: [], byDomain: {} };
+let currentDomain = ''; // 目前選中的網域
+
+function renderGlossaryTable(tbody, entries) {
+  tbody.innerHTML = entries.map((e, i) =>
+    `<tr data-idx="${i}">` +
+    `<td><input type="text" class="fg-source" value="${escapeAttr(e.source)}" placeholder="英文原文"></td>` +
+    `<td><input type="text" class="fg-target" value="${escapeAttr(e.target)}" placeholder="中文譯文"></td>` +
+    `<td class="glossary-col-action"><button class="glossary-delete-row" data-idx="${i}" title="刪除">×</button></td>` +
+    `</tr>`
+  ).join('');
+}
+
+function escapeAttr(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function readGlossaryTableEntries(tbody) {
+  const rows = tbody.querySelectorAll('tr');
+  const entries = [];
+  for (const row of rows) {
+    const source = (row.querySelector('.fg-source')?.value || '').trim();
+    const target = (row.querySelector('.fg-target')?.value || '').trim();
+    if (source || target) entries.push({ source, target });
+  }
+  return entries;
+}
+
+// 全域術語表
+function renderGlobalTable() {
+  renderGlossaryTable($('fixed-global-tbody'), fixedGlossary.global);
+}
+
+$('fixed-global-add').addEventListener('click', () => {
+  fixedGlossary.global.push({ source: '', target: '' });
+  renderGlobalTable();
+  // 自動 focus 新增列的 source 欄
+  const rows = $('fixed-global-tbody').querySelectorAll('tr');
+  if (rows.length) rows[rows.length - 1].querySelector('.fg-source')?.focus();
+  markDirty();
+});
+
+$('fixed-global-tbody').addEventListener('click', (e) => {
+  const btn = e.target.closest('.glossary-delete-row');
+  if (!btn) return;
+  const idx = Number(btn.dataset.idx);
+  // 先把目前 UI 的值同步回記憶體
+  fixedGlossary.global = readGlossaryTableEntries($('fixed-global-tbody'));
+  fixedGlossary.global.splice(idx, 1);
+  renderGlobalTable();
+  markDirty();
+});
+
+// 失焦時同步 UI → 記憶體
+$('fixed-global-tbody').addEventListener('focusout', () => {
+  fixedGlossary.global = readGlossaryTableEntries($('fixed-global-tbody'));
+});
+
+// 網域術語表
+function updateDomainSelect() {
+  const sel = $('fixed-domain-select');
+  const domains = Object.keys(fixedGlossary.byDomain).sort();
+  sel.innerHTML = '<option value="">選擇網域…</option>' +
+    domains.map(d => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join('');
+  if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
+    sel.value = currentDomain;
+  }
+}
+
+function showDomainPanel(domain) {
+  currentDomain = domain;
+  if (!domain || !fixedGlossary.byDomain[domain]) {
+    $('fixed-domain-panel').hidden = true;
+    return;
+  }
+  $('fixed-domain-panel').hidden = false;
+  $('fixed-domain-label').textContent = domain;
+  renderGlossaryTable($('fixed-domain-tbody'), fixedGlossary.byDomain[domain]);
+}
+
+$('fixed-domain-select').addEventListener('change', () => {
+  // 切換前先同步當前網域的 UI 值
+  if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
+    fixedGlossary.byDomain[currentDomain] = readGlossaryTableEntries($('fixed-domain-tbody'));
+  }
+  showDomainPanel($('fixed-domain-select').value);
+});
+
+$('fixed-domain-add-btn').addEventListener('click', () => {
+  const input = $('fixed-domain-input');
+  const domain = (input.value || '').trim().toLowerCase();
+  if (!domain) return;
+  if (!fixedGlossary.byDomain[domain]) {
+    fixedGlossary.byDomain[domain] = [];
+  }
+  input.value = '';
+  updateDomainSelect();
+  $('fixed-domain-select').value = domain;
+  showDomainPanel(domain);
+  markDirty();
+});
+
+$('fixed-domain-delete').addEventListener('click', () => {
+  if (!currentDomain) return;
+  if (!confirm(`確定要刪除「${currentDomain}」的網域術語表嗎？`)) return;
+  delete fixedGlossary.byDomain[currentDomain];
+  currentDomain = '';
+  updateDomainSelect();
+  showDomainPanel('');
+  markDirty();
+});
+
+$('fixed-domain-add-row').addEventListener('click', () => {
+  if (!currentDomain) return;
+  // 先同步 UI → 記憶體
+  fixedGlossary.byDomain[currentDomain] = readGlossaryTableEntries($('fixed-domain-tbody'));
+  fixedGlossary.byDomain[currentDomain].push({ source: '', target: '' });
+  renderGlossaryTable($('fixed-domain-tbody'), fixedGlossary.byDomain[currentDomain]);
+  const rows = $('fixed-domain-tbody').querySelectorAll('tr');
+  if (rows.length) rows[rows.length - 1].querySelector('.fg-source')?.focus();
+  markDirty();
+});
+
+$('fixed-domain-tbody').addEventListener('click', (e) => {
+  const btn = e.target.closest('.glossary-delete-row');
+  if (!btn || !currentDomain) return;
+  const idx = Number(btn.dataset.idx);
+  fixedGlossary.byDomain[currentDomain] = readGlossaryTableEntries($('fixed-domain-tbody'));
+  fixedGlossary.byDomain[currentDomain].splice(idx, 1);
+  renderGlossaryTable($('fixed-domain-tbody'), fixedGlossary.byDomain[currentDomain]);
+  markDirty();
+});
+
+$('fixed-domain-tbody').addEventListener('focusout', () => {
+  if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
+    fixedGlossary.byDomain[currentDomain] = readGlossaryTableEntries($('fixed-domain-tbody'));
+  }
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -655,11 +833,18 @@ function renderTable(records) {
     const shortModel = (r.model || '').replace('gemini-', '').replace('-preview', '');
     const title = escapeHtml(r.title || '(無標題)');
     const urlDisplay = escapeHtml(shortenUrl(r.url || ''));
+    // v1.0.30: Gemini implicit cache hit rate
+    const inputTk = r.inputTokens || 0;
+    const cachedTk = r.cachedTokens || 0;
+    const hitRate = inputTk > 0 ? Math.round(cachedTk / inputTk * 100) : 0;
+    const hitHtml = hitRate > 0
+      ? `<span class="usage-cache-hit">(${hitRate}% hit)</span>`
+      : '';
     return `<tr>
       <td>${fmtTime(r.timestamp)}</td>
       <td>${title}<span class="site-url">${urlDisplay}</span></td>
       <td>${shortModel}</td>
-      <td class="num">${formatTokens(billedTokens)}</td>
+      <td class="num">${formatTokens(billedTokens)}${hitHtml}</td>
       <td class="num">${formatUSD(r.billedCostUSD || 0)}</td>
     </tr>`;
   }).join('');

@@ -13,16 +13,29 @@
     <h1>🚄 Shinkansen</h1>
     <p class="muted">功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a></p>
 
-    <!-- v0.86: Tab 切換列（v1.0.28: 設定拆為一般設定 + Gemini） -->
+    <!-- v0.86: Tab 切換列（v1.0.28: 設定拆為一般設定 + Gemini；v1.0.29: 新增術語表） -->
     <nav class="tab-bar">
       <button class="tab-btn active" data-tab="settings">一般設定</button>
       <button class="tab-btn" data-tab="gemini">Gemini</button>
+      <button class="tab-btn" data-tab="glossary">術語表</button>
       <button class="tab-btn" data-tab="usage">用量紀錄</button>
       <button class="tab-btn" data-tab="log">Log</button>
     </nav>
 
     <!-- ═══ 一般設定分頁 ═══ -->
     <div id="tab-settings" class="tab-panel active">
+
+    <section>
+      <h2>Gemini API Key</h2>
+      <label>
+        API Key
+        <div class="api-key-row">
+          <input type="password" id="apiKey" placeholder="貼上您的 Gemini API Key">
+          <button type="button" id="toggle-api-key" class="ghost-btn" aria-label="顯示 API Key">顯示</button>
+        </div>
+        <small class="muted">還沒有 API Key？請參考 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 申請教學</a>（含帳單設定等容易遺漏的步驟）</small>
+      </label>
+    </section>
 
     <section>
       <h2>效能（翻譯效率調校）</h2>
@@ -73,9 +86,18 @@
     <section>
       <h2>翻譯進度通知</h2>
       <label>
-        通知透明度 <span id="toastOpacityLabel">90</span>%
-        <input type="range" id="toastOpacity" min="10" max="100" step="10" value="90">
-        <small class="muted">翻譯時右下角會顯示進度通知。如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
+        顯示位置
+        <select id="toastPosition">
+          <option value="bottom-right">右下角</option>
+          <option value="bottom-left">左下角</option>
+          <option value="top-right">右上角</option>
+          <option value="top-left">左上角</option>
+        </select>
+      </label>
+      <label>
+        通知透明度 <span id="toastOpacityLabel">70</span>%
+        <input type="range" id="toastOpacity" min="10" max="100" step="10" value="70">
+        <small class="muted">如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
       </label>
     </section>
 
@@ -122,21 +144,13 @@
     <div id="tab-gemini" class="tab-panel">
 
     <section>
-      <h2>Gemini API</h2>
-      <label>
-        API Key
-        <div class="api-key-row">
-          <input type="password" id="apiKey" placeholder="貼上您的 Gemini API Key">
-          <button type="button" id="toggle-api-key" class="ghost-btn" aria-label="顯示 API Key">顯示</button>
-        </div>
-        <small class="muted">還沒有 API Key？請參考 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 申請教學</a>（含帳單設定等容易遺漏的步驟）</small>
-      </label>
+      <h2>Gemini 模型與參數</h2>
       <label>
         模型
         <select id="model">
-          <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）</option>
-          <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
-          <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）</option>
+          <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 翻譯品質普普，不要求最高品質可用</option>
+          <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）— 推薦選擇，翻譯品質高價格便宜</option>
+          <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）— Flash 就夠厲害了，中樂透的話我也無法阻止你用這個最頂的</option>
           <option value="__custom__">自行輸入模型 ID…</option>
         </select>
         <div id="custom-model-row" class="custom-model-row" hidden>
@@ -236,12 +250,72 @@
       </label>
     </section>
 
+    <div class="actions">
+      <button id="save-gemini" class="primary">儲存設定</button>
+      <span id="save-gemini-status"></span>
+    </div>
+
+    </div><!-- /tab-gemini -->
+
+    <!-- ═══ 術語表分頁（v1.0.29 新增） ═══ -->
+    <div id="tab-glossary" class="tab-panel">
+
+    <!-- 固定術語表 -->
     <section>
-      <h2>術語表一致化</h2>
-      <p class="muted">長文翻譯時，先擷取全文專有名詞建立術語對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。預設不開啟——開啟後術語翻譯會跳過 system prompt 的部分指示（例如「英文人名保留不翻」會失效）。詳細說明見 <a href="https://github.com/jimmysu0309/shinkansen#術語表一致化" target="_blank" rel="noopener">README</a></p>
+      <h2>固定術語表</h2>
+      <p class="muted">手動指定「原文 → 譯文」對照。每次翻譯時會注入 Gemini 的 system prompt，強制模型遵守你指定的譯法。固定術語的優先級高於自動擷取的術語。</p>
+
+      <h3 class="glossary-scope-title">全域（所有網站共用）</h3>
+      <div class="glossary-table-wrapper">
+        <table class="glossary-edit-table" id="fixed-global-table">
+          <thead>
+            <tr>
+              <th>原文</th>
+              <th>譯文</th>
+              <th class="glossary-col-action"></th>
+            </tr>
+          </thead>
+          <tbody id="fixed-global-tbody"></tbody>
+        </table>
+      </div>
+      <button id="fixed-global-add" class="secondary glossary-add-btn">＋ 新增一列</button>
+
+      <h3 class="glossary-scope-title" style="margin-top: 24px;">網域專用（覆蓋全域同名術語）</h3>
+      <div class="glossary-domain-controls">
+        <select id="fixed-domain-select">
+          <option value="">選擇網域…</option>
+        </select>
+        <input type="text" id="fixed-domain-input" placeholder="或輸入新網域，例如 medium.com">
+        <button id="fixed-domain-add-btn" class="secondary">新增網域</button>
+      </div>
+      <div id="fixed-domain-panel" hidden>
+        <div class="glossary-domain-header">
+          <span id="fixed-domain-label" class="glossary-domain-name"></span>
+          <button id="fixed-domain-delete" class="secondary glossary-delete-domain-btn">刪除此網域</button>
+        </div>
+        <div class="glossary-table-wrapper">
+          <table class="glossary-edit-table" id="fixed-domain-table">
+            <thead>
+              <tr>
+                <th>原文</th>
+                <th>譯文</th>
+                <th class="glossary-col-action"></th>
+              </tr>
+            </thead>
+            <tbody id="fixed-domain-tbody"></tbody>
+          </table>
+        </div>
+        <button id="fixed-domain-add-row" class="secondary glossary-add-btn">＋ 新增一列</button>
+      </div>
+    </section>
+
+    <!-- 術語表一致化（自動擷取，從 Gemini Tab 搬來） -->
+    <section>
+      <h2>自動術語擷取</h2>
+      <p class="muted">長文翻譯時，先呼叫 Gemini 擷取全文專有名詞建立對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。預設不開啟——開啟後術語翻譯會跳過 system prompt 的部分指示（例如「英文人名保留不翻」會失效）。詳細說明見 <a href="https://github.com/jimmysu0309/shinkansen#術語表一致化" target="_blank" rel="noopener">README</a></p>
       <label class="switch">
         <input type="checkbox" id="glossaryEnabled">
-        <span>啟用術語表一致化</span>
+        <span>啟用自動術語擷取</span>
       </label>
       <label>
         術語表 Temperature
@@ -261,11 +335,11 @@
     </section>
 
     <div class="actions">
-      <button id="save-gemini" class="primary">儲存設定</button>
-      <span id="save-gemini-status"></span>
+      <button id="save-glossary" class="primary">儲存設定</button>
+      <span id="save-glossary-status"></span>
     </div>
 
-    </div><!-- /tab-gemini -->
+    </div><!-- /tab-glossary -->
 
     <!-- ═══ 用量紀錄分頁 ═══ -->
     <div id="tab-usage" class="tab-panel">

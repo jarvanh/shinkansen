@@ -321,10 +321,11 @@ export async function extractGlossary(compressedText, settings) {
  * @param {string} baseSystem 使用者設定的基礎 system instruction
  * @param {string[]} texts 本批原文陣列
  * @param {string} joined 已用 DELIMITER join 過的完整文字
- * @param {Array<{source:string, target:string}>} [glossary] 可選的術語對照表
+ * @param {Array<{source:string, target:string}>} [glossary] 可選的自動擷取術語對照表
+ * @param {Array<{source:string, target:string}>} [fixedGlossary] 可選的使用者固定術語表（優先級高於 glossary）
  * @returns {string} 完整的 effectiveSystem
  */
-function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary) {
+function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary) {
   const parts = [baseSystem];
 
   // 多段翻譯分隔符與序號規則
@@ -348,11 +349,19 @@ function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary) {
     );
   }
 
-  // 術語對照表放最末端
+  // 自動擷取術語對照表
   if (glossary && glossary.length > 0) {
     const lines = glossary.map(e => `${e.source} → ${e.target}`).join('\n');
     parts.push(
       '以下是本篇文章的術語對照表，遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
+    );
+  }
+
+  // v1.0.29: 使用者固定術語表（優先級最高，放在最末端讓 LLM 給予最高權重）
+  if (fixedGlossary && fixedGlossary.length > 0) {
+    const lines = fixedGlossary.map(e => `${e.source} → ${e.target}`).join('\n');
+    parts.push(
+      '以下是使用者指定的固定術語表，優先級高於上方所有術語對照。遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
     );
   }
 
@@ -364,6 +373,7 @@ function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary) {
  * @param {string[]} texts 原文陣列
  * @param {object} settings 完整設定
  * @param {Array<{source:string, target:string}>} [glossary] 可選的術語對照表（v0.69）
+ * @param {Array<{source:string, target:string}>} [fixedGlossary] 可選的使用者固定術語表（v1.0.29）
  * @returns {Promise<{ translations: string[], usage: { inputTokens: number, outputTokens: number, cachedTokens: number } }>}
  *
  * 註：`cachedTokens` 來自 Gemini API 回應的 `usageMetadata.cachedContentTokenCount`，
@@ -374,7 +384,7 @@ function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary) {
  * 本地快取命中的段落根本不會送 API，而 implicit cache 命中的段落有送 API
  * 但前綴（system prompt 那一大段）被 Gemini 內部 cache 省下。
  */
-export async function translateBatch(texts, settings, glossary) {
+export async function translateBatch(texts, settings, glossary, fixedGlossary) {
   if (!texts?.length) return { translations: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, hadMismatch: false };
   const out = new Array(texts.length);
   const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
@@ -382,7 +392,7 @@ export async function translateBatch(texts, settings, glossary) {
   const chunks = packChunks(texts);
   for (const { start, end } of chunks) {
     const slice = texts.slice(start, end);
-    const result = await translateChunk(slice, settings, glossary);
+    const result = await translateChunk(slice, settings, glossary, fixedGlossary);
     for (let j = 0; j < result.parts.length; j++) out[start + j] = result.parts[j];
     usage.inputTokens += result.usage.inputTokens;
     usage.outputTokens += result.usage.outputTokens;
@@ -392,7 +402,7 @@ export async function translateBatch(texts, settings, glossary) {
   return { translations: out, usage, hadMismatch };
 }
 
-async function translateChunk(texts, settings, glossary) {
+async function translateChunk(texts, settings, glossary, fixedGlossary) {
   if (!texts?.length) return [];
   const { apiKey, geminiConfig } = settings;
   const {
@@ -421,7 +431,7 @@ async function translateChunk(texts, settings, glossary) {
   // v0.71: 建構順序很重要——行為規則（換行、佔位符）必須緊跟在基礎翻譯指令後面，
   // 術語表是「參考資料」放最後。若術語表夾在中間會稀釋 LLM 對佔位符規則的注意力，
   // 導致 ⟦*N⟧ 標記洩漏到譯文裡（v0.70 的 bug）。
-  const effectiveSystem = buildEffectiveSystemInstruction(systemInstruction, texts, joined, glossary);
+  const effectiveSystem = buildEffectiveSystemInstruction(systemInstruction, texts, joined, glossary, fixedGlossary);
 
   const body = {
     contents: [{ role: 'user', parts: [{ text: joined }] }],
@@ -555,7 +565,7 @@ async function translateChunk(texts, settings, glossary) {
     const tFallback0 = Date.now();
     for (let fi = 0; fi < texts.length; fi++) {
       const tSeg0 = Date.now();
-      const r = await translateChunk([texts[fi]], settings, glossary);
+      const r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary);
       await debugLog('info', 'api', `fallback segment ${fi + 1}/${texts.length}`, { elapsed: Date.now() - tSeg0 });
       aligned.push(r.parts[0] || '');
       aggUsage.inputTokens += r.usage.inputTokens;

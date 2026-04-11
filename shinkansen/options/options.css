@@ -307,6 +307,13 @@ a:hover { text-decoration: underline; }
   color: #86868b;
 }
 
+.usage-cache-hit {
+  display: block;
+  font-size: 11px;
+  color: #86868b;
+  white-space: nowrap;
+}
+
 /* ═══ v0.88: Log 分頁 ═══════════════════════════════════════ */
 .log-toolbar {
   display: flex;
@@ -446,3 +453,98 @@ a:hover { text-decoration: underline; }
   padding-top: 12px;
   border-top: 1px solid #e5e5ea;
 }
+
+/* ═══ v1.0.29: 固定術語表 ═══════════════════════════════════ */
+.glossary-scope-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 16px 0 8px;
+}
+.glossary-table-wrapper {
+  border: 1px solid #e5e5ea;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.glossary-edit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.glossary-edit-table th {
+  background: #f5f5f7;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  color: #86868b;
+  border-bottom: 1px solid #e5e5ea;
+}
+.glossary-edit-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #f0f0f2;
+}
+.glossary-edit-table td input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font: 13px -apple-system, 'PingFang TC', sans-serif;
+  background: transparent;
+  box-sizing: border-box;
+  margin: 0;
+}
+.glossary-edit-table td input:focus {
+  border-color: #0071e3;
+  background: #fff;
+  outline: none;
+}
+.glossary-col-action { width: 36px; text-align: center; }
+.glossary-delete-row {
+  background: none;
+  border: none;
+  color: #ff3b30;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.glossary-delete-row:hover { background: #fff5f5; }
+.glossary-add-btn {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 6px 14px;
+}
+.glossary-domain-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.glossary-domain-controls select {
+  width: auto;
+  min-width: 180px;
+}
+.glossary-domain-controls input {
+  flex: 1;
+  margin: 0;
+}
+.glossary-domain-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.glossary-domain-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0071e3;
+}
+.glossary-delete-domain-btn {
+  color: #ff3b30;
+  border-color: #ff3b30;
+  font-size: 12px;
+  padding: 4px 12px;
+}
+.glossary-delete-domain-btn:hover { background: #fff5f5; }

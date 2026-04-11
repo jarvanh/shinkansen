@@ -328,12 +328,36 @@ async function handleTranslate(payload, sender) {
   const texts = payload.texts;
   const glossary = payload.glossary || null;  // v0.69: 可選的術語對照表
 
+  // v1.0.29: 讀取固定術語表（全域 + 當前網域），合併後傳給 translateBatch
+  let fixedGlossaryEntries = null;
+  const fg = settings.fixedGlossary;
+  if (fg) {
+    const globalEntries = Array.isArray(fg.global) ? fg.global.filter(e => e.source && e.target) : [];
+    let domainEntries = [];
+    if (fg.byDomain && sender?.tab?.url) {
+      try {
+        const hostname = new URL(sender.tab.url).hostname;
+        domainEntries = Array.isArray(fg.byDomain[hostname]) ? fg.byDomain[hostname].filter(e => e.source && e.target) : [];
+      } catch { /* 無效 URL，略過 */ }
+    }
+    // 合併：全域先、網域後（網域覆蓋全域同名術語——用 Map 去重，後出現的覆蓋前面的）
+    if (globalEntries.length > 0 || domainEntries.length > 0) {
+      const merged = new Map();
+      for (const e of globalEntries) merged.set(e.source, e.target);
+      for (const e of domainEntries) merged.set(e.source, e.target); // 網域覆蓋全域
+      fixedGlossaryEntries = [...merged.entries()].map(([source, target]) => ({ source, target }));
+    }
+  }
+
   // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
   // 確保「有術語表」與「無術語表」的翻譯分開快取。
   let glossaryKeySuffix = '';
-  if (glossary && glossary.length > 0) {
-    const glossaryStr = glossary.map(e => `${e.source}:${e.target}`).join('|');
-    const fullHash = await cache.hashText(glossaryStr);
+  const allGlossaryForHash = [
+    ...(glossary || []).map(e => `${e.source}:${e.target}`),
+    ...(fixedGlossaryEntries || []).map(e => `F:${e.source}:${e.target}`),
+  ];
+  if (allGlossaryForHash.length > 0) {
+    const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
     glossaryKeySuffix = '_g' + fullHash.slice(0, 12);
   }
 
@@ -379,7 +403,7 @@ async function handleTranslate(payload, sender) {
     const t0 = Date.now();
     const totalChars = missingTexts.reduce((s, t) => s + (t?.length || 0), 0);
     debugLog('info', 'api', 'translateBatch start', { texts: missingTexts.length, chars: totalChars });
-    const res = await translateBatch(missingTexts, settings, glossary);
+    const res = await translateBatch(missingTexts, settings, glossary, fixedGlossaryEntries);
     fresh = res.translations;
     batchUsage = res.usage;
     batchHadMismatch = res.hadMismatch || false; // v0.94: mismatch 旗標

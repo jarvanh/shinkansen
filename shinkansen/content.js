@@ -115,8 +115,6 @@
       :host, * { box-sizing: border-box; }
       .toast {
         position: fixed;
-        bottom: 24px;
-        right: 24px;
         width: 280px;
         padding: 14px 16px 12px 16px;
         background: #ffffff;
@@ -129,6 +127,11 @@
         gap: 8px;
       }
       .toast.show { display: flex; }
+      /* v1.0.31: Toast 位置 */
+      .toast.pos-bottom-right { bottom: 24px; right: 24px; }
+      .toast.pos-bottom-left  { bottom: 24px; left: 24px; }
+      .toast.pos-top-right    { top: 24px; right: 24px; }
+      .toast.pos-top-left     { top: 24px; left: 24px; }
       .row {
         display: flex;
         align-items: center;
@@ -213,14 +216,31 @@
 
   // v1.0.17: Toast 透明度——從設定讀取，並監聽即時變更
   function applyToastOpacity(opacity) {
-    toastHost.style.opacity = Math.max(0.1, Math.min(1, opacity ?? 0.9));
+    toastHost.style.opacity = Math.max(0.1, Math.min(1, opacity ?? 0.7));
   }
-  chrome.storage.sync.get('toastOpacity').then(({ toastOpacity }) => {
-    applyToastOpacity(toastOpacity);
+
+  // v1.0.31: Toast 位置——套用 CSS class 控制四角定位
+  const VALID_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'];
+  let currentToastPosition = 'bottom-right';
+  function applyToastPosition(pos) {
+    const toastInner = shadow.getElementById('toast');
+    if (!toastInner) return;
+    const p = VALID_POSITIONS.includes(pos) ? pos : 'bottom-right';
+    currentToastPosition = p;
+    // 移除舊 pos- class，加上新的
+    toastInner.className = toastInner.className.replace(/\bpos-\S+/g, '').trim() + ' pos-' + p;
+  }
+
+  chrome.storage.sync.get(['toastOpacity', 'toastPosition']).then((s) => {
+    applyToastOpacity(s.toastOpacity);
+    applyToastPosition(s.toastPosition);
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.toastOpacity) {
       applyToastOpacity(changes.toastOpacity.newValue);
+    }
+    if (area === 'sync' && changes.toastPosition) {
+      applyToastPosition(changes.toastPosition.newValue);
     }
   });
 
@@ -283,7 +303,7 @@
     removeOutsideClickHandler();
 
     // 組合 class
-    const classes = ['toast', 'show', kind];
+    const classes = ['toast', 'show', kind, 'pos-' + currentToastPosition];
     if (kind === 'loading' && opts.progress == null) classes.push('indeterminate');
     // v0.94: mismatch fallback 時加上 mismatch class → 進度條黃色閃爍
     if (opts.mismatch) classes.push('mismatch');
@@ -357,7 +377,7 @@
     }
   }
   function hideToast() {
-    toastEl.className = 'toast';
+    toastEl.className = 'toast pos-' + currentToastPosition;
     toastDetailEl.hidden = true;
     clearInterval(toastTickHandle);
     toastTickHandle = null;
