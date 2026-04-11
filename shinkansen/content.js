@@ -2945,9 +2945,48 @@
     getState() {
       return {
         translated: STATE.translated,
+        translating: STATE.translating,
+        stickyTranslate: STATE.stickyTranslate,
         replacedCount: STATE.originalHTML.size,
         cacheSize: STATE.cache.size,
+        guardCacheSize: STATE.translatedHTML.size,
       };
+    },
+    // ── v1.0.26 新增：擴充測試 API ──
+    // 測試專用：設定 STATE 欄位，讓 regression spec 能模擬翻譯完成後的狀態。
+    // 只開放 translated / stickyTranslate，不開放 abortController 等危險欄位。
+    setTestState(overrides) {
+      if ('translated' in overrides) STATE.translated = !!overrides.translated;
+      if ('stickyTranslate' in overrides) STATE.stickyTranslate = !!overrides.stickyTranslate;
+    },
+    // 測試專用：手動觸發 Content Guard 掃描（正式環境每秒自動跑一次）。
+    // 回傳被修復的元素數量。需先用 testInject 注入譯文 + setTestState({ translated: true })。
+    testRunContentGuard() {
+      if (!STATE.translated) return 0;
+      let restored = 0;
+      for (const [el, savedHTML] of STATE.translatedHTML) {
+        if (!el.isConnected) continue;
+        if (el.innerHTML === savedHTML) continue;
+        el.innerHTML = savedHTML;
+        restored++;
+      }
+      return restored;
+    },
+    // 測試專用：Google Docs URL 解析（v1.0.7 regression 用）。
+    // 接受 URL 字串參數，不讀 location，純函式無副作用。
+    testGoogleDocsUrl(urlString) {
+      try {
+        const url = new URL(urlString);
+        const isEditor = url.hostname === 'docs.google.com'
+          && /^\/document\/d\/[^/]+\/(edit|preview|view)/.test(url.pathname);
+        const isMobileBasic = url.hostname === 'docs.google.com'
+          && /^\/document\/d\/[^/]+\/mobilebasic/.test(url.pathname);
+        const match = url.pathname.match(/^\/document\/d\/([^/]+)/);
+        const mobileBasicUrl = match
+          ? `https://docs.google.com/document/d/${match[1]}/mobilebasic`
+          : null;
+        return { isEditor, isMobileBasic, mobileBasicUrl };
+      } catch { return { isEditor: false, isMobileBasic: false, mobileBasicUrl: null }; }
     },
   };
 
