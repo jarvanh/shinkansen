@@ -86,20 +86,7 @@
     2. 觀察 Content Guard 是否在 2 秒冷卻期後才再次觸發，而非每 500ms 都觸發
     3. 驗證不會產生無限 toast 跳動
 
-### v1.0.16 — 2026-04-10 — anchor 偵測門檻過低導致主選單部分翻譯
-- **症狀**：Engadget 主選單中 "Buyer's Guide"（13 字元）和 "Entertainment"（13 字元）被翻譯成中文，但 "News"（4 字元）、"Reviews"（7 字元）等較短項目未被翻譯，造成不一致
-- **來源 URL**：`https://www.engadget.com/computing/laptops/asus-zenbook-a16-review-a-surprisingly-light-and-powerful-16-inch-ultraportable-140000914.html`（Engadget 頁面的主選單）
-- **修在**：`shinkansen/content.js` 的 anchor 偵測路徑 `txt.length < 12` → `txt.length < 20`
-- **根因**：v1.0.15 移除 NAV 硬排除後，主選單的 `<a>` 元素（無 block 祖先）走 anchor 偵測路徑，舊門檻 12 無法擋住稍長的 nav label
-- **為什麼還不能寫測試**：
-    可以擴充現有的 `test/regression/fixtures/nav-content.html`，加入長短不一的 nav menu `<a>` 連結（不含 `<li>` 包裹），
-    驗證全部都不被 collectParagraphs 偵測到。但 nav-content fixture 是 v1.0.15 剛建的，
-    兩個版本的測試糾纏在同一個 fixture 上，建議等 v1.0.15 nav 測試跑綠後再擴充。
-- **建議 spec 位置**：擴充 `test/regression/detect-nav-content.spec.js`（新增第二個 test case）
-- **建議測試方向**：
-    1. 在 nav-content.html 加入主選單結構：`<nav><a><span>Short</span></a><a><span>Longer Nav Label</span></a></nav>`（無 `<li>` 包裹）
-    2. 驗證這些 `<a>` 不會出現在 collectParagraphs 的結果中
-    3. 同時驗證 `<li>` 內的 `<a>`（Trending bar）仍被偵測
+### ~~v1.0.16~~ — 已補測試 → `test/regression/detect-nav-anchor-threshold.spec.js`
 
 ### v1.0.20 — 2026-04-10 — Content Guard 架構簡化 + Facebook 虛擬捲動修復
 - **症狀**：Facebook 社團翻譯後上下捲動，已翻譯的貼文回復成英文不被修復（v1.0.14–v1.0.19 逐層疊加的 mutation 觸發 guard + cooldown 機制過於複雜且有時間缺口）
@@ -137,25 +124,8 @@
     4. 驗證 translatePage counter 增加（自動續翻觸發）
     5. 呼叫 restorePage，再做 hashchange，驗證 counter 不增加（續翻已關閉）
 
-### v1.0.21+v1.0.22 — 2026-04-10 — Gmail inbox grid cell 翻譯排版修正
-- **症狀**：Gmail inbox 信件列表翻譯後排版崩壞：v1.0.21 前整個 `<td>` 被當成翻譯單位，sender/subject/preview 混在一起；修正後信件行從 20px 撐高到 40px（序列化重建的 `<br>` 撐破 flex 單行佈局）
-- **來源 URL**：`https://mail.google.com/mail/u/0/#inbox`（Gmail 收件匣）
-- **修在**：`shinkansen/content.js`（`EXCLUDE_ROLES` 加 `'grid'`、`collectParagraphs` grid cell leaf 補抓 pass）、`shinkansen/content.css`（`table[role="grid"] [data-shinkansen-translated] br { display: none }`）
-- **根因（三層）**：
-    1. `collectParagraphs` walker 以 BLOCK_TAGS 為入口，Gmail grid cell 內只有 `<div>/<span>`，walker 無法進入 → 整個 `<td>` 被當成翻譯單位
-    2. 加 `grid` 到 `EXCLUDE_ROLES` 後全部擋住 → 補抓 pass 掃 `table[role="grid"] td` 下的 leaf 元素
-    3. 預覽欄位 `<span>text<span>-</span></span>` 序列化時 `-` 子元素變佔位符，重建時產生 `<br>`，撐破 `white-space:nowrap` + `overflow:hidden` 的單行佈局
-- **為什麼還不能寫測試**：
-    Gmail inbox 的 DOM 結構極度動態：`<table role="grid">` + 11 個 `<td>` per row，
-    每個 cell 的 flex 佈局 + `overflow:hidden` + `text-overflow:ellipsis` + `white-space:nowrap`
-    高度依賴 Gmail 的 CSS。可以建一個簡化的 `role="grid"` table fixture 測偵測邏輯，
-    但排版修正（CSS `br { display: none }` + flex 單行）需要真實 CSS 環境才有意義。
-- **建議 spec 位置**：`test/regression/detect-grid-cell.spec.js`
-- **建議測試方向**：
-    1. 建 fixture：`<table role="grid"><tr><td><div><span>Short text that should be skipped</span></div></td><td><div><span>A longer subject line that qualifies for translation detection</span></div></td></tr></table>`
-    2. 驗證 collectParagraphs 不偵測整個 `<td>`，但偵測到 leaf `<span>` 中 ≥15 字元的文字
-    3. 驗證含短文字子元素的 `<span>text<span>-</span></span>` 也被偵測到
-    4. 注入測試：mock 翻譯結果注入後，CSS 隱藏 `<br>` 不撐高行高（需 computed style 檢查）
+### ~~v1.0.21+v1.0.22~~ — 已補偵測測試 → `test/regression/detect-grid-cell-leaf.spec.js`
+（注：排版修正部分——CSS `br { display: none }` + flex 單行——需要真實 CSS 環境，未涵蓋在此測試中）
 
 <!--
 條目格式範例(實際加入時把上面那行 placeholder 刪掉):
