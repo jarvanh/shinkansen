@@ -45,11 +45,11 @@ describe('v1.0.23: SPA 續翻模式 (sticky translate)', () => {
     expect(env.shinkansen.getState().translated).toBe(false);
 
     // 直接斷言 2：等 translatePage 被呼叫
-    // translatePage 內部會依序呼叫 storage.sync.get('skipTraditionalChinesePage')，
-    // 這是 translatePage 專屬的呼叫，handleSpaNavigation 本身不會叫它。
+    // v1.1.9 起 translatePage 合併所有設定讀取為單一 chrome.storage.sync.get(null),
+    // 這是 translatePage 專屬的呼叫（init-time 其他讀取都走 key-specific 或 array 形式）。
     const gotTranslateCall = await waitForCondition(() => {
       return env.chrome.storage.sync.get.mock.calls.some(
-        ([keys]) => keys === 'skipTraditionalChinesePage'
+        ([keys]) => keys === null
       );
     }, { timeout: 2000 });
     expect(gotTranslateCall).toBe(true);
@@ -69,9 +69,9 @@ describe('v1.0.23: SPA 續翻模式 (sticky translate)', () => {
     // 負向測試：等足夠時間讓 handleSpaNavigation 完整跑完（800ms settle + buffer）
     await new Promise(r => setTimeout(r, 1200));
 
-    // 驗證 1：translatePage 沒被呼叫（不會出現 skipTraditionalChinesePage 的 storage 讀取）
+    // 驗證 1：translatePage 沒被呼叫（v1.1.9 translatePage 用 get(null) 合併讀取設定）
     const hasTranslateCall = env.chrome.storage.sync.get.mock.calls.some(
-      ([keys]) => keys === 'skipTraditionalChinesePage'
+      ([keys]) => keys === null
     );
     expect(hasTranslateCall).toBe(false);
 

@@ -1,0 +1,244 @@
+// content-spa.js — Shinkansen SPA 導航支援 + Content Guard
+// 負責：SPA 導航偵測（History API 攔截 + URL 輪詢 + hashchange）、
+// MutationObserver 動態段落偵測、Content Guard 週期性修復。
+
+(function(SK) {
+
+  const STATE = SK.STATE;
+
+  let spaLastUrl = location.href;
+  let spaObserver = null;
+  let spaObserverDebounceTimer = null;
+  let spaObserverRescanCount = 0;
+  let contentGuardInterval = null;
+  const GUARD_SWEEP_INTERVAL_MS = 1000;
+
+  // ─── 重置翻譯狀態 ────────────────────────────────────
+
+  function resetForSpaNavigation() {
+    if (STATE.translating && STATE.abortController) {
+      STATE.abortController.abort();
+      STATE.translating = false;
+      STATE.abortController = null;
+    }
+    SK.cancelRescan();
+    stopSpaObserver();
+    STATE.originalHTML.clear();
+    STATE.translatedHTML.clear();
+    STATE.cache.clear();
+    STATE.translated = false;
+    STATE._glossaryPromise = null;
+    chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+    SK.hideToast();
+    SK.sendLog('info', 'spa', 'SPA navigation detected, state reset', { url: location.href, stickyTranslate: STATE.stickyTranslate });
+  }
+
+  // ─── 自動翻譯網站名單比對 ────────────────────────────
+
+  SK.isDomainWhitelisted = async function isDomainWhitelisted() {
+    try {
+      const { domainRules } = await chrome.storage.sync.get('domainRules');
+      if (!domainRules?.whitelist?.length) return false;
+      const hostname = location.hostname;
+      return domainRules.whitelist.some(pattern => {
+        if (pattern.startsWith('*.')) {
+          const suffix = pattern.slice(1);
+          return hostname === pattern.slice(2) || hostname.endsWith(suffix);
+        }
+        return hostname === pattern;
+      });
+    } catch (err) {
+      SK.sendLog('warn', 'system', 'isDomainWhitelisted: failed to read storage', { error: err.message });
+      return false;
+    }
+  };
+
+  // ─── SPA 導航處理 ────────────────────────────────────
+
+  async function handleSpaNavigation() {
+    const newUrl = location.href;
+    if (newUrl === spaLastUrl) return;
+    spaLastUrl = newUrl;
+    const wasSticky = STATE.stickyTranslate;
+    resetForSpaNavigation();
+
+    await new Promise(r => setTimeout(r, SK.SPA_NAV_SETTLE_MS));
+
+    if (wasSticky) {
+      SK.sendLog('info', 'spa', 'SPA nav: sticky translate active, auto-translating', { url: location.href });
+      SK.translatePage();
+      return;
+    }
+
+    try {
+      const { autoTranslate = false } = await chrome.storage.sync.get('autoTranslate');
+      if (autoTranslate && await SK.isDomainWhitelisted()) {
+        SK.sendLog('info', 'spa', 'SPA nav: domain in auto-translate list, translating', { url: location.href });
+        SK.translatePage();
+        return;
+      }
+    } catch (err) {
+      SK.sendLog('warn', 'spa', 'SPA nav: auto-translate list check failed', { error: err.message });
+    }
+  }
+
+  // ─── History API 攔截 ─────────────────────────────────
+
+  const _origPushState = history.pushState.bind(history);
+  const _origReplaceState = history.replaceState.bind(history);
+
+  history.pushState = function (...args) {
+    _origPushState(...args);
+    handleSpaNavigation();
+  };
+  history.replaceState = function (...args) {
+    _origReplaceState(...args);
+    spaLastUrl = location.href;
+  };
+  window.addEventListener('popstate', () => handleSpaNavigation());
+  window.addEventListener('hashchange', () => handleSpaNavigation());
+
+  // ─── URL 輪詢（SPA 導航 safety net） ─────────────────
+
+  const SPA_URL_POLL_MS = 500;
+  setInterval(() => {
+    if (location.href !== spaLastUrl) {
+      if (STATE.translated && !STATE.stickyTranslate && document.querySelector('[data-shinkansen-translated]')) {
+        SK.sendLog('info', 'spa', 'URL changed while translated content present — scroll-based update, skipping reset', { newUrl: location.href, oldUrl: spaLastUrl });
+        spaLastUrl = location.href;
+        return;
+      }
+      handleSpaNavigation();
+    }
+  }, SPA_URL_POLL_MS);
+
+  // ─── MutationObserver（動態段落偵測） ─────────────────
+
+  SK.startSpaObserver = function startSpaObserver() {
+    if (spaObserver) return;
+    spaObserverRescanCount = 0;
+    spaObserver = new MutationObserver(onSpaObserverMutations);
+    spaObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+    if (!contentGuardInterval) {
+      contentGuardInterval = setInterval(runContentGuard, GUARD_SWEEP_INTERVAL_MS);
+    }
+    SK.sendLog('info', 'spa', 'SPA observer started');
+  };
+
+  function stopSpaObserver() {
+    if (spaObserverDebounceTimer) {
+      clearTimeout(spaObserverDebounceTimer);
+      spaObserverDebounceTimer = null;
+    }
+    if (contentGuardInterval) {
+      clearInterval(contentGuardInterval);
+      contentGuardInterval = null;
+    }
+    if (spaObserver) {
+      spaObserver.disconnect();
+      spaObserver = null;
+    }
+    spaObserverRescanCount = 0;
+  }
+  SK.stopSpaObserver = stopSpaObserver;
+
+  // ─── Content Guard ────────────────────────────────────
+
+  function runContentGuard() {
+    if (!STATE.translated) return;
+    let restored = 0;
+    for (const [el, savedHTML] of STATE.translatedHTML) {
+      if (!el.isConnected) continue;
+      if (el.innerHTML === savedHTML) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
+      el.innerHTML = savedHTML;
+      restored++;
+    }
+    if (restored > 0) {
+      SK.sendLog('info', 'guard', `Content guard restored ${restored} overwritten nodes`);
+    }
+  }
+
+  // 暴露給 Debug API
+  SK.testRunContentGuard = function testRunContentGuard() {
+    if (!STATE.translated) return 0;
+    let restored = 0;
+    for (const [el, savedHTML] of STATE.translatedHTML) {
+      if (!el.isConnected) continue;
+      if (el.innerHTML === savedHTML) continue;
+      el.innerHTML = savedHTML;
+      restored++;
+    }
+    return restored;
+  };
+
+  function onSpaObserverMutations(mutations) {
+    if (!STATE.translated) { stopSpaObserver(); return; }
+    if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) return;
+
+    const hasNewContent = mutations.some(m =>
+      m.type === 'childList' && m.addedNodes.length > 0 &&
+      !(m.target.nodeType === 1 && m.target.closest?.('[data-shinkansen-translated]')) &&
+      Array.from(m.addedNodes).some(n =>
+        n.nodeType === Node.ELEMENT_NODE && n.textContent.trim().length > 10
+      )
+    );
+    if (!hasNewContent) return;
+
+    if (spaObserverDebounceTimer) clearTimeout(spaObserverDebounceTimer);
+    spaObserverDebounceTimer = setTimeout(spaObserverRescan, SK.SPA_OBSERVER_DEBOUNCE_MS);
+  }
+
+  async function spaObserverRescan() {
+    spaObserverDebounceTimer = null;
+    if (!STATE.translated) return;
+    if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) {
+      SK.sendLog('info', 'spa', 'SPA observer: reached max rescans, stopping NEW translations only', { maxRescans: SK.SPA_OBSERVER_MAX_RESCANS });
+      return;
+    }
+    spaObserverRescanCount++;
+
+    let newUnits = SK.collectParagraphs();
+    if (newUnits.length === 0) return;
+
+    if (newUnits.length > SK.SPA_OBSERVER_MAX_UNITS) {
+      SK.sendLog('warn', 'spa', 'SPA observer rescan capped', { found: newUnits.length, cap: SK.SPA_OBSERVER_MAX_UNITS });
+      newUnits = newUnits.slice(0, SK.SPA_OBSERVER_MAX_UNITS);
+    }
+
+    SK.sendLog('info', 'spa', `SPA observer rescan #${spaObserverRescanCount}`, { newUnits: newUnits.length });
+    SK.showToast('loading', `翻譯新內容… 0 / ${newUnits.length}`, { progress: 0, startTimer: true });
+    try {
+      const { done, failures } = await SK.translateUnits(newUnits, {
+        onProgress: (d, t) => SK.showToast('loading', `翻譯新內容… ${d} / ${t}`, {
+          progress: d / t,
+        }),
+      });
+      if (!STATE.translated) return;
+      if (done > 0) {
+        SK.sendLog('info', 'spa', `SPA observer rescan #${spaObserverRescanCount} done`, { done, failures: failures.length });
+        const failedCount = failures.length;
+        if (failedCount > 0) {
+          SK.showToast('error', `新內容翻譯部分失敗:${failedCount} / ${newUnits.length} 段`, { stopTimer: true });
+        } else {
+          SK.showToast('success', `已翻譯 ${done} 段新內容`, { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        }
+      }
+    } catch (err) {
+      SK.sendLog('warn', 'spa', 'SPA observer rescan failed', { error: err.message });
+      SK.showToast('error', `新內容翻譯失敗:${err.message}`, { stopTimer: true });
+    }
+  }
+
+  // ─── 頁面離開時取消進行中的翻譯 ──────────────────────
+  window.addEventListener('beforeunload', () => {
+    if (STATE.translating && STATE.abortController) {
+      STATE.abortController.abort();
+    }
+  });
+
+})(window.__SK);

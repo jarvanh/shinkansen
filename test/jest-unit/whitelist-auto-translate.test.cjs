@@ -16,7 +16,7 @@
  *   isDomainWhitelisted() 內部依賴 chrome.storage.sync.get，
  *   透過 create-env 的 chrome mock 注入不同的 domainRules，
  *   再觀察初始載入時是否觸發 translatePage。
- *   translatePage 的標誌是它會呼叫 storage.sync.get('skipTraditionalChinesePage')。
+ *   translatePage 的標誌是它會呼叫 storage.sync.get(null) (v1.1.9 合併讀取)。
  */
 
 const { createEnv, waitForCondition } = require('./helpers/create-env.cjs');
@@ -33,14 +33,10 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
    * content.js 載入後會立刻執行首次載入的自動翻譯檢查。
    */
   function createEnvWithStorage(url, storageData) {
-    // 先建立 JSDOM + chrome mock，但還不載入 content.js
-    // create-env 會立刻 eval content.js，所以我們要在建立前設好 mock
+    // 先建立 JSDOM + chrome mock，但還不載入 content scripts
+    // createEnv 會立刻 eval 全部檔案，所以我們自建 env + 用 helper 的 contentScriptCodes
     const { JSDOM } = require('jsdom');
-    const fs = require('fs');
-    const path = require('path');
-    const contentCode = fs.readFileSync(
-      path.resolve(__dirname, '../../shinkansen/content.js'), 'utf-8'
-    );
+    const { contentScriptCodes } = require('./helpers/create-env.cjs');
 
     const dom = new JSDOM(
       '<!DOCTYPE html><html><head></head><body><p>Hello world test paragraph.</p></body></html>',
@@ -81,7 +77,7 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
       },
     };
     win.chrome = chromeMock;
-    win.eval(contentCode);
+    for (const code of contentScriptCodes) win.eval(code);
 
     return {
       dom, window: win, document: win.document, chrome: chromeMock,
@@ -97,10 +93,10 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
       domainRules: { whitelist: ['medium.com'] },
     });
 
-    // translatePage 被呼叫的標誌：storage.sync.get('skipTraditionalChinesePage')
+    // translatePage 被呼叫的標誌：storage.sync.get(null) (v1.1.9 合併讀取)
     const triggered = await waitForCondition(() => {
       return env.chrome.storage.sync.get.mock.calls.some(
-        ([keys]) => keys === 'skipTraditionalChinesePage'
+        ([keys]) => keys === null
       );
     }, { timeout: 3000 });
     expect(triggered).toBe(true);
@@ -115,7 +111,7 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
 
     const triggered = await waitForCondition(() => {
       return env.chrome.storage.sync.get.mock.calls.some(
-        ([keys]) => keys === 'skipTraditionalChinesePage'
+        ([keys]) => keys === null
       );
     }, { timeout: 3000 });
     expect(triggered).toBe(true);
@@ -130,7 +126,7 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
 
     const triggered = await waitForCondition(() => {
       return env.chrome.storage.sync.get.mock.calls.some(
-        ([keys]) => keys === 'skipTraditionalChinesePage'
+        ([keys]) => keys === null
       );
     }, { timeout: 3000 });
     expect(triggered).toBe(true);
@@ -147,7 +143,7 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
     await new Promise(r => setTimeout(r, 1500));
 
     const hasTranslateCall = env.chrome.storage.sync.get.mock.calls.some(
-      ([keys]) => keys === 'skipTraditionalChinesePage'
+      ([keys]) => keys === null
     );
     expect(hasTranslateCall).toBe(false);
   });
@@ -162,7 +158,7 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
     await new Promise(r => setTimeout(r, 1500));
 
     const hasTranslateCall = env.chrome.storage.sync.get.mock.calls.some(
-      ([keys]) => keys === 'skipTraditionalChinesePage'
+      ([keys]) => keys === null
     );
     expect(hasTranslateCall).toBe(false);
   });
@@ -177,7 +173,7 @@ describe('v1.1.2+v1.1.4: 白名單自動翻譯', () => {
     await new Promise(r => setTimeout(r, 1500));
 
     const hasTranslateCall = env.chrome.storage.sync.get.mock.calls.some(
-      ([keys]) => keys === 'skipTraditionalChinesePage'
+      ([keys]) => keys === null
     );
     expect(hasTranslateCall).toBe(false);
   });

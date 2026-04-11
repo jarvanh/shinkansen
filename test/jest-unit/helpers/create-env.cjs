@@ -21,9 +21,21 @@ const { JSDOM } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 
-// 只讀一次 content.js 原始碼，所有 test 共用（不會被修改）
-const CONTENT_JS_PATH = path.resolve(__dirname, '../../../shinkansen/content.js');
-const contentCode = fs.readFileSync(CONTENT_JS_PATH, 'utf-8');
+// v1.1.9: content script 拆分為 7 個檔案，按 manifest.json 的 js 陣列順序依序載入。
+// 所有檔案共用同一個 window（jsdom），透過 window.__SK 命名空間互動。
+const SHINKANSEN_DIR = path.resolve(__dirname, '../../../shinkansen');
+const CONTENT_SCRIPT_FILES = [
+  'content-ns.js',
+  'content-toast.js',
+  'content-detect.js',
+  'content-serialize.js',
+  'content-inject.js',
+  'content-spa.js',
+  'content.js',
+];
+const contentScriptCodes = CONTENT_SCRIPT_FILES.map(f =>
+  fs.readFileSync(path.join(SHINKANSEN_DIR, f), 'utf-8')
+);
 
 /**
  * 建立乾淨的 jsdom 環境並載入 content.js。
@@ -65,10 +77,14 @@ function createEnv(options = {}) {
   };
   win.chrome = chromeMock;
 
-  // ── 載入 content.js ─────────────────────────────────────
-  // content.js 是 IIFE，eval 後所有內部函式都在閉包裡，
-  // 外部只能透過 window.__shinkansen API 互動。
-  win.eval(contentCode);
+  // ── 載入 content script 檔案群 ─────────────────────────
+  // v1.1.9: 按 manifest.json 的 js 陣列順序依序 eval，模擬 Chrome 載入行為。
+  // 第一個檔案 (content-ns.js) 建立 window.__SK 命名空間，
+  // 後續檔案透過 (function(SK) { ... })(window.__SK) 存取共用資源。
+  // 最後一個檔案 (content.js) 掛載 window.__shinkansen Debug API。
+  for (const code of contentScriptCodes) {
+    win.eval(code);
+  }
 
   return {
     dom,
@@ -123,4 +139,12 @@ async function waitForCondition(conditionFn, { timeout = 3000, interval = 50 } =
   return false;
 }
 
-module.exports = { createEnv, waitForCondition };
+module.exports = {
+  createEnv,
+  waitForCondition,
+  // v1.1.9: 給自建 env 的測試用 — 讓它們也能載入完整 7 個 content script 檔案,
+  // 不用自己硬編檔案清單（順序若與 manifest 不一致會炸）。
+  SHINKANSEN_DIR,
+  CONTENT_SCRIPT_FILES,
+  contentScriptCodes,
+};
