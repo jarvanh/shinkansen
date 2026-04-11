@@ -18,21 +18,8 @@
 
 ## 條目
 
-### v1.0.7 — 2026-04-10 — Google Docs 偵測導向 mobilebasic
-- **症狀**：在 Google Docs 編輯頁面按翻譯，應開新分頁到 `/mobilebasic` 並自動翻譯
-- **來源 URL**：`https://docs.google.com/document/d/*/edit`（任何 Google Docs 文件）
-- **修在**：`shinkansen/content.js` 的 `isGoogleDocsEditorPage()` + `translatePage()` 開頭的偵測區塊；`shinkansen/background.js` 的 `OPEN_GDOC_MOBILE` handler
-- **為什麼還不能寫測試**：
-    此功能依賴 `chrome.tabs.create()` 開新分頁 + 監聽 `tabs.onUpdated`，
-    是跨分頁的整合流程，不是單一頁面內的段落偵測/注入問題。
-    需要 Playwright 層級的 E2E 測試（用 `browser.newPage()` 模擬新分頁），
-    目前 regression suite 的 fixture 機制只測單頁注入，不覆蓋跨分頁場景。
-    此外 mobilebasic 頁面需要 Google 帳號登入才能存取私人文件，
-    CI 環境下無法重現。
-- **建議 spec 位置**：`test/e2e/gdoc-redirect.spec.js`（未來建立 e2e 資料夾時）
-- **建議測試方向**：
-    1. 單元測試：mock `location` 測 `isGoogleDocsEditorPage()` 和 `getGoogleDocsMobileBasicUrl()` 的 URL 解析邏輯
-    2. E2E 測試：用公開的 Google Docs 文件 URL 驗證導向行為
+### ~~v1.0.7~~ — 已補 URL 解析測試 → `test/regression/pure-gdoc-url.spec.js`
+（注：跨分頁導向流程 `chrome.tabs.create()` + `tabs.onUpdated` 未涵蓋，需未來 E2E 測試）
 
 ### v1.0.11 — 2026-04-10 — SPA 導航後 Option+S 誤判為「已還原原文」
 - **症狀**：在 Medium 翻譯完成後，點擊文章內的站內連結跳到新頁面，按 Option+S 會顯示「已還原原文」而不是翻譯新頁面。`STATE.translated` 沒有被重置。
@@ -50,25 +37,8 @@
     1. 在 fixture 頁面用 `<script>` 在 main world 快取 pushState，然後呼叫快取的版本導航
     2. 驗證 500ms 後 collectParagraphs 拿到的是新頁面的內容而非舊頁面殘留
 
-### v1.0.13+v1.0.14 — 2026-04-10 — 無限捲動網站翻譯消失（雙層修復）
-- **症狀**：在 Engadget 翻譯完成後，使用者往下捲動，已翻譯的中文內容會消失變回英文。捲回頂部後原本翻好的段落也恢復成英文。
-- **來源 URL**：`https://www.engadget.com/computing/laptops/asus-zenbook-a16-review-a-surprisingly-light-and-powerful-16-inch-ultraportable-140000914.html`（任何 Engadget 文章，往下捲到出現其他文章的區域）
-- **修在**：`shinkansen/content.js`
-- **根因（雙層）**：
-    1. v1.0.13 修的層：Engadget 在捲動時用 `history.replaceState` 更新網址列，SPA URL 輪詢誤判為頁面導航呼叫 `resetForSpaNavigation()` 清空狀態
-    2. v1.0.14 修的層：即使 SPA 狀態不被重設，Engadget 的框架仍會在捲動時用 innerHTML 把已翻譯節點的內容覆蓋回英文（元素本身不移除，`data-shinkansen-translated` 屬性留存），MutationObserver 的 addedNodes/removedNodes 偵測看不出問題
-- **v1.0.14 修法**：新增 `STATE.translatedHTML` Map 快取譯文，spaObserver mutation 回調偵測到已翻譯節點內的 childList 變動時排程 `runContentGuard()` 重新套用
-- **為什麼還不能寫測試**：
-    觸發條件需要：(1) 框架在捲動時覆寫 innerHTML，程式性 `scrollTo` 無法觸發
-    Engadget 的 IntersectionObserver 回調、(2) replaceState URL 變化也只在真實捲動時發生。
-    Playwright fixture 可以模擬「覆寫 innerHTML」行為，但無法模擬「捲動觸發覆寫」的完整流程。
-    內容守衛的核心邏輯（偵測 innerHTML 被改 → 重新套用）可以在 fixture 中測試。
-- **建議 spec 位置**：`test/regression/guard-content-overwrite.spec.js`
-- **建議測試方向**：
-    1. 在 fixture 頁面翻譯一段文字（mock 翻譯結果注入）
-    2. 用 JS 模擬框架覆寫：`el.innerHTML = originalEnglishHTML`
-    3. 等待 500ms（content guard 排程延遲）
-    4. 驗證元素內容已恢復成中文譯文
+### ~~v1.0.13+v1.0.14~~ — 已補 Content Guard 核心邏輯測試 → `test/regression/guard-content-overwrite.spec.js`
+（注：「捲動觸發覆寫」的完整 Engadget IntersectionObserver 流程未涵蓋，但 guard 的核心邏輯——快取比對 + innerHTML 修復——已鎖死）
 
 ### v1.0.18→v1.0.19 — 2026-04-10 — Content Guard 與 rescan 互相觸發迴圈 + 冷卻過度封鎖新內容
 - **症狀**：在 Twitter 翻譯後捲動頁面，Toast 在「已恢復N段被覆寫的翻譯」和「已翻譯N段新內容」之間無限跳動，即使停止捲動也不停止
@@ -88,22 +58,8 @@
 
 ### ~~v1.0.16~~ — 已補測試 → `test/regression/detect-nav-anchor-threshold.spec.js`
 
-### v1.0.20 — 2026-04-10 — Content Guard 架構簡化 + Facebook 虛擬捲動修復
-- **症狀**：Facebook 社團翻譯後上下捲動，已翻譯的貼文回復成英文不被修復（v1.0.14–v1.0.19 逐層疊加的 mutation 觸發 guard + cooldown 機制過於複雜且有時間缺口）
-- **來源 URL**：`https://www.facebook.com/groups/360308324312508`（任何 Facebook 社團或動態消息）
-- **修在**：`shinkansen/content.js` — 刪除 mutation 觸發路徑 A + cooldown 機制，改為每秒週期性掃描 + 斷開元素不刪除快取
-- **根因（雙層）**：
-    1. mutation 觸發的 guard 自身就是迴圈根源（guard 寫 DOM → mutation → 觸發 guard + rescan → 迴圈），cooldown 是壓制迴圈的 workaround，但造成覆寫時間缺口
-    2. `runContentGuard()` 在元素暫時斷開 DOM 時立刻刪除快取，Facebook 重新接回元素時無法還原
-- **為什麼還不能寫測試**：
-    可以模擬「翻譯後延遲覆寫 innerHTML」測試週期性掃描是否自動修復，
-    但需等待 1–2 秒讓 interval 生效，測試執行時間較長。
-- **建議 spec 位置**：`test/regression/guard-periodic-sweep.spec.js`
-- **建議測試方向**：
-    1. 在 fixture 頁面翻譯一段文字（mock 翻譯結果注入）
-    2. 等翻譯完成後用 JS 覆寫 innerHTML 回原文
-    3. 等待 1.5 秒，驗證週期性掃描已自動修復內容回中文
-    4. 模擬元素暫時 `el.remove()` 再 `parent.appendChild(el)` 並覆寫 innerHTML，驗證快取未被刪除、重新接回後仍可還原
+### ~~v1.0.20~~ — guard 核心邏輯已由 `guard-content-overwrite.spec.js` 涵蓋
+（注：Facebook 虛擬捲動的「元素暫時斷開 DOM 再接回」場景未涵蓋——需要模擬 `el.remove()` + `parent.appendChild(el)` + 覆寫 innerHTML，驗證快取未被刪除。可在未來擴充 guard-content-overwrite.spec.js 加第二個 test case）
 
 ### v1.0.23 — 2026-04-10 — SPA 續翻模式（Gmail 點進/退出 email 自動翻譯）
 - **症狀**：在 Gmail inbox 翻譯完成後，點進一封 email 不會自動翻譯信件內容；退出 email 回到 inbox 時，原本翻好的主旨/預覽恢復成英文
