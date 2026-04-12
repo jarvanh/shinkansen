@@ -109,6 +109,15 @@
         if (n === runEnd) break;
         n = n.nextSibling;
       }
+      const trimmed = text.trim();
+      // v1.2.0: 已翻譯成繁中的 fragment 不再重複收集
+      // （fragment 注入後父元素不帶 data-shinkansen-translated，
+      //   若不在此過濾，SPA observer rescan 會無限迴圈）
+      if (trimmed.length >= 2 && SK.isTraditionalChinese(trimmed)) {
+        runStart = null;
+        runEnd = null;
+        return;
+      }
       if (/[A-Za-zÀ-ÿ\u0400-\u04FF\u3400-\u9fff0-9]/.test(text)) {
         fragments.push({
           kind: 'fragment',
