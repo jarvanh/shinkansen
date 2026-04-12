@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shinkansen — 隱私權政策</title>
+  <style>
+    :root {
+      --bg: #fdfdfd;
+      --fg: #1a1a1a;
+      --muted: #555;
+      --accent: #0055aa;
+      --border: #e0e0e0;
+      --section-bg: #f7f8fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a;
+        --fg: #e8e8e8;
+        --muted: #aaa;
+        --accent: #6ab0ff;
+        --border: #333;
+        --section-bg: #222;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.75;
+      padding: 2rem 1.5rem;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 0.3rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+    h2 {
+      font-size: 1.15rem;
+      margin-top: 2rem;
+      margin-bottom: 0.6rem;
+      padding-bottom: 0.3rem;
+      border-bottom: 1px solid var(--border);
+    }
+    p { margin-bottom: 0.9rem; }
+    section {
+      background: var(--section-bg);
+      border-radius: 8px;
+      padding: 1.2rem 1.4rem;
+      margin-bottom: 1.2rem;
+    }
+    section h3 {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .highlight {
+      background: #e8f4e8;
+      border-left: 3px solid #2d8a2d;
+      padding: 0.8rem 1rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      .highlight { background: #1a2e1a; border-left-color: #4caf50; }
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Shinkansen 隱私權政策</h1>
+  <p class="subtitle">最後更新：2026 年 4 月 10 日</p>
+
+  <div class="highlight">
+    <strong>簡短版：</strong>Shinkansen 不會收集、儲存或傳送任何個人資料到我們的伺服器。您的所有設定與資料都只存在您自己的瀏覽器中。
+  </div>
+
+  <h2>1. 關於 Shinkansen</h2>
+  <p>Shinkansen 是一款 Chrome 擴充功能，透過 Google Gemini API 將外語網頁翻譯成台灣繁體中文。本擴充功能需要使用者自行提供 Google Gemini API Key 才能運作。</p>
+
+  <h2>2. 我們收集哪些資料</h2>
+
+  <div class="highlight">
+    <strong>我們不收集任何資料。</strong>Shinkansen 沒有自己的伺服器，不會將您的任何資訊傳送給開發者。
+  </div>
+
+  <h2>3. 本地儲存的資料</h2>
+  <p>以下資料儲存在您的瀏覽器本機，開發者無法存取：</p>
+
+  <section>
+    <h3>API Key</h3>
+    <p>您提供的 Google Gemini API Key 儲存在瀏覽器的 <code>chrome.storage.local</code> 中，僅用於向 Google Gemini API 發送翻譯請求。此金鑰不會傳送到 Google 以外的任何地方。</p>
+  </section>
+
+  <section>
+    <h3>使用者偏好設定</h3>
+    <p>翻譯相關設定（模型選擇、溫度參數、自動翻譯網站名單、術語表等）儲存在 <code>chrome.storage.sync</code>，僅透過 Chrome 的內建同步機制在您自己的裝置之間同步。</p>
+  </section>
+
+  <section>
+    <h3>翻譯快取</h3>
+    <p>已翻譯過的文字段落會快取在 <code>chrome.storage.local</code>，以避免重複呼叫 API。快取在擴充功能版本更新時自動清除。</p>
+  </section>
+
+  <section>
+    <h3>用量統計</h3>
+    <p>API 呼叫次數與 token 用量記錄在瀏覽器本機的 IndexedDB 中，用於在設定頁面顯示用量圖表。這些資料不會離開您的瀏覽器。</p>
+  </section>
+
+  <h2>4. 傳送到第三方的資料</h2>
+  <p>Shinkansen 唯一的對外網路連線是向 <strong>Google Gemini API</strong>（<code>generativelanguage.googleapis.com</code>）發送翻譯請求。每次翻譯時，以下資訊會傳送至 Google：</p>
+  <p>您的 Gemini API Key（作為身份驗證）、待翻譯的網頁文字段落，以及翻譯系統提示詞。</p>
+  <p>這些資料的處理受 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google 隱私權政策</a>與 <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Gemini API 服務條款</a>規範。建議您在使用前閱讀相關條款。</p>
+
+  <h2>5. 我們不做的事</h2>
+  <p>Shinkansen 不會追蹤您的瀏覽紀錄或瀏覽行為、不會收集個人識別資訊、不會將資料傳送到開發者或任何第三方伺服器（Google Gemini API 除外）、不會顯示廣告或使用分析追蹤工具、不會販售或分享您的任何資料。</p>
+
+  <h2>6. 權限說明</h2>
+  <p>本擴充功能要求以下 Chrome 權限：</p>
+
+  <section>
+    <h3><code>&lt;all_urls&gt;</code>（存取所有網站）</h3>
+    <p>翻譯功能需要讀取並修改任意網頁的文字內容，因此需要此權限。擴充功能只在您主動觸發翻譯（或開啟自動翻譯的網域）時才會介入頁面。</p>
+  </section>
+
+  <section>
+    <h3><code>storage</code>（本地儲存）</h3>
+    <p>用於儲存設定、API Key 與翻譯快取。</p>
+  </section>
+
+  <section>
+    <h3><code>activeTab</code> 與 <code>scripting</code></h3>
+    <p>用於在使用者啟動翻譯時，將翻譯腳本注入當前頁面。</p>
+  </section>
+
+  <h2>7. 資料安全</h2>
+  <p>您的 API Key 存放在 Chrome 的本地儲存區，受瀏覽器沙盒保護。我們建議您不要將 API Key 分享給他人，並在 Google AI Studio 中為您的 Key 設定適當的用量限制。</p>
+
+  <h2>8. 兒童隱私</h2>
+  <p>Shinkansen 並非針對 13 歲以下兒童設計。我們不會刻意收集兒童的個人資訊。</p>
+
+  <h2>9. 政策變更</h2>
+  <p>若本隱私權政策有重大變更，將隨擴充功能更新一併公告。您可以在本頁面查看最新版本。</p>
+
+  <h2>10. 聯絡方式</h2>
+  <p>如果您對本隱私權政策有任何疑問，歡迎透過以下方式聯絡：</p>
+  <p>Twitter (X)：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
+
+  <footer>
+    <p>&copy; 2026 Shinkansen. 本隱私權政策適用於 Shinkansen Chrome 擴充功能。</p>
+  </footer>
+</body>
+</html>
