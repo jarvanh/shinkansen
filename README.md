@@ -4,6 +4,8 @@
 
 名稱「新幹線」象徵快速、平穩、流暢的閱讀體驗。
 
+> **[下載最新版本](https://github.com/jimmysu0309/shinkansen/releases/latest)** · 安裝教學與產品介紹見 [官方網頁](https://jimmysu0309.github.io/shinkansen/)
+
 ## 為什麼做這個專案
 
 既有的沉浸式翻譯工具需要將個人瀏覽內容傳送到第三方伺服器處理，隱私權難以掌控。Shinkansen 的設計從一開始就以隱私為核心：所有設定與資料都只存在你自己的電腦上；除了你自備的 Gemini API Key 直接連線 Google 之外，不會將任何資料外傳給其他第三方；原始碼完全公開，任何人都可以檢視它的安全性。

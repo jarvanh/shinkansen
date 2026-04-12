@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shinkansen — 快速、流暢的 Chrome 網頁翻譯擴充功能</title>
+  <meta name="description" content="使用 Google Gemini 將外語網頁翻譯成台灣繁體中文，原地替換文字，保留頁面原始排版。你的瀏覽資料不經過第三方伺服器。">
+  <link rel="icon" type="image/png" href="icon-128.png">
+  <style>
+    /* Reset & Base */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      color: #1a1a1a;
+      background: #fff;
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Layout */
+    .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* Hero */
+    .hero {
+      padding: 80px 0 48px;
+      text-align: center;
+    }
+    .hero-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 20px;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .hero .tagline {
+      font-size: 1.15rem;
+      color: #555;
+      max-width: 520px;
+      margin: 0 auto 32px;
+    }
+    .btn-download {
+      display: inline-block;
+      background: #2563eb;
+      color: #fff;
+      font-size: 1.05rem;
+      font-weight: 600;
+      padding: 14px 36px;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn-download:hover { background: #1d4ed8; }
+    .hero-sub {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: #888;
+    }
+    .hero-sub a { color: #2563eb; text-decoration: none; }
+    .hero-sub a:hover { text-decoration: underline; }
+
+    /* Before / After comparison */
+    .comparison {
+      padding: 16px 0 48px;
+    }
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .compare-item img {
+      width: 100%;
+      border-radius: 10px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+    }
+    .compare-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .compare-caption {
+      margin-top: 16px;
+      font-size: 0.85rem;
+      color: #888;
+      text-align: center;
+    }
+    .comparison .container { max-width: 960px; }
+    @media (max-width: 600px) {
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Sections */
+    section { padding: 48px 0; }
+    section h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    /* Steps */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      background: #eff6ff;
+      color: #2563eb;
+      font-weight: 700;
+      font-size: 1rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step-body h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .step-body p {
+      font-size: 0.92rem;
+      color: #555;
+    }
+    .step-body code {
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+
+    /* Features */
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    .feature h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .feature p {
+      font-size: 0.88rem;
+      color: #555;
+    }
+
+    /* Privacy Hero — 專案核心動機 */
+    .privacy-hero {
+      background: #f0f5fa;
+      border-radius: 16px;
+      padding: 36px 36px;
+      margin: 8px 0 48px;
+      text-align: left;
+    }
+    .privacy-hero h2 {
+      font-size: 1.35rem;
+      margin-bottom: 12px;
+      text-align: left;
+    }
+    .privacy-hero > p {
+      font-size: 0.95rem;
+      color: #555;
+      margin-bottom: 8px;
+      line-height: 1.7;
+    }
+    .privacy-points {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .privacy-point {
+      font-size: 0.95rem;
+      color: #555;
+      padding-left: 16px;
+      border-left: 3px solid #2563eb;
+    }
+    .privacy-point strong { color: #1a1a1a; }
+
+    /* Footer */
+    footer {
+      padding: 48px 0 32px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: #aaa;
+      border-top: 1px solid #f0f0f0;
+      margin-top: 48px;
+    }
+    footer a { color: #888; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .hero { padding: 56px 0 36px; }
+      .hero h1 { font-size: 1.8rem; }
+      .features { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="container">
+      <img src="icon-128.png" alt="Shinkansen" class="hero-icon">
+      <h1>Shinkansen</h1>
+      <p class="tagline">你的瀏覽內容不該經過別人的伺服器。Shinkansen 用你自己的 Gemini API Key 直連 Google 翻譯網頁，所有資料只留在你的電腦上。</p>
+      <a href="https://github.com/jimmysu0309/shinkansen/releases/latest" class="btn-download">下載最新版本</a>
+      <p class="hero-sub">v1.1.9 · 開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a></p>
+    </div>
+  </div>
+
+  <!-- Privacy — 專案核心動機，放在最顯眼的位置 -->
+  <div class="container">
+    <div class="privacy-hero">
+      <h2>為什麼做 Shinkansen？</h2>
+      <p>既有的網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——你讀了什麼文章、看了什麼信件，全部被看光。</p>
+      <p>Shinkansen 從第一行程式碼就以隱私為核心設計：</p>
+      <div class="privacy-points">
+        <div class="privacy-point">
+          <strong>資料不外傳</strong>——翻譯請求直連 Google Gemini，不經過任何第三方伺服器
+        </div>
+        <div class="privacy-point">
+          <strong>設定留在本地</strong>——所有資料只存在你自己的電腦上
+        </div>
+        <div class="privacy-point">
+          <strong>原始碼完全公開</strong>——任何人都可以檢視程式碼，確認沒有後門
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Before / After comparison -->
+  <div class="comparison">
+    <div class="container">
+      <div class="compare-grid">
+        <div class="compare-item">
+          <p class="compare-label">翻譯前</p>
+          <img src="screenshot-before.png" alt="翻譯前 — Wikipedia 英文原文">
+        </div>
+        <div class="compare-item">
+          <p class="compare-label">翻譯後</p>
+          <img src="screenshot-after.png" alt="翻譯後 — Shinkansen 將內容翻譯成繁體中文，排版完整保留">
+        </div>
+      </div>
+      <p class="compare-caption">排版、連結、圖片全部保留，看起來就像原生中文頁面</p>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <section>
+    <div class="container">
+      <h2>功能特色</h2>
+      <div class="features">
+        <div class="feature">
+          <h3>保留網頁排版</h3>
+          <p>原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生中文頁面。</p>
+        </div>
+        <div class="feature">
+          <h3>漸進式翻譯</h3>
+          <p>分批翻譯、逐段注入，頁面逐步變成中文，進度一目瞭然。</p>
+        </div>
+        <div class="feature">
+          <h3>固定術語表</h3>
+          <p>自訂翻譯對照表，確保專有名詞一律使用你指定的譯名。</p>
+        </div>
+        <div class="feature">
+          <h3>翻譯快取</h3>
+          <p>翻過的段落自動快取，同一頁再開不花錢。版本更新自動清舊快取。</p>
+        </div>
+        <div class="feature">
+          <h3>一鍵還原</h3>
+          <p>隨時切回原文對照，<code>Option + S</code> 來回切換。</p>
+        </div>
+        <div class="feature">
+          <h3>費用透明</h3>
+          <p>每次翻譯即時顯示花費多少錢，設定頁可回查過去每一筆翻譯紀錄的 token 用量與費用，支援圖表與 CSV 匯出。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install Steps -->
+  <section>
+    <div class="container">
+      <h2>三步驟安裝</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>下載並解壓縮</h3>
+            <p>從上方按鈕下載 <code>.zip</code> 檔案，解壓縮到任意位置。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>載入擴充功能</h3>
+            <p>開啟 Chrome，前往 <code>chrome://extensions/</code>，打開右上角「開發人員模式」，點「載入未封裝項目」，選擇解壓縮後的 <code>shinkansen</code> 資料夾。</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>設定 API Key</h3>
+            <p>點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" style="color:#2563eb;">Gemini API Key</a>。完成！按 <code>Option + S</code> 開始翻譯。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>Shinkansen 採用 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/LICENSE">Elastic License 2.0</a> 授權 · <a href="https://github.com/jimmysu0309/shinkansen">原始碼</a></p>
+    </div>
+  </footer>
+
+</body>
+</html>
