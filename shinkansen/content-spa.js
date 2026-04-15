@@ -114,9 +114,13 @@
 
   // ─── MutationObserver（動態段落偵測） ─────────────────
 
+  // v1.2.1: 記錄在此 SPA session 內已翻譯過的文字，避免 widget 週期性重設 DOM 造成無限循環
+  const spaObserverSeenTexts = new Set();
+
   SK.startSpaObserver = function startSpaObserver() {
     if (spaObserver) return;
     spaObserverRescanCount = 0;
+    spaObserverSeenTexts.clear();
     spaObserver = new MutationObserver(onSpaObserverMutations);
     spaObserver.observe(document.body, {
       childList: true,
@@ -142,6 +146,7 @@
       spaObserver = null;
     }
     spaObserverRescanCount = 0;
+    spaObserverSeenTexts.clear();
   }
   SK.stopSpaObserver = stopSpaObserver;
 
@@ -193,6 +198,21 @@
     spaObserverDebounceTimer = setTimeout(spaObserverRescan, SK.SPA_OBSERVER_DEBOUNCE_MS);
   }
 
+  /** 從 unit 提取原始文字（用於 seen-text 去重） */
+  function unitText(unit) {
+    if (unit.kind === 'fragment') {
+      let t = '';
+      let n = unit.startNode;
+      while (n) {
+        t += n.textContent || '';
+        if (n === unit.endNode) break;
+        n = n.nextSibling;
+      }
+      return t.trim();
+    }
+    return (unit.el?.innerText || '').trim();
+  }
+
   async function spaObserverRescan() {
     spaObserverDebounceTimer = null;
     if (!STATE.translated) return;
@@ -204,6 +224,15 @@
 
     let newUnits = SK.collectParagraphs();
     if (newUnits.length === 0) return;
+
+    // v1.2.1: 過濾掉此 SPA session 內已翻譯過的文字，防止頁面 widget 週期性重設 DOM 造成無限迴圈
+    newUnits = newUnits.filter(unit => !spaObserverSeenTexts.has(unitText(unit)));
+    if (newUnits.length === 0) {
+      SK.sendLog('info', 'spa', 'SPA observer rescan: all units already seen in this session, skipping');
+      return;
+    }
+    // 在翻譯前先記錄，防止注入自身觸發的 mutation 再次進入迴圈
+    newUnits.forEach(unit => spaObserverSeenTexts.add(unitText(unit)));
 
     if (newUnits.length > SK.SPA_OBSERVER_MAX_UNITS) {
       SK.sendLog('warn', 'spa', 'SPA observer rescan capped', { found: newUnits.length, cap: SK.SPA_OBSERVER_MAX_UNITS });

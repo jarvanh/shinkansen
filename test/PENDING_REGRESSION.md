@@ -54,6 +54,30 @@ isDomainWhitelisted + 首次載入自動翻譯的整合行為）
 到 body 時簡體字污染導致偵測失敗、`<main>` fallback 路徑。使用 create-env 模式
 eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 
+### v1.2.1 — 2026-04-15 — 動態 widget 網站 SPA observer 無限 rescan
+- **症狀**：Stratechery 頁面翻譯完成後，toast「已翻譯 4 段新內容」每秒持續彈出，log 顯示 `SPA observer rescan #N` 無限遞增（N 超過 100+）
+- **來源 URL**：https://stratechery.com/2026/amazon-buys-globalstar-delta-to-add-leo-the-apple-angle/
+- **修在**：`shinkansen/content-spa.js` 的 `spaObserverRescan()`，新增 `spaObserverSeenTexts` Set 過濾已翻文字
+- **為什麼還不能寫 Playwright 測試**：
+    觸發條件是「頁面 JS 每秒重設特定 DOM 元素（推薦 widget / Podcast 卡片）」，需要在 fixture 中模擬一個 `setInterval` 每秒 reset 某元素的 innerHTML，而這個 reset 要發生在 content script 注入完成後、MutationObserver 還活著的時間點。時序控制複雜，且需要 Playwright CDP 橋接 isolated world 的 content script 狀態，目前 regression 測試框架尚未支援此類時序感知測試。
+- **建議 spec 位置**：`test/regression/spa-observer-widget-loop.spec.js`
+- **建議 fixture 結構**（已知觸發條件）：
+    ```html
+    <article>
+      <p>This is the main content to translate.</p>
+    </article>
+    <div id="widget">
+      <p>Widget title A</p>
+    </div>
+    <script>
+      // 每秒重設 widget 內容（模擬 Stratechery 推薦 widget）
+      setInterval(() => {
+        document.getElementById('widget').innerHTML = '<p>Widget title A</p>';
+      }, 1000);
+    </script>
+    ```
+    測試斷言：翻譯後等待 5 秒，`spaObserverRescanCount` 應 ≤ 2（首次 rescan 翻譯 widget，後續全部 skip），toast 不應多次出現同樣文字
+
 <!--
 條目格式範例(實際加入時把上面那行 placeholder 刪掉):
 
