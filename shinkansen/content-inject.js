@@ -77,7 +77,23 @@
         return;
       }
       const main = SK.findLongestTextNode(textNodes);
-      for (const t of textNodes) if (t !== main) t.nodeValue = '';
+      for (const t of textNodes) {
+        if (t === main) continue;
+        t.nodeValue = '';
+        // v1.2.2: 清空文字後，若父 inline 元素（如 <a>）因此變成空殼，向上逐層移除，
+        // 避免留下看不見的空連結殼（Gmail Team Picks 連結消失 bug 的根因）
+        let p = t.parentNode;
+        while (p && p !== target) {
+          if (p.textContent.trim() === '' && !SK.containsMedia(p)) {
+            const gp = p.parentNode;
+            if (!gp) break;
+            gp.removeChild(p);
+            p = gp;
+          } else {
+            break;
+          }
+        }
+      }
       const parent = main.parentNode;
       if (parent) {
         parent.insertBefore(node, main);
@@ -141,6 +157,68 @@
 
   // ─── 主注入函式 ───────────────────────────────────────
 
+  /**
+   * ok=false fallback: LLM 丟掉佔位符時，嘗試從原始 DOM 找回 <a> slot 的文字，
+   * 在譯文中重新定位並包回 <a> 標籤，還原連結結構。
+   * 僅處理 <a> slot；slot 文字必須完整出現在譯文中才做，否則 return null。
+   *
+   * 範例（Dhruv Team Picks）：
+   *   原文: "Dhruv's been having fun with this little ⟦0⟧Kodak Charmera⟦/0⟧ keychain."
+   *   LLM 回: "Dhruv 最近都在玩這個超可愛的 Kodak Charmera 鑰匙圈。"  (slot 丟掉)
+   *   → 找到 "Kodak Charmera" → frag: TEXT + A("Kodak Charmera") + TEXT
+   */
+  function tryRecoverLinkSlots(el, text, slots) {
+    // 找出所有 <a> slot 的 index
+    const linkSlotIdxs = [];
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      if (s && s.nodeType === Node.ELEMENT_NODE && s.tagName === 'A') {
+        linkSlotIdxs.push(i);
+      }
+    }
+    if (linkSlotIdxs.length === 0) return null;
+
+    // 從原始 DOM 取得每個 <a> 的原始文字（按 DOM 順序）
+    const originalAnchors = Array.from(el.querySelectorAll('a'));
+
+    let remaining = text;
+    const parts = [];
+    let anyFound = false;
+    let slotPtr = 0;
+
+    for (const anchor of originalAnchors) {
+      const linkText = (anchor.textContent || '').trim();
+      if (linkText.length < 2) continue; // 太短容易誤判
+      const pos = remaining.indexOf(linkText);
+      if (pos === -1) continue; // 找不到則跳過，不強行猜位置
+
+      const matchIdx = linkSlotIdxs[slotPtr];
+      if (matchIdx === undefined) continue;
+
+      if (pos > 0) parts.push({ type: 'text', content: remaining.slice(0, pos) });
+      parts.push({ type: 'link', content: linkText, slotIdx: matchIdx });
+      remaining = remaining.slice(pos + linkText.length);
+      anyFound = true;
+      slotPtr++;
+    }
+
+    if (!anyFound) return null;
+    if (remaining) parts.push({ type: 'text', content: remaining });
+
+    // 建立 DocumentFragment
+    const frag = document.createDocumentFragment();
+    for (const part of parts) {
+      if (part.type === 'text') {
+        if (part.content) frag.appendChild(document.createTextNode(part.content));
+      } else {
+        const shell = slots[part.slotIdx].cloneNode(false);
+        shell.appendChild(document.createTextNode(part.content));
+        frag.appendChild(shell);
+      }
+    }
+    return frag;
+  }
+
   SK.injectTranslation = function injectTranslation(unit, translation, slots) {
     if (!translation) return;
     if (unit.kind === 'fragment') {
@@ -158,6 +236,14 @@
         return;
       }
       const cleaned = SK.stripStrayPlaceholderMarkers(translation);
+      // v1.2.3: ok=false 時，嘗試從原始 DOM 找回 <a> 連結文字並重建連結結構
+      const recovered = tryRecoverLinkSlots(el, cleaned, slots);
+      if (recovered) {
+        replaceNodeInPlace(el, recovered);
+        el.setAttribute('data-shinkansen-translated', '1');
+        STATE.translatedHTML.set(el, el.innerHTML);
+        return;
+      }
       plainTextFallback(el, cleaned);
       el.setAttribute('data-shinkansen-translated', '1');
       STATE.translatedHTML.set(el, el.innerHTML);

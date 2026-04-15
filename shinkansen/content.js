@@ -159,9 +159,9 @@
         return SK.serializeFragmentWithPlaceholders(unit);
       }
       const el = unit.el;
-      if (SK.containsMedia(el)) {
-        return { text: el.innerText.trim(), slots: [] };
-      }
+      // v1.2.4: 移除 containsMedia 強制 slots:[] 的早返回。
+      // 含媒體元素（如 <img> emoji + <a> 連結）的段落應正常序列化 slots，
+      // 讓 LLM 能保留 <a> 佔位符，injection path B 的 fragment 注入已支援此情境。
       if (!SK.hasPreservableInline(el)) {
         return { text: el.innerText.trim(), slots: [] };
       }
