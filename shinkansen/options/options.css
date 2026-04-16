@@ -547,4 +547,17 @@ a:hover { text-decoration: underline; }
   font-size: 12px;
   padding: 4px 12px;
 }
+
+.badge-beta {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #ff9500;
+  color: #fff;
+  vertical-align: middle;
+  margin-left: 6px;
+  letter-spacing: 0.04em;
+}
 .glossary-delete-domain-btn:hover { background: #fff5f5; }

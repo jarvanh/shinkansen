@@ -53,10 +53,12 @@
       // 暴露 YT 字幕翻譯的內部狀態，供除錯比對用
       const YT = SK.YT;
       if (!YT) { respond({ ok: false, error: 'SK.YT not available' }); return; }
-      const rawNorms = YT.rawSegments.map(s => s.normText);
-      const rawTexts = YT.rawSegments.map(s => s.text);
-      const mapKeys  = Array.from(YT.captionMap.keys());
-      const rawSet   = new Set(rawNorms);
+      const rawNorms    = YT.rawSegments.map(s => s.normText);
+      const rawTexts    = YT.rawSegments.map(s => s.text);
+      const rawStartMs  = YT.rawSegments.map(s => s.startMs);
+      const rawGroupIds = YT.rawSegments.map(s => s.groupId);
+      const mapKeys     = Array.from(YT.captionMap.keys());
+      const rawSet      = new Set(rawNorms);
       const onTheFlyKeys = mapKeys.filter(k => !rawSet.has(k));
       respond({
         ok: true,
@@ -65,10 +67,13 @@
         rawCount:         YT.rawSegments.length,
         rawNormTexts:     rawNorms,
         rawTexts:         rawTexts,
+        rawStartMs:       rawStartMs,
+        rawGroupIds:      rawGroupIds,
         captionMapSize:   YT.captionMap.size,
         captionMapKeys:   mapKeys,
         onTheFlyKeys:     onTheFlyKeys,
         translatedUpToMs: YT.translatedUpToMs,
+        ytConfig:         YT.config,
       });
     } else {
       respond({ ok: false, error: 'unknown action: ' + action });
