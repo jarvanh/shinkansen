@@ -7,6 +7,8 @@
 
 ## v1.3.x
 
+**v1.3.8** — 移除未使用的 `scripting` 權限（Chrome Web Store 審查要求：manifest 不得宣告未實際使用的權限）。
+
 **v1.3.7** — YouTube 設定頁微調：移除「字幕翻譯可以使用比文章翻譯更便宜的模型，例如 Flash Lite」說明文字；移除 temperature 說明文字「字幕翻譯建議保持低 temperature（預設 0.1），讓翻譯結果穩定一致、不偏離原意。」；YouTube 字幕 temperature 預設值由 0.1 改為 1。
 
 **v1.3.6** — 程式碼品質重構（無使用者可見行為改變）：（1）`content.js` `translateUnits` 的 `chrome.runtime.sendMessage` 批次呼叫加 90s `Promise.race` 逾時保護，防止 Gemini API 無回應時翻譯永久卡住；（2）新增 `lib/constants.js` 統一管理批次常數（`DEFAULT_UNITS_PER_BATCH = 12`、`DEFAULT_CHARS_PER_BATCH = 3500`），`lib/gemini.js` 與 `lib/storage.js` 改從此檔 import，消除三處重複定義；（3）`content-ns.js` 對應常數加上說明注解，標明與 `lib/constants.js` 的鏡像關係；（4）`background.js` `computeBilledCostUSD()` 改委派給 `computeCostUSD()`，消除計費費率計算的程式碼重複；（5）`content-spa.js` History API patch 加 `__sk_patched` 旗標防止重複注入，避免 content script 重複執行時形成 pushState 循環呼叫。
