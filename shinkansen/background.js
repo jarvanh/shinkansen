@@ -122,15 +122,12 @@ function computeCostUSD(inputTokens, outputTokens, pricing) {
 /**
  * v0.48: 計算套用 Gemini implicit context cache 折扣後的實付費用。
  * Gemini 對 cache 命中部分只收原價 25%（省 75%），未命中部分與 output 全價。
- * 公式：billed = ((inputTokens - cachedTokens) + cachedTokens × 0.25) × inRate / 1M
- *             + outputTokens × outRate / 1M
+ * 公式：effectiveInput = (inputTokens - cachedTokens) + cachedTokens × 0.25
  */
 function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing) {
-  const inRate = Number(pricing?.inputPerMTok) || 0;
-  const outRate = Number(pricing?.outputPerMTok) || 0;
   const uncached = Math.max(0, inputTokens - cachedTokens);
   const effectiveInput = uncached + cachedTokens * 0.25;
-  return (effectiveInput / 1_000_000) * inRate + (outputTokens / 1_000_000) * outRate;
+  return computeCostUSD(effectiveInput, outputTokens, pricing);
 }
 
 // ─── Extension icon badge(已翻譯紅點提示） ─────────────────

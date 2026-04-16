@@ -3,11 +3,13 @@
 // v0.69: 新增 extractGlossary() 術語表擷取功能。
 
 import { debugLog } from './logger.js';
+import { DEFAULT_UNITS_PER_BATCH, DEFAULT_CHARS_PER_BATCH } from './constants.js';
 
 const DELIMITER = '\n<<<SHINKANSEN_SEP>>>\n';
 // v0.37 起改為「段數 + 字元預算」雙門檻（雙重保險層 — content.js 已先打包過）
-const MAX_UNITS_PER_CHUNK = 12; // v0.91: 與 content.js 同步，從 20 降為 12
-const MAX_CHARS_PER_CHUNK = 3500;
+// 數值與 content-ns.js SK.DEFAULT_UNITS/CHARS_PER_BATCH 一致，統一來源見 lib/constants.js
+const MAX_UNITS_PER_CHUNK = DEFAULT_UNITS_PER_BATCH;
+const MAX_CHARS_PER_CHUNK = DEFAULT_CHARS_PER_BATCH;
 const MAX_BACKOFF_MS = 8000;
 
 /**

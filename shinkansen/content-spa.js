@@ -83,18 +83,23 @@
   }
 
   // ─── History API 攔截 ─────────────────────────────────
+  // 防止 content script 重複執行時（例如 extension reload）產生雙層 patch，
+  // 導致 _origPushState 指向已被 patch 的版本，形成循環呼叫。
 
-  const _origPushState = history.pushState.bind(history);
-  const _origReplaceState = history.replaceState.bind(history);
+  if (!history.pushState.__sk_patched) {
+    const _origPushState = history.pushState.bind(history);
+    const _origReplaceState = history.replaceState.bind(history);
 
-  history.pushState = function (...args) {
-    _origPushState(...args);
-    handleSpaNavigation();
-  };
-  history.replaceState = function (...args) {
-    _origReplaceState(...args);
-    spaLastUrl = location.href;
-  };
+    history.pushState = function (...args) {
+      _origPushState(...args);
+      handleSpaNavigation();
+    };
+    history.replaceState = function (...args) {
+      _origReplaceState(...args);
+      spaLastUrl = location.href;
+    };
+    history.pushState.__sk_patched = true;
+  }
   window.addEventListener('popstate', () => handleSpaNavigation());
   window.addEventListener('hashchange', () => handleSpaNavigation());
 

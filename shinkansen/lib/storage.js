@@ -1,4 +1,5 @@
 // storage.js — 設定讀寫封裝
+import { DEFAULT_UNITS_PER_BATCH, DEFAULT_CHARS_PER_BATCH } from './constants.js';
 
 // v0.83: 預設 system prompt 全面升級——從「翻譯助理」提升為「首席翻譯專家」，
 // 強調台灣語感、排版規範、專有名詞保留策略。同步切換預設模型至 gemini-3-flash-preview。
@@ -129,8 +130,8 @@ export const DEFAULT_SETTINGS = {
   // v1.0.2: 每批段數上限與字元預算，使用者可在設定頁自行調整。
   // 段數上限：避免單批 placeholder slot 過多導致 LLM 對齊失準。
   // 字元預算：作為 token proxy（3500 chars ≈ 1000 英文 tokens），留足 output headroom。
-  maxUnitsPerBatch: 12,
-  maxCharsPerBatch: 3500,
+  maxUnitsPerBatch: DEFAULT_UNITS_PER_BATCH,
+  maxCharsPerBatch: DEFAULT_CHARS_PER_BATCH,
   // v1.0.1: 單頁翻譯段落數上限。超大頁面（如維基百科長條目）超過此上限時截斷。
   // 設為 0 表示不限制。
   maxTranslateUnits: 1000,

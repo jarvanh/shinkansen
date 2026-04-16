@@ -131,6 +131,10 @@
 
   // ─── 並行執行器 ──────────────────────────────────────
 
+  // 每批 API 呼叫逾時門檻：超過此時間視為逾時，以 error 記錄並繼續下一批。
+  // 防止 Gemini API 無回應時整頁翻譯永久卡住。
+  const BATCH_TIMEOUT_MS = 90_000;
+
   async function runWithConcurrency(jobs, maxConcurrent, workerFn) {
     const n = Math.min(maxConcurrent, jobs.length);
     if (n === 0) return;
@@ -243,10 +247,15 @@
       const t0 = Date.now();
       SK.sendLog('info', 'translate', `batch ${batchIdx + 1}/${jobs.length} start`, { units: job.texts.length, chars: job.chars });
       try {
-        const response = await chrome.runtime.sendMessage({
-          type: 'TRANSLATE_BATCH',
-          payload: { texts: job.texts, glossary: glossary || null },
-        });
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({
+            type: 'TRANSLATE_BATCH',
+            payload: { texts: job.texts, glossary: glossary || null },
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`批次逾時（${BATCH_TIMEOUT_MS / 1000}s）`)), BATCH_TIMEOUT_MS)
+          ),
+        ]);
         const elapsed = Date.now() - t0;
         const cacheHit = response?.usage?.cacheHits || 0;
         const apiCalls = job.texts.length - cacheHit;
