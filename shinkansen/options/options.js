@@ -783,9 +783,10 @@ async function loadUsageData() {
   // 折線圖
   if (chartRes?.ok) renderChart(chartRes.data);
 
-  // 明細表格（v1.2.60: 存入 allUsageRecords 供搜尋過濾用）
+  // 明細表格（v1.2.60: 存入 allUsageRecords 供搜尋過濾用；v1.3.2: 同步重建模型篩選選項）
   if (recordsRes?.ok) {
     allUsageRecords = recordsRes.records || [];
+    populateModelFilter();
     applyUsageSearch();
   }
 }
@@ -959,14 +960,33 @@ function updateSummaryFromRecords(records) {
   $('usage-top-model').textContent    = topModel;
 }
 
-// v1.2.60: 搜尋過濾，同時比對標題與 URL
+// v1.3.2: 從 allUsageRecords 動態建立模型篩選下拉選項
+function populateModelFilter() {
+  const sel = $('usage-model-filter');
+  if (!sel) return;
+  const currentVal = sel.value;
+  const models = [...new Set(allUsageRecords.map(r => r.model || '').filter(Boolean))].sort();
+  // 重建選項（保留「全部模型」作為第一個選項）
+  sel.innerHTML = '<option value="">全部模型</option>' +
+    models.map(m => {
+      const short = m.replace('gemini-', '').replace('-preview', '');
+      return `<option value="${m}"${m === currentVal ? ' selected' : ''}>${short}</option>`;
+    }).join('');
+}
+
+// v1.2.60: 搜尋過濾，同時比對標題與 URL；v1.3.2: 加入模型篩選
 function applyUsageSearch() {
   const q = ($('usage-search')?.value || '').trim().toLowerCase();
-  const filtered = q
-    ? allUsageRecords.filter(r =>
-        (r.title || '').toLowerCase().includes(q) ||
-        (r.url || '').toLowerCase().includes(q))
-    : allUsageRecords;
+  const modelFilter = ($('usage-model-filter')?.value || '');
+  let filtered = allUsageRecords;
+  if (q) {
+    filtered = filtered.filter(r =>
+      (r.title || '').toLowerCase().includes(q) ||
+      (r.url || '').toLowerCase().includes(q));
+  }
+  if (modelFilter) {
+    filtered = filtered.filter(r => (r.model || '') === modelFilter);
+  }
   renderTable(filtered);
   updateSummaryFromRecords(filtered);
 }
@@ -993,6 +1013,7 @@ $('usage-from').addEventListener('change', loadUsageData);
 $('usage-to').addEventListener('change', loadUsageData);
 // v1.2.60: 搜尋框即時過濾
 $('usage-search')?.addEventListener('input', applyUsageSearch);
+$('usage-model-filter')?.addEventListener('change', applyUsageSearch);
 
 // 粒度切換
 document.querySelectorAll('.gran-btn').forEach(btn => {
