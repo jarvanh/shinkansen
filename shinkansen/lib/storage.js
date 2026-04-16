@@ -65,6 +65,8 @@ export const DEFAULT_SUBTITLE_SYSTEM_PROMPT = `你是專業的影片字幕翻譯
 3. 口語化：字幕是口說內容，使用台灣自然口語，語句簡短直白，避免書面語腔調。
 4. 禁用中國大陸用語（網絡→網路、視頻→影片、軟件→軟體、數據→資料）。
 5. 專有名詞保留：人名、品牌、縮寫（如 AI、NASA、CPU）保留英文原文。
+6. 單行輸出：每段輸入只輸出一行連續的譯文，不要在譯文中插入任何換行符號。
+7. 不加句號：句末不要加「。」，字幕是口語片段，句號會讓畫面看起來生硬。
 </critical_rules>`;
 
 export const DEFAULT_SETTINGS = {
@@ -104,7 +106,8 @@ export const DEFAULT_SETTINGS = {
     systemPrompt:  DEFAULT_SUBTITLE_SYSTEM_PROMPT,
     windowSizeS:   30,           // 每批翻譯涵蓋的秒數（預設 30 秒）
     lookaheadS:    10,           // 在字幕快用完前幾秒觸發下一批（預設 10 秒）
-    debugToast:    false,        // v1.2.14: 顯示字幕翻譯即時狀態面板（debug 用）
+    debugToast:          false,  // v1.2.14: 顯示字幕翻譯即時狀態面板（debug 用）
+    // preserveLineBreaks 已於 v1.2.38 移除 toggle，改為永遠 true（content-youtube.js 硬編碼）
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限

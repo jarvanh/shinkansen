@@ -154,12 +154,13 @@ async function load() {
 
   // v1.2.11: YouTube 字幕設定
   const yt = { ...DEFAULTS.ytSubtitle, ...(s.ytSubtitle || {}) };
-  $('ytAutoTranslate').checked  = yt.autoTranslate === true;
-  $('ytDebugToast').checked     = yt.debugToast   === true;
-  $('ytWindowSizeS').value      = yt.windowSizeS ?? 30;
-  $('ytLookaheadS').value       = yt.lookaheadS  ?? 10;
-  $('ytTemperature').value      = yt.temperature  ?? 0.1;
-  $('ytSystemPrompt').value     = yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT;
+  $('ytAutoTranslate').checked       = yt.autoTranslate       === true;
+  $('ytDebugToast').checked          = yt.debugToast          === true;
+  // ytPreserveLineBreaks 已於 v1.2.38 移除（功能改為永遠開啟）
+  $('ytWindowSizeS').value           = yt.windowSizeS ?? 30;
+  $('ytLookaheadS').value            = yt.lookaheadS  ?? 10;
+  $('ytTemperature').value           = yt.temperature  ?? 0.1;
+  $('ytSystemPrompt').value          = yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT;
 }
 
 async function save() {
@@ -214,12 +215,13 @@ async function save() {
     skipTraditionalChinesePage: $('skipTraditionalChinesePage').checked,
     // v1.2.11: YouTube 字幕設定
     ytSubtitle: {
-      autoTranslate: $('ytAutoTranslate').checked,
-      debugToast:    $('ytDebugToast').checked,
-      windowSizeS:   Number($('ytWindowSizeS').value)  || 30,
-      lookaheadS:    Number($('ytLookaheadS').value)   || 10,
-      temperature:   Number($('ytTemperature').value)  ?? 0.1,
-      systemPrompt:  $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+      autoTranslate:      $('ytAutoTranslate').checked,
+      debugToast:         $('ytDebugToast').checked,
+      // preserveLineBreaks: 已移除 toggle，永遠 true（content-youtube.js 硬編碼）
+      windowSizeS:        Number($('ytWindowSizeS').value)  || 30,
+      lookaheadS:         Number($('ytLookaheadS').value)   || 10,
+      temperature:        Number($('ytTemperature').value)  ?? 0.1,
+      systemPrompt:       $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
     },
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
     fixedGlossary: (() => {
@@ -255,6 +257,7 @@ $('save-glossary').addEventListener('click', save);
 $('save-youtube').addEventListener('click', save);
 $('yt-reset-prompt').addEventListener('click', () => {
   $('ytSystemPrompt').value = DEFAULT_SUBTITLE_SYSTEM_PROMPT;
+  markDirty(); // 值已變更，標記為未儲存
 });
 
 // ─── v0.94: 儲存狀態提示條 ──────────────────────────────────
@@ -285,6 +288,9 @@ document.getElementById('tab-glossary').addEventListener('change', markDirty);
 // v1.2.13: YouTube 字幕分頁也需要 dirty 偵測
 document.getElementById('tab-youtube').addEventListener('input', markDirty);
 document.getElementById('tab-youtube').addEventListener('change', markDirty);
+// tab-log 的 debugLog checkbox 是真實設定，需要單獨監聽
+// （tab-log 不在 tab-level delegation 內，因為其他 log 控制項是純 UI 不需要 dirty）
+$('debugLog').addEventListener('change', markDirty);
 
 // 顯示/隱藏 API Key 切換（v0.63）— 讓使用者能確認貼上去的 key 沒有貼錯
 $('toggle-api-key').addEventListener('click', () => {

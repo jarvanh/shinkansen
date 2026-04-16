@@ -12,9 +12,10 @@
 
   // ─── 預設設定（storage 讀不到時用這組） ────────────────────
   const DEFAULT_YT_CONFIG = {
-    windowSizeS:  30,
-    lookaheadS:   10,
-    debugToast:   false,
+    windowSizeS: 30,
+    lookaheadS:  10,
+    debugToast:  false,
+    // preserveLineBreaks 已移除 toggle（v1.2.38），永遠 true（見 translateWindowFrom）
   };
 
   // ─── Debug 狀態面板 ─────────────────────────────────────
@@ -33,17 +34,19 @@
       ? YT.rawSegments[YT.rawSegments.length - 1].startMs : 0;
     const video  = YT.videoEl || document.querySelector('video');
     const curS   = video ? video.currentTime.toFixed(1) : '0.0';
+    const speed  = video ? `${video.playbackRate}x` : '—';
     const config = YT.config || DEFAULT_YT_CONFIG;
     _debugEl.textContent = [
       '🔍 Shinkansen 字幕 Debug',
       `active      : ${YT.active}`,
       `translating : ${YT.translating}`,
+      `speed       : ${speed}`,
       `rawSegments : ${YT.rawSegments.length} 條（涵蓋 ${Math.round(maxMs/1000)}s）`,
       `captionMap  : ${YT.captionMap.size} 條`,
       `translated↑ : ${Math.round(YT.translatedUpToMs/1000)}s`,
       `video now   : ${curS}s`,
       `window/look : ${config.windowSizeS}s / ${config.lookaheadS}s`,
-      `事件        : ${_lastEvent.length > 36 ? _lastEvent.slice(0, 35) + '…' : _lastEvent}`,
+      `事件        : ${_lastEvent}`,
     ].join('\n');
   }
 
@@ -139,16 +142,19 @@
     const json = JSON.parse(text);
     const segments = [];
     const seen = new Set();
+    let groupCounter = 0;
     for (const ev of (json.events || [])) {
       if (!ev.segs) continue;
       const full = ev.segs.map(s => s.utf8 || '').join('');
       // YouTube 以 \n 分隔同一 event 內的多行歌詞；DOM 每行獨立渲染為一個 .ytp-caption-segment
       // 拆行後分別建立條目，確保 normText 與 DOM 字幕對齊，避免落入 on-the-fly
+      // preserveLineBreaks 開啟時，同一 event 的多行共用 groupId，供整組送翻
       const lines = full.split('\n').map(l => l.trim()).filter(Boolean);
+      const groupId = lines.length > 1 ? groupCounter++ : null;
       for (const line of lines) {
         if (seen.has(line)) continue;
         seen.add(line);
-        segments.push({ text: line, normText: normText(line), startMs: ev.tStartMs || 0 });
+        segments.push({ text: line, normText: normText(line), startMs: ev.tStartMs || 0, groupId });
       }
     }
     return segments.sort((a, b) => a.startMs - b.startMs);
@@ -179,6 +185,38 @@
     try { return parseJson3(responseText); } catch (_) {}
     try { return parseTtml(responseText); } catch (_) {}
     return [];
+  }
+
+  // ─── 翻譯單位建構（preserveLineBreaks 模式用）────────────
+  // preserve=false：每條 segment 各自一個單位（現有行為）
+  // preserve=true ：同一 groupId 的 segment 合成一個單位，以空格串接後整組送翻
+  //   （不用 \n 串接，避免 LLM 誤輸出 literal \n 字串進譯文）
+  //   翻完後第一個 key 存完整合併譯文，其餘 key 存空字串讓 DOM segment 視覺消失
+
+  function buildTranslationUnits(segs, preserve) {
+    if (!preserve) {
+      return segs.map(s => ({ text: s.text, keys: [s.normText] }));
+    }
+    const units = [];
+    let i = 0;
+    while (i < segs.length) {
+      const seg = segs[i];
+      if (seg.groupId != null) {
+        // 收集所有相鄰且 groupId 相同的 segment
+        const group = [seg];
+        let j = i + 1;
+        while (j < segs.length && segs[j].groupId === seg.groupId) {
+          group.push(segs[j]);
+          j++;
+        }
+        units.push({ text: group.map(s => s.text).join(' '), keys: group.map(s => s.normText) });
+        i = j;
+      } else {
+        units.push({ text: seg.text, keys: [seg.normText] });
+        i++;
+      }
+    }
+    return units;
   }
 
   // ─── 時間視窗翻譯 ──────────────────────────────────────────
@@ -214,19 +252,33 @@
     _debugUpdate(`翻譯視窗 ${Math.round(windowStartMs/1000)}–${Math.round(windowEndMs/1000)}s（${windowSegs.length} 條）`);
 
     if (windowSegs.length > 0) {
-      // 分批送翻譯（每批 20 筆）
+      // 分批送翻譯（每批 20 個翻譯單位）
       const BATCH = 20;
+      const preserve = true; // v1.2.38 起固定開啟，已移除設定頁 toggle
+      const units = buildTranslationUnits(windowSegs, preserve);
       try {
-        for (let i = 0; i < windowSegs.length; i += BATCH) {
+        for (let i = 0; i < units.length; i += BATCH) {
           if (!YT.active) break; // 翻到一半使用者還原，立刻停止
-          const batch = windowSegs.slice(i, i + BATCH);
+          const batchUnits = units.slice(i, i + BATCH);
           const res = await chrome.runtime.sendMessage({
             type: 'TRANSLATE_SUBTITLE_BATCH',
-            payload: { texts: batch.map(s => s.text), glossary: null },
+            payload: { texts: batchUnits.map(u => u.text), glossary: null },
           });
           if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
-          for (let j = 0; j < batch.length; j++) {
-            YT.captionMap.set(batch[j].normText, res.result[j] || batch[j].text);
+          for (let j = 0; j < batchUnits.length; j++) {
+            const unit  = batchUnits[j];
+            const rawTrans = res.result[j] || unit.text;
+            if (unit.keys.length === 1) {
+              // 單行：直接存入（preserve=false 或單行 event 都走這裡）
+              YT.captionMap.set(unit.keys[0], rawTrans);
+            } else {
+              // 多行群組：合併為單行顯示
+              // 第一個 segment 顯示完整合併譯文，其餘設為空字串（DOM element 變空白後視覺消失）
+              // 雙重替換：真實換行符 + LLM 可能誤輸出的 literal \n 字串
+              const merged = rawTrans.replace(/\\n/g, ' ').replace(/\n/g, ' ').trim();
+              YT.captionMap.set(unit.keys[0], merged);
+              for (let k = 1; k < unit.keys.length; k++) YT.captionMap.set(unit.keys[k], '');
+            }
           }
         }
         // 替換目前頁面上已顯示的字幕
@@ -260,7 +312,11 @@
     if (!video) return;
 
     const config = YT.config || DEFAULT_YT_CONFIG;
-    const lookaheadMs  = (config.lookaheadS  || 10) * 1000;
+    // lookaheadMs 以 play-time 為單位；API 翻譯延遲是 real-time 固定值。
+    // 速度愈快，real-time 愈少：需把 lookahead 乘以 playbackRate，
+    // 確保在任何速度下都保留 lookaheadS 的 real-time 給翻譯完成。
+    // 例：lookaheadS=10、speed=2x → lookaheadMs=20000ms play-time = 10s real-time
+    const lookaheadMs = (config.lookaheadS || 10) * 1000 * (video.playbackRate || 1);
 
     const currentMs = video.currentTime * 1000;
 
@@ -275,13 +331,89 @@
     }
   }
 
+  // ─── video.ratechange 驅動（切換播放速度時重新檢查是否需要立刻翻譯）──
+  // 切速後 lookaheadMs 改變（乘以新 playbackRate），當前位置可能已進入新的
+  // 預警範圍但 timeupdate 還沒觸發；直接在 ratechange 時做一次檢查。
+
+  function onVideoRateChange() {
+    const YT = SK.YT;
+    if (!YT.active || YT.translating || YT.rawSegments.length === 0) return;
+    const video = YT.videoEl;
+    if (!video) return;
+
+    const config = YT.config || DEFAULT_YT_CONFIG;
+    const lookaheadMs = (config.lookaheadS || 10) * 1000 * (video.playbackRate || 1);
+    const currentMs   = video.currentTime * 1000;
+    const maxMs       = YT.rawSegments[YT.rawSegments.length - 1].startMs;
+    if (YT.translatedUpToMs > maxMs) return;
+
+    if (currentMs >= YT.translatedUpToMs - lookaheadMs) {
+      _debugUpdate(`ratechange(${video.playbackRate}x) 觸發下一批`);
+      translateWindowFrom(YT.translatedUpToMs);
+    }
+  }
+
+  // ─── video.seeked 驅動（向前跳轉時直接翻當前視窗）──────────
+  // timeupdate 只能順序推進翻譯視窗；使用者向前拖進度條後，
+  // 若新位置已超出 translatedUpToMs，captionMap 缺對應條目，全走 on-the-fly。
+  // 修法：偵測 seeked，若新位置超出 translatedUpToMs，
+  // 直接跳到新位置所在的視窗邊界翻譯，不從舊位置逐批追趕。
+
+  function onVideoSeeked() {
+    const YT = SK.YT;
+    if (!YT.active || YT.rawSegments.length === 0) return;
+    const video = YT.videoEl;
+    if (!video) return;
+
+    const currentMs = video.currentTime * 1000;
+    if (currentMs < YT.translatedUpToMs) return; // 向後跳或仍在已翻範圍內，不需處理
+
+    const config = YT.config || DEFAULT_YT_CONFIG;
+    const windowSizeMs = (config.windowSizeS || 30) * 1000;
+    const newWindowStart = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
+
+    // 重設翻譯起點到當前視窗，若非翻譯中則立刻觸發
+    YT.translatedUpToMs = newWindowStart;
+    _debugUpdate(`seeked → 重設翻譯起點 ${Math.round(newWindowStart/1000)}s`);
+    if (!YT.translating) translateWindowFrom(newWindowStart);
+    // 若 translating 中：當前批次結束後 timeupdate 會以新的 translatedUpToMs 繼續
+  }
+
   function attachVideoListener() {
     const YT = SK.YT;
     const video = document.querySelector('video');
     if (!video || YT.videoEl === video) return;
-    if (YT.videoEl) YT.videoEl.removeEventListener('timeupdate', onVideoTimeUpdate);
+    if (YT.videoEl) {
+      YT.videoEl.removeEventListener('timeupdate', onVideoTimeUpdate);
+      YT.videoEl.removeEventListener('seeked',     onVideoSeeked);
+      YT.videoEl.removeEventListener('ratechange', onVideoRateChange);
+    }
     YT.videoEl = video;
     video.addEventListener('timeupdate', onVideoTimeUpdate);
+    video.addEventListener('seeked',     onVideoSeeked);
+    video.addEventListener('ratechange', onVideoRateChange);
+  }
+
+  // ─── 強制重載字幕（CC toggle）────────────────────────────────
+  // rawSegments=0 時，CC 字幕資料可能已存在 YouTube 播放器記憶體中，
+  // 不會重新發出 /api/timedtext XHR。
+  // 解法：把 CC 按鈕關掉再打開，強迫播放器重新抓一次字幕，讓 monkey-patch 有機會攔截。
+
+  async function forceSubtitleReload() {
+    const btn = document.querySelector('.ytp-subtitles-button');
+    if (!btn) {
+      SK.sendLog('warn', 'youtube', 'forceSubtitleReload: CC button not found');
+      return;
+    }
+    const isOn = btn.getAttribute('aria-pressed') === 'true';
+    if (!isOn) {
+      SK.sendLog('info', 'youtube', 'forceSubtitleReload: CC is off, skip toggle');
+      return; // CC 未開，不強制操作
+    }
+    SK.sendLog('info', 'youtube', 'forceSubtitleReload: toggling CC to force new XHR');
+    btn.click(); // 關閉 CC → 播放器清空字幕狀態
+    await new Promise(r => setTimeout(r, 200));
+    if (SK.YT.active) btn.click(); // 重新開啟 CC → 播放器重新抓字幕，觸發 /api/timedtext XHR
   }
 
   // ─── 接收 MAIN world XHR 攔截結果 ────────────────────────
@@ -312,15 +444,23 @@
     }
     _debugUpdate(`XHR 攔截 ${segments.length} 條字幕（至 ${Math.round(lastMs/1000)}s）`);
 
-    // 若 observer 已啟動（使用者先按 Alt+S 再開 CC），立刻翻譯目前視窗
-    if (YT.active && !YT.translating && YT.captionMap.size === 0) {
+    // 若字幕翻譯已啟動但尚未取得字幕（autoTranslate 或 forceSubtitleReload 在 XHR 之前跑完）
+    // 不論 captionMap 有沒有 on-the-fly 資料，一律翻譯當前視窗
+    // （on-the-fly 條目會被覆蓋，無害；不翻的話當前視窗仍會靠 on-the-fly，預翻目的落空）
+    if (YT.active && !YT.translating) {
       const video = document.querySelector('video');
       const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
       const config = await getYtConfig();
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
       const windowStartMs = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
-      await translateWindowFrom(windowStartMs);
+      // attachVideoListener 已在 translateYouTubeSubtitles 啟動時提前呼叫；
+      // 若從 autoTranslate 路徑啟動（translateYouTubeSubtitles 不一定有呼叫），
+      // 在此補掛確保 seeked/ratechange 一定有監聽器
       attachVideoListener();
+      SK.showToast('loading', '翻譯字幕⋯', { startTimer: true });
+      await translateWindowFrom(windowStartMs);
+      SK.showToast('success', `字幕翻譯進行中（${YT.captionMap.size} 條已備妥）`);
+      setTimeout(() => SK.hideToast(), 3000);
     }
   });
 
@@ -329,6 +469,39 @@
   // 判斷字串是否已含中日韓字元（表示已翻譯完成）
   // 用途：el.textContent 賦值會觸發 characterData mutation，若不跳過中文譯文會形成迴圈
   const RE_CJK = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/;
+
+
+  // ─── 字幕行展開（防止長譯文折行 + 維持置中）──────────────────────
+  // 注入中文譯文後無條件展開字幕框：
+  //   方法 A：segment 設 nowrap，確保文字不在 segment 內折行
+  //   方法 B：向上走遍所有 block 容器，全部設 width: max-content
+  //   方法 C：到達 caption-window 時修正置中定位——
+  //     YouTube 原本用「left: 50% + margin-left: -固定寬/2」置中，
+  //     寬度改為 max-content 後 margin-left 算法失效導致偏右；
+  //     改為清除 margin-left，改用 transform: translateX(-50%) 置中，
+  //     讓容器永遠以自身寬度的一半為中心點對齊 left: 50%。
+
+  function expandCaptionLine(el) {
+    // 方法 A：segment 自身設 nowrap，覆蓋 YouTube 預設的 pre-wrap
+    el.style.whiteSpace = 'nowrap';
+    // 方法 B + C：向上走所有 block 容器
+    let node = el.parentElement;
+    while (node && !node.classList.contains('ytp-caption-window-container')) {
+      const display = getComputedStyle(node).display;
+      if (display !== 'inline' && display !== 'inline-block') {
+        node.style.maxWidth = 'none';
+        node.style.width = 'max-content';
+        if (node.classList.contains('caption-window')) {
+          // YouTube 的 margin-left 是 -固定寬/2，寬度改後不再準確；
+          // 改用 transform 置中，自動適應任意寬度
+          node.style.marginLeft = '0';
+          node.style.transform = 'translateX(-50%)';
+          break; // caption-window 是最外需修改的層，到此為止
+        }
+      }
+      node = node.parentElement;
+    }
+  }
 
   function replaceSegmentEl(el) {
     if (!SK.YT.active) return;
@@ -341,7 +514,12 @@
     // 快取命中 → 瞬間替換
     const cached = SK.YT.captionMap.get(key);
     if (cached !== undefined) {
-      if (el.textContent !== cached) el.textContent = cached;
+      if (el.textContent !== cached) {
+        el.textContent = cached;
+        // 同步展開字幕框（不用 rAF——新版 expandCaptionLine 純設 style，不需量測 layout；
+        // 若用 rAF，瀏覽器會先 paint 出「中文 + 舊 315px 容器」再展開，造成一幀閃爍）
+        if (cached) expandCaptionLine(el);
+      }
       return;
     }
 
@@ -480,6 +658,10 @@
     YT.videoId = getVideoIdFromUrl();
     YT.config  = null; // 強制重新讀取設定
 
+    // 立刻掛上 seeked / ratechange / timeupdate listener，不等第一批翻完：
+    // 若等翻完後才掛，使用者在第一批回來前拖進度條，seeked 沒有監聽器，fix 無效。
+    attachVideoListener();
+
     const config = await getYtConfig();
     _debugUpdate('字幕翻譯已啟動');
 
@@ -493,15 +675,38 @@
       SK.showToast('loading', '翻譯字幕⋯', { startTimer: true });
       await translateWindowFrom(windowStartMs);
       startCaptionObserver();
-      attachVideoListener();
+      // attachVideoListener() 已在上方提前呼叫，此處不重複
 
       SK.showToast('success', `字幕翻譯進行中（${YT.captionMap.size} 條已備妥）`);
       setTimeout(() => SK.hideToast(), 3000);
 
     } else {
-      // 尚未攔截到字幕（使用者還沒開 CC）→ 啟動 observer 備案，等 XHR 到來
+      // 尚未攔截到字幕：可能是 autoTranslate 在 XHR 之前跑完，也可能是 CC 未開
+      // → 先顯示「等待中」，5 秒後若 rawSegments 還是 0 才提示使用者開 CC
       startCaptionObserver();
-      SK.showToast('success', '字幕翻譯已開啟。請開啟 YouTube 字幕（CC），翻譯將自動開始。');
+      SK.showToast('loading', '字幕翻譯已啟動，等待字幕資料⋯');
+
+      // 1 秒後若仍無 XHR → 主動 toggle CC 讓播放器重新抓字幕
+      setTimeout(() => {
+        if (SK.YT.active && SK.YT.rawSegments.length === 0) {
+          forceSubtitleReload();
+        }
+      }, 1000);
+
+      // 5 秒後若仍無資料 → 判斷是否 CC 根本沒開
+      setTimeout(() => {
+        if (SK.YT.active && SK.YT.rawSegments.length === 0) {
+          if (SK.YT.captionMap.size > 0) {
+            // on-the-fly 在運作（XHR toggle 可能還在途中）→ 顯示進度，不誤報 CC 未開
+            SK.showToast('success', `字幕翻譯進行中（${SK.YT.captionMap.size} 條已備妥）`);
+            setTimeout(() => SK.hideToast(), 3000);
+          } else {
+            // captionMap 也是空的 → CC 可能真的沒開
+            SK.showToast('success', '字幕翻譯已開啟。請開啟 YouTube 字幕（CC），翻譯將自動開始。');
+          }
+        }
+        // 若 rawSegments 已有資料，XHR handler 已接手（不覆蓋）
+      }, 5000);
     }
 
     SK.sendLog('info', 'youtube', 'activated', {
