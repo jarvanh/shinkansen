@@ -111,14 +111,8 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 ### ~~v1.3.1~~ — 已補測試 → `test/regression/youtube-spa-navigate.spec.js`
 （override `isYouTubePage` + mock `translateYouTubeSubtitles`，dispatch `yt-navigate-finish`，等 750ms，確認 spy 被呼叫 1 次且 `YT.active === true`）
 
-### v1.2.48 — 2026-04-16 — translatedWindows Set 跳過判斷尚無自動化測試
-- **症狀**：向後拖進度條回未翻範圍，`buffer` 顯示 `+30s ✓`、`coverage` 顯示遠大於當前位置的秒數，但字幕仍顯示英文（captionMap 無對應條目）
-- **來源 URL**：任意有字幕的 YouTube 影片，從中段開始播放後向後 seek 至前段
-- **修在**：`shinkansen/content-youtube.js`，以 `translatedWindows: Set<number>` 取代 `captionMapCoverageUpToMs` 作為跳過判斷依據
-- **為什麼還不能寫 Playwright 測試**：
-    需要模擬「從中段開始翻譯（部分視窗有 captionMap 條目）→ seek 回前段（未翻區域）→ 確認 translateWindowFrom 不跳過 → captionMap 正確填入」的完整流程，涉及 sendMessage mock + 視窗狀態管理，與 v1.2.41/v1.2.42 同理，目前 regression suite 未支援 chrome.runtime.sendMessage mock
-- **建議 spec 位置**：`test/regression/youtube-subtitle-onthefly.spec.js`（可擴充現有建議 fixture）
-- **建議驗證方向**：mock `TRANSLATE_SUBTITLE_BATCH`，先翻 windowStart=60000（模擬從 60s 開始），再 seek 回 windowStart=0，確認 `translatedWindows.has(0) === false` → translateWindowFrom(0) 正常呼叫 sendMessage，captionMap 填入 0–30s 條目
+### ~~v1.2.48~~ — 已補測試 → `test/regression/youtube-translated-window-skip.spec.js`
+（mock `chrome.runtime.sendMessage`，塞入 rawSegments 後呼叫 `translateYouTubeSubtitles` 翻 window 0，再 dispatch `seeked` 事件確認 `TRANSLATE_SUBTITLE_BATCH` 計數不增加。sanity check 通過：註解掉 L376 的 `if (YT.translatedWindows.has(windowStartMs)) return;` 後 batch 計數從 2 變 4，測試正確 fail）
 
 ### v1.2.7 — 2026-04-16 — YouTube 字幕即時翻譯（on-the-fly）尚無自動化測試
 - **症狀**：新功能，v1.2.5/v1.2.6 的預下載方案因 YouTube `/api/timedtext` 封鎖 JS fetch 而改為 MutationObserver 即時翻譯；尚無 regression spec 涵蓋
