@@ -98,6 +98,8 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
     ```
     測試斷言：mock `TRANSLATE_BATCH` 回傳 `['你好，世界！']`，啟動翻譯後 `.ytp-caption-segment` 的 textContent 應變為「你好，世界！」
 
+### ~~v1.2.25~~ — 已修正 → v1.2.26（強制 CC toggle 重新觸發 XHR）
+
 ### v1.2.1 — 2026-04-15 — 動態 widget 網站 SPA observer 無限 rescan
 - **症狀**：Stratechery 頁面翻譯完成後，toast「已翻譯 4 段新內容」每秒持續彈出，log 顯示 `SPA observer rescan #N` 無限遞增（N 超過 100+）
 - **來源 URL**：https://stratechery.com/2026/amazon-buys-globalstar-delta-to-add-leo-the-apple-angle/

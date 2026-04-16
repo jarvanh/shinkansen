@@ -21,3 +21,14 @@
 table[role="grid"] [data-shinkansen-translated] br {
   display: none !important;
 }
+
+/* v1.2.22: preserveLineBreaks — 合併多行字幕後，第二個（空字串）segment 的父容器
+ * 仍有 ~12px 殘餘高度，造成字幕下方出現可見空白行。
+ * 直接隱藏空的 .ytp-caption-segment 及其父 span 解決。 */
+.ytp-caption-segment:empty {
+  display: none !important;
+}
+.ytp-caption-segment:empty + span,
+span:has(> .ytp-caption-segment:empty) {
+  display: none !important;
+}
