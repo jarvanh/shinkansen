@@ -7,6 +7,8 @@
 
 ## v1.3.x
 
+**v1.3.7** — YouTube 設定頁微調：移除「字幕翻譯可以使用比文章翻譯更便宜的模型，例如 Flash Lite」說明文字；移除 temperature 說明文字「字幕翻譯建議保持低 temperature（預設 0.1），讓翻譯結果穩定一致、不偏離原意。」；YouTube 字幕 temperature 預設值由 0.1 改為 1。
+
 **v1.3.6** — 程式碼品質重構（無使用者可見行為改變）：（1）`content.js` `translateUnits` 的 `chrome.runtime.sendMessage` 批次呼叫加 90s `Promise.race` 逾時保護，防止 Gemini API 無回應時翻譯永久卡住；（2）新增 `lib/constants.js` 統一管理批次常數（`DEFAULT_UNITS_PER_BATCH = 12`、`DEFAULT_CHARS_PER_BATCH = 3500`），`lib/gemini.js` 與 `lib/storage.js` 改從此檔 import，消除三處重複定義；（3）`content-ns.js` 對應常數加上說明注解，標明與 `lib/constants.js` 的鏡像關係；（4）`background.js` `computeBilledCostUSD()` 改委派給 `computeCostUSD()`，消除計費費率計算的程式碼重複；（5）`content-spa.js` History API patch 加 `__sk_patched` 旗標防止重複注入，避免 content script 重複執行時形成 pushState 循環呼叫。
 
 **v1.3.5** — `content-youtube.js` 技術債清理與強固性提升（無使用者可見行為改變）：（1）`translateWindowFrom` 加 try-finally 包裹，確保 `translatingWindows.delete()` 無論正常完成、提前 return 或例外都必然執行，防止 per-window 防重入鎖死；（2）`_runBatch` 改用局部 `_batchApiMs` 收集各批次計時，視窗完成後才同步至 `YT.batchApiMs`，消除多視窗並行時互相覆蓋的 debug 面板計時錯誤；（3）`stopYouTubeTranslation()` 補上 `rawSegments = []` 與 `translatedWindows = new Set()` 重置，讓函式狀態清理自給自足；（4）`yt-navigate-finish` handler 補上 `pendingQueue`、`translatedWindows`、`translatingWindows` 的明確重置，消除 SPA 導航期間殘留狀態阻塞新視窗翻譯的風險；（5）字幕區位置追蹤 timer 從 100ms 降為 250ms，每秒 4 次足夠追蹤，節省約 60% 定時器開銷；（6）模組頂部補上依賴聲明與外部介面說明。
