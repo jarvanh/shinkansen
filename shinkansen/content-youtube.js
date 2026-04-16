@@ -940,7 +940,9 @@
     YT.batchTimer = null;
     if (YT.observer) { YT.observer.disconnect(); YT.observer = null; }
     if (YT.videoEl) {
-      YT.videoEl.removeEventListener('timeupdate', onVideoTimeUpdate);
+      YT.videoEl.removeEventListener('timeupdate',  onVideoTimeUpdate);
+      YT.videoEl.removeEventListener('seeked',      onVideoSeeked);    // v1.3.1: 補漏
+      YT.videoEl.removeEventListener('ratechange',  onVideoRateChange); // v1.3.1: 補漏
       YT.videoEl = null;
     }
     YT.active             = false;
@@ -1054,8 +1056,9 @@
 
   // ─── SPA 導航重置 ──────────────────────────────────────────
 
-  window.addEventListener('yt-navigate-finish', () => {
+  window.addEventListener('yt-navigate-finish', async () => {
     const YT = SK.YT;
+    const wasActive = YT.active;  // v1.3.1: 記錄是否需要在新影片自動重啟
     if (YT.active) stopYouTubeTranslation(); // stopYouTubeTranslation 內已呼叫 hideCaptionStatus + _debugRemove
     hideCaptionStatus(); // v1.2.55: 確保 SPA 導航後殘留的提示也清掉
     _debugRemove(); // 確保即使非 active 狀態也清掉面板（內含 _debugMissedKeys.clear()）
@@ -1064,7 +1067,32 @@
     YT.translatedUpToMs = 0;
     YT.config           = null;
     YT.videoId          = getVideoIdFromUrl();
-    SK.sendLog('info', 'youtube', 'SPA navigation reset');
+    SK.sendLog('info', 'youtube', 'SPA navigation reset', { wasActive, newVideoId: YT.videoId });
+
+    // v1.3.1: SPA 導航後自動重啟字幕翻譯
+    // 條件：之前字幕翻譯已啟動（wasActive），或 ytSubtitle.autoTranslate 設定開啟
+    // 若導航到非 watch 頁（例如首頁），略過。
+    // 延遲 500ms 等 YouTube 播放器初始化並發出新字幕 XHR
+    if (!SK.isYouTubePage?.()) return;
+    try {
+      const saved = await chrome.storage.sync.get('ytSubtitle');
+      const shouldRestart = wasActive || saved.ytSubtitle?.autoTranslate;
+      if (shouldRestart) {
+        SK.sendLog('info', 'youtube', 'SPA nav: will restart subtitle translation', {
+          wasActive, autoTranslate: saved.ytSubtitle?.autoTranslate,
+        });
+        setTimeout(() => {
+          // 若使用者在等待期間已手動操作（active 變 true），不重複啟動
+          if (!SK.YT.active && SK.isYouTubePage?.()) {
+            SK.translateYouTubeSubtitles?.().catch(err => {
+              SK.sendLog('warn', 'youtube', 'SPA nav auto-subtitle restart failed', { error: err.message });
+            });
+          }
+        }, 500);
+      }
+    } catch (err) {
+      SK.sendLog('warn', 'youtube', 'SPA nav autoTranslate check failed', { error: err.message });
+    }
   });
 
 })(window.__SK);
