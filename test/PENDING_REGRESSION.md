@@ -114,20 +114,8 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 ### ~~v1.2.48~~ — 已補測試 → `test/regression/youtube-translated-window-skip.spec.js`
 （mock `chrome.runtime.sendMessage`，塞入 rawSegments 後呼叫 `translateYouTubeSubtitles` 翻 window 0，再 dispatch `seeked` 事件確認 `TRANSLATE_SUBTITLE_BATCH` 計數不增加。sanity check 通過：註解掉 L376 的 `if (YT.translatedWindows.has(windowStartMs)) return;` 後 batch 計數從 2 變 4，測試正確 fail）
 
-### v1.2.7 — 2026-04-16 — YouTube 字幕即時翻譯（on-the-fly）尚無自動化測試
-- **症狀**：新功能，v1.2.5/v1.2.6 的預下載方案因 YouTube `/api/timedtext` 封鎖 JS fetch 而改為 MutationObserver 即時翻譯；尚無 regression spec 涵蓋
-- **來源 URL**：任意有字幕的 YouTube 影片（例如 https://www.youtube.com/watch?v=dQw4w9WgXcQ）
-- **修在**：`shinkansen/content-youtube.js`（大幅改寫），`shinkansen/background.js`（移除 GET_YT_PLAYER_DATA）
-- **為什麼還不能寫 Playwright 測試**：
-    新架構的核心是 MutationObserver 監聽 `.ytp-caption-segment` → 觸發 `TRANSLATE_BATCH` → 回填 DOM，涉及 service worker mock + 時序等待。最小 fixture 可以手動插入 `.ytp-caption-segment` 並觀察替換，但需要先補 `TRANSLATE_BATCH` mock 機制（目前 regression suite 僅 mock fetch，不支援 chrome.runtime.sendMessage mock）。
-- **建議 spec 位置**：`test/regression/youtube-subtitle-onthefly.spec.js`
-- **建議 fixture 結構**（已知觸發條件）：
-    ```html
-    <div class="ytp-caption-window-container">
-      <!-- 空，由測試動態插入 -->
-    </div>
-    ```
-    測試斷言：mock `TRANSLATE_BATCH`，動態插入 `.ytp-caption-segment[textContent="Hello world"]`，等待 800ms，textContent 應變為中文譯文；第二次插入相同文字應瞬間替換（快取命中）
+### ~~v1.2.7~~ — 已補測試 → `test/regression/youtube-onthefly-observer.spec.js`
+（mock `chrome.runtime.sendMessage`，啟動 `translateYouTubeSubtitles`（空 rawSegments 走 else 分支觸發 `startCaptionObserver`），覆寫 `YT.config.onTheFly = true`，動態 appendChild `.ytp-caption-segment` 至 `.ytp-caption-window-container`，等 500ms 涵蓋 300ms flush timer + sendMessage resolve + DOM 寫回，確認 `TRANSLATE_SUBTITLE_BATCH` 被呼叫、`captionMap` 填入且 span `textContent` 被替換。sanity check 通過：在 `replaceSegmentEl` 的 on-the-fly guard 後多加 `return;`，`batchCount` 降為 0，測試 fail）
 
 ### ~~v1.2.5~~ — 2026-04-15 — YouTube 字幕翻譯 MVP 尚無自動化測試
 - **症狀**：新功能，尚無 regression spec 涵蓋
@@ -175,18 +163,11 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 ### v1.2.43 — 2026-04-16 — debug 面板各批次耗時（UI 變更，無需 regression 測試）
 - **說明**：純 debug 顯示邏輯，不影響翻譯正確性，不需要 regression spec
 
-### v1.2.42 — 2026-04-16 — 字幕批次串流注入（.then() 各批立刻寫入）尚無自動化測試
-- **症狀**：buffer overrun，即使 Promise.all 並行後最早字幕仍需等最慢批次才能使用
-- **修在**：`shinkansen/content-youtube.js` 的 `translateWindowFrom()`，results 處理移入 `.then()` 回呼
-- **為什麼還不能寫 Playwright 測試**：與 v1.2.41 同理，需要 sendMessage mock + 時序控制
+### ~~v1.2.42~~ — 已補測試 → `test/regression/youtube-streaming-inject.spec.js`
+（mock `chrome.runtime.sendMessage` 以 call 序號決定延遲：batch 0=10ms、batch 1=50ms、batch 2=500ms；塞 17 條 rawSegments 切成 [1,8,8]，呼叫 `translateYouTubeSubtitles` 不 await，200ms 後 captionMap 應有 batch 0+1 的 9 條 entries、batch 2 尚未完成。sanity check 通過：把 `_runBatch` .then 裡 `captionMap.set` 區塊 gate 成 `if (b === 0)`，captionMap.size 降到 1 測試 fail）
 
-### v1.2.41 — 2026-04-16 — 字幕批次並行化（Promise.all）尚無自動化測試
-- **症狀**：新功能，循序 `await` 改為 `Promise.all` 並行，無對應 regression spec
-- **修在**：`shinkansen/content-youtube.js` 的 `translateWindowFrom()`，循序迴圈改為先建 promises 陣列再 `await Promise.all`
-- **為什麼還不能寫 Playwright 測試**：
-    驗證「並行 vs 循序」需要模擬多個 `TRANSLATE_SUBTITLE_BATCH` 請求同時飛出且同時完成，需要測試框架層級的 sendMessage 攔截 + 時序控制。目前 regression suite 不支援 chrome.runtime.sendMessage mock；且並行本身是效能特性，功能正確性（captionMap 填入）已被現有 on-the-fly 流程間接涵蓋
-- **建議 spec 位置**：`test/regression/youtube-subtitle-parallel-batch.spec.js`
-- **建議驗證方向**：mock `TRANSLATE_SUBTITLE_BATCH`，傳入含 25+ 個 segment 的視窗（超過一批），確認 captionMap 填入數量等於 segment 總數，與循序版行為一致即可
+### ~~v1.2.41~~ — 已補測試 → `test/regression/youtube-parallel-batches.spec.js`
+（mock `chrome.runtime.sendMessage` 固定 100ms 延遲 + 記錄呼叫時間戳；17 條 rawSegments 切成 [1,8,8]，呼叫 `translateYouTubeSubtitles`，斷言 batch 2 呼叫時間 - batch 1 呼叫時間 < 50ms。sanity check 通過：把 `await Promise.all(batches.slice(1).map(...))` 改成 for-await 循序後，gap12 從 ~1ms 變 ~102ms 測試 fail）
 
 ### ~~v1.2.1~~ — 已補測試 → `test/regression/spa-observer-widget-loop.spec.js`
 （mock `SK.translateUnits` 計算呼叫次數，fixture 含 setInterval 每秒重設 widget innerHTML，等 4.5s，確認呼叫次數 ≤ 2）
