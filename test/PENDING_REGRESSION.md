@@ -108,6 +108,9 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 ### ~~v1.2.49~~ — 設定頁 UI 調整 + on-the-fly toggle（無需 regression 測試）
 - **說明**：純 UI 重組（tab 改名、toggle 搬移、新增 toggle）+ storage 預設值變更；on-the-fly 開關的正確性可從「關閉後 captionMap miss 不再送 API」的 Log 確認，邏輯極簡（一個 if return），不值得寫 spec
 
+### ~~v1.3.1~~ — 已補測試 → `test/regression/youtube-spa-navigate.spec.js`
+（override `isYouTubePage` + mock `translateYouTubeSubtitles`，dispatch `yt-navigate-finish`，等 750ms，確認 spy 被呼叫 1 次且 `YT.active === true`）
+
 ### v1.2.48 — 2026-04-16 — translatedWindows Set 跳過判斷尚無自動化測試
 - **症狀**：向後拖進度條回未翻範圍，`buffer` 顯示 `+30s ✓`、`coverage` 顯示遠大於當前位置的秒數，但字幕仍顯示英文（captionMap 無對應條目）
 - **來源 URL**：任意有字幕的 YouTube 影片，從中段開始播放後向後 seek 至前段
@@ -191,29 +194,8 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 - **建議 spec 位置**：`test/regression/youtube-subtitle-parallel-batch.spec.js`
 - **建議驗證方向**：mock `TRANSLATE_SUBTITLE_BATCH`，傳入含 25+ 個 segment 的視窗（超過一批），確認 captionMap 填入數量等於 segment 總數，與循序版行為一致即可
 
-### v1.2.1 — 2026-04-15 — 動態 widget 網站 SPA observer 無限 rescan
-- **症狀**：Stratechery 頁面翻譯完成後，toast「已翻譯 4 段新內容」每秒持續彈出，log 顯示 `SPA observer rescan #N` 無限遞增（N 超過 100+）
-- **來源 URL**：https://stratechery.com/2026/amazon-buys-globalstar-delta-to-add-leo-the-apple-angle/
-- **修在**：`shinkansen/content-spa.js` 的 `spaObserverRescan()`，新增 `spaObserverSeenTexts` Set 過濾已翻文字
-- **為什麼還不能寫 Playwright 測試**：
-    觸發條件是「頁面 JS 每秒重設特定 DOM 元素（推薦 widget / Podcast 卡片）」，需要在 fixture 中模擬一個 `setInterval` 每秒 reset 某元素的 innerHTML，而這個 reset 要發生在 content script 注入完成後、MutationObserver 還活著的時間點。時序控制複雜，且需要 Playwright CDP 橋接 isolated world 的 content script 狀態，目前 regression 測試框架尚未支援此類時序感知測試。
-- **建議 spec 位置**：`test/regression/spa-observer-widget-loop.spec.js`
-- **建議 fixture 結構**（已知觸發條件）：
-    ```html
-    <article>
-      <p>This is the main content to translate.</p>
-    </article>
-    <div id="widget">
-      <p>Widget title A</p>
-    </div>
-    <script>
-      // 每秒重設 widget 內容（模擬 Stratechery 推薦 widget）
-      setInterval(() => {
-        document.getElementById('widget').innerHTML = '<p>Widget title A</p>';
-      }, 1000);
-    </script>
-    ```
-    測試斷言：翻譯後等待 5 秒，`spaObserverRescanCount` 應 ≤ 2（首次 rescan 翻譯 widget，後續全部 skip），toast 不應多次出現同樣文字
+### ~~v1.2.1~~ — 已補測試 → `test/regression/spa-observer-widget-loop.spec.js`
+（mock `SK.translateUnits` 計算呼叫次數，fixture 含 setInterval 每秒重設 widget innerHTML，等 4.5s，確認呼叫次數 ≤ 2）
 
 <!--
 條目格式範例(實際加入時把上面那行 placeholder 刪掉):
