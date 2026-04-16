@@ -7,6 +7,8 @@
 
 ## v1.3.x
 
+**v1.3.5** — `content-youtube.js` 技術債清理與強固性提升（無使用者可見行為改變）：（1）`translateWindowFrom` 加 try-finally 包裹，確保 `translatingWindows.delete()` 無論正常完成、提前 return 或例外都必然執行，防止 per-window 防重入鎖死；（2）`_runBatch` 改用局部 `_batchApiMs` 收集各批次計時，視窗完成後才同步至 `YT.batchApiMs`，消除多視窗並行時互相覆蓋的 debug 面板計時錯誤；（3）`stopYouTubeTranslation()` 補上 `rawSegments = []` 與 `translatedWindows = new Set()` 重置，讓函式狀態清理自給自足；（4）`yt-navigate-finish` handler 補上 `pendingQueue`、`translatedWindows`、`translatingWindows` 的明確重置，消除 SPA 導航期間殘留狀態阻塞新視窗翻譯的風險；（5）字幕區位置追蹤 timer 從 100ms 降為 250ms，每秒 4 次足夠追蹤，節省約 60% 定時器開銷；（6）模組頂部補上依賴聲明與外部介面說明。
+
 **v1.3.4** 字幕翻譯 system prompt 新增 rule 8：忠實保留不雅詞彙，禁止道德審查或委婉潤飾（如 "fuck" → 「幹」，不得軟化為「糟糕」）。
 
 **v1.3.3（2026-04-16）補上 v1.3.1 的實際程式修正**——v1.3.1 的 CHANGELOG entry、regression spec (`test/regression/youtube-spa-navigate.spec.js`)、git tag 都已存在，但 `shinkansen/content-youtube.js` 的實際修正一直躺在 working tree 未 commit，導致 v1.3.1 / v1.3.2 tag 對應的 tree 都不含該修正，build 出的 extension 遇到 YouTube SPA 切換影片仍不會自動重啟字幕翻譯。本版把 `yt-navigate-finish` 改為 async handler（讀 `ytSubtitle.autoTranslate` 設定 + `wasActive` 旗標 + 500ms setTimeout）與 `stopYouTubeTranslation()` 的 `seeked` / `ratechange` removeEventListener 補漏正式 commit 進 code。行為細節同 v1.3.1 entry；實際 regression 保護從 v1.3.3 起生效。

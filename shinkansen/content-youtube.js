@@ -1,6 +1,10 @@
 // content-youtube.js — Shinkansen YouTube 字幕翻譯模組（isolated world）
 // v1.2.11：時間視窗批次翻譯架構
 //
+// 依賴：window.__SK（content-ns.js）、SK.sendLog、SK.showToast、SK.hideToast
+// 載入順序：必須在 content.js 之前、content-ns.js 之後
+// 外部介面：SK.YT（狀態物件）、SK.translateYouTubeSubtitles、SK.stopYouTubeTranslation、SK.isYouTubePage
+//
 // 核心設計：
 //   1. XHR 攔截（MAIN world）→ 取得含時間戳的字幕 → rawSegments[{text,normText,startMs}]
 //   2. 按時間視窗翻譯（預設 30 秒一批），video.timeupdate 驅動觸發下一批
@@ -182,9 +186,9 @@
       });
       container.appendChild(_captionStatusEl);
 
-      // 啟動 100ms 位置追蹤
+      // v1.3.5: 250ms 追蹤——每秒 4 次足夠追蹤字幕位置，節省 60% 定時器開銷（原 100ms）
       if (_captionStatusTimer) clearInterval(_captionStatusTimer);
-      _captionStatusTimer = setInterval(_updateCaptionStatusPosition, 100);
+      _captionStatusTimer = setInterval(_updateCaptionStatusPosition, 250);
       _updateCaptionStatusPosition(); // 立刻更新一次
     }
 
@@ -362,13 +366,14 @@
     YT.translatedUpToMs = windowEndMs;
     YT.translatingWindows.add(windowStartMs);  // v1.2.54: 加入 Set，允許其他視窗並行
 
+    // v1.3.5: try-finally 確保 translatingWindows.delete 無論如何都會執行
+    // （涵蓋：正常完成、!YT.active 提前 return、catch 繼續後到達 finally）
+    try {
+
     // v1.2.48: 若此視窗已確實翻過（Set 精確記錄），直接推進不送 API。
     // 舊版用 captionMapCoverageUpToMs（高水位線）判斷，但高水位線不保證連續覆蓋：
     // 若使用者從中間開始看，前段從未翻過，向後拖時高水位線誤判「已翻」導致字幕空白。
-    if (YT.translatedWindows.has(windowStartMs)) {
-      YT.translatingWindows.delete(windowStartMs);  // v1.2.54
-      return;
-    }
+    if (YT.translatedWindows.has(windowStartMs)) return;  // try-finally 會清理
 
     // 找出本視窗內的字幕（[windowStartMs, windowEndMs)）
     const windowSegs = YT.rawSegments.filter(
@@ -432,10 +437,7 @@
         }
 
         // 2. 使用者還原時中止
-        if (!YT.active) {
-          YT.translatingWindows.delete(windowStartMs);  // v1.2.54
-          return;
-        }
+        if (!YT.active) return;  // v1.3.5: try-finally 會清理
 
         // 3. 串流注入：各批次一完成立刻注入 captionMap。
         // v1.2.56: batch 0 先 await，再並行送其餘批次。
@@ -448,7 +450,9 @@
         // adaptive lookahead 預警範圍內，使用者感知不受影響。
         const _t0 = Date.now();
         // v1.2.43: 每個視窗重置 batchApiMs，預先填好 placeholder 確保順序對齊
-        YT.batchApiMs = new Array(batches.length).fill(0);
+        // v1.3.5: 使用局部 _batchApiMs 收集計時，視窗完成後才同步至 YT.batchApiMs，
+        // 避免多視窗並行翻譯時互相覆蓋共用陣列。進行中各批次顯示 '…'，完成後顯示實際 ms。
+        const _batchApiMs = new Array(batches.length).fill(0);
 
         // 批次處理器（每批完成後立刻注入 captionMap 並替換 DOM 字幕）
         const _runBatch = (batchUnits, b) =>
@@ -457,7 +461,7 @@
             payload: { texts: batchUnits.map(u => u.text), glossary: null },
           }).then(res => {
             const elapsed = Date.now() - _t0;
-            YT.batchApiMs[b] = elapsed;
+            _batchApiMs[b] = elapsed;
             if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
             _logWindowUsage(batchUnits.length, res.usage);
             for (let j = 0; j < batchUnits.length; j++) {
@@ -488,12 +492,15 @@
         // v1.2.56: batch 0 先 await（暖熱 cache），再並行送 batch 1+
         if (batches.length > 0) {
           await _runBatch(batches[0], 0);
-          YT.lastApiMs = YT.batchApiMs[0]; // batch 0 是第一個完成的，記錄其耗時
-          if (!YT.active) { YT.translatingWindows.delete(windowStartMs); return; }
+          YT.lastApiMs = _batchApiMs[0]; // batch 0 是第一個完成的，記錄其耗時
+          if (!YT.active) return;  // v1.3.5: try-finally 會清理
           if (batches.length > 1) {
             await Promise.all(batches.slice(1).map((bu, i) => _runBatch(bu, i + 1)));
           }
         }
+
+        // v1.3.5: 所有批次完成，將局部計時陣列同步至共用狀態供 debug 面板讀取
+        YT.batchApiMs = _batchApiMs;
       } catch (err) {
         SK.sendLog('error', 'youtube', 'window translation failed', { error: err.message });
       }
@@ -521,8 +528,6 @@
       _debugUpdate(`⚠️ 過期跳位 → ${Math.round(catchUpNewStart / 1000)}s（第 ${YT.staleSkipCount} 次）`);
     }
 
-    YT.translatingWindows.delete(windowStartMs);  // v1.2.54: 完成，從 Set 移除
-
     // v1.2.44: 自適應 lookahead——根據剛完成視窗的 API 耗時動態調整下次觸發點。
     // 若 lastApiMs > 設定值，下次提前觸發，確保 buffer 不會被 API 耗時吃光。
     // 取 lastApiMs × 1.3（安全餘量 30%）與設定值的較大者，上限 60 秒。
@@ -543,6 +548,12 @@
       SK.sendLog('info', 'youtube', 'more captions remain', {
         translatedUpToMs: YT.translatedUpToMs, maxMs,
       });
+    }
+
+    } finally {
+      // v1.3.5: 統一清理——無論正常完成、!YT.active 提前 return 或例外，
+      // 都確保此視窗從「翻譯中」Set 移除，防止 per-window 防重入鎖死。
+      YT.translatingWindows.delete(windowStartMs);
     }
   }
 
@@ -947,9 +958,11 @@
     }
     YT.active             = false;
     YT.translatingWindows = new Set();  // v1.2.54
+    YT.translatedWindows  = new Set();  // v1.3.5: 補齊（原僅在 translateYouTubeSubtitles 重置）
     YT.translatedUpToMs   = 0;
-    YT.captionMap       = new Map();
-    YT.pendingQueue     = new Map();
+    YT.rawSegments        = [];         // v1.3.5: 補齊（原僅在 yt-navigate-finish 重置）
+    YT.captionMap         = new Map();
+    YT.pendingQueue       = new Map();
     hideCaptionStatus(); // v1.2.55
     _debugRemove();
     SK.sendLog('info', 'youtube', 'stopped');
@@ -1062,11 +1075,14 @@
     if (YT.active) stopYouTubeTranslation(); // stopYouTubeTranslation 內已呼叫 hideCaptionStatus + _debugRemove
     hideCaptionStatus(); // v1.2.55: 確保 SPA 導航後殘留的提示也清掉
     _debugRemove(); // 確保即使非 active 狀態也清掉面板（內含 _debugMissedKeys.clear()）
-    YT.rawSegments      = [];
-    YT.captionMap       = new Map();
-    YT.translatedUpToMs = 0;
-    YT.config           = null;
-    YT.videoId          = getVideoIdFromUrl();
+    YT.rawSegments        = [];
+    YT.captionMap         = new Map();
+    YT.pendingQueue       = new Map();      // v1.3.5: 確保清理 on-the-fly 佇列
+    YT.translatedUpToMs   = 0;
+    YT.translatedWindows  = new Set();      // v1.3.5: 明確重置（原在 translateYouTubeSubtitles 重置）
+    YT.translatingWindows = new Set();      // v1.3.5: 防止 SPA nav 期間的殘留視窗阻塞
+    YT.config             = null;
+    YT.videoId            = getVideoIdFromUrl();
     SK.sendLog('info', 'youtube', 'SPA navigation reset', { wasActive, newVideoId: YT.videoId });
 
     // v1.3.1: SPA 導航後自動重啟字幕翻譯
