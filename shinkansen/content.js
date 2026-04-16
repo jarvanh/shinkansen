@@ -42,6 +42,16 @@
       chrome.runtime.sendMessage({ type: 'CLEAR_RPD' }, (res) => {
         respond(res || { ok: true });
       });
+    } else if (action === 'GET_PERSISTED_LOGS') {
+      // v1.2.52: 讀取跨 service worker 重啟仍保留的持久化 log
+      chrome.runtime.sendMessage({ type: 'GET_PERSISTED_LOGS' }, (res) => {
+        respond(res || { ok: false, error: 'no response' });
+      });
+    } else if (action === 'CLEAR_PERSISTED_LOGS') {
+      // v1.2.52: 清除持久化 log（測試前呼叫，避免舊資料干擾）
+      chrome.runtime.sendMessage({ type: 'CLEAR_PERSISTED_LOGS' }, (res) => {
+        respond(res || { ok: true });
+      });
     } else if (action === 'GET_STATE') {
       respond({
         ok: true,

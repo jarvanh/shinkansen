@@ -3,7 +3,7 @@
 
 import { translateBatch, extractGlossary } from './lib/gemini.js';
 import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
-import { debugLog, getLogs, clearLogs } from './lib/logger.js';
+import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
 import { getLimitsForSettings } from './lib/tier-limits.js';
@@ -174,16 +174,31 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleTranslate(payload, sender),
   },
-  // v1.2.10: 字幕翻譯專用——prompt 與 temperature 從 ytSubtitle 設定讀取（v1.2.11 改為動態載入）
+  // v1.2.10: 字幕翻譯專用——prompt / temperature / model 從 ytSubtitle 設定讀取（v1.2.11 改為動態載入）
+  // v1.2.39: 支援 ytSubtitle.model（獨立模型）與 ytSubtitle.pricing（獨立計價）
   TRANSLATE_SUBTITLE_BATCH: {
     async: true,
     handler: async (payload, sender) => {
+      // v1.2.51: 記錄 handler 收到訊息到真正呼叫 Gemini 的前置耗時
+      // 包含：getSettings() + cache lookup + rate limiter 等待
+      // 對照 api: translateBatch start 即可計算前置耗時
+      const _tReceived = Date.now();
       const s = await getSettings();
+      const _settingsMs = Date.now() - _tReceived;
+      debugLog('info', 'youtube', 'subtitle batch received', {
+        count: payload?.texts?.length || 0,
+        settingsMs: _settingsMs,   // getSettings() 耗時（首次可能較慢）
+      });
       const yt = s.ytSubtitle || {};
-      return handleTranslate(payload, sender, {
+      const geminiOverrides = {
         systemInstruction: yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
         temperature: yt.temperature ?? 0.1,
-      });
+      };
+      // 若使用者設定了獨立 YouTube 模型，覆蓋 geminiConfig.model
+      if (yt.model) geminiOverrides.model = yt.model;
+      // ytSubtitle.pricing 非空時傳入，讓 handleTranslate 用正確計價計算費用
+      const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+      return handleTranslate(payload, sender, geminiOverrides, pricingOverride);
     },
   },
   EXTRACT_GLOSSARY: {
@@ -229,6 +244,21 @@ const messageHandlers = {
   CLEAR_LOGS: {
     async: false,
     handler: () => { clearLogs(); },
+  },
+  // v1.2.52: 持久化 log（跨 service worker 重啟）
+  GET_PERSISTED_LOGS: {
+    async: true,
+    handler: async () => {
+      const logs = await getPersistedLogs();
+      return { logs, count: logs.length };
+    },
+  },
+  CLEAR_PERSISTED_LOGS: {
+    async: true,
+    handler: async () => {
+      await clearPersistedLogs();
+      return { ok: true };
+    },
   },
   // v1.0.7: Google Docs — 在新分頁開啟 mobilebasic 版本並自動觸發翻譯
   OPEN_GDOC_MOBILE: {
@@ -283,7 +313,8 @@ const messageHandlers = {
       const settings = await getSettings();
       const record = {
         ...payload,
-        model: settings.geminiConfig?.model || 'unknown',
+        // v1.2.39: payload.model 優先（例如 YouTube 字幕用獨立模型時由 content 端傳入）
+        model: payload.model || settings.geminiConfig?.model || 'unknown',
       };
       await usageDB.logTranslation(record);
     },
@@ -335,7 +366,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function handleTranslate(payload, sender, geminiOverrides = {}) {
+// pricingOverride：傳入時（如 YouTube 獨立計價）使用；null 則沿用 settings.pricing
+async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOverride = null) {
   const settings = await getSettings();
   if (!settings.apiKey) {
     throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
@@ -344,10 +376,11 @@ async function handleTranslate(payload, sender, geminiOverrides = {}) {
   const glossary = payload.glossary || null;  // v0.69: 可選的術語對照表
 
   // 若呼叫端傳入 geminiOverrides（如字幕模式），覆蓋 geminiConfig 對應欄位。
-  // 注意：只覆蓋 geminiConfig，pricing 等其他設定維持原值。
+  // pricingOverride（v1.2.39）：字幕模式可傳入獨立計價，否則沿用主設定 pricing。
   const effectiveSettings = Object.keys(geminiOverrides).length > 0
     ? { ...settings, geminiConfig: { ...settings.geminiConfig, ...geminiOverrides } }
     : settings;
+  const effectivePricing = pricingOverride || settings.pricing;
 
   // v1.0.29: 讀取固定術語表（全域 + 當前網域），合併後傳給 translateBatch
   let fixedGlossaryEntries = null;
@@ -429,7 +462,7 @@ async function handleTranslate(payload, sender, geminiOverrides = {}) {
     fresh = res.translations;
     batchUsage = res.usage;
     batchHadMismatch = res.hadMismatch || false; // v0.94: mismatch 旗標
-    batchCostUSD = computeCostUSD(batchUsage.inputTokens, batchUsage.outputTokens, settings.pricing);
+    batchCostUSD = computeCostUSD(batchUsage.inputTokens, batchUsage.outputTokens, effectivePricing);
     const batchMs = Date.now() - t0;
     debugLog('info', 'api', 'translateBatch done', {
       count: missingTexts.length,
@@ -456,7 +489,7 @@ async function handleTranslate(payload, sender, geminiOverrides = {}) {
       batchUsage.inputTokens,
       batchUsage.cachedTokens || 0,
       batchUsage.outputTokens,
-      settings.pricing,
+      effectivePricing,
     );
     await addUsage(billedInputTokens, batchUsage.outputTokens, billedCostUSD);
   }

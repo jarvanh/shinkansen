@@ -54,6 +54,69 @@ isDomainWhitelisted + 首次載入自動翻譯的整合行為）
 到 body 時簡體字污染導致偵測失敗、`<main>` fallback 路徑。使用 create-env 模式
 eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 
+### ~~v1.2.65~~ — YouTube 字幕預設開啟自動翻譯 + Pro 模型說明調整（無需 regression 測試）
+- **說明**：預設值變更（`autoTranslate: true`）+ 純文字修正，不影響翻譯邏輯
+
+### ~~v1.2.64~~ — Debug 頁 toggle 說明換行 + Log 區塊標題（無需 regression 測試）
+- **說明**：純 UI 排版修正，不影響翻譯邏輯
+
+### ~~v1.2.63~~ — 修正 YouTube 設定頁自動翻譯描述文字（無需 regression 測試）
+- **說明**：純文字修正，不影響任何邏輯
+
+### ~~v1.2.62~~ — 修正用量紀錄 filter 後彙總卡片未更新（無需 regression 測試）
+- **說明**：純 UI 邏輯補漏（搜尋過濾後呼叫 `updateSummaryFromRecords`），不影響翻譯邏輯；正確性可人工確認：搜尋框輸入關鍵字後，上方累計費用、Token 數、翻譯次數應跟著篩選結果更新
+
+### ~~v1.2.61~~ — 修正用量紀錄「模型」欄折行（無需 regression 測試）
+- **說明**：純 CSS 修正（`white-space: nowrap`），不影響翻譯邏輯；正確性可人工確認：用量紀錄表格「模型」欄應單行顯示（如 `3.1-flash-lite`）
+
+### ~~v1.2.60~~ — 用量紀錄 UI 五項修正（無需 regression 測試）
+- **說明**：純 UI 改動（`shortenUrl` 特判、`<a>` 連結、搜尋框、datetime-local），不影響翻譯邏輯；正確性可人工確認：開啟設定頁「用量紀錄」分頁，確認 YouTube 影片 URL 顯示 `/watch?v=...`、URL 可點擊、搜尋框過濾正常、篩選器可選時間（含小時分鐘）
+
+### ~~v1.2.59~~ — debug 面板 buffer seek 後顯示虛假正值（無需 regression 測試）
+- **說明**：純 debug 顯示邏輯調整（`bufStr` 增加 `translatingWindows`/`translatedWindows` 狀態判斷），不影響翻譯行為；正確性可人工確認：開啟 debug 面板後拖動進度條到未翻範圍，buffer 欄應顯示「翻譯中…」直到 API 完成，之後恢復顯示 `+Xs ✓`
+
+### ~~v1.2.58~~ — seek 後「翻譯中…」提示不消失（無需 regression 測試）
+- **說明**：`hideCaptionStatus` 冪等呼叫位置調整（從 `!_firstCacheHitLogged` 條件內移出），不影響翻譯邏輯；正確性可人工確認：Alt+S 啟動後拖動進度條到未翻範圍，等中文字幕出現後「翻譯中…」應立即消失
+
+### ~~v1.2.57~~ — 拖動進度條後字幕區未顯示「翻譯中…」（無需 regression 測試）
+- **說明**：純 UI 補漏（`onVideoSeeked` 加 `showCaptionStatus` 呼叫），不影響翻譯邏輯；正確性可人工確認：Alt+S 啟動後拖動進度條到未翻範圍，字幕區應立即出現「翻譯中…」提示，第一條中文字幕出現後自動消失
+
+### ~~v1.2.56~~ — batch 0 先 await 暖熱 cache（無需 regression 測試）
+- **說明**：純翻譯排程改動（`Promise.all` 拆為 serial batch 0 + parallel batch 1+），效能差異（第一視窗 ~13s → ~3.5s）依賴 Gemini implicit cache 冷暖狀態，無法在靜態 fixture 中重現；正確性可從「reload extension + refresh YouTube 頁面，第一次翻譯字幕出現速度明顯比舊版快」人工確認
+
+### ~~v1.2.55~~ — 字幕區載入提示（無需 regression 測試）
+- **說明**：純 UI 改動（toast → caption status 注入），不影響翻譯邏輯；正確性可人工確認：Alt+S 後應看到「翻譯中…」出現在字幕區（有英文字幕時在其正上方），第一條中文字幕出現後自動消失
+
+### ~~v1.2.54~~ — 並行視窗翻譯 translatingWindows Set（無需 regression 測試）
+- **說明**：核心改動是移除 boolean 互斥鎖、改為 per-window Set 防重入。行為差異（英文字幕間隙消除）只在慢 API（冷啟動 10-15s）下才能觸發，靜態 fixture 無法模擬；對照之下，`translatedWindows.has(startMs)` 跳過邏輯（v1.2.48）已由現有 seek-back 相關邏輯涵蓋；並行啟動下不重複翻同一視窗的正確性可人工確認（reload + 播放後觀察 debug 面板 `translating` 欄位是否顯示多個視窗同時在進行）
+
+### ~~v1.2.53~~ — Observer 提前啟動（無需 regression 測試）
+- **說明**：單行位移（`startCaptionObserver()` 移至 `await translateWindowFrom()` 之前），不涉及邏輯分支變更；正確性可從「reload 後首條中文字幕出現時間 < 3s」人工確認；原有 MutationObserver 行為完全不變
+
+### ~~v1.3.0~~ — YouTube 字幕翻譯里程碑版本跳躍 + 文件修正（無功能變更，無需 regression 測試）
+- **說明**：版本號從 1.2.65 跳至 1.3.0 標記 YouTube 字幕翻譯里程碑；同時修正 SPEC.md 五處文件錯誤（domainRules blacklist、缺少設定欄位、Log→Debug 分頁名稱、Popup YouTube toggle、Toast 自動關閉行為描述）。無 `shinkansen/` 程式碼改動，不需要 regression spec
+
+### ~~v1.2.52~~ — Log 持久化（無需 regression 測試）
+- **說明**：純基礎設施改動（新增 chrome.storage.local 持久化 + Debug Bridge actions），不影響翻譯行為；正確性可在 reload extension 後透過 Debug Bridge `GET_PERSISTED_LOGS` 確認有無保留前次 youtube/api log 條目
+
+### ~~v1.2.51~~ — 字幕效能診斷 Log 強化（無需 regression 測試）
+- **說明**：純新增 log 條目，不影響翻譯行為，不需要 regression spec
+
+### ~~v1.2.50~~ — 自適應首批大小（無需 regression 測試）
+- **說明**：純邏輯改動（batch 0 條數依 leadMs 動態決定），行為差異（第一條字幕出現時間）難以在靜態 fixture 中驗證；正確性可從 debug 面板的 `batch0 size` 欄位人工確認
+
+### ~~v1.2.49~~ — 設定頁 UI 調整 + on-the-fly toggle（無需 regression 測試）
+- **說明**：純 UI 重組（tab 改名、toggle 搬移、新增 toggle）+ storage 預設值變更；on-the-fly 開關的正確性可從「關閉後 captionMap miss 不再送 API」的 Log 確認，邏輯極簡（一個 if return），不值得寫 spec
+
+### v1.2.48 — 2026-04-16 — translatedWindows Set 跳過判斷尚無自動化測試
+- **症狀**：向後拖進度條回未翻範圍，`buffer` 顯示 `+30s ✓`、`coverage` 顯示遠大於當前位置的秒數，但字幕仍顯示英文（captionMap 無對應條目）
+- **來源 URL**：任意有字幕的 YouTube 影片，從中段開始播放後向後 seek 至前段
+- **修在**：`shinkansen/content-youtube.js`，以 `translatedWindows: Set<number>` 取代 `captionMapCoverageUpToMs` 作為跳過判斷依據
+- **為什麼還不能寫 Playwright 測試**：
+    需要模擬「從中段開始翻譯（部分視窗有 captionMap 條目）→ seek 回前段（未翻區域）→ 確認 translateWindowFrom 不跳過 → captionMap 正確填入」的完整流程，涉及 sendMessage mock + 視窗狀態管理，與 v1.2.41/v1.2.42 同理，目前 regression suite 未支援 chrome.runtime.sendMessage mock
+- **建議 spec 位置**：`test/regression/youtube-subtitle-onthefly.spec.js`（可擴充現有建議 fixture）
+- **建議驗證方向**：mock `TRANSLATE_SUBTITLE_BATCH`，先翻 windowStart=60000（模擬從 60s 開始），再 seek 回 windowStart=0，確認 `translatedWindows.has(0) === false` → translateWindowFrom(0) 正常呼叫 sendMessage，captionMap 填入 0–30s 條目
+
 ### v1.2.7 — 2026-04-16 — YouTube 字幕即時翻譯（on-the-fly）尚無自動化測試
 - **症狀**：新功能，v1.2.5/v1.2.6 的預下載方案因 YouTube `/api/timedtext` 封鎖 JS fetch 而改為 MutationObserver 即時翻譯；尚無 regression spec 涵蓋
 - **來源 URL**：任意有字幕的 YouTube 影片（例如 https://www.youtube.com/watch?v=dQw4w9WgXcQ）
@@ -99,6 +162,34 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
     測試斷言：mock `TRANSLATE_BATCH` 回傳 `['你好，世界！']`，啟動翻譯後 `.ytp-caption-segment` 的 textContent 應變為「你好，世界！」
 
 ### ~~v1.2.25~~ — 已修正 → v1.2.26（強制 CC toggle 重新觸發 XHR）
+
+### v1.2.47 — 2026-04-16 — 字幕 BATCH_SIZE 20→8（無需 regression 測試）
+- **說明**：常數變更，正確性已由現有字幕翻譯流程涵蓋，效果差異需人工觀察 debug 面板確認
+
+### v1.2.46 — 2026-04-16 — 向後拖進度條修正（無需 regression 測試）
+- **說明**：`onVideoSeeked` 行為變更 + `captionMapCoverageUpToMs` 防重複翻譯；seek 行為需要真實 video element，難以在靜態 fixture 中驗證
+
+### v1.2.45 — 2026-04-16 — 過期視窗追趕機制（無需 regression 測試）
+- **說明**：防禦性安全網，正常運作時不觸發；觸發條件（API > windowSize + adaptLook ≈ 56s）在真實使用中極難重現，難以寫自動化測試
+
+### v1.2.44 — 2026-04-16 — 自適應 lookahead（無需 regression 測試）
+- **說明**：觸發時機邏輯變更，依賴 real-time API 耗時，難以在靜態 fixture 中驗證；行為正確性可透過 debug 面板 `adapt look` 欄位人工確認
+
+### v1.2.43 — 2026-04-16 — debug 面板各批次耗時（UI 變更，無需 regression 測試）
+- **說明**：純 debug 顯示邏輯，不影響翻譯正確性，不需要 regression spec
+
+### v1.2.42 — 2026-04-16 — 字幕批次串流注入（.then() 各批立刻寫入）尚無自動化測試
+- **症狀**：buffer overrun，即使 Promise.all 並行後最早字幕仍需等最慢批次才能使用
+- **修在**：`shinkansen/content-youtube.js` 的 `translateWindowFrom()`，results 處理移入 `.then()` 回呼
+- **為什麼還不能寫 Playwright 測試**：與 v1.2.41 同理，需要 sendMessage mock + 時序控制
+
+### v1.2.41 — 2026-04-16 — 字幕批次並行化（Promise.all）尚無自動化測試
+- **症狀**：新功能，循序 `await` 改為 `Promise.all` 並行，無對應 regression spec
+- **修在**：`shinkansen/content-youtube.js` 的 `translateWindowFrom()`，循序迴圈改為先建 promises 陣列再 `await Promise.all`
+- **為什麼還不能寫 Playwright 測試**：
+    驗證「並行 vs 循序」需要模擬多個 `TRANSLATE_SUBTITLE_BATCH` 請求同時飛出且同時完成，需要測試框架層級的 sendMessage 攔截 + 時序控制。目前 regression suite 不支援 chrome.runtime.sendMessage mock；且並行本身是效能特性，功能正確性（captionMap 填入）已被現有 on-the-fly 流程間接涵蓋
+- **建議 spec 位置**：`test/regression/youtube-subtitle-parallel-batch.spec.js`
+- **建議驗證方向**：mock `TRANSLATE_SUBTITLE_BATCH`，傳入含 25+ 個 segment 的視窗（超過一批），確認 captionMap 填入數量等於 segment 總數，與循序版行為一致即可
 
 ### v1.2.1 — 2026-04-15 — 動態 widget 網站 SPA observer 無限 rescan
 - **症狀**：Stratechery 頁面翻譯完成後，toast「已翻譯 4 段新內容」每秒持續彈出，log 顯示 `SPA observer rescan #N` 無限遞增（N 超過 100+）

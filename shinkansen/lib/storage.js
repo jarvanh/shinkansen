@@ -101,13 +101,18 @@ export const DEFAULT_SETTINGS = {
   debugLog: false,
   // v1.2.11: YouTube 字幕翻譯設定
   ytSubtitle: {
-    autoTranslate: false,        // 偵測到 YouTube 影片時自動翻譯字幕
+    autoTranslate: true,         // 偵測到 YouTube 影片時自動翻譯字幕
     temperature:   0.1,          // 字幕翻譯要穩定，不要有創意
     systemPrompt:  DEFAULT_SUBTITLE_SYSTEM_PROMPT,
     windowSizeS:   30,           // 每批翻譯涵蓋的秒數（預設 30 秒）
     lookaheadS:    10,           // 在字幕快用完前幾秒觸發下一批（預設 10 秒）
-    debugToast:          false,  // v1.2.14: 顯示字幕翻譯即時狀態面板（debug 用）
+    debugToast:    false,        // v1.2.14: 顯示字幕翻譯即時狀態面板（debug 用）
+    onTheFly:      false,        // v1.2.49: cache miss 時是否送 on-the-fly API 翻譯（預設關閉）
     // preserveLineBreaks 已於 v1.2.38 移除 toggle，改為永遠 true（content-youtube.js 硬編碼）
+    // v1.2.39: 獨立模型設定——空字串表示與主模型相同
+    model: '',
+    // v1.2.39: 獨立計價——null 表示與主模型計價相同；設定後用於字幕費用計算
+    pricing: null,
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限
@@ -170,6 +175,8 @@ export async function getSettings() {
     pricing: { ...DEFAULT_SETTINGS.pricing, ...(saved.pricing || {}) },
     domainRules: { ...DEFAULT_SETTINGS.domainRules, ...(saved.domainRules || {}) },
     glossary: { ...DEFAULT_SETTINGS.glossary, ...(saved.glossary || {}) },
+    // v1.2.39: 深層 merge ytSubtitle，確保新欄位（model / pricing）有預設值
+    ytSubtitle: { ...DEFAULT_SETTINGS.ytSubtitle, ...(saved.ytSubtitle || {}) },
   };
   merged.apiKey = apiKey;
   return merged;

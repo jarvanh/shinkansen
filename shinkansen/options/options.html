@@ -20,7 +20,7 @@
       <button class="tab-btn" data-tab="glossary">術語表</button>
       <button class="tab-btn" data-tab="youtube">YouTube 字幕</button>
       <button class="tab-btn" data-tab="usage">用量紀錄</button>
-      <button class="tab-btn" data-tab="log">Log</button>
+      <button class="tab-btn" data-tab="log">Debug</button>
     </nav>
 
     <!-- ═══ 一般設定分頁 ═══ -->
@@ -352,17 +352,21 @@
       <div class="usage-controls">
         <label class="usage-date-label">
           從
-          <input type="date" id="usage-from">
+          <input type="datetime-local" id="usage-from">
         </label>
         <label class="usage-date-label">
           到
-          <input type="date" id="usage-to">
+          <input type="datetime-local" id="usage-to">
         </label>
         <div class="usage-granularity">
           <button class="gran-btn active" data-gran="day">日</button>
           <button class="gran-btn" data-gran="week">週</button>
           <button class="gran-btn" data-gran="month">月</button>
         </div>
+      </div>
+      <!-- v1.2.60: 搜尋框（比對標題 / 網址 / 網域） -->
+      <div class="usage-search-row">
+        <input type="text" id="usage-search" placeholder="搜尋標題、網址或網域…" autocomplete="off">
       </div>
 
       <!-- 彙總卡片 -->
@@ -415,10 +419,32 @@
 
     </div><!-- /tab-usage -->
 
-    <!-- ═══ Log 分頁 ═══ -->
+    <!-- ═══ Debug 分頁 ═══ -->
     <div id="tab-log" class="tab-panel">
 
-      <!-- 工具列 -->
+      <!-- YouTube 字幕 Debug 設定（v1.2.49 從 YouTube 字幕分頁移入） -->
+      <section>
+        <h2>YouTube 字幕</h2>
+        <label class="checkbox-label">
+          <input type="checkbox" id="ytDebugToast">
+          <div class="checkbox-body">
+            顯示字幕翻譯即時狀態面板
+            <small class="muted">開啟後，字幕翻譯啟動時頁面左上角會出現一個即時狀態面板，顯示 buffer、batch API 耗時、captionMap 大小等診斷資訊。各欄位含意詳見 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/DEBUG-BOARD.md" target="_blank" rel="noopener">DEBUG-BOARD.md</a>。</small>
+          </div>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="ytOnTheFly">
+          <div class="checkbox-body">
+            啟用 On-the-fly 備援翻譯
+            <small class="muted">開啟後，當字幕出現時若尚未預翻（captionMap 未命中），會即時送 API 翻譯。使用較慢的模型（如 Flash Lite）時建議關閉，避免即時翻譯請求阻塞預翻進度。預設關閉。</small>
+          </div>
+        </label>
+      </section>
+
+      <!-- Log 記錄 -->
+      <section>
+        <h2>Log 記錄</h2>
+      </section>
       <div class="log-toolbar">
         <select id="log-category-filter">
           <option value="">全部分類</option>
@@ -485,16 +511,7 @@
       <label class="checkbox-label">
         <input type="checkbox" id="ytAutoTranslate">
         偵測到 YouTube 影片時自動翻譯字幕
-        <small class="muted">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動按快捷鍵。</small>
-      </label>
-    </section>
-
-    <section>
-      <h2>Debug</h2>
-      <label class="checkbox-label">
-        <input type="checkbox" id="ytDebugToast">
-        顯示字幕翻譯即時狀態面板
-        <small class="muted">開啟後，字幕翻譯啟動時頁面左上角會出現一個即時狀態面板，顯示 XHR 攔截、視窗翻譯進度、captionMap 大小等資訊，方便 debug。</small>
+        <small class="muted">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動在 Popup 開啟開關。</small>
       </label>
     </section>
 
@@ -510,6 +527,31 @@
         提前觸發秒數
         <input type="number" id="ytLookaheadS" step="1" min="3" max="30">
         <small class="muted">在目前批次快用完前幾秒，提前翻好下一批（預設 10 秒）。建議不低於 5 秒。</small>
+      </label>
+    </section>
+
+    <!-- v1.2.39: 字幕獨立模型設定 -->
+    <section>
+      <h2>翻譯模型</h2>
+      <p class="muted">字幕翻譯可以使用比文章翻譯更便宜的模型，例如 Flash Lite。括號為 Standard tier 參考價（input / output，每 1M tokens USD）。</p>
+      <label>
+        模型
+        <select id="ytModel">
+          <option value="">（與文章翻譯相同）</option>
+          <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 便宜，字幕品質足夠</option>
+          <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）— 推薦</option>
+          <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）— 大炮打小鳥，不推薦</option>
+        </select>
+        <small class="muted">選擇模型後，下方計價會自動帶入參考價；你也可以手動修改。</small>
+      </label>
+      <label>
+        字幕 Input 單價（USD / 1M tokens）
+        <input type="number" id="ytInputPerMTok" step="0.01" min="0" placeholder="（與文章翻譯相同）">
+        <small class="muted">空白表示使用與文章翻譯相同的計價，不需重複設定。</small>
+      </label>
+      <label>
+        字幕 Output 單價（USD / 1M tokens）
+        <input type="number" id="ytOutputPerMTok" step="0.01" min="0" placeholder="（與文章翻譯相同）">
       </label>
     </section>
 

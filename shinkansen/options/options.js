@@ -156,11 +156,23 @@ async function load() {
   const yt = { ...DEFAULTS.ytSubtitle, ...(s.ytSubtitle || {}) };
   $('ytAutoTranslate').checked       = yt.autoTranslate       === true;
   $('ytDebugToast').checked          = yt.debugToast          === true;
+  $('ytOnTheFly').checked            = yt.onTheFly            === true;  // v1.2.49
   // ytPreserveLineBreaks 已於 v1.2.38 移除（功能改為永遠開啟）
   $('ytWindowSizeS').value           = yt.windowSizeS ?? 30;
   $('ytLookaheadS').value            = yt.lookaheadS  ?? 10;
   $('ytTemperature').value           = yt.temperature  ?? 0.1;
   $('ytSystemPrompt').value          = yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT;
+  // v1.2.39: 獨立模型 + 計價
+  const ytModelSel = $('ytModel');
+  const savedYtModel = yt.model || '';
+  if ([...ytModelSel.options].some(o => o.value === savedYtModel)) {
+    ytModelSel.value = savedYtModel;
+  } else {
+    ytModelSel.value = '';
+  }
+  const ytPricing = yt.pricing;
+  $('ytInputPerMTok').value  = ytPricing?.inputPerMTok  != null ? ytPricing.inputPerMTok  : '';
+  $('ytOutputPerMTok').value = ytPricing?.outputPerMTok != null ? ytPricing.outputPerMTok : '';
 }
 
 async function save() {
@@ -217,11 +229,23 @@ async function save() {
     ytSubtitle: {
       autoTranslate:      $('ytAutoTranslate').checked,
       debugToast:         $('ytDebugToast').checked,
+      onTheFly:           $('ytOnTheFly').checked,          // v1.2.49
       // preserveLineBreaks: 已移除 toggle，永遠 true（content-youtube.js 硬編碼）
-      windowSizeS:        Number($('ytWindowSizeS').value)  || 30,
-      lookaheadS:         Number($('ytLookaheadS').value)   || 10,
-      temperature:        Number($('ytTemperature').value)  ?? 0.1,
-      systemPrompt:       $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+      windowSizeS:  Number($('ytWindowSizeS').value)  || 30,
+      lookaheadS:   Number($('ytLookaheadS').value)   || 10,
+      temperature:  Number($('ytTemperature').value)  ?? 0.1,
+      systemPrompt: $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+      // v1.2.39: 獨立模型 + 計價
+      model: $('ytModel').value || '',
+      pricing: (() => {
+        const inp = parseFloat($('ytInputPerMTok').value);
+        const out = parseFloat($('ytOutputPerMTok').value);
+        if (isNaN(inp) && isNaN(out)) return null; // 空白 → 與主模型相同，null 表示不覆蓋
+        return {
+          inputPerMTok:  isNaN(inp) ? null : inp,
+          outputPerMTok: isNaN(out) ? null : out,
+        };
+      })(),
     },
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
     fixedGlossary: (() => {
@@ -258,6 +282,22 @@ $('save-youtube').addEventListener('click', save);
 $('yt-reset-prompt').addEventListener('click', () => {
   $('ytSystemPrompt').value = DEFAULT_SUBTITLE_SYSTEM_PROMPT;
   markDirty(); // 值已變更，標記為未儲存
+});
+
+// v1.2.39: 切換 YouTube 模型時自動帶入參考計價（與主模型的邏輯相同）
+$('ytModel').addEventListener('change', () => {
+  const model = $('ytModel').value;
+  if (!model) {
+    // 空 = 與主模型相同，清空計價欄位讓 placeholder 顯示
+    $('ytInputPerMTok').value  = '';
+    $('ytOutputPerMTok').value = '';
+    return;
+  }
+  const p = MODEL_PRICING[model];
+  if (p) {
+    $('ytInputPerMTok').value  = p.input;
+    $('ytOutputPerMTok').value = p.output;
+  }
 });
 
 // ─── v0.94: 儲存狀態提示條 ──────────────────────────────────
@@ -675,25 +715,31 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ─── 用量頁面狀態 ────────────────────────────────────────
 let usageChart = null;
 let currentGranularity = 'day';
+let allUsageRecords = [];   // v1.2.60: client-side 搜尋用，保留完整記錄
 
-// 預設日期範圍：近 30 天
+// v1.2.60: 預設日期範圍：近 30 天（datetime-local 格式 YYYY-MM-DDTHH:MM）
 function initUsageDateRange() {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 30);
-  $('usage-from').value = fmtDateInput(from);
-  $('usage-to').value = fmtDateInput(to);
+  from.setHours(0, 0, 0, 0);
+  $('usage-from').value = fmtDateTimeInput(from);
+  $('usage-to').value = fmtDateTimeInput(to);
 }
 
-function fmtDateInput(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function fmtDateTimeInput(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function getUsageDateRange() {
   const fromStr = $('usage-from').value;
   const toStr = $('usage-to').value;
-  const from = fromStr ? new Date(fromStr + 'T00:00:00').getTime() : Date.now() - 30 * 86400000;
-  const to = toStr ? new Date(toStr + 'T23:59:59.999').getTime() : Date.now();
+  // datetime-local 格式已含時間，直接 parse；不含時間（舊存值）加預設時間
+  const from = fromStr ? new Date(fromStr.includes('T') ? fromStr : fromStr + 'T00:00').getTime()
+                       : Date.now() - 30 * 86400000;
+  const to   = toStr   ? new Date(toStr.includes('T')   ? toStr   : toStr   + 'T23:59').getTime()
+                       : Date.now();
   return { from, to };
 }
 
@@ -737,8 +783,11 @@ async function loadUsageData() {
   // 折線圖
   if (chartRes?.ok) renderChart(chartRes.data);
 
-  // 明細表格
-  if (recordsRes?.ok) renderTable(recordsRes.records);
+  // 明細表格（v1.2.60: 存入 allUsageRecords 供搜尋過濾用）
+  if (recordsRes?.ok) {
+    allUsageRecords = recordsRes.records || [];
+    applyUsageSearch();
+  }
 }
 
 // ─── 折線圖 ──────────────────────────────────────────────
@@ -868,6 +917,7 @@ function renderTable(records) {
     const shortModel = (r.model || '').replace('gemini-', '').replace('-preview', '');
     const title = escapeHtml(r.title || '(無標題)');
     const urlDisplay = escapeHtml(shortenUrl(r.url || ''));
+    const urlFull = escapeHtml(r.url || '');
     // v1.0.30: Gemini implicit cache hit rate
     const inputTk = r.inputTokens || 0;
     const cachedTk = r.cachedTokens || 0;
@@ -875,20 +925,61 @@ function renderTable(records) {
     const hitHtml = hitRate > 0
       ? `<span class="usage-cache-hit">(${hitRate}% hit)</span>`
       : '';
+    // v1.2.60: URL 改為可點擊連結
+    const urlHtml = urlFull
+      ? `<a class="site-url" href="${urlFull}" target="_blank" rel="noopener">${urlDisplay}</a>`
+      : `<span class="site-url">${urlDisplay}</span>`;
     return `<tr>
       <td>${fmtTime(r.timestamp)}</td>
-      <td>${title}<span class="site-url">${urlDisplay}</span></td>
-      <td>${shortModel}</td>
+      <td>${title}${urlHtml}</td>
+      <td class="col-model">${shortModel}</td>
       <td class="num">${formatTokens(billedTokens)}${hitHtml}</td>
       <td class="num">${formatUSD(r.billedCostUSD || 0)}</td>
     </tr>`;
   }).join('');
 }
 
+// v1.2.62: 從記錄陣列重算彙總卡片（讓搜尋/filter 結果同步反映在計費數字上）
+function updateSummaryFromRecords(records) {
+  let totalCost = 0, totalTokens = 0;
+  const modelCount = {};
+  for (const r of records) {
+    totalCost += r.billedCostUSD || 0;
+    totalTokens += (r.billedInputTokens || 0) + (r.outputTokens || 0);
+    const m = r.model || '';
+    modelCount[m] = (modelCount[m] || 0) + 1;
+  }
+  let topModel = '—', topCount = 0;
+  for (const [m, c] of Object.entries(modelCount)) {
+    if (c > topCount) { topCount = c; topModel = m; }
+  }
+  $('usage-total-cost').textContent   = formatUSD(totalCost);
+  $('usage-total-tokens').textContent = formatTokens(totalTokens);
+  $('usage-total-count').textContent  = String(records.length);
+  $('usage-top-model').textContent    = topModel;
+}
+
+// v1.2.60: 搜尋過濾，同時比對標題與 URL
+function applyUsageSearch() {
+  const q = ($('usage-search')?.value || '').trim().toLowerCase();
+  const filtered = q
+    ? allUsageRecords.filter(r =>
+        (r.title || '').toLowerCase().includes(q) ||
+        (r.url || '').toLowerCase().includes(q))
+    : allUsageRecords;
+  renderTable(filtered);
+  updateSummaryFromRecords(filtered);
+}
+
 function shortenUrl(url) {
   try {
     const u = new URL(url);
-    const path = u.pathname.length > 30 ? u.pathname.slice(0, 30) + '…' : u.pathname;
+    // v1.2.60: YouTube watch 頁保留 ?v= 參數，否則顯示沒意義的 /watch
+    if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') &&
+        u.pathname === '/watch' && u.searchParams.get('v')) {
+      return u.hostname + '/watch?v=' + u.searchParams.get('v');
+    }
+    const path = u.pathname.length > 40 ? u.pathname.slice(0, 40) + '…' : u.pathname;
     return u.hostname + path;
   } catch { return url; }
 }
@@ -900,6 +991,8 @@ function escapeHtml(str) {
 // ─── 事件綁定 ────────────────────────────────────────────
 $('usage-from').addEventListener('change', loadUsageData);
 $('usage-to').addEventListener('change', loadUsageData);
+// v1.2.60: 搜尋框即時過濾
+$('usage-search')?.addEventListener('input', applyUsageSearch);
 
 // 粒度切換
 document.querySelectorAll('.gran-btn').forEach(btn => {

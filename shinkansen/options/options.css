@@ -28,6 +28,11 @@ label {
 
 label.switch { display: flex; align-items: center; gap: 8px; }
 
+label.checkbox-label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; margin: 10px 0; }
+label.checkbox-label input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
+.checkbox-body { display: flex; flex-direction: column; gap: 3px; }
+.checkbox-body small { display: block; line-height: 1.5; }
+
 input[type="text"],
 input[type="password"],
 input[type="number"],
@@ -204,9 +209,28 @@ a:hover { text-decoration: underline; }
   color: #86868b;
   margin: 0;
 }
-.usage-date-label input[type="date"] {
-  width: 150px;
+.usage-date-label input[type="date"],
+.usage-date-label input[type="datetime-local"] {
+  width: 175px;
   margin-top: 2px;
+}
+/* v1.2.60: 搜尋框 */
+.usage-search-row {
+  margin-bottom: 12px;
+}
+.usage-search-row input[type="text"] {
+  width: 100%;
+  max-width: 420px;
+  padding: 6px 10px;
+  border: 1px solid #d2d2d7;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1d1d1f;
+  background: #fff;
+}
+.usage-search-row input[type="text"]:focus {
+  outline: none;
+  border-color: #0071e3;
 }
 .usage-granularity {
   display: flex;
@@ -296,6 +320,7 @@ a:hover { text-decoration: underline; }
 .usage-table th { font-weight: 600; color: #86868b; font-size: 11px; text-transform: uppercase; }
 .usage-table th.num,
 .usage-table td.num { text-align: right; }
+.usage-table .col-model { white-space: nowrap; }
 .usage-table tbody tr:hover { background: #f0f7ff; }
 .usage-table .site-url {
   display: block;
