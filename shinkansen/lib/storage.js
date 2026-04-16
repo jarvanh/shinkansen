@@ -56,6 +56,17 @@ export const DEFAULT_GLOSSARY_PROMPT = `<role_definition>
 [{"source":"Peter Hessler","target":"何偉","type":"person"},{"source":"Chengdu","target":"成都","type":"place"},{"source":"watchfluencers","target":"錶壇網紅（watchfluencers）","type":"tech"},{"source":"Parasite","target":"《寄生上流》","type":"work"}]
 </json_format_example>`;
 
+// v1.2.11: YouTube 字幕翻譯專用 system prompt（從 background.js 搬到此處，供設定頁存取）
+export const DEFAULT_SUBTITLE_SYSTEM_PROMPT = `你是專業的影片字幕翻譯員，負責將英文字幕翻譯成台灣繁體中文。
+
+<critical_rules>
+1. 輸出限制：只輸出翻譯結果，絕對不加任何說明、解釋或開場白。
+2. 嚴格一對一對應：輸入有幾段字幕，輸出就有幾段，不合併、不拆分、不改變順序。
+3. 口語化：字幕是口說內容，使用台灣自然口語，語句簡短直白，避免書面語腔調。
+4. 禁用中國大陸用語（網絡→網路、視頻→影片、軟件→軟體、數據→資料）。
+5. 專有名詞保留：人名、品牌、縮寫（如 AI、NASA、CPU）保留英文原文。
+</critical_rules>`;
+
 export const DEFAULT_SETTINGS = {
   apiKey: '',
   geminiConfig: {
@@ -86,6 +97,15 @@ export const DEFAULT_SETTINGS = {
   domainRules: { whitelist: [] },
   autoTranslate: false,
   debugLog: false,
+  // v1.2.11: YouTube 字幕翻譯設定
+  ytSubtitle: {
+    autoTranslate: false,        // 偵測到 YouTube 影片時自動翻譯字幕
+    temperature:   0.1,          // 字幕翻譯要穩定，不要有創意
+    systemPrompt:  DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+    windowSizeS:   30,           // 每批翻譯涵蓋的秒數（預設 30 秒）
+    lookaheadS:    10,           // 在字幕快用完前幾秒觸發下一批（預設 10 秒）
+    debugToast:    false,        // v1.2.14: 顯示字幕翻譯即時狀態面板（debug 用）
+  },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限
   // override 欄位若為 null 則使用 tier 對照表的值,非 null 時覆寫

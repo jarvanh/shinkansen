@@ -101,6 +101,22 @@ async function init() {
     $('glossary-toggle').checked = gc?.enabled ?? false;
   } catch { /* 讀取失敗時維持預設 checked */ }
 
+  // v1.2.12: YouTube 字幕 toggle — 只在 YouTube 影片頁才顯示
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const url = tab?.url || '';
+    if (url.includes('youtube.com/watch')) {
+      $('yt-subtitle-row').hidden = false;
+      // 讀取目前字幕翻譯狀態
+      try {
+        const resp = await chrome.tabs.sendMessage(tab.id, { type: 'GET_SUBTITLE_STATE' });
+        $('yt-subtitle-toggle').checked = resp?.active ?? false;
+      } catch {
+        $('yt-subtitle-toggle').checked = false;
+      }
+    }
+  } catch { /* 非 YouTube 頁面，保持 hidden */ }
+
   if (!apiKey) {
     statusEl.textContent = '狀態：⚠ 尚未設定 API Key';
     statusEl.style.color = '#ff3b30';
@@ -138,6 +154,18 @@ $('glossary-toggle').addEventListener('change', async (e) => {
     await chrome.storage.sync.set({ glossary: gc });
   } catch (err) {
     console.error('[Shinkansen] popup: failed to save glossary toggle', err);
+  }
+});
+
+// v1.2.12: YouTube 字幕翻譯開關
+$('yt-subtitle-toggle').addEventListener('change', async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_SUBTITLE' });
+  } catch (err) {
+    statusEl.textContent = '狀態：無法切換字幕翻譯，請重新整理頁面';
+    statusEl.style.color = '#ff3b30';
   }
 });
 

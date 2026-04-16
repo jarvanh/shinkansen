@@ -30,7 +30,7 @@
       });
     } else if (action === 'TRANSLATE') {
       respond({ ok: true, triggered: true });
-      translatePage();
+      SK.translatePage();
     } else if (action === 'RESTORE') {
       if (STATE.translated) {
         restorePage();
@@ -48,6 +48,27 @@
         translated: STATE.translated,
         translating: STATE.translating,
         segmentCount: STATE.originalHTML.size,
+      });
+    } else if (action === 'GET_YT_DEBUG') {
+      // 暴露 YT 字幕翻譯的內部狀態，供除錯比對用
+      const YT = SK.YT;
+      if (!YT) { respond({ ok: false, error: 'SK.YT not available' }); return; }
+      const rawNorms = YT.rawSegments.map(s => s.normText);
+      const rawTexts = YT.rawSegments.map(s => s.text);
+      const mapKeys  = Array.from(YT.captionMap.keys());
+      const rawSet   = new Set(rawNorms);
+      const onTheFlyKeys = mapKeys.filter(k => !rawSet.has(k));
+      respond({
+        ok: true,
+        active:           YT.active,
+        translating:      YT.translating,
+        rawCount:         YT.rawSegments.length,
+        rawNormTexts:     rawNorms,
+        rawTexts:         rawTexts,
+        captionMapSize:   YT.captionMap.size,
+        captionMapKeys:   mapKeys,
+        onTheFlyKeys:     onTheFlyKeys,
+        translatedUpToMs: YT.translatedUpToMs,
       });
     } else {
       respond({ ok: false, error: 'unknown action: ' + action });
@@ -264,6 +285,9 @@
   // ─── translatePage ───────────────────────────────────
 
   SK.translatePage = async function translatePage() {
+    // v1.2.12: YouTube 頁面的 Option+S 翻譯頁面內容（說明、留言等），
+    // 字幕翻譯改由 popup toggle 或 autoTranslate 設定控制，與快捷鍵無關。
+
     if (STATE.translated) {
       restorePage();
       return;
@@ -634,6 +658,19 @@
       sendResponse({ ok: true, translated: STATE.translated, editing: editModeActive });
       return true;
     }
+    // v1.2.12: YouTube 字幕翻譯開關（popup toggle 用）
+    if (msg?.type === 'GET_SUBTITLE_STATE') {
+      sendResponse({ ok: true, active: SK.YT?.active ?? false });
+      return true;
+    }
+    if (msg?.type === 'TOGGLE_SUBTITLE') {
+      if (SK.translateYouTubeSubtitles) {
+        SK.translateYouTubeSubtitles().catch(err => {
+          SK.sendLog('warn', 'system', 'TOGGLE_SUBTITLE failed', { error: err.message });
+        });
+      }
+      return;
+    }
   });
 
   window.__shinkansen_translate = SK.translatePage;
@@ -763,6 +800,21 @@
   // 首次載入時的自動翻譯
   (async () => {
     try {
+      // v1.2.11: YouTube 字幕自動翻譯（優先於一般 auto-translate）
+      if (SK.isYouTubePage?.()) {
+        const saved = await chrome.storage.sync.get('ytSubtitle');
+        if (saved.ytSubtitle?.autoTranslate) {
+          SK.sendLog('info', 'system', 'YouTube auto-subtitle enabled, activating on load');
+          // 稍微延遲，等 content script 完成初始化、XHR 攔截器就位
+          setTimeout(() => {
+            SK.translateYouTubeSubtitles?.().catch(err => {
+              SK.sendLog('warn', 'system', 'YouTube auto-subtitle failed', { error: err.message });
+            });
+          }, 800);
+        }
+        return; // YouTube 頁面不走一般 auto-translate
+      }
+
       const { autoTranslate = false } = await chrome.storage.sync.get('autoTranslate');
       if (!autoTranslate) return;
       if (await SK.isDomainWhitelisted()) {

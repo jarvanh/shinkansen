@@ -2,7 +2,7 @@
 // 職責：接收翻譯請求、呼叫 Gemini API、處理快取、處理快捷鍵、統一除錯 Log。
 
 import { translateBatch, extractGlossary } from './lib/gemini.js';
-import { getSettings } from './lib/storage.js';
+import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -10,6 +10,9 @@ import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 
 debugLog('info', 'system', 'service worker started', { version: chrome.runtime.getManifest().version });
+
+// v1.2.11: SUBTITLE_SYSTEM_PROMPT 已移至 lib/storage.js（DEFAULT_SUBTITLE_SYSTEM_PROMPT）
+// TRANSLATE_SUBTITLE_BATCH handler 從 ytSubtitle 設定讀取，不再使用硬碼常數。
 
 // ─── Rate Limiter(全域 singleton) ──────────────────────
 // 三維度 sliding window,同時約束 RPM / TPM / RPD。
@@ -171,6 +174,18 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleTranslate(payload, sender),
   },
+  // v1.2.10: 字幕翻譯專用——prompt 與 temperature 從 ytSubtitle 設定讀取（v1.2.11 改為動態載入）
+  TRANSLATE_SUBTITLE_BATCH: {
+    async: true,
+    handler: async (payload, sender) => {
+      const s = await getSettings();
+      const yt = s.ytSubtitle || {};
+      return handleTranslate(payload, sender, {
+        systemInstruction: yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+        temperature: yt.temperature ?? 0.1,
+      });
+    },
+  },
   EXTRACT_GLOSSARY: {
     async: true,
     handler: (payload, sender) => handleExtractGlossary(payload, sender),
@@ -320,13 +335,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function handleTranslate(payload, sender) {
+async function handleTranslate(payload, sender, geminiOverrides = {}) {
   const settings = await getSettings();
   if (!settings.apiKey) {
     throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
   }
   const texts = payload.texts;
   const glossary = payload.glossary || null;  // v0.69: 可選的術語對照表
+
+  // 若呼叫端傳入 geminiOverrides（如字幕模式），覆蓋 geminiConfig 對應欄位。
+  // 注意：只覆蓋 geminiConfig，pricing 等其他設定維持原值。
+  const effectiveSettings = Object.keys(geminiOverrides).length > 0
+    ? { ...settings, geminiConfig: { ...settings.geminiConfig, ...geminiOverrides } }
+    : settings;
 
   // v1.0.29: 讀取固定術語表（全域 + 當前網域），合併後傳給 translateBatch
   let fixedGlossaryEntries = null;
@@ -351,7 +372,8 @@ async function handleTranslate(payload, sender) {
 
   // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
   // 確保「有術語表」與「無術語表」的翻譯分開快取。
-  let glossaryKeySuffix = '';
+  // 字幕模式加 '_yt' 後綴，確保字幕翻譯快取與文章翻譯快取分開存放。
+  let glossaryKeySuffix = Object.keys(geminiOverrides).length > 0 ? '_yt' : '';
   const allGlossaryForHash = [
     ...(glossary || []).map(e => `${e.source}:${e.target}`),
     ...(fixedGlossaryEntries || []).map(e => `F:${e.source}:${e.target}`),
@@ -403,7 +425,7 @@ async function handleTranslate(payload, sender) {
     const t0 = Date.now();
     const totalChars = missingTexts.reduce((s, t) => s + (t?.length || 0), 0);
     debugLog('info', 'api', 'translateBatch start', { texts: missingTexts.length, chars: totalChars });
-    const res = await translateBatch(missingTexts, settings, glossary, fixedGlossaryEntries);
+    const res = await translateBatch(missingTexts, effectiveSettings, glossary, fixedGlossaryEntries);
     fresh = res.translations;
     batchUsage = res.usage;
     batchHadMismatch = res.hadMismatch || false; // v0.94: mismatch 旗標

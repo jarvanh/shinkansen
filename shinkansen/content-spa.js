@@ -187,9 +187,14 @@
 
     const hasNewContent = mutations.some(m =>
       m.type === 'childList' && m.addedNodes.length > 0 &&
+      // 排除已翻譯節點內部的變動
       !(m.target.nodeType === 1 && m.target.closest?.('[data-shinkansen-translated]')) &&
+      // v1.2.13: 排除 YouTube 字幕容器的 DOM 變動（字幕翻譯替換文字時不觸發 SPA rescan）
+      !(m.target.nodeType === 1 && m.target.closest?.('.ytp-caption-window-container, .ytp-caption-segment')) &&
       Array.from(m.addedNodes).some(n =>
-        n.nodeType === Node.ELEMENT_NODE && n.textContent.trim().length > 10
+        n.nodeType === Node.ELEMENT_NODE && n.textContent.trim().length > 10 &&
+        !n.classList?.contains('ytp-caption-segment') &&
+        !n.closest?.('.ytp-caption-window-container')
       )
     );
     if (!hasNewContent) return;

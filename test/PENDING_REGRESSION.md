@@ -54,6 +54,50 @@ isDomainWhitelisted + 首次載入自動翻譯的整合行為）
 到 body 時簡體字污染導致偵測失敗、`<main>` fallback 路徑。使用 create-env 模式
 eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 
+### v1.2.7 — 2026-04-16 — YouTube 字幕即時翻譯（on-the-fly）尚無自動化測試
+- **症狀**：新功能，v1.2.5/v1.2.6 的預下載方案因 YouTube `/api/timedtext` 封鎖 JS fetch 而改為 MutationObserver 即時翻譯；尚無 regression spec 涵蓋
+- **來源 URL**：任意有字幕的 YouTube 影片（例如 https://www.youtube.com/watch?v=dQw4w9WgXcQ）
+- **修在**：`shinkansen/content-youtube.js`（大幅改寫），`shinkansen/background.js`（移除 GET_YT_PLAYER_DATA）
+- **為什麼還不能寫 Playwright 測試**：
+    新架構的核心是 MutationObserver 監聽 `.ytp-caption-segment` → 觸發 `TRANSLATE_BATCH` → 回填 DOM，涉及 service worker mock + 時序等待。最小 fixture 可以手動插入 `.ytp-caption-segment` 並觀察替換，但需要先補 `TRANSLATE_BATCH` mock 機制（目前 regression suite 僅 mock fetch，不支援 chrome.runtime.sendMessage mock）。
+- **建議 spec 位置**：`test/regression/youtube-subtitle-onthefly.spec.js`
+- **建議 fixture 結構**（已知觸發條件）：
+    ```html
+    <div class="ytp-caption-window-container">
+      <!-- 空，由測試動態插入 -->
+    </div>
+    ```
+    測試斷言：mock `TRANSLATE_BATCH`，動態插入 `.ytp-caption-segment[textContent="Hello world"]`，等待 800ms，textContent 應變為中文譯文；第二次插入相同文字應瞬間替換（快取命中）
+
+### ~~v1.2.5~~ — 2026-04-15 — YouTube 字幕翻譯 MVP 尚無自動化測試
+- **症狀**：新功能，尚無 regression spec 涵蓋
+- **來源 URL**：任意有英文字幕的 YouTube 影片（例如 https://www.youtube.com/watch?v=dQw4w9WgXcQ）
+- **修在**：`shinkansen/content-youtube.js`（新增）、`shinkansen/content.js`（translatePage 加 YouTube 分流）
+- **為什麼還不能寫 Playwright 測試**：
+    YouTube 的 `ytInitialPlayerResponse` 是由 YouTube JS 寫入的 main world 全域變數，在 Playwright fixture 中需要模擬此物件並搭配字幕 API 的 mock fetch 才能重現完整流程。此外，字幕翻譯透過 `TRANSLATE_BATCH` 訊息走背景 service worker，需要在測試環境中 mock Gemini API 回應。時序控制（等待翻譯完成 → 觸發字幕播放 → 確認 MutationObserver 置換）複雜，目前 regression 框架未支援跨 main world + isolated world 的 CustomEvent 橋接測試。
+- **建議 spec 位置**：`test/regression/youtube-subtitle-translate.spec.js`
+- **建議 fixture 結構**（已知觸發條件）：
+    ```html
+    <script>
+      window.ytInitialPlayerResponse = {
+        videoDetails: { videoId: 'test123' },
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: [{
+              languageCode: 'en',
+              baseUrl: '/mock-captions.json',
+              name: { simpleText: 'English' }
+            }]
+          }
+        }
+      };
+    </script>
+    <div class="ytp-caption-window-container">
+      <span class="ytp-caption-segment">Hello, world!</span>
+    </div>
+    ```
+    測試斷言：mock `TRANSLATE_BATCH` 回傳 `['你好，世界！']`，啟動翻譯後 `.ytp-caption-segment` 的 textContent 應變為「你好，世界！」
+
 ### v1.2.1 — 2026-04-15 — 動態 widget 網站 SPA observer 無限 rescan
 - **症狀**：Stratechery 頁面翻譯完成後，toast「已翻譯 4 段新內容」每秒持續彈出，log 顯示 `SPA observer rescan #N` 無限遞增（N 超過 100+）
 - **來源 URL**：https://stratechery.com/2026/amazon-buys-globalstar-delta-to-add-leo-the-apple-angle/

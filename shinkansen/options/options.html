@@ -18,6 +18,7 @@
       <button class="tab-btn active" data-tab="settings">一般設定</button>
       <button class="tab-btn" data-tab="gemini">Gemini</button>
       <button class="tab-btn" data-tab="glossary">術語表</button>
+      <button class="tab-btn" data-tab="youtube">YouTube 字幕</button>
       <button class="tab-btn" data-tab="usage">用量紀錄</button>
       <button class="tab-btn" data-tab="log">Log</button>
     </nav>
@@ -475,6 +476,67 @@
       </div>
 
     </div><!-- /tab-log -->
+
+    <!-- ═══ YouTube 字幕分頁（v1.2.11 新增） ═══ -->
+    <div id="tab-youtube" class="tab-panel">
+
+    <section>
+      <h2>自動翻譯</h2>
+      <label class="checkbox-label">
+        <input type="checkbox" id="ytAutoTranslate">
+        偵測到 YouTube 影片時自動翻譯字幕
+        <small class="muted">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動按快捷鍵。</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>Debug</h2>
+      <label class="checkbox-label">
+        <input type="checkbox" id="ytDebugToast">
+        顯示字幕翻譯即時狀態面板
+        <small class="muted">開啟後，字幕翻譯啟動時頁面左上角會出現一個即時狀態面板，顯示 XHR 攔截、視窗翻譯進度、captionMap 大小等資訊，方便 debug。</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>翻譯視窗設定</h2>
+      <p class="muted">字幕依時間分批翻譯。每批翻譯涵蓋一段時間內的字幕，在快用完前提前翻好下一批。</p>
+      <label>
+        每批涵蓋秒數
+        <input type="number" id="ytWindowSizeS" step="5" min="10" max="120">
+        <small class="muted">每次送去翻譯的字幕涵蓋幾秒（預設 30 秒）。數字越大每次翻越多，但第一次等待時間也越長。</small>
+      </label>
+      <label>
+        提前觸發秒數
+        <input type="number" id="ytLookaheadS" step="1" min="3" max="30">
+        <small class="muted">在目前批次快用完前幾秒，提前翻好下一批（預設 10 秒）。建議不低於 5 秒。</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>翻譯參數</h2>
+      <label>
+        Temperature
+        <input type="number" id="ytTemperature" step="0.05" min="0" max="2">
+        <small class="muted">字幕翻譯建議保持低 temperature（預設 0.1），讓翻譯結果穩定一致、不偏離原意。</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>字幕翻譯 System Prompt</h2>
+      <p class="muted">字幕翻譯使用獨立的 system prompt，與文章翻譯分開。字幕著重口語化、逐段保持、不合併。</p>
+      <label>
+        <textarea id="ytSystemPrompt" rows="14" style="font-family: monospace; font-size: 12px;"></textarea>
+      </label>
+      <button type="button" id="yt-reset-prompt" class="secondary">重置為預設 Prompt</button>
+    </section>
+
+    <div class="actions">
+      <button id="save-youtube" class="primary">儲存設定</button>
+      <span id="save-youtube-status"></span>
+    </div>
+
+    </div><!-- /tab-youtube -->
 
   </div>
 

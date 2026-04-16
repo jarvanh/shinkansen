@@ -1,36 +1,43 @@
 {
   "manifest_version": 3,
   "name": "Shinkansen",
-  "version": "1.2.4",
+  "version": "1.2.18",
   "description": "快速、流暢的網頁翻譯擴充功能，使用 Google Gemini 將外語網頁翻譯成台灣繁體中文。",
   "default_locale": "zh_TW",
-
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-
   "permissions": [
     "storage",
     "activeTab",
     "scripting"
   ],
-
   "host_permissions": [
     "<all_urls>",
     "https://generativelanguage.googleapis.com/*"
   ],
-
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://www.youtube.com/watch*"
+      ],
+      "js": [
+        "content-youtube-main.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
       "js": [
         "content-ns.js",
         "content-toast.js",
@@ -38,13 +45,15 @@
         "content-serialize.js",
         "content-inject.js",
         "content-spa.js",
+        "content-youtube.js",
         "content.js"
       ],
-      "css": ["content.css"],
+      "css": [
+        "content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
-
   "action": {
     "default_title": "Shinkansen 翻譯",
     "default_popup": "popup/popup.html",
@@ -54,12 +63,10 @@
       "48": "icons/icon-48.png"
     }
   },
-
   "options_ui": {
     "page": "options/options.html",
     "open_in_tab": true
   },
-
   "commands": {
     "toggle-translate": {
       "suggested_key": {

@@ -1,7 +1,7 @@
 // options.js — 設定頁邏輯
 // v1.0.4: 改為 ES module，從 lib/ 匯入共用常數與工具函式，消除重複程式碼。
 
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT } from '../lib/storage.js';
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD } from '../lib/format.js';
 
@@ -151,6 +151,15 @@ async function load() {
   renderGlobalTable();
   updateDomainSelect();
   showDomainPanel('');
+
+  // v1.2.11: YouTube 字幕設定
+  const yt = { ...DEFAULTS.ytSubtitle, ...(s.ytSubtitle || {}) };
+  $('ytAutoTranslate').checked  = yt.autoTranslate === true;
+  $('ytDebugToast').checked     = yt.debugToast   === true;
+  $('ytWindowSizeS').value      = yt.windowSizeS ?? 30;
+  $('ytLookaheadS').value       = yt.lookaheadS  ?? 10;
+  $('ytTemperature').value      = yt.temperature  ?? 0.1;
+  $('ytSystemPrompt').value     = yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT;
 }
 
 async function save() {
@@ -203,6 +212,15 @@ async function save() {
     toastAutoHide: $('toastAutoHide').checked,
     // v1.0.21: 頁面層級繁中偵測開關
     skipTraditionalChinesePage: $('skipTraditionalChinesePage').checked,
+    // v1.2.11: YouTube 字幕設定
+    ytSubtitle: {
+      autoTranslate: $('ytAutoTranslate').checked,
+      debugToast:    $('ytDebugToast').checked,
+      windowSizeS:   Number($('ytWindowSizeS').value)  || 30,
+      lookaheadS:    Number($('ytLookaheadS').value)   || 10,
+      temperature:   Number($('ytTemperature').value)  ?? 0.1,
+      systemPrompt:  $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+    },
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
     fixedGlossary: (() => {
       // 同步全域表格的最新 UI 值
@@ -233,6 +251,11 @@ $('save').addEventListener('click', save);
 $('save-gemini').addEventListener('click', save);
 // v1.0.29: 術語表分頁也共用同一個 save()
 $('save-glossary').addEventListener('click', save);
+// v1.2.11: YouTube 字幕分頁
+$('save-youtube').addEventListener('click', save);
+$('yt-reset-prompt').addEventListener('click', () => {
+  $('ytSystemPrompt').value = DEFAULT_SUBTITLE_SYSTEM_PROMPT;
+});
 
 // ─── v0.94: 儲存狀態提示條 ──────────────────────────────────
 let saveBarHideTimer = null;
@@ -259,6 +282,9 @@ document.getElementById('tab-gemini').addEventListener('input', markDirty);
 document.getElementById('tab-gemini').addEventListener('change', markDirty);
 document.getElementById('tab-glossary').addEventListener('input', markDirty);
 document.getElementById('tab-glossary').addEventListener('change', markDirty);
+// v1.2.13: YouTube 字幕分頁也需要 dirty 偵測
+document.getElementById('tab-youtube').addEventListener('input', markDirty);
+document.getElementById('tab-youtube').addEventListener('change', markDirty);
 
 // 顯示/隱藏 API Key 切換（v0.63）— 讓使用者能確認貼上去的 key 沒有貼錯
 $('toggle-api-key').addEventListener('click', () => {
