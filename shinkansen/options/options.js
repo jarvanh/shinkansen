@@ -160,7 +160,7 @@ async function load() {
   // ytPreserveLineBreaks 已於 v1.2.38 移除（功能改為永遠開啟）
   $('ytWindowSizeS').value           = yt.windowSizeS ?? 30;
   $('ytLookaheadS').value            = yt.lookaheadS  ?? 10;
-  $('ytTemperature').value           = yt.temperature  ?? 0.1;
+  $('ytTemperature').value           = yt.temperature  ?? 1;
   $('ytSystemPrompt').value          = yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT;
   // v1.2.39: 獨立模型 + 計價
   const ytModelSel = $('ytModel');
@@ -233,7 +233,7 @@ async function save() {
       // preserveLineBreaks: 已移除 toggle，永遠 true（content-youtube.js 硬編碼）
       windowSizeS:  Number($('ytWindowSizeS').value)  || 30,
       lookaheadS:   Number($('ytLookaheadS').value)   || 10,
-      temperature:  Number($('ytTemperature').value)  ?? 0.1,
+      temperature:  Number($('ytTemperature').value)  ?? 1,
       systemPrompt: $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
       // v1.2.39: 獨立模型 + 計價
       model: $('ytModel').value || '',

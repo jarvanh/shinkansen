@@ -104,7 +104,7 @@ export const DEFAULT_SETTINGS = {
   // v1.2.11: YouTube 字幕翻譯設定
   ytSubtitle: {
     autoTranslate: true,         // 偵測到 YouTube 影片時自動翻譯字幕
-    temperature:   0.1,          // 字幕翻譯要穩定，不要有創意
+    temperature:   1,             // 字幕翻譯 temperature 預設值
     systemPrompt:  DEFAULT_SUBTITLE_SYSTEM_PROMPT,
     windowSizeS:   30,           // 每批翻譯涵蓋的秒數（預設 30 秒）
     lookaheadS:    10,           // 在字幕快用完前幾秒觸發下一批（預設 10 秒）
