@@ -647,28 +647,21 @@
   // 與 SK.translateUnits 相同架構，但送 TRANSLATE_BATCH_GOOGLE 訊息，
   // 不走術語表（Google MT 無 LLM 語意支援），回傳含 chars 的用量資訊。
   //
-  // v1.4.1 格式保留：對有行內元素的段落使用 serializeWithPlaceholders 取得 slots，
-  // 但把 ⟦N⟧/⟦/N⟧ 轉成 【N】/【/N】 再送 Google MT（⟦⟧ 是數學符號會被亂移；
-  // 【】是 CJK 標點，Google MT 視為不透明文字，能原樣保留且維持正確位置）。
-  // 拿回譯文後再把 【N】/【/N】 換回 ⟦N⟧/⟦/N⟧，走現有 deserializeWithPlaceholders。
+  // v1.4.2 格式保留：使用 serializeForGoogleTranslate 專用序列化，只標記
+  // <a> 連結（【N】/【/N】）與 atomic 元素（【*N】），其餘 span/b/i/abbr 直接取文字。
+  // 相比 v1.4.1 的 serializeWithPlaceholders+⟦→【 轉換，本版大幅減少標記數量
+  // （通常 2-4 個，而非 10+），Google MT 不再被過多標記搞亂位置。
   SK.translateUnitsGoogle = async function translateUnitsGoogle(units, { onProgress, signal } = {}) {
     const total = units.length;
 
-    // ── 序列化：有行內元素的段落保留結構，其餘走純文字 ──────────────
+    // ── 序列化：只標 <a> 連結與 atomic 元素（footnote sup 等），其餘取純文字 ──
+    // 使用 Google Translate 專用序列化（【N】標記），避免 Gemini 路徑的 ⟦N⟧ 標記
+    // 在 Google MT 下位置錯亂（⟦⟧ 是數學符號；【】是 CJK 標點，Google MT 原樣保留）。
     const serialized = units.map(unit => {
       if (unit.kind === 'fragment') {
-        return SK.serializeFragmentWithPlaceholders(unit);
+        return SK.serializeFragmentForGoogleTranslate(unit);
       }
-      const el = unit.el;
-      if (!SK.hasPreservableInline(el)) {
-        return { text: el.innerText.trim(), slots: [] };
-      }
-      const s = SK.serializeWithPlaceholders(el);
-      // ⟦N⟧ → 【N】，⟦/N⟧ → 【/N】，讓 Google MT 原樣通過
-      const gtText = s.text
-        .replace(/⟦(\d+)⟧/g, '【$1】')
-        .replace(/⟦\/(\d+)⟧/g, '【/$1】');
-      return { text: gtText, slots: s.slots };
+      return SK.serializeForGoogleTranslate(unit.el);
     });
 
     const texts = serialized.map(s => s.text);
@@ -702,9 +695,9 @@
           const unit = job.units[j];
           if (!tr) return;
           const slots = job.slots[j];
-          // 【N】/【/N】 換回 ⟦N⟧/⟦/N⟧，讓 deserializeWithPlaceholders 正常工作
+          // 【N】/【/N】/【*N】 換回 ⟦N⟧/⟦/N⟧/⟦*N⟧，走現有 deserializeWithPlaceholders
           const restored = slots?.length
-            ? tr.replace(/【(\d+)】/g, '⟦$1⟧').replace(/【\/(\d+)】/g, '⟦/$1⟧')
+            ? SK.restoreGoogleTranslateMarkers(tr)
             : tr;
           SK.injectTranslation(unit, restored, slots || []);
         });
