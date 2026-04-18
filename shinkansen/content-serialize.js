@@ -190,6 +190,15 @@
     for (const alias of SK.BRACKET_ALIASES_CLOSE) {
       if (s.includes(alias)) s = s.split(alias).join(PH_CLOSE);
     }
+    // 若模型在佔位符標記內插入了多餘描述（如 ⟦0 drug⟧ → ⟦0⟧、⟦/0 drug⟧ → ⟦/0⟧），
+    // 只保留前綴符號（*/?) 與數字，丟棄多餘文字。
+    // 觸發情境：slot 內容涉及醫藥 / 術語時，模型會「加注」slot 代表的類別
+    // （例如 ⟦0⟧ 對應 <strong>ファーストエイド用品（鎮痛剤...）</strong>，輸出 ⟦0 drug⟧）。
+    // 修法：匹配「數字後有空白 + 非空白文字」的 pattern，統一清除（v1.4.5 修正）。
+    s = s.replace(
+      new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)[ \\t]+\\S[^' + PH_CLOSE + ']{0,28}' + PH_CLOSE, 'g'),
+      PH_OPEN + '$1' + PH_CLOSE
+    );
     return s.replace(
       new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)\\s*' + PH_CLOSE, 'g'),
       PH_OPEN + '$1' + PH_CLOSE
