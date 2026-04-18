@@ -7,6 +7,16 @@
 
 ## v1.3.x
 
+**v1.3.14** — 修正 Debug 分頁設定無法儲存的問題：（1）Debug 分頁缺少「儲存設定」按鈕，新增 `save-debug` 按鈕並掛上 `save()` handler；（2）`ytDebugToast` 和 `ytOnTheFly` 兩個 checkbox 未掛 `markDirty`，打勾後沒有「有未儲存的變更」提示，補上個別 change 事件監聽。
+
+**v1.3.13** — 清除 v1.3.9–v1.3.11 遺留死程式碼：移除 `background.js` 的 `FETCH_YT_CAPTION_TRACKS` handler（從未被呼叫）、`content-youtube.js` 的 `extractCaptionTracksFromPage` 與 `selectBestTrack` 函式（v1.3.12 XHR monkey-patch 架構不再需要主動抓取 track URL）；更新 `content-youtube.js` 檔案標頭為 v1.3.12 架構說明；刪除孤立 fixture `youtube-innertube-fetch-spa.html`；更新 `youtube-innertube-fetch.spec.js` 的 test #1/#2 說明，標明 `extractCaptionTracksFromPage` 已從 extension 移除。
+
+**v1.3.12** — 正式修正 YouTube 字幕 POT 問題（v1.3.9–v1.3.11 三輪嘗試的終局解）：實測證明 YouTube `/api/timedtext` URL 含 `exp=xpv` 時，所有主動 fetch（包含 MAIN world same-origin、service worker、isolated world）均回傳 HTTP 200 但 body 為空，v1.3.11 的 `chrome.scripting.executeScript` 方案亦同樣失敗。根本解法：恢復 `content-youtube-main.js`（MAIN world，`document_start`）的 XHR + fetch monkey-patch，攔截 YouTube 播放器**自己**帶 POT 發出的 `/api/timedtext` 請求；`content-youtube.js` 改為等待 `shinkansen-yt-captions` CustomEvent，若等不到則呼叫 `forceSubtitleReload()`（toggle CC 按鈕）強迫播放器重發 XHR；移除 `FETCH_YT_CAPTIONS` message handler（不再需要）；regression test #3/#4 更新為驗證新的 CustomEvent 協定。
+
+**v1.3.11** — 正式修正 YouTube 字幕 POT 問題：加回 `scripting` 權限（現為實際使用），`FETCH_YT_CAPTIONS` 改用 `chrome.scripting.executeScript({ world: 'MAIN' })` 在 YouTube tab 的 MAIN world 直接執行 `fetch()`，使請求帶 `sec-fetch-site: same-origin` 且自動帶入使用者 session cookies，YouTube 視為正常瀏覽器行為不要求 POT；`chrome.scripting.executeScript` 亦繞過頁面 CSP。`FETCH_YT_CAPTION_TRACKS` SPA fallback 同步改用 scripting 讀 MAIN world `ytInitialPlayerResponse`，ANDROID API 退為 fallback。`fetchCaptionsForVideo` 恢復先讀頁面 `<script>` WEB tracks 的 fast path（因 MAIN world fetch 使 WEB format URL 可正常使用），WEB tracks + scripting fetch 組合，不需 POT。
+
+**v1.3.10** — 修正 YouTube 字幕 POT（Proof-of-Origin Token）問題：`FETCH_YT_CAPTION_TRACKS` 改用 Innertube ANDROID player API（POST `/youtubei/v1/player`，clientName=ANDROID），取得不需要 POT 的 ANDROID-format captionTracks URL（c=ANDROID）；`fetchCaptionsForVideo` 改為永遠走 background 取 ANDROID tracks，不再使用頁面 `<script>` 的 WEB-format tracks（c=WEB，YouTube ~2025 起要求 POT，沒有 POT 則 HTTP 200 但回空）。ANDROID API 無結果時保留 HTML page parse 作為 fallback。新增 `urlClient` 欄位到 caption track selected log 以利除錯驗證。
+
 **v1.3.9** — YouTube 字幕架構重構：移除 MAIN world XHR 攔截（`content-youtube-main.js` 廢棄），改為主動抓取架構。新流程：isolated world `extractCaptionTracksFromPage()` 從頁面 `<script>` 標籤解析 `ytInitialPlayerResponse`，挑選最佳英文軌道後請 background `FETCH_YT_CAPTIONS` 取得字幕原文；SPA 導航後 script 已過期時自動 fallback 至 background `FETCH_YT_CAPTION_TRACKS`（重新抓 YouTube 頁面）。manifest 同步移除 MAIN world `content_scripts` 宣告，架構為 Safari iOS 移植鋪路。
 
 **v1.3.8** — 移除未使用的 `scripting` 權限（Chrome Web Store 審查要求：manifest 不得宣告未實際使用的權限）。

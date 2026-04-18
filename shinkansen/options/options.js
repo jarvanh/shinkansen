@@ -279,6 +279,8 @@ $('save-gemini').addEventListener('click', save);
 $('save-glossary').addEventListener('click', save);
 // v1.2.11: YouTube 字幕分頁
 $('save-youtube').addEventListener('click', save);
+// Debug 分頁
+$('save-debug').addEventListener('click', save);
 $('yt-reset-prompt').addEventListener('click', () => {
   $('ytSystemPrompt').value = DEFAULT_SUBTITLE_SYSTEM_PROMPT;
   markDirty(); // 值已變更，標記為未儲存
@@ -330,7 +332,10 @@ document.getElementById('tab-youtube').addEventListener('input', markDirty);
 document.getElementById('tab-youtube').addEventListener('change', markDirty);
 // tab-log 的 debugLog checkbox 是真實設定，需要單獨監聽
 // （tab-log 不在 tab-level delegation 內，因為其他 log 控制項是純 UI 不需要 dirty）
+// 只有實際需要存的 checkbox 才個別掛 markDirty
 $('debugLog').addEventListener('change', markDirty);
+$('ytDebugToast').addEventListener('change', markDirty);
+$('ytOnTheFly').addEventListener('change', markDirty);
 
 // 顯示/隱藏 API Key 切換（v0.63）— 讓使用者能確認貼上去的 key 沒有貼錯
 $('toggle-api-key').addEventListener('click', () => {
