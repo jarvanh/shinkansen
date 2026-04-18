@@ -7,6 +7,8 @@
 
 ## v1.3.x
 
+**v1.3.15** — 移除 `manifest.json` 的死權限 `scripting`：v1.3.13 清除 `FETCH_YT_CAPTION_TRACKS` 後整個 codebase 已無任何 `chrome.scripting` 呼叫，該權限純屬多餘，一併移除以減少 Chrome Web Store 審查摩擦，並向 Safari 移植邁進一步。
+
 **v1.3.14** — 修正 Debug 分頁設定無法儲存的問題：（1）Debug 分頁缺少「儲存設定」按鈕，新增 `save-debug` 按鈕並掛上 `save()` handler；（2）`ytDebugToast` 和 `ytOnTheFly` 兩個 checkbox 未掛 `markDirty`，打勾後沒有「有未儲存的變更」提示，補上個別 change 事件監聽。
 
 **v1.3.13** — 清除 v1.3.9–v1.3.11 遺留死程式碼：移除 `background.js` 的 `FETCH_YT_CAPTION_TRACKS` handler（從未被呼叫）、`content-youtube.js` 的 `extractCaptionTracksFromPage` 與 `selectBestTrack` 函式（v1.3.12 XHR monkey-patch 架構不再需要主動抓取 track URL）；更新 `content-youtube.js` 檔案標頭為 v1.3.12 架構說明；刪除孤立 fixture `youtube-innertube-fetch-spa.html`；更新 `youtube-innertube-fetch.spec.js` 的 test #1/#2 說明，標明 `extractCaptionTracksFromPage` 已從 extension 移除。
