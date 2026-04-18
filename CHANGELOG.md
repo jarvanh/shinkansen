@@ -7,6 +7,8 @@
 
 ## v1.3.x
 
+**v1.3.16** — Safari / Firefox 相容性 shim：全 codebase `chrome.*` → `browser.*`。新增 `lib/compat.js`，以 Proxy 做 lazy 解析（每次 property access 時讀 `globalThis.browser ?? globalThis.chrome`，避免 const 在 import 當下凍結成 undefined 或錯誤的 mock——後者會讓 Playwright 多 spec 共用 module cache 時 cache / rate-limiter unit test fail）；`content-ns.js` 頂部加 `globalThis.browser = globalThis.browser ?? globalThis.chrome` 供 content scripts 繼承。`options.js` 偵測平台，Safari 上隱藏「至 chrome://extensions/shortcuts 設定快捷鍵」連結。這是 iOS/iPadOS 移植準備的第一步。
+
 **v1.3.15** — 移除 `manifest.json` 的死權限 `scripting`：v1.3.13 清除 `FETCH_YT_CAPTION_TRACKS` 後整個 codebase 已無任何 `chrome.scripting` 呼叫，該權限純屬多餘，一併移除以減少 Chrome Web Store 審查摩擦，並向 Safari 移植邁進一步。
 
 **v1.3.14** — 修正 Debug 分頁設定無法儲存的問題：（1）Debug 分頁缺少「儲存設定」按鈕，新增 `save-debug` 按鈕並掛上 `save()` handler；（2）`ytDebugToast` 和 `ytOnTheFly` 兩個 checkbox 未掛 `markDirty`，打勾後沒有「有未儲存的變更」提示，補上個別 change 事件監聽。

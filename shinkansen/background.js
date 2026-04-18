@@ -1,6 +1,7 @@
 // background.js — Shinkansen Service Worker
 // 職責：接收翻譯請求、呼叫 Gemini API、處理快取、處理快捷鍵、統一除錯 Log。
 
+import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary } from './lib/gemini.js';
 import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
@@ -9,7 +10,7 @@ import { RateLimiter } from './lib/rate-limiter.js';
 import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 
-debugLog('info', 'system', 'service worker started', { version: chrome.runtime.getManifest().version });
+debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
 
 // v1.2.11: SUBTITLE_SYSTEM_PROMPT 已移至 lib/storage.js（DEFAULT_SUBTITLE_SYSTEM_PROMPT）
 // TRANSLATE_SUBTITLE_BATCH handler 從 ytSubtitle 設定讀取，不再使用硬碼常數。
@@ -34,7 +35,7 @@ async function initLimiter() {
 }
 initLimiter();
 
-chrome.storage.onChanged.addListener((changes, area) => {
+browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;
   // 只要設定類相關欄位變動就重新套用上限
   const relevant = ['tier', 'geminiConfig', 'safetyMargin', 'rpmOverride', 'tpmOverride', 'rpdOverride'];
@@ -60,7 +61,7 @@ function estimateInputTokens(texts) {
 
 // ─── 啟動時：版本檢查，版本變更則清空快取 ───────────────────
 (async () => {
-  const currentVersion = chrome.runtime.getManifest().version;
+  const currentVersion = browser.runtime.getManifest().version;
   const result = await cache.checkVersionAndClear(currentVersion);
   if (result.cleared) {
     debugLog('info', 'cache', 'cache cleared on version change', {
@@ -73,7 +74,7 @@ function estimateInputTokens(texts) {
   }
 })();
 
-// ─── 使用量累計（chrome.storage.local) ────────────────────
+// ─── 使用量累計（browser.storage.local) ────────────────────
 // 結構：
 //   usageStats: {
 //     totalInputTokens: number,
@@ -84,7 +85,7 @@ function estimateInputTokens(texts) {
 const USAGE_KEY = 'usageStats';
 
 async function getUsageStats() {
-  const { [USAGE_KEY]: s } = await chrome.storage.local.get(USAGE_KEY);
+  const { [USAGE_KEY]: s } = await browser.storage.local.get(USAGE_KEY);
   return s || {
     totalInputTokens: 0,
     totalOutputTokens: 0,
@@ -98,7 +99,7 @@ async function addUsage(inputTokens, outputTokens, costUSD) {
   s.totalInputTokens += inputTokens;
   s.totalOutputTokens += outputTokens;
   s.totalCostUSD += costUSD;
-  await chrome.storage.local.set({ [USAGE_KEY]: s });
+  await browser.storage.local.set({ [USAGE_KEY]: s });
   return s;
 }
 
@@ -109,7 +110,7 @@ async function resetUsageStats() {
     totalCostUSD: 0,
     since: new Date().toISOString(),
   };
-  await chrome.storage.local.set({ [USAGE_KEY]: fresh });
+  await browser.storage.local.set({ [USAGE_KEY]: fresh });
   return fresh;
 }
 
@@ -138,12 +139,12 @@ const BADGE_TEXT = '●';
 async function setTranslatedBadge(tabId) {
   if (tabId == null) return;
   try {
-    await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLOR, tabId });
+    await browser.action.setBadgeBackgroundColor({ color: BADGE_COLOR, tabId });
     // 某些 Chrome 版本支援白色 badge 文字，舊版本會忽略此呼叫
-    if (chrome.action.setBadgeTextColor) {
-      await chrome.action.setBadgeTextColor({ color: '#ffffff', tabId });
+    if (browser.action.setBadgeTextColor) {
+      await browser.action.setBadgeTextColor({ color: '#ffffff', tabId });
     }
-    await chrome.action.setBadgeText({ text: BADGE_TEXT, tabId });
+    await browser.action.setBadgeText({ text: BADGE_TEXT, tabId });
   } catch (err) {
     debugLog('warn', 'system', 'setBadge failed', { error: err.message });
   }
@@ -152,14 +153,14 @@ async function setTranslatedBadge(tabId) {
 async function clearTranslatedBadge(tabId) {
   if (tabId == null) return;
   try {
-    await chrome.action.setBadgeText({ text: '', tabId });
+    await browser.action.setBadgeText({ text: '', tabId });
   } catch (err) {
     debugLog('warn', 'system', 'clearBadge failed', { error: err.message });
   }
 }
 
 // 分頁重新導航時自動清掉 badge(SPA 同站導航除外，需依賴 content.js 重新通知）
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === 'loading' && changeInfo.url) {
     clearTranslatedBadge(tabId);
   }
@@ -263,7 +264,7 @@ const messageHandlers = {
     handler: async (payload) => {
       const url = payload?.url;
       if (!url) throw new Error('missing url');
-      const tab = await chrome.tabs.create({ url });
+      const tab = await browser.tabs.create({ url });
       debugLog('info', 'system', 'opened Google Docs mobilebasic tab', { url, tabId: tab.id });
 
       // 等待新分頁載入完成後自動觸發翻譯
@@ -271,19 +272,19 @@ const messageHandlers = {
       return new Promise((resolve) => {
         const onUpdated = (tabId, changeInfo) => {
           if (tabId === tab.id && changeInfo.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(onUpdated);
+            browser.tabs.onUpdated.removeListener(onUpdated);
             // 小延遲確保 content script 已完成初始化
             setTimeout(() => {
-              chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
+              browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
             }, 500);
             resolve({ tabId: tab.id });
           }
         };
-        chrome.tabs.onUpdated.addListener(onUpdated);
+        browser.tabs.onUpdated.addListener(onUpdated);
 
         // 安全閥：30 秒後若尚未 complete，移除 listener 避免洩漏
         setTimeout(() => {
-          chrome.tabs.onUpdated.removeListener(onUpdated);
+          browser.tabs.onUpdated.removeListener(onUpdated);
           resolve({ tabId: tab.id, timeout: true });
         }, 30000);
       });
@@ -292,9 +293,9 @@ const messageHandlers = {
   CLEAR_RPD: {
     async: true,
     handler: async () => {
-      const all = await chrome.storage.local.get(null);
+      const all = await browser.storage.local.get(null);
       const rpdKeys = Object.keys(all).filter(k => k.startsWith('rateLimit_rpd_'));
-      if (rpdKeys.length) await chrome.storage.local.remove(rpdKeys);
+      if (rpdKeys.length) await browser.storage.local.remove(rpdKeys);
       if (limiter) {
         limiter.rpdCount = 0;
         limiter.rpdLoaded = false;
@@ -346,7 +347,7 @@ const messageHandlers = {
   // 不再透過 background 主動 fetch（YouTube timedtext URL 即使 same-origin 也因 exp=xpv 需要 POT）。
 };
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const type = message?.type;
   const entry = messageHandlers[type];
   if (!entry) return; // 不認識的訊息類型，不處理
@@ -578,40 +579,40 @@ async function handleExtractGlossary(payload, sender) {
 }
 
 // ─── 快捷鍵 ────────────────────────────────────────────────
-chrome.commands.onCommand.addListener(async (command) => {
+browser.commands.onCommand.addListener(async (command) => {
   if (command === 'toggle-translate') {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
     // 在 chrome://、Chrome Web Store、新分頁等頁面按快捷鍵時,該 tab 沒有
     // content script listening,sendMessage 會 reject:
     //   "Could not establish connection. Receiving end does not exist."
     // 這是預期情境（使用者可能不小心按到快捷鍵),靜默吞掉即可,不讓它冒成
     // uncaught promise rejection 污染 background.js 的錯誤面板。
-    chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
+    browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
   }
 });
 
 // ─── 安裝/更新事件 ─────────────────────────────────────────
-chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  debugLog('info', 'system', `extension ${reason}`, { version: chrome.runtime.getManifest().version });
+browser.runtime.onInstalled.addListener(async ({ reason }) => {
+  debugLog('info', 'system', `extension ${reason}`, { version: browser.runtime.getManifest().version });
   // 安裝/更新時也檢查一次版本（雙重保險，SW 啟動時已經跑過一次）
-  const currentVersion = chrome.runtime.getManifest().version;
+  const currentVersion = browser.runtime.getManifest().version;
   await cache.checkVersionAndClear(currentVersion);
 
-  // v0.62 起：API Key 從 chrome.storage.sync 搬到 chrome.storage.local，
+  // v0.62 起：API Key 從 browser.storage.sync 搬到 browser.storage.local，
   // 避免跨 Google 帳號同步。這裡做一次主動遷移：若 sync 裡還殘留舊的 apiKey，
   // 搬到 local（沒 local 版本才搬，已經有就尊重 local）然後從 sync 刪除。
   // lib/storage.js::getSettings 也有 lazy migration 作為雙重保險。
   if (reason === 'update' || reason === 'install') {
     try {
-      const { apiKey: syncKey } = await chrome.storage.sync.get('apiKey');
+      const { apiKey: syncKey } = await browser.storage.sync.get('apiKey');
       if (typeof syncKey === 'string') {
-        const { apiKey: localKey } = await chrome.storage.local.get('apiKey');
+        const { apiKey: localKey } = await browser.storage.local.get('apiKey');
         if (!localKey && syncKey) {
-          await chrome.storage.local.set({ apiKey: syncKey });
+          await browser.storage.local.set({ apiKey: syncKey });
           debugLog('info', 'system', 'apiKey migrated from sync → local');
         }
-        await chrome.storage.sync.remove('apiKey');
+        await browser.storage.sync.remove('apiKey');
       }
     } catch (err) {
       debugLog('warn', 'system', 'apiKey migration failed', { error: err.message });

@@ -3,7 +3,7 @@
 // 對應 Gemini API 的三維度限制：
 //   RPM: 每分鐘請求數       (sliding 60 秒視窗)
 //   TPM: 每分鐘 input tokens(sliding 60 秒視窗)
-//   RPD: 每日請求數         (太平洋時間午夜重置,persist 到 chrome.storage.local)
+//   RPD: 每日請求數         (太平洋時間午夜重置,persist 到 browser.storage.local)
 //
 // 使用方式：
 //   const limiter = new RateLimiter({ rpm, tpm, rpd, safetyMargin });
@@ -18,6 +18,7 @@
 // 代價：失去 p0/p1 priority 排序（術語表不再優先於翻譯請求），
 // 但實際影響很小——術語表請求在翻譯開始前就發出，不會跟翻譯請求搶 slot。
 
+import { browser } from './compat.js';
 import { debugLog } from './logger.js';
 
 const WINDOW_MS = 60_000;
@@ -81,18 +82,18 @@ export class RateLimiter {
     this.rpdLoadingPromise = (async () => {
       const nowKey = getPacificDateKey();
       const storageKey = RPD_KEY_PREFIX + nowKey;
-      const result = await chrome.storage.local.get(storageKey);
+      const result = await browser.storage.local.get(storageKey);
       this.rpdDateKey = nowKey;
       this.rpdCount = Number(result[storageKey]) || 0;
       this.rpdLoaded = true;
 
       // 順手清掉前幾天的 RPD key（garbage collection)
-      const all = await chrome.storage.local.get(null);
+      const all = await browser.storage.local.get(null);
       const staleKeys = Object.keys(all).filter(
         k => k.startsWith(RPD_KEY_PREFIX) && k !== storageKey
       );
       if (staleKeys.length) {
-        await chrome.storage.local.remove(staleKeys);
+        await browser.storage.local.remove(staleKeys);
       }
     })();
     await this.rpdLoadingPromise;
@@ -102,7 +103,7 @@ export class RateLimiter {
   async persistRpd() {
     if (!this.rpdDateKey) return;
     const storageKey = RPD_KEY_PREFIX + this.rpdDateKey;
-    await chrome.storage.local.set({ [storageKey]: this.rpdCount });
+    await browser.storage.local.set({ [storageKey]: this.rpdCount });
   }
 
   /** 節流版 RPD 持久化：每 10 次或 30 秒寫入一次。 */

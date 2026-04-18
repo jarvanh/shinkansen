@@ -1,6 +1,7 @@
 // options.js — 設定頁邏輯
 // v1.0.4: 改為 ES module，從 lib/ 匯入共用常數與工具函式，消除重複程式碼。
 
+import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD } from '../lib/format.js';
@@ -76,9 +77,9 @@ function applyTierToInputs(tier, model) {
 const $ = (id) => document.getElementById(id);
 
 async function load() {
-  const saved = await chrome.storage.sync.get(null);
-  // v0.62 起：apiKey 改存 chrome.storage.local，不跟 Google 帳號同步
-  const { apiKey: localApiKey = '' } = await chrome.storage.local.get('apiKey');
+  const saved = await browser.storage.sync.get(null);
+  // v0.62 起：apiKey 改存 browser.storage.local，不跟 Google 帳號同步
+  const { apiKey: localApiKey = '' } = await browser.storage.local.get('apiKey');
   const s = {
     ...DEFAULTS,
     ...saved,
@@ -176,9 +177,9 @@ async function load() {
 }
 
 async function save() {
-  // v0.62 起：apiKey 單獨寫到 chrome.storage.local，不進 sync
+  // v0.62 起：apiKey 單獨寫到 browser.storage.local，不進 sync
   const apiKeyValue = $('apiKey').value.trim();
-  await chrome.storage.local.set({ apiKey: apiKeyValue });
+  await browser.storage.local.set({ apiKey: apiKeyValue });
   const settings = {
     geminiConfig: {
       model: getSelectedModel(),
@@ -265,7 +266,7 @@ async function save() {
       return { global: cleanGlobal, byDomain: cleanByDomain };
     })(),
   };
-  await chrome.storage.sync.set(settings);
+  await browser.storage.sync.set(settings);
   $('save-status').textContent = '✓ 已儲存';
   setTimeout(() => { $('save-status').textContent = ''; }, 2000);
   // v0.94: 顯示綠色已儲存提示條
@@ -377,9 +378,9 @@ $('toastPosition').addEventListener('change', markDirty);
 
 $('reset-defaults').addEventListener('click', async () => {
   if (!confirm('確定要回復所有預設設定嗎？\n\nAPI Key 會被保留，翻譯快取與累計使用統計不受影響。\n此操作無法復原。')) return;
-  // v0.62 起：apiKey 在 chrome.storage.local，不在 sync 裡，
+  // v0.62 起：apiKey 在 browser.storage.local，不在 sync 裡，
   // 所以直接 clear sync 即可；apiKey 自然不受影響。
-  await chrome.storage.sync.clear();
+  await browser.storage.sync.clear();
   await load();
   $('save-status').textContent = '✓ 已回復預設設定';
   $('save-status').style.color = '#34c759';
@@ -392,7 +393,7 @@ $('reset-defaults').addEventListener('click', async () => {
 // v0.88: 舊的 view-logs 按鈕已移除，Log 改為獨立分頁
 
 $('export-settings').addEventListener('click', async () => {
-  const all = await chrome.storage.sync.get(null);
+  const all = await browser.storage.sync.get(null);
   // apiKey 不納入匯出（apiKey 本來就存在 local 不在 sync，defensive 再 delete 一次）
   delete all.apiKey;
   const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
@@ -537,7 +538,7 @@ $('import-input').addEventListener('change', async (e) => {
       alert('匯入失敗：檔案中沒有任何有效的設定欄位');
       return;
     }
-    await chrome.storage.sync.set(clean);
+    await browser.storage.sync.set(clean);
     await load();
     const msg = warnings.length > 0
       ? '匯入完成，但部分欄位被略過：\n\n' + warnings.join('\n')
@@ -548,10 +549,17 @@ $('import-input').addEventListener('change', async (e) => {
   }
 });
 
-$('open-shortcuts').addEventListener('click', (e) => {
-  e.preventDefault();
-  chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
-});
+// v1.3.16: Safari 沒有 chrome://extensions/shortcuts，偵測平台後隱藏連結
+if (typeof globalThis.chrome !== 'undefined') {
+  $('open-shortcuts').addEventListener('click', (e) => {
+    e.preventDefault();
+    browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  });
+} else {
+  // Safari：隱藏快捷鍵設定連結（Safari 不支援 chrome:// URL）
+  const shortcutsLink = $('open-shortcuts');
+  if (shortcutsLink) shortcutsLink.style.display = 'none';
+}
 
 // ═══════════════════════════════════════════════════════════
 // v1.0.29: 固定術語表 CRUD
@@ -764,9 +772,9 @@ async function loadUsageData() {
 
   // 同時載入彙總、圖表、明細
   const [statsRes, chartRes, recordsRes] = await Promise.all([
-    chrome.runtime.sendMessage({ type: 'QUERY_USAGE_STATS', payload: { from, to } }),
-    chrome.runtime.sendMessage({ type: 'QUERY_USAGE_CHART', payload: { from, to, groupBy: currentGranularity } }),
-    chrome.runtime.sendMessage({ type: 'QUERY_USAGE', payload: { from, to } }),
+    browser.runtime.sendMessage({ type: 'QUERY_USAGE_STATS', payload: { from, to } }),
+    browser.runtime.sendMessage({ type: 'QUERY_USAGE_CHART', payload: { from, to, groupBy: currentGranularity } }),
+    browser.runtime.sendMessage({ type: 'QUERY_USAGE', payload: { from, to } }),
   ]);
 
   // 彙總卡片
@@ -1033,7 +1041,7 @@ document.querySelectorAll('.gran-btn').forEach(btn => {
 // 匯出 CSV
 $('usage-export-csv').addEventListener('click', async () => {
   const { from, to } = getUsageDateRange();
-  const res = await chrome.runtime.sendMessage({ type: 'EXPORT_USAGE_CSV', payload: { from, to } });
+  const res = await browser.runtime.sendMessage({ type: 'EXPORT_USAGE_CSV', payload: { from, to } });
   if (!res?.ok) { alert('匯出失敗：' + (res?.error || '未知錯誤')); return; }
   const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1049,7 +1057,7 @@ $('usage-export-csv').addEventListener('click', async () => {
 // 清除紀錄
 $('usage-clear').addEventListener('click', async () => {
   if (!confirm('確定要清除所有翻譯用量紀錄嗎？\n此操作無法復原。')) return;
-  const res = await chrome.runtime.sendMessage({ type: 'CLEAR_USAGE' });
+  const res = await browser.runtime.sendMessage({ type: 'CLEAR_USAGE' });
   if (res?.ok) {
     loadUsageData();
   } else {
@@ -1081,7 +1089,7 @@ function stopLogPolling() {
 
 async function fetchLogs() {
   try {
-    const res = await chrome.runtime.sendMessage({
+    const res = await browser.runtime.sendMessage({
       type: 'GET_LOGS',
       payload: { afterSeq: logLatestSeq },
     });
@@ -1234,7 +1242,7 @@ $('log-search').addEventListener('input', renderLogTable);
 // 清除
 $('log-clear').addEventListener('click', async () => {
   try {
-    await chrome.runtime.sendMessage({ type: 'CLEAR_LOGS' });
+    await browser.runtime.sendMessage({ type: 'CLEAR_LOGS' });
   } catch { /* 靜默 */ }
   allLogs = [];
   logLatestSeq = 0;

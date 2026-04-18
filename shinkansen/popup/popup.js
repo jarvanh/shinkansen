@@ -1,5 +1,6 @@
 // popup.js — 工具列面板邏輯
 
+import { browser } from '../lib/compat.js';
 import { formatBytes, formatTokens, formatUSD } from '../lib/format.js';
 
 const $ = (id) => document.getElementById(id);
@@ -7,7 +8,7 @@ const statusEl = $('status');
 
 async function refreshUsageInfo() {
   try {
-    const resp = await chrome.runtime.sendMessage({ type: 'USAGE_STATS' });
+    const resp = await browser.runtime.sendMessage({ type: 'USAGE_STATS' });
     if (resp?.ok) {
       const totalTok = (resp.totalInputTokens || 0) + (resp.totalOutputTokens || 0);
       $('usage-info').textContent =
@@ -22,7 +23,7 @@ async function refreshUsageInfo() {
 
 async function refreshCacheInfo() {
   try {
-    const resp = await chrome.runtime.sendMessage({ type: 'CACHE_STATS' });
+    const resp = await browser.runtime.sendMessage({ type: 'CACHE_STATS' });
     if (resp?.ok) {
       $('cache-info').textContent =
         `快取：${resp.count} 段 / ${formatBytes(resp.bytes)}`;
@@ -39,9 +40,9 @@ async function refreshTranslateButton() {
   const btn = $('translate-btn');
   const editBtn = $('edit-btn');
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
-    const resp = await chrome.tabs.sendMessage(tab.id, { type: 'GET_STATE' });
+    const resp = await browser.tabs.sendMessage(tab.id, { type: 'GET_STATE' });
     if (resp?.translated) {
       btn.textContent = '顯示原文';
       btn.dataset.mode = 'restore';
@@ -68,7 +69,7 @@ async function refreshShortcutHint() {
   const el = $('shortcut-hint');
   if (!el) return;
   try {
-    const cmds = await chrome.commands.getAll();
+    const cmds = await browser.commands.getAll();
     const toggle = cmds.find((c) => c.name === 'toggle-translate');
     const shortcut = toggle?.shortcut?.trim();
     if (shortcut) {
@@ -78,38 +79,38 @@ async function refreshShortcutHint() {
       el.textContent = '未設定快捷鍵';
     }
   } catch {
-    // chrome.commands 不可用時靜默留白，不要顯示錯誤
+    // browser.commands 不可用時靜默留白，不要顯示錯誤
     el.textContent = '';
   }
 }
 
 async function init() {
   // 從 manifest 動態讀版本號，避免日後忘記同步
-  const manifest = chrome.runtime.getManifest();
+  const manifest = browser.runtime.getManifest();
   $('version').textContent = 'v' + manifest.version;
 
   refreshShortcutHint();
 
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
-  const { autoTranslate = false } = await chrome.storage.sync.get(['autoTranslate']);
-  const { apiKey = '' } = await chrome.storage.local.get(['apiKey']);
+  const { autoTranslate = false } = await browser.storage.sync.get(['autoTranslate']);
+  const { apiKey = '' } = await browser.storage.local.get(['apiKey']);
   $('auto').checked = autoTranslate;
 
-  // v0.73: 術語表一致化開關（讀 chrome.storage.sync 的 glossary.enabled）
+  // v0.73: 術語表一致化開關（讀 browser.storage.sync 的 glossary.enabled）
   try {
-    const { glossary: gc } = await chrome.storage.sync.get('glossary');
+    const { glossary: gc } = await browser.storage.sync.get('glossary');
     $('glossary-toggle').checked = gc?.enabled ?? false;
   } catch { /* 讀取失敗時維持預設 checked */ }
 
   // v1.2.12: YouTube 字幕 toggle — 只在 YouTube 影片頁才顯示
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     const url = tab?.url || '';
     if (url.includes('youtube.com/watch')) {
       $('yt-subtitle-row').hidden = false;
       // 讀取目前字幕翻譯狀態
       try {
-        const resp = await chrome.tabs.sendMessage(tab.id, { type: 'GET_SUBTITLE_STATE' });
+        const resp = await browser.tabs.sendMessage(tab.id, { type: 'GET_SUBTITLE_STATE' });
         $('yt-subtitle-toggle').checked = resp?.active ?? false;
       } catch {
         $('yt-subtitle-toggle').checked = false;
@@ -128,13 +129,13 @@ async function init() {
 }
 
 $('translate-btn').addEventListener('click', async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
   const mode = $('translate-btn').dataset.mode;
   statusEl.textContent = mode === 'restore' ? '狀態：正在還原原文…' : '狀態：正在翻譯…';
   try {
     // TOGGLE_TRANSLATE 在 content.js 是 toggle 行為：已翻譯 → 還原，反之翻譯
-    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' });
+    await browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' });
     window.close();
   } catch (err) {
     statusEl.textContent = '狀態：無法在此頁面執行，請重新整理後再試';
@@ -143,15 +144,15 @@ $('translate-btn').addEventListener('click', async () => {
 });
 
 $('auto').addEventListener('change', async (e) => {
-  await chrome.storage.sync.set({ autoTranslate: e.target.checked });
+  await browser.storage.sync.set({ autoTranslate: e.target.checked });
 });
 
-// v0.73: 術語表一致化開關 — 寫入 chrome.storage.sync 的 glossary.enabled
+// v0.73: 術語表一致化開關 — 寫入 browser.storage.sync 的 glossary.enabled
 $('glossary-toggle').addEventListener('change', async (e) => {
   try {
-    const { glossary: gc = {} } = await chrome.storage.sync.get('glossary');
+    const { glossary: gc = {} } = await browser.storage.sync.get('glossary');
     gc.enabled = e.target.checked;
-    await chrome.storage.sync.set({ glossary: gc });
+    await browser.storage.sync.set({ glossary: gc });
   } catch (err) {
     console.error('[Shinkansen] popup: failed to save glossary toggle', err);
   }
@@ -159,10 +160,10 @@ $('glossary-toggle').addEventListener('change', async (e) => {
 
 // v1.2.12: YouTube 字幕翻譯開關
 $('yt-subtitle-toggle').addEventListener('change', async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_SUBTITLE' });
+    await browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_SUBTITLE' });
   } catch (err) {
     statusEl.textContent = '狀態：無法切換字幕翻譯，請重新整理頁面';
     statusEl.style.color = '#ff3b30';
@@ -170,15 +171,15 @@ $('yt-subtitle-toggle').addEventListener('change', async () => {
 });
 
 $('options-btn').addEventListener('click', () => {
-  chrome.runtime.openOptionsPage();
+  browser.runtime.openOptionsPage();
 });
 
 // v1.0.3: 編輯譯文按鈕
 $('edit-btn').addEventListener('click', async () => {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
   try {
-    const resp = await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_EDIT_MODE' });
+    const resp = await browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_EDIT_MODE' });
     if (resp?.ok) {
       $('edit-btn').textContent = resp.editing ? '結束編輯' : '編輯譯文';
       statusEl.textContent = resp.editing
@@ -194,7 +195,7 @@ $('edit-btn').addEventListener('click', async () => {
 
 $('clear-cache-btn').addEventListener('click', async () => {
   if (!confirm('確定要清除所有翻譯快取嗎？清除後下次翻譯會重新呼叫 Gemini。')) return;
-  const resp = await chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' });
+  const resp = await browser.runtime.sendMessage({ type: 'CLEAR_CACHE' });
   if (resp?.ok) {
     statusEl.textContent = `狀態：已清除 ${resp.removed} 筆快取`;
     statusEl.style.color = '#34c759';

@@ -126,12 +126,12 @@
   // Toast 自動關閉開關
   let toastAutoHide = true;
 
-  chrome.storage.sync.get(['toastOpacity', 'toastPosition', 'toastAutoHide']).then((s) => {
+  browser.storage.sync.get(['toastOpacity', 'toastPosition', 'toastAutoHide']).then((s) => {
     applyToastOpacity(s.toastOpacity);
     applyToastPosition(s.toastPosition);
     if (typeof s.toastAutoHide === 'boolean') toastAutoHide = s.toastAutoHide;
   });
-  chrome.storage.onChanged.addListener((changes, area) => {
+  browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.toastOpacity) {
       applyToastOpacity(changes.toastOpacity.newValue);
     }

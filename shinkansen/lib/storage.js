@@ -1,4 +1,5 @@
 // storage.js — 設定讀寫封裝
+import { browser } from './compat.js';
 import { DEFAULT_UNITS_PER_BATCH, DEFAULT_CHARS_PER_BATCH } from './constants.js';
 
 // v0.83: 預設 system prompt 全面升級——從「翻譯助理」提升為「首席翻譯專家」，
@@ -146,7 +147,7 @@ export const DEFAULT_SETTINGS = {
   skipTraditionalChinesePage: true,
 };
 
-// v0.62 起：apiKey 改存 chrome.storage.local，不走 Google 帳號跨裝置同步。
+// v0.62 起：apiKey 改存 browser.storage.local，不走 Google 帳號跨裝置同步。
 // 其餘設定仍存 sync。對下游呼叫端完全透明——getSettings() 回傳的物件
 // 依然有 .apiKey 欄位。
 const API_KEY_STORAGE_KEY = 'apiKey';
@@ -155,20 +156,20 @@ const API_KEY_STORAGE_KEY = 'apiKey';
 // 還沒有，就把它搬到 local 並從 sync 刪除。呼叫 getSettings() 會自動觸發。
 async function migrateApiKeyIfNeeded(syncSaved) {
   if (!syncSaved || typeof syncSaved.apiKey !== 'string') return;
-  const { [API_KEY_STORAGE_KEY]: localKey } = await chrome.storage.local.get(API_KEY_STORAGE_KEY);
+  const { [API_KEY_STORAGE_KEY]: localKey } = await browser.storage.local.get(API_KEY_STORAGE_KEY);
   if (!localKey && syncSaved.apiKey) {
     // sync 有、local 沒有 → 搬過去
-    await chrome.storage.local.set({ [API_KEY_STORAGE_KEY]: syncSaved.apiKey });
+    await browser.storage.local.set({ [API_KEY_STORAGE_KEY]: syncSaved.apiKey });
   }
   // 無論 local 原本有沒有，都要把 sync 裡的 apiKey 清掉（避免之後又被同步回來）
-  await chrome.storage.sync.remove('apiKey');
+  await browser.storage.sync.remove('apiKey');
 }
 
 export async function getSettings() {
-  const saved = await chrome.storage.sync.get(null);
+  const saved = await browser.storage.sync.get(null);
   await migrateApiKeyIfNeeded(saved);
   // 從 local 讀 apiKey（v0.62 起的正規位置）
-  const { [API_KEY_STORAGE_KEY]: apiKey = '' } = await chrome.storage.local.get(API_KEY_STORAGE_KEY);
+  const { [API_KEY_STORAGE_KEY]: apiKey = '' } = await browser.storage.local.get(API_KEY_STORAGE_KEY);
   // saved.apiKey 可能還在（migrate 剛剛才刪），以 local 版本為準
   const merged = {
     ...DEFAULT_SETTINGS,
@@ -188,11 +189,11 @@ export async function setSettings(patch) {
   // 若 patch 含 apiKey，抽出來寫 local；其餘寫 sync
   if (patch && Object.prototype.hasOwnProperty.call(patch, 'apiKey')) {
     const { apiKey, ...rest } = patch;
-    await chrome.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKey });
+    await browser.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKey });
     if (Object.keys(rest).length > 0) {
-      await chrome.storage.sync.set(rest);
+      await browser.storage.sync.set(rest);
     }
   } else {
-    await chrome.storage.sync.set(patch);
+    await browser.storage.sync.set(patch);
   }
 }

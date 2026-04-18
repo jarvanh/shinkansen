@@ -3,6 +3,10 @@
 // 後續子模組透過 (function(SK) { ... })(window.__SK) 存取共用資源。
 // 注意：content script 不支援 ES module import，所有邏輯透過全域命名空間共用。
 
+// Safari / Firefox 相容性 shim（v1.3.16）
+// content script 不能 import ES module，改用全域方式讓後續所有 content script 繼承。
+globalThis.browser = globalThis.browser ?? globalThis.chrome;
+
 if (window.__shinkansen_loaded) {
   // 防止重複載入（SPA 框架可能重新注入 content script）
 } else {
@@ -32,7 +36,7 @@ if (window.__shinkansen_loaded) {
   // ─── v0.88: 統一 Log 系統 ─────────────────────────────
   SK.sendLog = function sendLog(level, category, message, data) {
     try {
-      chrome.runtime.sendMessage({
+      browser.runtime.sendMessage({
         type: 'LOG',
         payload: { level, category, message, data },
       }).catch(() => {}); // fire-and-forget

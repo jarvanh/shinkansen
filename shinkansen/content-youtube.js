@@ -255,7 +255,7 @@
 
   async function getYtConfig() {
     if (SK.YT.config) return SK.YT.config;
-    const saved = await chrome.storage.sync.get('ytSubtitle');
+    const saved = await browser.storage.sync.get('ytSubtitle');
     SK.YT.config = { ...DEFAULT_YT_CONFIG, ...(saved.ytSubtitle || {}) };
     return SK.YT.config;
   }
@@ -518,7 +518,7 @@
 
         // 批次處理器（每批完成後立刻注入 captionMap 並替換 DOM 字幕）
         const _runBatch = (batchUnits, b) =>
-          chrome.runtime.sendMessage({
+          browser.runtime.sendMessage({
             type: 'TRANSLATE_SUBTITLE_BATCH',
             payload: { texts: batchUnits.map(u => u.text), glossary: null },
           }).then(res => {
@@ -830,7 +830,7 @@
     }
 
     try {
-      const res = await chrome.runtime.sendMessage({
+      const res = await browser.runtime.sendMessage({
         type: 'TRANSLATE_SUBTITLE_BATCH',
         payload: { texts, glossary: null },
       });
@@ -916,7 +916,7 @@
     // 取得本次使用的模型名稱（from config，若設定了 ytModel 就帶入）
     const model = (YT.config?.model) || undefined;
 
-    chrome.runtime.sendMessage({
+    browser.runtime.sendMessage({
       type: 'LOG_USAGE',
       payload: {
         url:   location.href,
@@ -1074,7 +1074,7 @@
     // 延遲 500ms 等 YouTube 播放器初始化並發出新字幕 XHR
     if (!SK.isYouTubePage?.()) return;
     try {
-      const saved = await chrome.storage.sync.get('ytSubtitle');
+      const saved = await browser.storage.sync.get('ytSubtitle');
       const shouldRestart = wasActive || saved.ytSubtitle?.autoTranslate;
       if (shouldRestart) {
         SK.sendLog('info', 'youtube', 'SPA nav: will restart subtitle translation', {

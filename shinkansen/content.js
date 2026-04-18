@@ -16,16 +16,16 @@
     };
 
     if (action === 'GET_LOGS') {
-      chrome.runtime.sendMessage(
+      browser.runtime.sendMessage(
         { type: 'GET_LOGS', payload: { afterSeq: afterSeq || 0 } },
         (res) => respond(res || { ok: false, error: 'no response' }),
       );
     } else if (action === 'CLEAR_LOGS') {
-      chrome.runtime.sendMessage({ type: 'CLEAR_LOGS' }, (res) => {
+      browser.runtime.sendMessage({ type: 'CLEAR_LOGS' }, (res) => {
         respond(res || { ok: true });
       });
     } else if (action === 'CLEAR_CACHE') {
-      chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' }, (res) => {
+      browser.runtime.sendMessage({ type: 'CLEAR_CACHE' }, (res) => {
         respond(res || { ok: true });
       });
     } else if (action === 'TRANSLATE') {
@@ -39,17 +39,17 @@
         respond({ ok: false, error: 'not translated' });
       }
     } else if (action === 'CLEAR_RPD') {
-      chrome.runtime.sendMessage({ type: 'CLEAR_RPD' }, (res) => {
+      browser.runtime.sendMessage({ type: 'CLEAR_RPD' }, (res) => {
         respond(res || { ok: true });
       });
     } else if (action === 'GET_PERSISTED_LOGS') {
       // v1.2.52: 讀取跨 service worker 重啟仍保留的持久化 log
-      chrome.runtime.sendMessage({ type: 'GET_PERSISTED_LOGS' }, (res) => {
+      browser.runtime.sendMessage({ type: 'GET_PERSISTED_LOGS' }, (res) => {
         respond(res || { ok: false, error: 'no response' });
       });
     } else if (action === 'CLEAR_PERSISTED_LOGS') {
       // v1.2.52: 清除持久化 log（測試前呼叫，避免舊資料干擾）
-      chrome.runtime.sendMessage({ type: 'CLEAR_PERSISTED_LOGS' }, (res) => {
+      browser.runtime.sendMessage({ type: 'CLEAR_PERSISTED_LOGS' }, (res) => {
         respond(res || { ok: true });
       });
     } else if (action === 'GET_STATE') {
@@ -210,12 +210,12 @@
     const texts = serialized.map(s => s.text);
     const slotsList = serialized.map(s => s.slots);
 
-    // v1.1.9: 合併讀取設定（減少 chrome.storage.sync.get 呼叫次數）
+    // v1.1.9: 合併讀取設定（減少 browser.storage.sync.get 呼叫次數）
     let maxConcurrent = SK.DEFAULT_MAX_CONCURRENT;
     let maxUnitsPerBatch = SK.DEFAULT_UNITS_PER_BATCH;
     let maxCharsPerBatch = SK.DEFAULT_CHARS_PER_BATCH;
     try {
-      const batchCfg = await chrome.storage.sync.get(['maxConcurrentBatches', 'maxUnitsPerBatch', 'maxCharsPerBatch']);
+      const batchCfg = await browser.storage.sync.get(['maxConcurrentBatches', 'maxUnitsPerBatch', 'maxCharsPerBatch']);
       if (Number.isFinite(batchCfg.maxConcurrentBatches) && batchCfg.maxConcurrentBatches > 0) {
         maxConcurrent = batchCfg.maxConcurrentBatches;
       }
@@ -248,7 +248,7 @@
       SK.sendLog('info', 'translate', `batch ${batchIdx + 1}/${jobs.length} start`, { units: job.texts.length, chars: job.chars });
       try {
         const response = await Promise.race([
-          chrome.runtime.sendMessage({
+          browser.runtime.sendMessage({
             type: 'TRANSLATE_BATCH',
             payload: { texts: job.texts, glossary: glossary || null },
           }),
@@ -322,7 +322,7 @@
       if (mobileUrl) {
         SK.sendLog('info', 'translate', 'Google Docs detected, redirecting to mobilebasic', { mobileUrl });
         SK.showToast('loading', '偵測到 Google Docs，正在開啟可翻譯的閱讀版⋯');
-        chrome.runtime.sendMessage({
+        browser.runtime.sendMessage({
           type: 'OPEN_GDOC_MOBILE',
           payload: { url: mobileUrl },
         }).catch(() => {});
@@ -342,10 +342,10 @@
       return;
     }
 
-    // v1.1.9: 合併所有設定讀取為單一 chrome.storage.sync.get(null)
+    // v1.1.9: 合併所有設定讀取為單一 browser.storage.sync.get(null)
     let settings = {};
     try {
-      settings = await chrome.storage.sync.get(null);
+      settings = await browser.storage.sync.get(null);
     } catch (_) { /* 讀取失敗用 default */ }
 
     // 頁面層級繁中偵測
@@ -449,7 +449,7 @@
         SK.showToast('loading', '建立術語表⋯', { progress: 0, startTimer: true });
         try {
           const glossaryResult = await Promise.race([
-            chrome.runtime.sendMessage({
+            browser.runtime.sendMessage({
               type: 'EXTRACT_GLOSSARY',
               payload: { compressedText, inputHash },
             }),
@@ -469,7 +469,7 @@
           SK.sendLog('warn', 'glossary', 'glossary failed/timeout, proceeding without', { error: err.message });
         }
       } else {
-        const glossaryPromise = chrome.runtime.sendMessage({
+        const glossaryPromise = browser.runtime.sendMessage({
           type: 'EXTRACT_GLOSSARY',
           payload: { compressedText, inputHash },
         }).then(res => {
@@ -536,7 +536,7 @@
 
       STATE.translated = true;
       STATE.stickyTranslate = true;
-      chrome.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
+      browser.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
 
       if (!failures.length) {
         const totalTokens = pageUsage.inputTokens + pageUsage.outputTokens;
@@ -583,7 +583,7 @@
 
       // 記錄用量到 IndexedDB
       if (done > 0) {
-        chrome.runtime.sendMessage({
+        browser.runtime.sendMessage({
           type: 'LOG_USAGE',
           payload: {
             url: location.href,
@@ -637,7 +637,7 @@
     STATE.translatedHTML.clear();
     STATE.translated = false;
     STATE.stickyTranslate = false;
-    chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+    browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     SK.showToast('success', '已還原原文', { progress: 1, autoHideMs: 2000 });
   }
 
@@ -669,7 +669,7 @@
 
   // ─── 訊息接收 ────────────────────────────────────────
 
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.type === 'TOGGLE_TRANSLATE') {
       SK.translatePage();
       return;
@@ -756,7 +756,7 @@
   }
 
   window.__shinkansen = {
-    get version() { return chrome.runtime.getManifest().version; },
+    get version() { return browser.runtime.getManifest().version; },
     collectParagraphs() {
       return SK.collectParagraphs().map(unitSummary);
     },
@@ -817,16 +817,16 @@
 
   // ─── 初始化 ──────────────────────────────────────────
 
-  chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+  browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
 
-  SK.sendLog('info', 'system', 'content script ready', { version: chrome.runtime.getManifest().version, url: location.href });
+  SK.sendLog('info', 'system', 'content script ready', { version: browser.runtime.getManifest().version, url: location.href });
 
   // 首次載入時的自動翻譯
   (async () => {
     try {
       // v1.2.11: YouTube 字幕自動翻譯（優先於一般 auto-translate）
       if (SK.isYouTubePage?.()) {
-        const saved = await chrome.storage.sync.get('ytSubtitle');
+        const saved = await browser.storage.sync.get('ytSubtitle');
         if (saved.ytSubtitle?.autoTranslate) {
           SK.sendLog('info', 'system', 'YouTube auto-subtitle enabled, activating on load');
           // 稍微延遲，等 content script 完成初始化、XHR 攔截器就位
@@ -839,7 +839,7 @@
         return; // YouTube 頁面不走一般 auto-translate
       }
 
-      const { autoTranslate = false } = await chrome.storage.sync.get('autoTranslate');
+      const { autoTranslate = false } = await browser.storage.sync.get('autoTranslate');
       if (!autoTranslate) return;
       if (await SK.isDomainWhitelisted()) {
         SK.sendLog('info', 'system', 'domain in auto-translate list, translating on load', { url: location.href });

@@ -28,7 +28,7 @@
     STATE.cache.clear();
     STATE.translated = false;
     STATE._glossaryPromise = null;
-    chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+    browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     SK.hideToast();
     SK.sendLog('info', 'spa', 'SPA navigation detected, state reset', { url: location.href, stickyTranslate: STATE.stickyTranslate });
   }
@@ -37,7 +37,7 @@
 
   SK.isDomainWhitelisted = async function isDomainWhitelisted() {
     try {
-      const { domainRules } = await chrome.storage.sync.get('domainRules');
+      const { domainRules } = await browser.storage.sync.get('domainRules');
       if (!domainRules?.whitelist?.length) return false;
       const hostname = location.hostname;
       return domainRules.whitelist.some(pattern => {
@@ -71,7 +71,7 @@
     }
 
     try {
-      const { autoTranslate = false } = await chrome.storage.sync.get('autoTranslate');
+      const { autoTranslate = false } = await browser.storage.sync.get('autoTranslate');
       if (autoTranslate && await SK.isDomainWhitelisted()) {
         SK.sendLog('info', 'spa', 'SPA nav: domain in auto-translate list, translating', { url: location.href });
         SK.translatePage();

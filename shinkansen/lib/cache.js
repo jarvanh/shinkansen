@@ -1,18 +1,19 @@
 // cache.js — 持久化翻譯快取
-// 存在 chrome.storage.local,key 為 SHA-1(原文） 加 'tc_' 前綴。
+// 存在 browser.storage.local,key 為 SHA-1(原文） 加 'tc_' 前綴。
 // 版本變更時會由 background.js 主動呼叫 clearAll() 清空。
 //
 // v0.85: 新增 LRU 淘汰機制。快取值從純字串改為 { v: 譯文, t: 時間戳 } 結構，
-// 寫入時若 chrome.storage.local 配額滿，依時間戳排序刪除最舊的條目騰出空間。
+// 寫入時若 browser.storage.local 配額滿，依時間戳排序刪除最舊的條目騰出空間。
 // 讀取時向下相容舊格式（純字串）。
 
+import { browser } from './compat.js';
 import { debugLog } from './logger.js';
 
 const KEY_PREFIX = 'tc_';
 const GLOSSARY_PREFIX = 'gloss_';   // v0.69: 術語表快取
 const VERSION_KEY = '__cacheVersion';
 
-// chrome.storage.local 預設配額 10MB。保留 512KB 給非快取資料（設定、使用量統計、
+// browser.storage.local 預設配額 10MB。保留 512KB 給非快取資料（設定、使用量統計、
 // API key、RPD 計數、debug log 等），快取最多佔 9.5MB。
 const CACHE_QUOTA_BYTES = 9.5 * 1024 * 1024; // 9,961,472
 // 每次 LRU 淘汰時一次性騰出的目標空間（避免每次寫入都觸發淘汰）
@@ -25,7 +26,7 @@ const EVICTION_CHECK_INTERVAL_MS = 30_000; // 最多每 30 秒檢查一次
 
 // ─── LRU 時間戳批次更新（降低寫入頻率） ────────────────────
 // getBatch 讀取時不立刻寫回時間戳，而是累積到 pendingTouches，
-// 由 debounce 計時器統一 flush，減少 chrome.storage.local.set 呼叫次數。
+// 由 debounce 計時器統一 flush，減少 browser.storage.local.set 呼叫次數。
 const pendingTouches = {};
 let touchFlushTimer = null;
 const TOUCH_FLUSH_DELAY_MS = 5000; // 5 秒後統一 flush
@@ -42,7 +43,7 @@ function flushTouches() {
   if (!keys.length) return;
   // 清空 pending（先清再寫，避免 flush 期間的新 touch 被漏掉）
   for (const k of keys) delete pendingTouches[k];
-  chrome.storage.local.set(updates).catch(() => {}); // fire-and-forget
+  browser.storage.local.set(updates).catch(() => {}); // fire-and-forget
 }
 
 async function hashText(text) {
@@ -55,7 +56,7 @@ async function hashText(text) {
 
 /**
  * 估算一個 storage entry 的大小（bytes）。
- * chrome.storage.local 的計費方式是 JSON.stringify(key) + JSON.stringify(value)。
+ * browser.storage.local 的計費方式是 JSON.stringify(key) + JSON.stringify(value)。
  */
 function estimateEntrySize(key, value) {
   const valStr = typeof value === 'string' ? value : JSON.stringify(value);
@@ -96,7 +97,7 @@ function extractTimestamp(stored) {
  * 只淘汰 tc_ 和 gloss_ 前綴的快取條目，不動其他 storage 資料。
  */
 async function evictOldest(targetBytes) {
-  const all = await chrome.storage.local.get(null);
+  const all = await browser.storage.local.get(null);
   const cacheEntries = [];
   for (const [key, value] of Object.entries(all)) {
     if (key.startsWith(KEY_PREFIX) || key.startsWith(GLOSSARY_PREFIX)) {
@@ -119,7 +120,7 @@ async function evictOldest(targetBytes) {
   }
 
   if (toRemove.length > 0) {
-    await chrome.storage.local.remove(toRemove);
+    await browser.storage.local.remove(toRemove);
     debugLog('info', 'cache', 'LRU eviction', { removed: toRemove.length, freedKB: +(freed / 1024).toFixed(1) });
   }
   return { removed: toRemove.length, freedBytes: freed };
@@ -129,7 +130,7 @@ async function evictOldest(targetBytes) {
  * 計算目前快取佔用的大致 bytes。
  */
 async function getCacheUsageBytes() {
-  const all = await chrome.storage.local.get(null);
+  const all = await browser.storage.local.get(null);
   let bytes = 0;
   for (const [key, value] of Object.entries(all)) {
     if (key.startsWith(KEY_PREFIX) || key.startsWith(GLOSSARY_PREFIX)) {
@@ -140,21 +141,21 @@ async function getCacheUsageBytes() {
 }
 
 /**
- * 包裝 chrome.storage.local.set() 的寫入，處理配額滿的情況。
+ * 包裝 browser.storage.local.set() 的寫入，處理配額滿的情況。
  * 若寫入失敗且錯誤訊息包含 QUOTA_BYTES，觸發 LRU 淘汰後重試一次。
  */
 async function safeStorageSet(updates) {
   try {
-    await chrome.storage.local.set(updates);
+    await browser.storage.local.set(updates);
   } catch (err) {
     const msg = err?.message || '';
-    // chrome.storage 配額滿的錯誤訊息包含 "QUOTA_BYTES" 或 "quota"
+    // browser.storage 配額滿的錯誤訊息包含 "QUOTA_BYTES" 或 "quota"
     if (msg.includes('QUOTA_BYTES') || msg.toLowerCase().includes('quota')) {
       debugLog('warn', 'cache', 'storage quota exceeded, triggering LRU eviction');
       await evictOldest(EVICTION_TARGET_BYTES);
       // 重試一次
       try {
-        await chrome.storage.local.set(updates);
+        await browser.storage.local.set(updates);
       } catch (retryErr) {
         // 淘汰後仍然寫不進去（可能單筆就超過上限）→ 靜默放棄，不 crash
         debugLog('error', 'cache', 'storage write failed after eviction', { error: retryErr.message });
@@ -195,7 +196,7 @@ export async function getBatch(texts, keySuffix = '') {
   if (!texts.length) return [];
   const hashes = await Promise.all(texts.map(hashText));
   const keys = hashes.map(h => KEY_PREFIX + h + keySuffix);
-  const stored = await chrome.storage.local.get(keys);
+  const stored = await browser.storage.local.get(keys);
   // v0.85 → v1.0.4: 讀取時累積命中條目的時間戳到 pendingTouches，
   // 由 debounce 計時器統一 flush，減少寫入頻率（原本每次 getBatch 都寫一次）。
   const results = keys.map(k => {
@@ -241,14 +242,14 @@ export async function setBatch(texts, translations, keySuffix = '') {
  */
 export async function getGlossary(inputHash) {
   const key = GLOSSARY_PREFIX + inputHash;
-  const stored = await chrome.storage.local.get(key);
+  const stored = await browser.storage.local.get(key);
   if (!(key in stored)) return null;
   const entry = stored[key];
   // v0.85: 向下相容 — 舊格式直接是 Array，新格式是 { v: Array, t: number }
   if (Array.isArray(entry)) return entry;
   if (entry && typeof entry === 'object' && Array.isArray(entry.v)) {
     // 更新時間戳（fire-and-forget）
-    chrome.storage.local.set({ [key]: { v: entry.v, t: Date.now() } }).catch(() => {});
+    browser.storage.local.set({ [key]: { v: entry.v, t: Date.now() } }).catch(() => {});
     return entry.v;
   }
   return null;
@@ -271,10 +272,10 @@ export { hashText };
  * 清除所有翻譯快取與術語表快取（保留版本標記等其他 local storage 內容）。
  */
 export async function clearAll() {
-  const all = await chrome.storage.local.get(null);
+  const all = await browser.storage.local.get(null);
   const toRemove = Object.keys(all).filter(k => k.startsWith(KEY_PREFIX) || k.startsWith(GLOSSARY_PREFIX));
   if (toRemove.length) {
-    await chrome.storage.local.remove(toRemove);
+    await browser.storage.local.remove(toRemove);
   }
   return toRemove.length;
 }
@@ -285,7 +286,7 @@ export async function clearAll() {
  * v0.85: 向下相容新舊格式的大小估算。
  */
 export async function stats() {
-  const all = await chrome.storage.local.get(null);
+  const all = await browser.storage.local.get(null);
   const tcEntries = Object.keys(all).filter(k => k.startsWith(KEY_PREFIX));
   const glossEntries = Object.keys(all).filter(k => k.startsWith(GLOSSARY_PREFIX));
   let bytes = 0;
@@ -309,10 +310,10 @@ export async function stats() {
  * 回傳 true 代表有清空動作。
  */
 export async function checkVersionAndClear(currentVersion) {
-  const stored = await chrome.storage.local.get(VERSION_KEY);
+  const stored = await browser.storage.local.get(VERSION_KEY);
   if (stored[VERSION_KEY] !== currentVersion) {
     const removed = await clearAll();
-    await chrome.storage.local.set({ [VERSION_KEY]: currentVersion });
+    await browser.storage.local.set({ [VERSION_KEY]: currentVersion });
     return { cleared: true, removed, oldVersion: stored[VERSION_KEY] };
   }
   return { cleared: false };

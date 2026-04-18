@@ -2,7 +2,7 @@
 //
 // 所有 log 一律寫入記憶體 buffer（上限 1000 筆）。
 // 效能相關分類（youtube / api / rate-limit）同時非同步寫入
-// chrome.storage.local（key: yt_debug_log，上限 100 筆），
+// browser.storage.local（key: yt_debug_log，上限 100 筆），
 // 確保 service worker 重啟後仍可回查這些記錄。
 //
 // debugLog 開關只控制「是否同時印到 DevTools console」，
@@ -18,6 +18,7 @@
 //   system     — Extension 啟動/版本/設定變更/badge
 //   youtube    — YouTube 字幕翻譯流程
 
+import { browser } from './compat.js';
 import { getSettings } from './storage.js';
 
 const MAX_LOGS = 1000;
@@ -34,14 +35,14 @@ const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'rate-limit']);
 const PERSIST_KEY = 'yt_debug_log';
 const PERSIST_MAX = 100;
 
-/** 非同步將 entry 寫入 chrome.storage.local（fire-and-forget，不阻塞 buffer 寫入）。 */
+/** 非同步將 entry 寫入 browser.storage.local（fire-and-forget，不阻塞 buffer 寫入）。 */
 function persistLog(entry) {
   if (!PERSIST_CATEGORIES.has(entry.category)) return;
-  chrome.storage.local.get(PERSIST_KEY).then(result => {
+  browser.storage.local.get(PERSIST_KEY).then(result => {
     const logs = result[PERSIST_KEY] || [];
     logs.push(entry);
     if (logs.length > PERSIST_MAX) logs.splice(0, logs.length - PERSIST_MAX);
-    return chrome.storage.local.set({ [PERSIST_KEY]: logs });
+    return browser.storage.local.set({ [PERSIST_KEY]: logs });
   }).catch(() => {
     // 寫入失敗不影響記憶體 buffer
   });
@@ -49,13 +50,13 @@ function persistLog(entry) {
 
 /** 取得持久化 log 並清除 storage。 */
 export async function getPersistedLogs() {
-  const result = await chrome.storage.local.get(PERSIST_KEY);
+  const result = await browser.storage.local.get(PERSIST_KEY);
   return result[PERSIST_KEY] || [];
 }
 
 /** 清除持久化 log storage。 */
 export async function clearPersistedLogs() {
-  await chrome.storage.local.remove(PERSIST_KEY);
+  await browser.storage.local.remove(PERSIST_KEY);
 }
 
 /**
@@ -80,7 +81,7 @@ export function debugLog(level, category, message, data) {
   logBuffer.push(entry);
   while (logBuffer.length > MAX_LOGS) logBuffer.shift();
 
-  // 持久化至 chrome.storage.local（僅限效能除錯分類，fire-and-forget）
+  // 持久化至 browser.storage.local（僅限效能除錯分類，fire-and-forget）
   persistLog(entry);
 
   // 有開 debugLog 才印 console（非同步讀設定，不阻塞 buffer 寫入）
