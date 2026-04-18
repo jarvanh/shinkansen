@@ -103,6 +103,13 @@ if (window.__shinkansen_loaded) {
     'DEL', 'INS', 'VAR', 'SAMP', 'TIME',
   ]);
 
+  // Google Translate 專用行內標籤白名單（加標記保留外殼）
+  // 刻意排除 SPAN（最常見的亂碼來源）、ABBR（純樣式用途）
+  SK.GT_INLINE_TAGS = new Set([
+    'A', 'B', 'STRONG', 'I', 'EM', 'SMALL', 'U', 'S',
+    'SUB', 'SUP', 'MARK', 'DEL', 'INS', 'CITE', 'Q',
+  ]);
+
   // LLM 替代括號字元
   SK.BRACKET_ALIASES_OPEN = ['\u2770'];  // ❰
   SK.BRACKET_ALIASES_CLOSE = ['\u2771']; // ❱

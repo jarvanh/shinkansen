@@ -13,6 +13,86 @@
     return serializeNodeIterable(el.childNodes);
   };
 
+  // ─── Google Translate 專用序列化 ──────────────────────
+  // 只標記 <a> 連結（用【N】/【/N】）與 atomic 元素（用【*N】），
+  // 其他 span/b/i/abbr 直接遞迴取文字（不加標記）。
+  // 這樣送給 Google MT 的標記數量極少（通常 2-4 個），
+  // 避免過多標記導致 Google MT 位置錯亂。
+  //
+  // 為什麼用【】而不用⟦⟧：⟦⟧ 是數學符號，Google MT 視為可翻譯符號會亂移；
+  // 【】是 CJK 標點，Google MT 原樣保留且維持正確前後順序。
+  //
+  // 回傳的 text 可直接送 Google MT；結果還原時用
+  // SK.restoreGoogleTranslateMarkers(tr) 把【N】換回⟦N⟧再走現有 deserialization。
+
+  function serializeNodeIterableForGoogle(topLevelNodes) {
+    const slots = [];
+    let out = '';
+    function walk(nodeList) {
+      for (const child of nodeList) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          out += child.nodeValue;
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
+          if (child.tagName === 'BR') { out += '\u0001'; continue; }
+          // Atomic 元素（footnote sup 等）→ 單一標記，不翻內容
+          if (SK.isAtomicPreserve(child)) {
+            const idx = slots.length;
+            slots.push({ atomic: true, node: child.cloneNode(true) });
+            out += '【*' + idx + '】';
+            continue;
+          }
+          // 語意行內標籤 → 配對標記（保留格式）
+          // 包含 <a>（連結）與 <b>/<i>/<small> 等語意格式標籤。
+          // 刻意排除 <span>：SPAN 是最常見的爆炸來源（Wikipedia lede 有 10+ 個
+          // span.class，會讓 Google MT 位置錯亂）。<abbr> 也排除（樣式用途為主）。
+          if (SK.GT_INLINE_TAGS.has(child.tagName)) {
+            const idx = slots.length;
+            slots.push(child.cloneNode(false));
+            out += '【' + idx + '】';
+            walk(child.childNodes);
+            out += '【/' + idx + '】';
+            continue;
+          }
+          // SPAN、ABBR 及其他非語意元素 → 只取文字，不加標記
+          walk(child.childNodes);
+        }
+      }
+    }
+    walk(topLevelNodes);
+    const normalized = out
+      .replace(/\s+/g, ' ')
+      .replace(/ *\u0001 */g, '\u0001')
+      .replace(/\u0001{3,}/g, '\u0001\u0001')
+      .replace(/\u0001/g, '\n')
+      .trim();
+    return { text: normalized, slots };
+  }
+
+  SK.serializeForGoogleTranslate = function serializeForGoogleTranslate(el) {
+    return serializeNodeIterableForGoogle(el.childNodes);
+  };
+
+  SK.serializeFragmentForGoogleTranslate = function serializeFragmentForGoogleTranslate(unit) {
+    const nodes = [];
+    let cur = unit.startNode;
+    while (cur) {
+      nodes.push(cur);
+      if (cur === unit.endNode) break;
+      cur = cur.nextSibling;
+    }
+    return serializeNodeIterableForGoogle(nodes);
+  };
+
+  // 將 Google MT 回傳的【N】/【/N】/【*N】換回⟦N⟧/⟦/N⟧/⟦*N⟧，
+  // 交給現有 deserializeWithPlaceholders 處理。
+  SK.restoreGoogleTranslateMarkers = function restoreGoogleTranslateMarkers(s) {
+    return s
+      .replace(/【\*(\d+)】/g, PH_OPEN + '*$1' + PH_CLOSE)
+      .replace(/【(\d+)】/g,   PH_OPEN + '$1'  + PH_CLOSE)
+      .replace(/【\/(\d+)】/g, PH_OPEN + '/$1' + PH_CLOSE);
+  };
+
   SK.serializeFragmentWithPlaceholders = function serializeFragmentWithPlaceholders(unit) {
     const nodes = [];
     let cur = unit.startNode;

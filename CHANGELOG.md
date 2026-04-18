@@ -7,7 +7,11 @@
 
 ## v1.4.x
 
-**v1.4.1** — 修正 Google Translate 模式無法保留連結與行內格式的問題。根本原因：`translateUnitsGoogle` 原本直接取 `innerText` 送出，行內 HTML（`<a href>`、`<b>`、`<i>` 等）全部丟失。修法：改用 `serializeWithPlaceholders` 取得 slots，但把 `⟦N⟧`/`⟦/N⟧` 換成 `【N】`/`【/N】` 再送 Google Translate（`⟦⟧` 是數學符號，Google MT 會亂移其位置；`【】` 是 CJK 標點，Google MT 視為不透明文字，能原樣保留且維持正確前後位置）。拿回譯文後換回 `⟦N⟧`/`⟦/N⟧`，走現有 `deserializeWithPlaceholders` + `tryRecoverLinkSlots` fallback 鏈。
+**v1.4.3** — Google Translate 模式加回行內格式保留（`<b>`、`<i>`、`<small>` 等）。測試確認只排除 `<span>`（亂碼根源）就能同時解決兩個問題：Wikipedia lede 等複雜段落不再亂碼、notice box 的斜體/小字等樣式也能正確保留。新增 `SK.GT_INLINE_TAGS` 白名單（`content-ns.js`）供 `serializeForGoogleTranslate` 判斷哪些 tag 加標記。
+
+**v1.4.2** — 修正 Google Translate 模式翻譯複雜段落（如 Wikipedia lede）時出現亂碼（如 `7/D/17777/S4]m`）的問題。根本原因：v1.4.1 使用 `serializeWithPlaceholders` 產生 10+ 個 `【N】` 標記，Google MT 被過多標記數字搞亂位置與文字，導致亂碼。修法：改用新的 `serializeForGoogleTranslate`，只對 `<a>` 連結加 `【N】`/`【/N】` 配對標記、atomic 元素（footnote sup）加 `【*N】` 單一標記，其他 span/b/i/abbr 全部直接遞迴取文字（不加標記）。通常整段只有 2-4 個標記，Google MT 能正確保留且不亂移。
+
+**v1.4.1** — 修正 Google Translate 模式無法保留連結與行內格式的問題。根本原因：`translateUnitsGoogle` 原本直接取 `innerText` 送出，行內 HTML（`<a href>`、`<b>`、`<i>` 等）全部丟失。修法：改用 `serializeWithPlaceholders` 取得 slots，但把 `⟦N⟧`/`⟦/N⟧` 換成 `【N】`/`【/N】` 再送 Google Translate（`⟦⟧` 是數學符號，Google MT 會亂移其位置；`【】` 是 CJK 標點，Google MT 視為不透明文字，能原樣保留且維持正確前後位置）。拿回譯文後換回 `⟦N⟧`/`⟦/N⟧`，走現有 `deserializeWithPlaceholders` + `tryRecoverLinkSlots` fallback 鏈。（注：此版在 Wikipedia lede 等複雜段落仍有亂碼，由 v1.4.2 進一步修正）根本原因：`translateUnitsGoogle` 原本直接取 `innerText` 送出，行內 HTML（`<a href>`、`<b>`、`<i>` 等）全部丟失。修法：改用 `serializeWithPlaceholders` 取得 slots，但把 `⟦N⟧`/`⟦/N⟧` 換成 `【N】`/`【/N】` 再送 Google Translate（`⟦⟧` 是數學符號，Google MT 會亂移其位置；`【】` 是 CJK 標點，Google MT 視為不透明文字，能原樣保留且維持正確前後位置）。拿回譯文後換回 `⟦N⟧`/`⟦/N⟧`，走現有 `deserializeWithPlaceholders` + `tryRecoverLinkSlots` fallback 鏈。
 
 **v1.4.0** — 新增 Google Translate 支援。網頁翻譯：新增 Opt+G 快捷鍵，使用 Google Translate 非官方免費端點（`translate.googleapis.com/translate_a/single?client=gtx`），不需要任何 API Key；使用 U+2063 隱形分隔符批次串接多段文字（每批最多 5500 URL encoded chars），翻譯完成後自動拆分回對應段落。YouTube 字幕翻譯：設定頁「YouTube 字幕」分頁新增引擎選擇（Gemini 預設 / Google Translate），選擇 Google Translate 後字幕翻譯 API 路由至 `TRANSLATE_SUBTITLE_BATCH_GOOGLE`，不走 Gemini rate limiter。用量統計：Google Translate 紀錄以「字元數 + $0（免費）」顯示，不計入 token 費用。`STATE.translatedBy` 追蹤當前引擎（`'gemini'` / `'google'` / `null`），兩個快捷鍵各自獨立 toggle（同引擎 = 還原，切引擎 = 先還原再翻）。快取：Google Translate 結果以 `_gt` / `_gt_yt` 後綴與 Gemini 快取分開存放。
 
