@@ -148,11 +148,8 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 
 ### ~~v1.2.25~~ — 已修正 → v1.2.26（強制 CC toggle 重新觸發 XHR）
 
-### v1.4.2 — 2026-04-18 — Google Translate 複雜段落亂碼（Path B：需 fetch mock）
-- **症狀**：Wikipedia lede 翻譯後出現亂碼（`7/D/17777/S4]m【個人資料】`），v1.4.1 的 10+ 個 `【N】` 標記被 Google MT 位置錯亂
-- **修在**：`shinkansen/content-serialize.js` 新增 `serializeForGoogleTranslate`（只標 `<a>` + atomic），`content.js` `translateUnitsGoogle` 改用新序列化
-- **為什麼還不能寫測試**：同 v1.4.1 pending 條目——需要 mock `TRANSLATE_BATCH_GOOGLE` 訊息回傳含 `【N】` 標記的字串，然後驗證 `restoreGoogleTranslateMarkers` + `deserializeWithPlaceholders` 鏈
-- **建議 spec**：擴充 `test/regression/google-translate-format-preserve.spec.js`，加一個 Wikipedia lede 樣的複雜 fixture，驗證亂碼不再出現、`<a>` 連結數量正確
+### ~~v1.4.2 + v1.4.3~~ — 已補測試 → `test/regression/google-translate-format-preserve.spec.js`（test #2 + #3）
+（共用 fixture `google-translate-complex-paragraph.html`，Wikipedia lede 樣式：B+I+A+A+SPAN+SMALL 同段。Test #2 直接呼叫 `SK.serializeForGoogleTranslate` 驗證 slotCount=5 / slotTags=['B','I','A','A','SMALL'] / span 內文進 text 但不加標記 / class 屬性不洩漏。Test #3 走 end-to-end mock `TRANSLATE_BATCH_GOOGLE`：回傳保留 5 個 `【N】` 標記的中文譯文，注入後驗證 b/i/a×2/small 全部保留正確中文 + href，span 不被重建（DOM 內 `<span>` count=0），無可見 `【】`/`⟦⟧` 殘留。SANITY 通過：把 `SPAN` 加入 `GT_INLINE_TAGS` 後 test #2 fail；把 `restoreGoogleTranslateMarkers(tr)` 改成 `tr` 後 test #3 fail。原 PENDING 提到的「需要 fetch mock」其實是誤判——v1.4.1 已驗證 mock `chrome.runtime.sendMessage` 就足夠，根本不用攔 `translate.googleapis.com`。）
 
 ### ~~v1.4.1~~ — 已補測試 → `test/regression/google-translate-format-preserve.spec.js`
 （mock `chrome.runtime.sendMessage` 攔截 `TRANSLATE_BATCH_GOOGLE`，回傳含 `【0】東京旅遊指南【/0】` 的譯文，呼叫 `SK.translateUnitsGoogle` 後驗證 `<a>` 與 `href` 仍存在、文字為「東京旅遊指南」、DOM 不留可見 `【】`/`⟦⟧`。Sanity 通過：移除 swap-back regex 後 linkCount=0，可見 `【0】` 殘留，測試 fail）
