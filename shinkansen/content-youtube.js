@@ -517,9 +517,14 @@
         const _batchApiMs = new Array(batches.length).fill(0);
 
         // 批次處理器（每批完成後立刻注入 captionMap 並替換 DOM 字幕）
+        // v1.4.0: 依 config.engine 路由到對應的翻譯 handler
+        const _subtitleMsgType = (config.engine === 'google')
+          ? 'TRANSLATE_SUBTITLE_BATCH_GOOGLE'
+          : 'TRANSLATE_SUBTITLE_BATCH';
+
         const _runBatch = (batchUnits, b) =>
           browser.runtime.sendMessage({
-            type: 'TRANSLATE_SUBTITLE_BATCH',
+            type: _subtitleMsgType,
             payload: { texts: batchUnits.map(u => u.text), glossary: null },
           }).then(res => {
             const elapsed = Date.now() - _t0;

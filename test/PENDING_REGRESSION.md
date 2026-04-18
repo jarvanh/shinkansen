@@ -148,6 +148,31 @@ eval content.js + mock storage + Debug Bridge TRANSLATE 觸發 translatePage）
 
 ### ~~v1.2.25~~ — 已修正 → v1.2.26（強制 CC toggle 重新觸發 XHR）
 
+### v1.4.1 — 2026-04-18 — Google Translate 格式保留（⟦⟧→【】標記轉換，Path B：需 fetch mock）
+- **症狀**：Opt+G 翻譯後連結消失、粗體/斜體消失，只剩純文字
+- **修在**：`shinkansen/content.js` `translateUnitsGoogle`——改用 `serializeWithPlaceholders` 取得 slots，送出前把 `⟦N⟧/⟦/N⟧` 換成 `【N】/【/N】`，回傳後換回再走 `deserializeWithPlaceholders`
+- **為什麼還不能寫測試**：核心行為依賴 `fetch` 呼叫 `translate.googleapis.com`。Playwright regression 框架需要 `page.route()` mock 才能攔截，目前尚未加入此能力。Jest 端亦需要先解決 `google-translate.js` 是 ES module 的 require 問題（同 v1.4.0 pending 條目說明）
+- **建議 spec**：`test/regression/google-translate-format-preserve.spec.js`
+- **建議斷言**：mock `TRANSLATE_BATCH_GOOGLE` 回傳含 `【0】東京的連結【/0】` 的譯文 → 確認 `injectTranslation` 後對應元素的 `querySelector('a')` 存在且 `href` 正確
+
+### v1.4.0 — 2026-04-18 — Google Translate 批次翻譯核心邏輯（Path B：ESM 無法 require）
+- **症狀**：新功能，尚無自動化測試涵蓋
+- **涵蓋範圍**：
+  1. `translateGoogleBatch`：多段文字以 `\n\u2063\u2063\u2063\n` 為 separator 合併送出、回應後正確拆回對應數量
+  2. URL 長度分塊：單次 `encodeURIComponent` 超過 5500 字元時自動分成多批、結果依序合併
+- **修在**：`shinkansen/lib/google-translate.js`（新增）
+- **為什麼還不能寫測試**：
+    `google-translate.js` 是 ES module（`export async function`），現有 jest 設定只吃 `*.test.cjs`（CJS），
+    無法直接 `require()`。若要測試需先新增 ESM jest transform（`transform: { '^.+\\.js$': ... }` 或切成
+    `jest.config.mjs` + `experimental-vm-modules`）或把 pure logic 抽出成 CJS helper。
+    Playwright regression 路徑需要 `fetch` mock（攔截 `translate.googleapis.com`），
+    目前 regression 框架未加 `page.route()`，也需要先搭好。
+- **建議測試位置**：`test/jest-unit/google-translate-batch.test.cjs`（需加 ESM transform）
+  或 `test/regression/google-translate-batch.spec.js`（需 page.route mock）
+- **建議斷言**：
+  - 3 段文字 batch → mock `fetch` 回傳含 separator 的合併譯文 → 確認回傳陣列長度 = 3 且各段正確
+  - 1 段超長文字（> 5500 encoded chars）→ 確認 `fetch` 被呼叫 ≥ 2 次（分塊）→ 結果合併正確
+
 ### v1.2.47 — 2026-04-16 — 字幕 BATCH_SIZE 20→8（無需 regression 測試）
 - **說明**：常數變更，正確性已由現有字幕翻譯流程涵蓋，效果差異需人工觀察 debug 面板確認
 

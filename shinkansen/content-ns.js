@@ -19,6 +19,7 @@ if (window.__shinkansen_loaded) {
   // ─── 共用狀態 ──────────────────────────────────────────
   SK.STATE = {
     translated: false,
+    translatedBy: null,      // v1.4.0: 'gemini' | 'google' | null
     translating: false,      // v0.80: 翻譯進行中（防止重複觸發 + 支援中途取消）
     abortController: null,   // v0.80: AbortController，翻譯中按 Alt+S 或離開頁面時 abort
     cache: new Map(),       // 段落文字 → 譯文

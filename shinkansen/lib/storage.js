@@ -112,6 +112,8 @@ export const DEFAULT_SETTINGS = {
     debugToast:    false,        // v1.2.14: 顯示字幕翻譯即時狀態面板（debug 用）
     onTheFly:      false,        // v1.2.49: cache miss 時是否送 on-the-fly API 翻譯（預設關閉）
     // preserveLineBreaks 已於 v1.2.38 移除 toggle，改為永遠 true（content-youtube.js 硬編碼）
+    // v1.4.0: 字幕翻譯引擎——'gemini'（預設）或 'google'（Google Translate 免費端點）
+    engine: 'gemini',
     // v1.2.39: 獨立模型設定——空字串表示與主模型相同
     model: '',
     // v1.2.39: 獨立計價——null 表示與主模型計價相同；設定後用於字幕費用計算

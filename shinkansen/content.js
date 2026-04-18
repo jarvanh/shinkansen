@@ -535,6 +535,7 @@
       }
 
       STATE.translated = true;
+      STATE.translatedBy = 'gemini';  // v1.4.0
       STATE.stickyTranslate = true;
       browser.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
 
@@ -636,10 +637,224 @@
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
     STATE.translated = false;
+    STATE.translatedBy = null;  // v1.4.0
     STATE.stickyTranslate = false;
     browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     SK.showToast('success', '已還原原文', { progress: 1, autoHideMs: 2000 });
   }
+
+  // ─── v1.4.0: Google Translate 批次送出 ──────────────────────
+  // 與 SK.translateUnits 相同架構，但送 TRANSLATE_BATCH_GOOGLE 訊息，
+  // 不走術語表（Google MT 無 LLM 語意支援），回傳含 chars 的用量資訊。
+  //
+  // v1.4.1 格式保留：對有行內元素的段落使用 serializeWithPlaceholders 取得 slots，
+  // 但把 ⟦N⟧/⟦/N⟧ 轉成 【N】/【/N】 再送 Google MT（⟦⟧ 是數學符號會被亂移；
+  // 【】是 CJK 標點，Google MT 視為不透明文字，能原樣保留且維持正確位置）。
+  // 拿回譯文後再把 【N】/【/N】 換回 ⟦N⟧/⟦/N⟧，走現有 deserializeWithPlaceholders。
+  SK.translateUnitsGoogle = async function translateUnitsGoogle(units, { onProgress, signal } = {}) {
+    const total = units.length;
+
+    // ── 序列化：有行內元素的段落保留結構，其餘走純文字 ──────────────
+    const serialized = units.map(unit => {
+      if (unit.kind === 'fragment') {
+        return SK.serializeFragmentWithPlaceholders(unit);
+      }
+      const el = unit.el;
+      if (!SK.hasPreservableInline(el)) {
+        return { text: el.innerText.trim(), slots: [] };
+      }
+      const s = SK.serializeWithPlaceholders(el);
+      // ⟦N⟧ → 【N】，⟦/N⟧ → 【/N】，讓 Google MT 原樣通過
+      const gtText = s.text
+        .replace(/⟦(\d+)⟧/g, '【$1】')
+        .replace(/⟦\/(\d+)⟧/g, '【/$1】');
+      return { text: gtText, slots: s.slots };
+    });
+
+    const texts = serialized.map(s => s.text);
+    const slotsList = serialized.map(s => s.slots);
+
+    let done = 0;
+    let totalChars = 0;
+    const failures = [];
+
+    const jobs = packBatches(texts, units, slotsList, 20, 4000);
+    const t0All = Date.now();
+    SK.sendLog('info', 'translate', 'translateUnitsGoogle start', { batches: jobs.length, total });
+
+    await runWithConcurrency(jobs, 5, async (job) => {
+      if (signal?.aborted) return;
+      const batchIdx = jobs.indexOf(job);
+      try {
+        const response = await Promise.race([
+          browser.runtime.sendMessage({
+            type: 'TRANSLATE_BATCH_GOOGLE',
+            payload: { texts: job.texts },
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('批次逾時（90s）')), BATCH_TIMEOUT_MS)
+          ),
+        ]);
+        if (!response?.ok) throw new Error(response?.error || '未知錯誤');
+        totalChars += response.usage?.chars || 0;
+        const translations = response.result;
+        translations.forEach((tr, j) => {
+          const unit = job.units[j];
+          if (!tr) return;
+          const slots = job.slots[j];
+          // 【N】/【/N】 換回 ⟦N⟧/⟦/N⟧，讓 deserializeWithPlaceholders 正常工作
+          const restored = slots?.length
+            ? tr.replace(/【(\d+)】/g, '⟦$1⟧').replace(/【\/(\d+)】/g, '⟦/$1⟧')
+            : tr;
+          SK.injectTranslation(unit, restored, slots || []);
+        });
+        done += job.texts.length;
+        if (onProgress) onProgress(done, total);
+      } catch (err) {
+        SK.sendLog('error', 'translate', `google batch ${batchIdx + 1} FAILED`, { error: err.message });
+        failures.push({ start: job.start, count: job.texts.length, error: err.message });
+      }
+    });
+
+    SK.sendLog('info', 'translate', 'translateUnitsGoogle complete', {
+      elapsed: Date.now() - t0All, done, total, failures: failures.length, chars: totalChars,
+    });
+
+    return { done, total, failures, chars: totalChars };
+  };
+
+  // ─── v1.4.0: Google Translate 翻譯整頁 ──────────────────────
+  SK.translatePageGoogle = async function translatePageGoogle() {
+    // 若同一引擎已翻譯 → 還原（toggle）
+    if (STATE.translated && STATE.translatedBy === 'google') {
+      restorePage();
+      return;
+    }
+
+    // 若正在翻譯中（任何引擎）→ 中止
+    if (STATE.translating) {
+      STATE.abortController?.abort();
+      SK.showToast('loading', '正在取消翻譯⋯');
+      return;
+    }
+
+    // 若 Gemini 翻譯已完成 → 先還原，再用 Google 翻
+    if (STATE.translated) {
+      restorePage();
+    }
+
+    if (!navigator.onLine) {
+      SK.showToast('error', '目前處於離線狀態，無法翻譯。請確認網路連線後再試', { autoHideMs: 5000 });
+      return;
+    }
+
+    // 繁中偵測（與 Gemini 相同邏輯）
+    let settings = {};
+    try { settings = await browser.storage.sync.get(null); } catch (_) {}
+    {
+      const skipCheck = settings.skipTraditionalChinesePage === false;
+      if (!skipCheck) {
+        const contentRoot =
+          document.querySelector('article') ||
+          document.querySelector('main') ||
+          document.querySelector('[role="main"]') ||
+          document.body;
+        const pageSample = (contentRoot.innerText || '').slice(0, 2000);
+        if (pageSample.length > 20 && SK.isTraditionalChinese(pageSample)) {
+          SK.showToast('error', '此頁面已是繁體中文，不需翻譯', { autoHideMs: 3000 });
+          return;
+        }
+      }
+    }
+
+    STATE.translating = true;
+    STATE.abortController = new AbortController();
+    const translateStartTime = Date.now();
+    const abortSignal = STATE.abortController.signal;
+
+    let units = SK.collectParagraphs();
+    if (units.length === 0) {
+      SK.showToast('error', '找不到可翻譯的內容', { autoHideMs: 3000 });
+      STATE.translating = false;
+      STATE.abortController = null;
+      return;
+    }
+
+    // 超大頁面防護（沿用相同上限設定）
+    let maxTotalUnits = SK.DEFAULT_MAX_TOTAL_UNITS;
+    const v = settings.maxTranslateUnits;
+    if (Number.isFinite(v) && v >= 0) maxTotalUnits = v;
+    let truncatedCount = 0;
+    if (maxTotalUnits > 0 && units.length > maxTotalUnits) {
+      truncatedCount = units.length - maxTotalUnits;
+      units = units.slice(0, maxTotalUnits);
+    }
+    const total = units.length;
+
+    SK.showToast('loading', `Google 翻譯中… 0 / ${total}`, { progress: 0, startTimer: true });
+
+    try {
+      const { done, failures, chars } = await SK.translateUnitsGoogle(units, {
+        signal: abortSignal,
+        onProgress: (d, t) => SK.showToast('loading', `Google 翻譯中… ${d} / ${t}`, {
+          progress: d / t,
+        }),
+      });
+
+      if (abortSignal.aborted) {
+        if (STATE.originalHTML.size > 0) {
+          STATE.originalHTML.forEach((originalHTML, el) => {
+            el.innerHTML = originalHTML;
+            el.removeAttribute('data-shinkansen-translated');
+          });
+          STATE.originalHTML.clear();
+        }
+        STATE.translated = false;
+        SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        return;
+      }
+
+      if (failures.length) {
+        const failedSegs = failures.reduce((s, f) => s + f.count, 0);
+        SK.showToast('error', `翻譯部分失敗：${failedSegs} / ${total} 段失敗`, {
+          stopTimer: true,
+          detail: failures[0].error.slice(0, 120),
+        });
+      }
+
+      STATE.translated = true;
+      STATE.translatedBy = 'google';  // v1.4.0
+      STATE.stickyTranslate = true;
+      browser.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
+
+      if (!failures.length) {
+        const successMsg = truncatedCount > 0
+          ? `Google 翻譯完成（${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`
+          : `Google 翻譯完成（${total} 段）`;
+        SK.showToast('success', successMsg, {
+          progress: 1,
+          stopTimer: true,
+          detail: `${chars.toLocaleString()} 字元 · 免費`,
+        });
+      }
+
+      // 記錄用量（engine 欄位由 background 的 handleTranslateGoogle 寫入）
+      SK.sendLog('info', 'translate', 'google page translation done', {
+        segments: total, chars, elapsed: Date.now() - translateStartTime, url: location.href,
+      });
+
+      scheduleRescanForLateContent();
+      SK.startSpaObserver();
+    } catch (err) {
+      SK.sendLog('error', 'translate', 'translatePageGoogle error', { error: err.message || String(err) });
+      if (!abortSignal.aborted) {
+        SK.showToast('error', `翻譯失敗：${err.message}`, { stopTimer: true });
+      }
+    } finally {
+      STATE.translating = false;
+      STATE.abortController = null;
+    }
+  };
 
   // ─── 編輯譯文模式 ────────────────────────────────────
 
@@ -686,6 +901,11 @@
     if (msg?.type === 'GET_SUBTITLE_STATE') {
       sendResponse({ ok: true, active: SK.YT?.active ?? false });
       return true;
+    }
+    // v1.4.0: Google Translate 快捷鍵（Opt+G）
+    if (msg?.type === 'TOGGLE_TRANSLATE_GOOGLE') {
+      SK.translatePageGoogle();
+      return;
     }
     if (msg?.type === 'TOGGLE_SUBTITLE') {
       if (SK.translateYouTubeSubtitles) {

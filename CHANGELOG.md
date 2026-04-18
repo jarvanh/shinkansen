@@ -5,6 +5,14 @@
 
 ---
 
+## v1.4.x
+
+**v1.4.1** — 修正 Google Translate 模式無法保留連結與行內格式的問題。根本原因：`translateUnitsGoogle` 原本直接取 `innerText` 送出，行內 HTML（`<a href>`、`<b>`、`<i>` 等）全部丟失。修法：改用 `serializeWithPlaceholders` 取得 slots，但把 `⟦N⟧`/`⟦/N⟧` 換成 `【N】`/`【/N】` 再送 Google Translate（`⟦⟧` 是數學符號，Google MT 會亂移其位置；`【】` 是 CJK 標點，Google MT 視為不透明文字，能原樣保留且維持正確前後位置）。拿回譯文後換回 `⟦N⟧`/`⟦/N⟧`，走現有 `deserializeWithPlaceholders` + `tryRecoverLinkSlots` fallback 鏈。
+
+**v1.4.0** — 新增 Google Translate 支援。網頁翻譯：新增 Opt+G 快捷鍵，使用 Google Translate 非官方免費端點（`translate.googleapis.com/translate_a/single?client=gtx`），不需要任何 API Key；使用 U+2063 隱形分隔符批次串接多段文字（每批最多 5500 URL encoded chars），翻譯完成後自動拆分回對應段落。YouTube 字幕翻譯：設定頁「YouTube 字幕」分頁新增引擎選擇（Gemini 預設 / Google Translate），選擇 Google Translate 後字幕翻譯 API 路由至 `TRANSLATE_SUBTITLE_BATCH_GOOGLE`，不走 Gemini rate limiter。用量統計：Google Translate 紀錄以「字元數 + $0（免費）」顯示，不計入 token 費用。`STATE.translatedBy` 追蹤當前引擎（`'gemini'` / `'google'` / `null`），兩個快捷鍵各自獨立 toggle（同引擎 = 還原，切引擎 = 先還原再翻）。快取：Google Translate 結果以 `_gt` / `_gt_yt` 後綴與 Gemini 快取分開存放。
+
+---
+
 ## v1.3.x
 
 **v1.3.16** — Safari / Firefox 相容性 shim：全 codebase `chrome.*` → `browser.*`。新增 `lib/compat.js`，以 Proxy 做 lazy 解析（每次 property access 時讀 `globalThis.browser ?? globalThis.chrome`，避免 const 在 import 當下凍結成 undefined 或錯誤的 mock——後者會讓 Playwright 多 spec 共用 module cache 時 cache / rate-limiter unit test fail）；`content-ns.js` 頂部加 `globalThis.browser = globalThis.browser ?? globalThis.chrome` 供 content scripts 繼承。`options.js` 偵測平台，Safari 上隱藏「至 chrome://extensions/shortcuts 設定快捷鍵」連結。這是 iOS/iPadOS 移植準備的第一步。

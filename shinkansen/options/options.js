@@ -155,6 +155,9 @@ async function load() {
 
   // v1.2.11: YouTube 字幕設定
   const yt = { ...DEFAULTS.ytSubtitle, ...(s.ytSubtitle || {}) };
+  // v1.4.0: 字幕翻譯引擎
+  const ytEngineEl = $('ytEngine');
+  if (ytEngineEl) ytEngineEl.value = yt.engine || 'gemini';
   $('ytAutoTranslate').checked       = yt.autoTranslate       === true;
   $('ytDebugToast').checked          = yt.debugToast          === true;
   $('ytOnTheFly').checked            = yt.onTheFly            === true;  // v1.2.49
@@ -228,6 +231,7 @@ async function save() {
     skipTraditionalChinesePage: $('skipTraditionalChinesePage').checked,
     // v1.2.11: YouTube 字幕設定
     ytSubtitle: {
+      engine: ($('ytEngine')?.value || 'gemini'),  // v1.4.0
       autoTranslate:      $('ytAutoTranslate').checked,
       debugToast:         $('ytDebugToast').checked,
       onTheFly:           $('ytOnTheFly').checked,          // v1.2.49
@@ -926,16 +930,19 @@ function renderTable(records) {
   emptyMsg.hidden = true;
 
   tbody.innerHTML = records.map(r => {
+    const isGoogle = r.engine === 'google';  // v1.4.0
     // v0.99: 思考 token 以 output 費率計費，加入明細計算
     const billedTokens = (r.billedInputTokens || 0) + (r.outputTokens || 0);
-    const shortModel = (r.model || '').replace('gemini-', '').replace('-preview', '');
+    const shortModel = isGoogle
+      ? 'Google'
+      : (r.model || '').replace('gemini-', '').replace('-preview', '');
     const title = escapeHtml(r.title || '(無標題)');
     const urlDisplay = escapeHtml(shortenUrl(r.url || ''));
     const urlFull = escapeHtml(r.url || '');
-    // v1.0.30: Gemini implicit cache hit rate
+    // v1.0.30: Gemini implicit cache hit rate（Google Translate 不適用）
     const inputTk = r.inputTokens || 0;
     const cachedTk = r.cachedTokens || 0;
-    const hitRate = inputTk > 0 ? Math.round(cachedTk / inputTk * 100) : 0;
+    const hitRate = (!isGoogle && inputTk > 0) ? Math.round(cachedTk / inputTk * 100) : 0;
     const hitHtml = hitRate > 0
       ? `<span class="usage-cache-hit">(${hitRate}% hit)</span>`
       : '';
@@ -943,12 +950,17 @@ function renderTable(records) {
     const urlHtml = urlFull
       ? `<a class="site-url" href="${urlFull}" target="_blank" rel="noopener">${urlDisplay}</a>`
       : `<span class="site-url">${urlDisplay}</span>`;
+    // v1.4.0: Google Translate 顯示字元數和 $0（免費）
+    const tokenCell = isGoogle
+      ? `${(r.chars || 0).toLocaleString()} 字元`
+      : `${formatTokens(billedTokens)}${hitHtml}`;
+    const costCell = isGoogle ? '$0（免費）' : formatUSD(r.billedCostUSD || 0);
     return `<tr>
       <td>${fmtTime(r.timestamp)}</td>
       <td>${title}${urlHtml}</td>
       <td class="col-model">${shortModel}</td>
-      <td class="num">${formatTokens(billedTokens)}${hitHtml}</td>
-      <td class="num">${formatUSD(r.billedCostUSD || 0)}</td>
+      <td class="num">${tokenCell}</td>
+      <td class="num">${costCell}</td>
     </tr>`;
   }).join('');
 }

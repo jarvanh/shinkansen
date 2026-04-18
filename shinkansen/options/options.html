@@ -512,6 +512,19 @@
     <!-- ═══ YouTube 字幕分頁（v1.2.11 新增） ═══ -->
     <div id="tab-youtube" class="tab-panel">
 
+    <!-- v1.4.0: 字幕翻譯引擎選擇 -->
+    <section>
+      <h2>翻譯引擎</h2>
+      <label>
+        引擎
+        <select id="ytEngine">
+          <option value="gemini">Gemini（預設，品質較高，需要 API Key）</option>
+          <option value="google">Google Translate（免費，速度較快，不需 API Key）</option>
+        </select>
+        <small class="muted">選擇 Google Translate 時，下方模型、計價、Prompt 設定均不作用（Google MT 不支援自訂 Prompt）。</small>
+      </label>
+    </section>
+
     <section>
       <h2>自動翻譯</h2>
       <label class="checkbox-label">

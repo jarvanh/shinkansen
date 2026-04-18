@@ -45,6 +45,8 @@ function getDB() {
  * @param {number} record.cacheHits — 本地快取命中段落數
  * @param {number} record.durationMs — 翻譯耗時（毫秒）
  * @param {number} record.timestamp — Date.now()
+ * @param {string} [record.engine] — v1.4.0: 翻譯引擎 'gemini' | 'google'（舊紀錄無此欄位則為 Gemini）
+ * @param {number} [record.chars] — v1.4.0: Google Translate 用，翻譯字元數
  */
 export async function logTranslation(record) {
   const db = await getDB();

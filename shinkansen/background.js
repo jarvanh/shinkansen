@@ -3,6 +3,7 @@
 
 import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary } from './lib/gemini.js';
+import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
@@ -198,6 +199,16 @@ const messageHandlers = {
       const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
       return handleTranslate(payload, sender, geminiOverrides, pricingOverride);
     },
+  },
+  // v1.4.0: Google Translate 網頁翻譯（不需 API Key，不走 rate limiter，快取 key 用 _gt 後綴）
+  TRANSLATE_BATCH_GOOGLE: {
+    async: true,
+    handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt'),
+  },
+  // v1.4.0: Google Translate 字幕翻譯（快取 key 用 _gt_yt 後綴）
+  TRANSLATE_SUBTITLE_BATCH_GOOGLE: {
+    async: true,
+    handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt_yt'),
   },
   EXTRACT_GLOSSARY: {
     async: true,
@@ -523,6 +534,78 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   };
 }
 
+// ─── v1.4.0: Google Translate 批次處理 ────────────────────────
+// 與 handleTranslate 不同：不走 rate limiter、不走術語表、費用 $0。
+// cacheSuffix：網頁翻譯用 '_gt'，字幕翻譯用 '_gt_yt'，確保快取與 Gemini 分開存放。
+async function handleTranslateGoogle(payload, sender, cacheSuffix) {
+  const texts = payload?.texts;
+  if (!Array.isArray(texts) || texts.length === 0) {
+    return { result: [], usage: { engine: 'google', chars: 0 } };
+  }
+
+  // 1. 先查快取（與 Gemini 快取共用 cache module，但 key suffix 不同）
+  const cached = await cache.getBatch(texts, cacheSuffix);
+  const missingIdxs = [];
+  const missingTexts = [];
+  cached.forEach((tr, i) => {
+    if (tr == null) {
+      missingIdxs.push(i);
+      missingTexts.push(texts[i]);
+    }
+  });
+
+  const cacheHits = texts.length - missingTexts.length;
+  debugLog('info', 'cache', 'google batch cache lookup', {
+    total: texts.length, hits: cacheHits, misses: missingTexts.length,
+  });
+
+  // 2. 缺失的部分呼叫 Google Translate
+  let fresh = [];
+  let totalChars = 0;
+  if (missingTexts.length > 0) {
+    const t0 = Date.now();
+    debugLog('info', 'api', 'google translateBatch start', { count: missingTexts.length });
+    const res = await translateGoogleBatch(missingTexts);
+    fresh = res.translations;
+    totalChars = res.chars;
+    debugLog('info', 'api', 'google translateBatch done', {
+      count: missingTexts.length,
+      chars: totalChars,
+      elapsed: Date.now() - t0,
+    });
+
+    // 3. 寫回快取
+    await cache.setBatch(missingTexts, fresh, cacheSuffix);
+
+    // 4. 記錄用量（費用 $0，以字元計）
+    await usageDB.logTranslation({
+      url: sender?.tab?.url || '',
+      title: '',
+      engine: 'google',
+      model: 'google-translate',
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedTokens: 0,
+      billedInputTokens: 0,
+      billedCostUSD: 0,
+      chars: totalChars,
+      segments: missingTexts.length,
+      cacheHits,
+      durationMs: 0,
+      timestamp: Date.now(),
+    });
+  }
+
+  // 5. 合併結果
+  const result = cached.slice();
+  missingIdxs.forEach((idx, k) => { result[idx] = fresh[k]; });
+
+  return {
+    result,
+    usage: { engine: 'google', chars: totalChars, cacheHits },
+  };
+}
+
 // ─── v0.70: 術語表擷取處理（v0.69 建立，v0.70 加強除錯與容錯） ──
 async function handleExtractGlossary(payload, sender) {
   debugLog('info', 'glossary', 'glossary extraction start', { inputHash: payload.inputHash, chars: payload.compressedText?.length });
@@ -589,6 +672,11 @@ browser.commands.onCommand.addListener(async (command) => {
     // 這是預期情境（使用者可能不小心按到快捷鍵),靜默吞掉即可,不讓它冒成
     // uncaught promise rejection 污染 background.js 的錯誤面板。
     browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
+  } else if (command === 'toggle-google-translate') {
+    // v1.4.0: Opt+G 觸發 Google Translate 翻譯
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE_GOOGLE' }).catch(() => {});
   }
 });
 
