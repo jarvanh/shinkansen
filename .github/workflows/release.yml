@@ -31,3 +31,6 @@ jobs:
             shinkansen-${{ steps.version.outputs.VERSION }}.zip
             shinkansen.zip
           generate_release_notes: true
+          # GitHub 預設「建立時間最新 = Latest」會被補建舊 tag 偷走 Latest 標籤。
+          # legacy 改用 semver：highest version 才是 Latest，與補建順序無關。
+          make_latest: "legacy"
