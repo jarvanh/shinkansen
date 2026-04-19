@@ -60,13 +60,21 @@
     if (newUrl === spaLastUrl) return;
     spaLastUrl = newUrl;
     const wasSticky = STATE.stickyTranslate;
+    const prevSlot = STATE.stickySlot;  // v1.4.12: 記錄續翻用的 preset slot
     resetForSpaNavigation();
 
     await new Promise(r => setTimeout(r, SK.SPA_NAV_SETTLE_MS));
 
     if (wasSticky) {
-      SK.sendLog('info', 'spa', 'SPA nav: sticky translate active, auto-translating', { url: location.href });
-      SK.translatePage();
+      // v1.4.12: 上次若由 preset 快速鍵觸發就按同 slot 續翻，保留 engine+model；
+      // 舊路徑（例如 autoTranslate 白名單）stickySlot 為 null，fallback 舊行為
+      if (prevSlot != null && typeof SK.handleTranslatePreset === 'function') {
+        SK.sendLog('info', 'spa', 'SPA nav: sticky translate active, re-triggering preset', { url: location.href, slot: prevSlot });
+        SK.handleTranslatePreset(prevSlot);
+      } else {
+        SK.sendLog('info', 'spa', 'SPA nav: sticky translate active, auto-translating (no preset slot)', { url: location.href });
+        SK.translatePage();
+      }
       return;
     }
 

@@ -32,7 +32,19 @@ if (window.__shinkansen_loaded) {
     translatedHTML: new Map(), // el → translatedHTML
     // v1.0.23: 續翻模式
     stickyTranslate: false,
+    // v1.4.12: 記錄本次翻譯使用的 preset slot（1/2/3），供 SPA 導航續翻 + 跨 tab sticky 用。
+    // null = 非 preset 觸發（例如 autoTranslate 白名單、popup 按鈕舊路徑）。
+    stickySlot: null,
   };
+
+  // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback
+  // （例如從 v1.4.11 升級但使用者還未開過設定頁 / onInstalled 沒觸發）。
+  // 內容必須與 lib/storage.js DEFAULT_SETTINGS.translatePresets 保持一致。
+  SK.DEFAULT_PRESETS = [
+    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite-preview', label: 'Flash Lite' },
+    { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
+    { slot: 3, engine: 'google', model: null, label: 'Google MT' },
+  ];
 
   // ─── v0.88: 統一 Log 系統 ─────────────────────────────
   SK.sendLog = function sendLog(level, category, message, data) {

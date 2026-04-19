@@ -10,6 +10,7 @@ import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
 import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
+import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
 
@@ -167,13 +168,15 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
-// ─── v1.4.11: 跨 tab sticky 翻譯 ────────────────────────
-// 使用者在 tab A 按 Option+S 翻譯後，從 A 點連結開到 tab B，B 自動翻譯；
-// 跟著 openerTabId 樹傳遞，跳到完全無 opener 的新 tab（手動打網址 / bookmark）不繼承。
-// 每個 tab 記錄自己的 engine（'gemini' | 'google'）。按 Option+S 只清當前 tab。
+// ─── v1.4.11 跨 tab sticky 翻譯（v1.4.12 改存 preset slot） ──────────
+// 使用者在 tab A 按任一 preset 快速鍵翻譯後，從 A 點連結開到 tab B 會自動翻譯，
+// 跟著 openerTabId 樹傳遞。跳到無 opener 的新 tab（手動打網址 / bookmark）不繼承。
+// 每個 tab 記錄自己當時用的 preset slot（1/2/3），新 tab 繼承相同 slot——
+// 尊重使用者當時按的引擎+模型（Flash / Flash Lite / Google MT 各自繼承）。
+// 按任意 preset 快速鍵在已翻譯狀態 → restorePage → STICKY_CLEAR 只清當前 tab。
 // 持久化於 chrome.storage.session，service worker 休眠重啟後仍保留。
 
-const stickyTabs = new Map(); // tabId → engine
+const stickyTabs = new Map(); // tabId → slot (number)
 let _stickyHydrated = false;
 
 async function hydrateStickyTabs() {
@@ -182,8 +185,9 @@ async function hydrateStickyTabs() {
   try {
     const { stickyTabs: saved } = await browser.storage.session.get('stickyTabs');
     if (saved && typeof saved === 'object') {
-      for (const [tabId, engine] of Object.entries(saved)) {
-        stickyTabs.set(Number(tabId), engine);
+      for (const [tabId, slot] of Object.entries(saved)) {
+        // v1.4.12 前的舊值是 'gemini'/'google' 字串，重啟後忽略舊格式避免誤觸發
+        if (typeof slot === 'number') stickyTabs.set(Number(tabId), slot);
       }
     }
   } catch (err) {
@@ -194,7 +198,7 @@ async function hydrateStickyTabs() {
 async function persistStickyTabs() {
   try {
     const obj = {};
-    stickyTabs.forEach((engine, tabId) => { obj[tabId] = engine; });
+    stickyTabs.forEach((slot, tabId) => { obj[tabId] = slot; });
     await browser.storage.session.set({ stickyTabs: obj });
   } catch (err) {
     debugLog('warn', 'system', 'persistStickyTabs failed', { error: err.message });
@@ -205,12 +209,12 @@ browser.tabs.onCreated.addListener(async (tab) => {
   await hydrateStickyTabs();
   const openerId = tab.openerTabId;
   if (openerId == null) return;
-  const engine = stickyTabs.get(openerId);
-  if (!engine) return;
-  stickyTabs.set(tab.id, engine);
+  const slot = stickyTabs.get(openerId);
+  if (slot == null) return;
+  stickyTabs.set(tab.id, slot);
   await persistStickyTabs();
   debugLog('info', 'system', 'sticky inherited from opener', {
-    newTabId: tab.id, openerTabId: openerId, engine,
+    newTabId: tab.id, openerTabId: openerId, slot,
   });
 });
 
@@ -224,7 +228,12 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
 const messageHandlers = {
   TRANSLATE_BATCH: {
     async: true,
-    handler: (payload, sender) => handleTranslate(payload, sender),
+    handler: (payload, sender) => {
+      // v1.4.12: preset 快速鍵可傳 modelOverride 覆蓋 geminiConfig.model，
+      // 其他欄位（prompt、temperature）沿用全域設定。沿用既有 geminiOverrides 機制。
+      const overrides = payload?.modelOverride ? { model: payload.modelOverride } : {};
+      return handleTranslate(payload, sender, overrides);
+    },
   },
   // v1.2.10: 字幕翻譯專用——prompt / temperature / model 從 ytSubtitle 設定讀取（v1.2.11 改為動態載入）
   // v1.2.39: 支援 ytSubtitle.model（獨立模型）與 ytSubtitle.pricing（獨立計價）
@@ -250,7 +259,7 @@ const messageHandlers = {
       if (yt.model) geminiOverrides.model = yt.model;
       // ytSubtitle.pricing 非空時傳入，讓 handleTranslate 用正確計價計算費用
       const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
-      return handleTranslate(payload, sender, geminiOverrides, pricingOverride);
+      return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt');
     },
   },
   // v1.4.0: Google Translate 網頁翻譯（不需 API Key，不走 rate limiter，快取 key 用 _gt 後綴）
@@ -291,15 +300,15 @@ const messageHandlers = {
     async: true,
     handler: (_, sender) => clearTranslatedBadge(sender?.tab?.id),
   },
-  // v1.4.11: 跨 tab sticky 翻譯
+  // v1.4.11 跨 tab sticky 翻譯（v1.4.12 起 value = preset slot number）
   STICKY_QUERY: {
     async: true,
     handler: async (_, sender) => {
       await hydrateStickyTabs();
       const tabId = sender?.tab?.id;
       if (tabId == null) return { ok: true, shouldTranslate: false };
-      const engine = stickyTabs.get(tabId);
-      return { ok: true, shouldTranslate: !!engine, engine: engine || null };
+      const slot = stickyTabs.get(tabId);
+      return { ok: true, shouldTranslate: slot != null, slot: slot ?? null };
     },
   },
   STICKY_SET: {
@@ -308,8 +317,9 @@ const messageHandlers = {
       await hydrateStickyTabs();
       const tabId = sender?.tab?.id;
       if (tabId == null) return { ok: false, error: 'no tab id' };
-      const engine = payload?.engine === 'google' ? 'google' : 'gemini';
-      stickyTabs.set(tabId, engine);
+      const slot = Number(payload?.slot);
+      if (!Number.isInteger(slot) || slot < 1) return { ok: false, error: 'invalid slot' };
+      stickyTabs.set(tabId, slot);
       await persistStickyTabs();
       return { ok: true };
     },
@@ -467,7 +477,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // pricingOverride：傳入時（如 YouTube 獨立計價）使用；null 則沿用 settings.pricing
-async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOverride = null) {
+async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOverride = null, cacheTag = '') {
   const settings = await getSettings();
   if (!settings.apiKey) {
     throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
@@ -480,7 +490,16 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   const effectiveSettings = Object.keys(geminiOverrides).length > 0
     ? { ...settings, geminiConfig: { ...settings.geminiConfig, ...geminiOverrides } }
     : settings;
-  const effectivePricing = pricingOverride || settings.pricing;
+  // v1.4.12: preset 帶 modelOverride 時，從內建表查對應 model 的 pricing，
+  // 確保 toast / usage log 的費用與 model 一致（Flash Lite $0.10/$0.30、Flash $0.50/$3.00）。
+  // 優先順序：pricingOverride（字幕獨立計價） > modelOverride 查表 > settings.pricing
+  let effectivePricing = pricingOverride;
+  if (!effectivePricing && geminiOverrides.model) {
+    effectivePricing = getPricingForModel(geminiOverrides.model);
+  }
+  if (!effectivePricing) {
+    effectivePricing = settings.pricing;
+  }
 
   // v1.0.29: 讀取固定術語表（全域 + 當前網域），合併後傳給 translateBatch
   let fixedGlossaryEntries = null;
@@ -505,8 +524,10 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
 
   // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
   // 確保「有術語表」與「無術語表」的翻譯分開快取。
-  // 字幕模式加 '_yt' 後綴，確保字幕翻譯快取與文章翻譯快取分開存放。
-  let glossaryKeySuffix = Object.keys(geminiOverrides).length > 0 ? '_yt' : '';
+  // v1.4.12: cacheTag 由呼叫端明確指定（'_yt' = 字幕模式 / '' = 網頁翻譯含 preset）。
+  // 不再用 geminiOverrides 是否有值來判斷，因為 preset 快速鍵也會傳 { model } override，
+  // 會被誤判為字幕模式污染快取。
+  let glossaryKeySuffix = cacheTag;
   const allGlossaryForHash = [
     ...(glossary || []).map(e => `${e.source}:${e.target}`),
     ...(fixedGlossaryEntries || []).map(e => `F:${e.source}:${e.target}`),
@@ -515,6 +536,10 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
     glossaryKeySuffix = '_g' + fullHash.slice(0, 12);
   }
+  // v1.4.12: 把 model 字串納入 cache key，避免同段文字在不同 preset 之間共用快取
+  // （例如先按 Alt+A 走 Flash Lite 翻過，再按 Alt+S 走 Flash 應該重新打 API，不該命中 Flash Lite 的舊譯文）。
+  const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
+  glossaryKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
 
   // 1. 先撈快取
   const cached = await cache.getBatch(texts, glossaryKeySuffix);
@@ -749,22 +774,20 @@ async function handleExtractGlossary(payload, sender) {
 }
 
 // ─── 快捷鍵 ────────────────────────────────────────────────
+// v1.4.12: 三個 preset 快捷鍵（Alt+A/S/D 預設，可在 chrome://extensions/shortcuts 改）。
+// 每個對應 translatePresets[slot-1]，由 content.js 依 preset.engine/model 派送。
 browser.commands.onCommand.addListener(async (command) => {
-  if (command === 'toggle-translate') {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
-    // 在 chrome://、Chrome Web Store、新分頁等頁面按快捷鍵時,該 tab 沒有
-    // content script listening,sendMessage 會 reject:
-    //   "Could not establish connection. Receiving end does not exist."
-    // 這是預期情境（使用者可能不小心按到快捷鍵),靜默吞掉即可,不讓它冒成
-    // uncaught promise rejection 污染 background.js 的錯誤面板。
-    browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
-  } else if (command === 'toggle-google-translate') {
-    // v1.4.0: Opt+G 觸發 Google Translate 翻譯
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
-    browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE_GOOGLE' }).catch(() => {});
-  }
+  const match = command.match(/^translate-preset-(\d+)$/);
+  if (!match) return;
+  const slot = Number(match[1]);
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
+  // 在 chrome://、Chrome Web Store、新分頁等頁面按快捷鍵時,該 tab 沒有
+  // content script listening,sendMessage 會 reject:
+  //   "Could not establish connection. Receiving end does not exist."
+  // 這是預期情境（使用者可能不小心按到快捷鍵),靜默吞掉即可,不讓它冒成
+  // uncaught promise rejection 污染 background.js 的錯誤面板。
+  browser.tabs.sendMessage(tab.id, { type: 'TRANSLATE_PRESET', payload: { slot } }).catch(() => {});
 });
 
 // ─── 安裝/更新事件 ─────────────────────────────────────────

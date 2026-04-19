@@ -18,6 +18,38 @@
 
 ## 條目
 
+### vBulletin td.alt1 翻譯後標題 div 消失 — 待 Cowork 端 Chrome MCP 診斷
+- **症狀**：forum.miata.net 貼文頁翻譯後，`<div class="smallfont hideonmobile">` 標題 div 整個被吃掉（DOM 內不見），但 HR 與 post_message div 維持原位
+- **來源 URL**：https://forum.miata.net/vb/showthread.php?t=800453（任一 thread 應該都重現）
+- **初步 DOM 對照**（Jimmy 2026-04-19 DevTools 截圖）：
+  - 翻譯前：`td.alt1` 子節點 = `[comment] [div.smallfont.hideonmobile] [hr.hideonmobile] [comment] [comment] [div.postbitcontrol2] [comment]`
+  - 翻譯後：`td.alt1` 子節點 = `[comment] [hr.hideonmobile] [comment] [comment] [div.postbitcontrol2] [comment]`
+  - 標題 div 不見、HR 與 comment 都在、中文標題顯示在頁面（位置不明，截圖沒拍到）
+- **推論**：這不是 v1.4.10 HR 那個 bug。是 injection path 在 td 整段翻譯時，把「標題 div」從子節點 list 移除但中文沒正確填回原位置。可能走了不是 clean slate 的某條注入路徑
+- **為什麼還沒修**：要在 Cowork 端用 `mcp__Claude_in_Chrome__*` 實地看 inject 後中文標題實際 DOM 位置 + 哪條 injection path 被觸發才能找到結構性通則。Claude Code 端無 Chrome MCP，純靠 console 輸出推理容易走偏
+- **建議 spec 位置**：`test/regression/inject-vbulletin-title-div.spec.js`
+- **下次動手時**：切 Cowork，用 Chrome MCP navigate 到該 URL，翻譯前後各抓 `document.getElementById('td_post_XXXXXX').outerHTML`，觀察譯文中文標題掛在哪個節點上，再決定修法（絕對不能加「站點特判」，必須找結構性通則——硬規則 8）
+
+### v1.4.12 — 2026-04-19 — 三組 preset 快速鍵 + 統一取消邏輯
+- **新功能不是 bug**：manifest commands 改成 `translate-preset-1/2/3`（Alt+A/S/D），各自對應 `translatePresets` storage 中的一組 `{engine, model, label}`。閒置按 → 啟動該 preset；翻譯中按任一鍵 → abort；已翻譯按任一鍵 → `restorePage`。v1.4.11 sticky 的 storage schema 從 `engine` 字串改存 `slot` number，新 tab 繼承相同 preset。
+- **修在**：
+  - `manifest.json`：commands 全換
+  - `lib/storage.js`：`DEFAULT_SETTINGS.translatePresets` 預設三組
+  - `background.js`：`onCommand` 解析 `translate-preset-N` 派送 `TRANSLATE_PRESET {slot}`；`TRANSLATE_BATCH` handler 接受 `payload.modelOverride`；`handleTranslate` 加 `cacheTag` 參數；`stickyTabs` Map value 改存 slot；三個 STICKY_* handler 更新
+  - `content.js`：新增 `handleTranslatePreset(slot)` 統一入口（掛 `SK.handleTranslatePreset`），`SK.translatePage(options)` / `SK.translatePageGoogle(gtOptions)` 接受 `{modelOverride, slot}`，`SK.translateUnits` 把 modelOverride 塞進 `TRANSLATE_BATCH` payload
+  - `content-ns.js`：STATE 加 `stickySlot`
+  - `content-spa.js`：SPA 續翻讀 `STATE.stickySlot` 優先呼叫 `SK.handleTranslatePreset`
+- **為什麼還沒寫測試**：
+    完整驗證需要 (1) Chrome 真實 `browser.commands.onCommand` 觸發，Playwright extension fixture 無法直接模擬鍵盤快速鍵；(2) 跨 tab `openerTabId` 繼承同 slot 行為（v1.4.11 PENDING 未解的測試延伸到 slot）；(3) 已翻譯 / 翻譯中 / 閒置三分支 × 三個 slot = 9 種行為組合 × 兩種 engine。純 mock chrome.commands API 的 jest-unit 可以寫，但多半只驗 mock 到 mock 的 roundtrip，價值有限。
+- **建議 spec 位置**：`test/regression/preset-hotkey-behavior.spec.js`（Playwright 用 `chrome.tabs.sendMessage` 模擬 `TRANSLATE_PRESET` 訊息進 content script，驗三分支行為）+ `test/jest-unit/storage-translatepresets.test.cjs`（驗 `DEFAULT_SETTINGS.translatePresets` 預設值 + merge 行為）
+- **建議 spec 流程**：
+    1. mock `chrome.runtime.sendMessage` 攔 `TRANSLATE_BATCH`，驗 `payload.modelOverride` 依 slot 填入對的 model
+    2. 閒置送 `TRANSLATE_PRESET {slot:1}` → `STATE.translated` 變 true，`STATE.stickySlot === 1`
+    3. 已翻譯（STATE.translated=true）送 `TRANSLATE_PRESET {slot:2}` → 應 `restorePage`（`STATE.translated` 回 false，不管 slot=幾）
+    4. 翻譯中（STATE.translating=true）送 `TRANSLATE_PRESET {slot:3}` → `STATE.abortController.abort` 被呼叫
+    5. `TRANSLATE_PRESET {slot:3}` 走 Google engine → mock `TRANSLATE_BATCH_GOOGLE` 被呼叫而非 `TRANSLATE_BATCH`
+- **sanity check 思路**：把 `handleTranslatePreset` 裡「已翻譯 → restorePage」那段 gate 成 `if (false)` → 已翻譯按快捷鍵變成不動作，spec 應 fail
+
 ### v1.4.11 — 2026-04-19 — 跨 tab sticky 翻譯
 - **新功能不是 bug**：使用者在 tab A 按 Option+S 翻譯後，從 A 點連結（含 Cmd+Click / `target="_blank"` / `window.open`）開新 tab B → B 自動翻譯並繼承 sticky；新 tab 再開新 tab 也繼續。restorePage 只清當前 tab。
 - **修在**：`shinkansen/background.js`（`stickyTabs` Map + `chrome.storage.session` 持久化 + `onCreated`/`onRemoved` listener + 三個訊息 handler）、`shinkansen/content.js`（translatePage / translatePageGoogle 成功後送 `STICKY_SET`、restorePage 送 `STICKY_CLEAR`、初始化階段送 `STICKY_QUERY` 自動翻譯）

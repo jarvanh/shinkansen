@@ -9,13 +9,13 @@ import { formatTokens, formatUSD } from '../lib/format.js';
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
 const DEFAULTS = DEFAULT_SETTINGS;
 
-// 模型參考價（Standard tier，每 1M tokens USD）— v0.64 更新
-// 來源：https://ai.google.dev/gemini-api/docs/pricing（2026-04-09 擷取）
-const MODEL_PRICING = {
-  'gemini-3.1-flash-lite-preview': { input: 0.10, output: 0.30 },
-  'gemini-3-flash-preview':      { input: 0.50, output: 3.00 },
-  'gemini-3.1-pro-preview':      { input: 2.00, output: 12.00 },
-};
+// v1.4.12: 模型參考價統一由 lib/model-pricing.js 提供，與 background.js 共用同一份，
+// 避免兩邊不同步（以前 background 用 settings.pricing 單一值，options 用 local 表，
+// preset 切換 model 時 toast 會算錯）。此處做 input/output key 轉換保留原 options.js 介面。
+import { MODEL_PRICING as LIB_MODEL_PRICING } from '../lib/model-pricing.js';
+const MODEL_PRICING = Object.fromEntries(
+  Object.entries(LIB_MODEL_PRICING).map(([model, p]) => [model, { input: p.inputPerMTok, output: p.outputPerMTok }])
+);
 
 
 function getSelectedModel() {

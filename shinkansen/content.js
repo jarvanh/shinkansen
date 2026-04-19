@@ -192,7 +192,7 @@
 
   // ─── translateUnits ──────────────────────────────────
 
-  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal } = {}) {
+  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride } = {}) {
     const total = units.length;
     const serialized = units.map(unit => {
       if (unit.kind === 'fragment') {
@@ -250,7 +250,8 @@
         const response = await Promise.race([
           browser.runtime.sendMessage({
             type: 'TRANSLATE_BATCH',
-            payload: { texts: job.texts, glossary: glossary || null },
+            // v1.4.12: modelOverride 來自 preset 快速鍵，覆蓋全域 geminiConfig.model
+            payload: { texts: job.texts, glossary: glossary || null, modelOverride: modelOverride || null },
           }),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error(`批次逾時（${BATCH_TIMEOUT_MS / 1000}s）`)), BATCH_TIMEOUT_MS)
@@ -308,9 +309,11 @@
 
   // ─── translatePage ───────────────────────────────────
 
-  SK.translatePage = async function translatePage() {
+  SK.translatePage = async function translatePage(options = {}) {
     // v1.2.12: YouTube 頁面的 Option+S 翻譯頁面內容（說明、留言等），
     // 字幕翻譯改由 popup toggle 或 autoTranslate 設定控制，與快捷鍵無關。
+    // v1.4.12: options.modelOverride / options.slot 由 preset 快速鍵注入，
+    // modelOverride 覆蓋 geminiConfig.model，slot 用於 STICKY_SET。
 
     if (STATE.translated) {
       restorePage();
@@ -505,6 +508,7 @@
       const { done, failures, pageUsage, rpdWarning } = await SK.translateUnits(units, {
         glossary,
         signal: abortSignal,
+        modelOverride: options.modelOverride || null,
         onProgress: (d, t, mismatch) => SK.showToast('loading', `翻譯中… ${d} / ${t}`, {
           progress: d / t,
           mismatch: !!mismatch,
@@ -537,9 +541,12 @@
       STATE.translated = true;
       STATE.translatedBy = 'gemini';  // v1.4.0
       STATE.stickyTranslate = true;
+      STATE.stickySlot = options.slot ?? null;  // v1.4.12: 記錄 preset slot 供 SPA 續翻 + 跨 tab 繼承
       browser.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
-      // v1.4.11: 跨 tab sticky——此 tab 進入 sticky set，opener 鏈中新開的 tab 會繼承
-      browser.runtime.sendMessage({ type: 'STICKY_SET', payload: { engine: 'gemini' } }).catch(() => {});
+      // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
+      if (options.slot != null) {
+        browser.runtime.sendMessage({ type: 'STICKY_SET', payload: { slot: options.slot } }).catch(() => {});
+      }
 
       if (!failures.length) {
         const totalTokens = pageUsage.inputTokens + pageUsage.outputTokens;
@@ -641,6 +648,7 @@
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0
     STATE.stickyTranslate = false;
+    STATE.stickySlot = null;    // v1.4.12
     browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     // v1.4.11: 清除跨 tab sticky（只影響當前 tab，不影響樹中其他 tab）
     browser.runtime.sendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
@@ -721,7 +729,8 @@
   };
 
   // ─── v1.4.0: Google Translate 翻譯整頁 ──────────────────────
-  SK.translatePageGoogle = async function translatePageGoogle() {
+  SK.translatePageGoogle = async function translatePageGoogle(gtOptions = {}) {
+    // v1.4.12: gtOptions.slot 由 preset 快速鍵注入，供 STICKY_SET
     // 若同一引擎已翻譯 → 還原（toggle）
     if (STATE.translated && STATE.translatedBy === 'google') {
       restorePage();
@@ -822,9 +831,12 @@
       STATE.translated = true;
       STATE.translatedBy = 'google';  // v1.4.0
       STATE.stickyTranslate = true;
+      STATE.stickySlot = gtOptions.slot ?? null;  // v1.4.12
       browser.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
-      // v1.4.11: 跨 tab sticky——此 tab 進入 sticky set（Google engine）
-      browser.runtime.sendMessage({ type: 'STICKY_SET', payload: { engine: 'google' } }).catch(() => {});
+      // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
+      if (gtOptions.slot != null) {
+        browser.runtime.sendMessage({ type: 'STICKY_SET', payload: { slot: gtOptions.slot } }).catch(() => {});
+      }
 
       if (!failures.length) {
         const successMsg = truncatedCount > 0
@@ -883,9 +895,52 @@
 
   // ─── 訊息接收 ────────────────────────────────────────
 
+  // v1.4.12: 依 preset slot 觸發對應 engine + model 翻譯。
+  // 行為：閒置 → 啟動對應 preset；翻譯中 → abort；已翻譯 → restorePage（任一 slot）。
+  async function handleTranslatePreset(slot) {
+    // 已翻譯：任意 preset 快速鍵皆取消翻譯（統一還原）
+    if (STATE.translated) {
+      restorePage();
+      return;
+    }
+    // 翻譯中：abort
+    if (STATE.translating) {
+      SK.sendLog('info', 'translate', 'aborting in-progress translation (preset key)');
+      STATE.abortController?.abort();
+      SK.showToast('loading', '正在取消翻譯⋯');
+      return;
+    }
+    // 閒置：讀 preset 定義。若 storage 還沒寫入（例如從 v1.4.11 升級第一次按快捷鍵）
+    // 就 fallback 到 SK.DEFAULT_PRESETS，避免「按鍵無反應」。
+    let presets = SK.DEFAULT_PRESETS;
+    try {
+      const { translatePresets } = await browser.storage.sync.get('translatePresets');
+      if (Array.isArray(translatePresets) && translatePresets.length > 0) {
+        presets = translatePresets;
+      }
+    } catch { /* 讀取失敗沿用 DEFAULT_PRESETS */ }
+    const preset = presets.find(p => p.slot === slot);
+    if (!preset) {
+      SK.sendLog('warn', 'translate', 'preset not found for slot', { slot });
+      return;
+    }
+    if (preset.engine === 'google') {
+      SK.translatePageGoogle({ slot });
+    } else {
+      SK.translatePage({ modelOverride: preset.model || null, slot });
+    }
+  }
+  // 掛到 SK 讓 content-spa.js（SPA 導航續翻）也能呼叫
+  SK.handleTranslatePreset = handleTranslatePreset;
+
   browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg?.type === 'TRANSLATE_PRESET') {
+      handleTranslatePreset(Number(msg.payload?.slot));
+      return;
+    }
     if (msg?.type === 'TOGGLE_TRANSLATE') {
-      SK.translatePage();
+      // v1.4.12: 舊訊息保留（popup 按鈕用），映射為 preset slot 2（Flash，推薦預設）
+      handleTranslatePreset(2);
       return;
     }
     if (msg?.type === 'TOGGLE_EDIT_MODE') {
@@ -1058,17 +1113,23 @@
         return; // YouTube 頁面不走一般 auto-translate
       }
 
-      // v1.4.11: 跨 tab sticky——若本 tab 從已翻譯的 opener tab 繼承，自動翻譯
-      const stickyResp = await browser.runtime.sendMessage({ type: 'STICKY_QUERY' }).catch(() => null);
-      if (stickyResp?.shouldTranslate) {
-        const engine = stickyResp.engine === 'google' ? 'google' : 'gemini';
-        SK.sendLog('info', 'system', 'sticky translate inherited from opener tab, translating on load', { engine, url: location.href });
-        if (engine === 'google') {
-          SK.translatePageGoogle?.();
-        } else {
-          SK.translatePage();
+      // v1.4.12: reload / 瀏覽器前進後退 → 視為使用者主動放棄翻譯，清 sticky 後不繼承
+      // （新 tab 開啟的 navigation.type 為 'navigate'，仍走下方 STICKY_QUERY 繼承 opener）
+      let navType = null;
+      try {
+        navType = performance.getEntriesByType('navigation')?.[0]?.type || null;
+      } catch { /* 舊環境不支援，視為 navigate */ }
+      if (navType === 'reload' || navType === 'back_forward') {
+        await browser.runtime.sendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
+        SK.sendLog('info', 'system', 'page reload / back-forward, sticky cleared', { navType, url: location.href });
+      } else {
+        // v1.4.11 跨 tab sticky（v1.4.12 改傳 preset slot）：opener tab 的 preset 延用到此 tab
+        const stickyResp = await browser.runtime.sendMessage({ type: 'STICKY_QUERY' }).catch(() => null);
+        if (stickyResp?.shouldTranslate && stickyResp.slot != null) {
+          SK.sendLog('info', 'system', 'sticky translate inherited from opener tab, triggering preset', { slot: stickyResp.slot, url: location.href });
+          handleTranslatePreset(Number(stickyResp.slot));
+          return;
         }
-        return;
       }
 
       const { autoTranslate = false } = await browser.storage.sync.get('autoTranslate');

@@ -147,6 +147,16 @@ export const DEFAULT_SETTINGS = {
   // 關閉時不做頁面層級檢查（元素層級仍會個別跳過繁中段落）。
   // Gmail 等介面語言為繁中但內容多為英文的網站，可關閉此選項。
   skipTraditionalChinesePage: true,
+  // v1.4.12: 三組翻譯預設對應 Alt+A / Alt+S / Alt+D 三個快速鍵。
+  // engine='gemini' 時 model 覆蓋 geminiConfig.model，其他欄位（prompt、temperature、glossary）沿用全域；
+  // engine='google' 時走 Google Translate 路徑，不需 model。
+  // label 顯示於 options 頁（未來 toast 也可用）。
+  // 行為：閒置按 → 啟動對應 preset；翻譯中按 → abort；已翻譯按任意 → restorePage。
+  translatePresets: [
+    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite-preview', label: 'Flash Lite' },
+    { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
+    { slot: 3, engine: 'google', model: null, label: 'Google MT' },
+  ],
 };
 
 // v0.62 起：apiKey 改存 browser.storage.local，不走 Google 帳號跨裝置同步。
@@ -182,6 +192,11 @@ export async function getSettings() {
     glossary: { ...DEFAULT_SETTINGS.glossary, ...(saved.glossary || {}) },
     // v1.2.39: 深層 merge ytSubtitle，確保新欄位（model / pricing）有預設值
     ytSubtitle: { ...DEFAULT_SETTINGS.ytSubtitle, ...(saved.ytSubtitle || {}) },
+    // v1.4.12: translatePresets——使用者自訂三組就完全以自訂為準（不做 per-slot merge），
+    // 否則套用預設三組。陣列非空時視為使用者已自訂。
+    translatePresets: (Array.isArray(saved.translatePresets) && saved.translatePresets.length > 0)
+      ? saved.translatePresets
+      : DEFAULT_SETTINGS.translatePresets,
   };
   merged.apiKey = apiKey;
   return merged;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Shinkansen",
-  "version": "1.4.11",
+  "version": "1.4.12",
   "description": "快速、流暢的網頁翻譯擴充功能，使用 Google Gemini 將外語網頁翻譯成台灣繁體中文。",
   "default_locale": "zh_TW",
   "icons": {
@@ -68,19 +68,26 @@
     "open_in_tab": true
   },
   "commands": {
-    "toggle-translate": {
+    "translate-preset-1": {
+      "suggested_key": {
+        "default": "Alt+A",
+        "mac": "Alt+A"
+      },
+      "description": "翻譯預設 1（預設 Gemini Flash Lite）"
+    },
+    "translate-preset-2": {
       "suggested_key": {
         "default": "Alt+S",
         "mac": "Alt+S"
       },
-      "description": "切換目前分頁的翻譯（Gemini）"
+      "description": "翻譯預設 2（預設 Gemini Flash）"
     },
-    "toggle-google-translate": {
+    "translate-preset-3": {
       "suggested_key": {
-        "default": "Alt+G",
-        "mac": "Alt+G"
+        "default": "Alt+D",
+        "mac": "Alt+D"
       },
-      "description": "切換目前分頁的翻譯（Google Translate）"
+      "description": "翻譯預設 3（預設 Google Translate）"
     }
   }
 }
