@@ -605,3 +605,59 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em;
 }
 .glossary-delete-domain-btn:hover { background: #fff5f5; }
+
+/* v1.4.13: 翻譯快捷鍵三張 preset card */
+.preset-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.preset-card {
+  border: 1px solid #d2d2d7;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfbfd;
+}
+.preset-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.preset-card-header strong { color: #1d1d1f; }
+.preset-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #e8e8ed;
+  color: #1d1d1f;
+  letter-spacing: 0.02em;
+}
+.preset-key[data-unset="1"] {
+  background: #ffe8e6;
+  color: #ff3b30;
+}
+.preset-card label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #6e6e73;
+}
+.preset-card label:last-child { margin-bottom: 0; }
+.preset-card input[type="text"],
+.preset-card select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #d2d2d7;
+  border-radius: 6px;
+  background: #fff;
+}
+.preset-card select {
+  appearance: auto;
+}
+.preset-model-label[hidden] { display: none !important; }

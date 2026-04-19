@@ -64,18 +64,19 @@ async function refreshTranslateButton() {
 }
 
 async function refreshShortcutHint() {
-  // 動態讀使用者在 chrome://extensions/shortcuts 設定的實際快捷鍵
-  // 避免寫死「Option + S」造成 popup 與實際設定不一致
+  // v1.4.13: popup 按鈕觸發 TOGGLE_TRANSLATE 訊息，content.js 將其映射為 preset slot 2（Flash）。
+  // 所以這裡讀 translate-preset-2 的當前鍵位顯示。
+  // （v1.4.12 前舊名 toggle-translate 已移除，改讀新名稱避免永遠顯示「未設定」）
   const el = $('shortcut-hint');
   if (!el) return;
   try {
     const cmds = await browser.commands.getAll();
-    const toggle = cmds.find((c) => c.name === 'toggle-translate');
-    const shortcut = toggle?.shortcut?.trim();
+    const cmd = cmds.find((c) => c.name === 'translate-preset-2');
+    const shortcut = cmd?.shortcut?.trim();
     if (shortcut) {
       el.textContent = `${shortcut} 快速切換`;
     } else {
-      // 使用者可能在 shortcuts 設定頁清掉了快捷鍵
+      // 使用者可能在 chrome://extensions/shortcuts 清掉了快捷鍵
       el.textContent = '未設定快捷鍵';
     }
   } catch {
@@ -103,18 +104,17 @@ async function init() {
   } catch { /* 讀取失敗時維持預設 checked */ }
 
   // v1.2.12: YouTube 字幕 toggle — 只在 YouTube 影片頁才顯示
+  // v1.4.13: toggle 語意從「當前 active 狀態」改為「ytSubtitle.autoTranslate 設定值」，
+  // 讓使用者一打開 popup 就看到預設 ON（DEFAULT_SETTINGS.ytSubtitle.autoTranslate=true），
+  // 不再因為 content script 尚未啟動 active 就顯示 off 造成「預設沒開」的錯覺。
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     const url = tab?.url || '';
     if (url.includes('youtube.com/watch')) {
       $('yt-subtitle-row').hidden = false;
-      // 讀取目前字幕翻譯狀態
-      try {
-        const resp = await browser.tabs.sendMessage(tab.id, { type: 'GET_SUBTITLE_STATE' });
-        $('yt-subtitle-toggle').checked = resp?.active ?? false;
-      } catch {
-        $('yt-subtitle-toggle').checked = false;
-      }
+      const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+      // 沒設定過視為 true（與 DEFAULT_SETTINGS.ytSubtitle.autoTranslate 對齊）
+      $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
     }
   } catch { /* 非 YouTube 頁面，保持 hidden */ }
 
@@ -159,11 +159,18 @@ $('glossary-toggle').addEventListener('change', async (e) => {
 });
 
 // v1.2.12: YouTube 字幕翻譯開關
-$('yt-subtitle-toggle').addEventListener('change', async () => {
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return;
+// v1.4.13: toggle 變更時同時更新設定（autoTranslate）+ 通知 content script 立即啟/停
+$('yt-subtitle-toggle').addEventListener('change', async (e) => {
+  const enabled = e.target.checked;
   try {
-    await browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_SUBTITLE' });
+    // 1. 更新設定（影響下次進 YouTube 頁是否自動啟動字幕翻譯）
+    const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+    await browser.storage.sync.set({ ytSubtitle: { ...ytSubtitle, autoTranslate: enabled } });
+    // 2. 通知當前分頁立即啟或停
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      await browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_SUBTITLE' }).catch(() => {});
+    }
   } catch (err) {
     statusEl.textContent = '狀態：無法切換字幕翻譯，請重新整理頁面';
     statusEl.style.color = '#ff3b30';

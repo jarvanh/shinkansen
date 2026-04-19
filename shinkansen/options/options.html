@@ -114,11 +114,91 @@
     </section>
 
     <section>
-      <h2>快捷鍵</h2>
+      <h2>翻譯快捷鍵</h2>
       <p class="muted">
-        預設 <kbd>Option</kbd> + <kbd>S</kbd> 切換目前分頁的翻譯。
-        可至 <a href="#" id="open-shortcuts">chrome://extensions/shortcuts</a> 變更。
+        三組可自訂的翻譯預設，對應三個快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
+        已翻譯狀態下按任一快速鍵都會還原原文；翻譯中按任一快速鍵則取消翻譯。
+        鍵位可至 <a href="#" id="open-shortcuts">chrome://extensions/shortcuts</a> 變更。
       </p>
+      <div class="preset-cards">
+        <div class="preset-card" data-slot="1">
+          <div class="preset-card-header">
+            <strong>預設 1</strong>
+            <span class="preset-key" id="preset-key-1">—</span>
+          </div>
+          <label>
+            標籤
+            <input type="text" id="preset-label-1" maxlength="12" placeholder="Flash Lite">
+          </label>
+          <label>
+            翻譯引擎
+            <select id="preset-engine-1">
+              <option value="gemini">Gemini（AI 翻譯）</option>
+              <option value="google">Google Translate（免費機器翻譯）</option>
+            </select>
+          </label>
+          <label class="preset-model-label" id="preset-model-row-1">
+            Gemini 模型
+            <select id="preset-model-1">
+              <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）</option>
+              <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
+              <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="preset-card" data-slot="2">
+          <div class="preset-card-header">
+            <strong>預設 2</strong>
+            <span class="preset-key" id="preset-key-2">—</span>
+          </div>
+          <label>
+            標籤
+            <input type="text" id="preset-label-2" maxlength="12" placeholder="Flash">
+          </label>
+          <label>
+            翻譯引擎
+            <select id="preset-engine-2">
+              <option value="gemini">Gemini（AI 翻譯）</option>
+              <option value="google">Google Translate（免費機器翻譯）</option>
+            </select>
+          </label>
+          <label class="preset-model-label" id="preset-model-row-2">
+            Gemini 模型
+            <select id="preset-model-2">
+              <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）</option>
+              <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
+              <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="preset-card" data-slot="3">
+          <div class="preset-card-header">
+            <strong>預設 3</strong>
+            <span class="preset-key" id="preset-key-3">—</span>
+          </div>
+          <label>
+            標籤
+            <input type="text" id="preset-label-3" maxlength="12" placeholder="Google MT">
+          </label>
+          <label>
+            翻譯引擎
+            <select id="preset-engine-3">
+              <option value="gemini">Gemini（AI 翻譯）</option>
+              <option value="google">Google Translate（免費機器翻譯）</option>
+            </select>
+          </label>
+          <label class="preset-model-label" id="preset-model-row-3">
+            Gemini 模型
+            <select id="preset-model-3">
+              <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）</option>
+              <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）</option>
+              <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）</option>
+            </select>
+          </label>
+        </div>
+      </div>
     </section>
 
     <section>

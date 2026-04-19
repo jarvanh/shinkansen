@@ -314,6 +314,8 @@
     // 字幕翻譯改由 popup toggle 或 autoTranslate 設定控制，與快捷鍵無關。
     // v1.4.12: options.modelOverride / options.slot 由 preset 快速鍵注入，
     // modelOverride 覆蓋 geminiConfig.model，slot 用於 STICKY_SET。
+    // v1.4.13: options.label 由 preset 傳入，在 loading toast 顯示讓使用者知道目前哪個 preset 在跑。
+    const labelPrefix = options.label ? `[${options.label}] ` : '';
 
     if (STATE.translated) {
       restorePage();
@@ -489,7 +491,7 @@
       }
     }
 
-    SK.showToast('loading', `翻譯中… 0 / ${total}`, {
+    SK.showToast('loading', `${labelPrefix}翻譯中… 0 / ${total}`, {
       progress: 0,
       startTimer: true,
     });
@@ -509,7 +511,7 @@
         glossary,
         signal: abortSignal,
         modelOverride: options.modelOverride || null,
-        onProgress: (d, t, mismatch) => SK.showToast('loading', `翻譯中… ${d} / ${t}`, {
+        onProgress: (d, t, mismatch) => SK.showToast('loading', `${labelPrefix}翻譯中… ${d} / ${t}`, {
           progress: d / t,
           mismatch: !!mismatch,
         }),
@@ -731,6 +733,8 @@
   // ─── v1.4.0: Google Translate 翻譯整頁 ──────────────────────
   SK.translatePageGoogle = async function translatePageGoogle(gtOptions = {}) {
     // v1.4.12: gtOptions.slot 由 preset 快速鍵注入，供 STICKY_SET
+    // v1.4.13: gtOptions.label 顯示於 loading toast
+    const labelPrefix = gtOptions.label ? `[${gtOptions.label}] ` : '';
     // 若同一引擎已翻譯 → 還原（toggle）
     if (STATE.translated && STATE.translatedBy === 'google') {
       restorePage();
@@ -797,12 +801,12 @@
     }
     const total = units.length;
 
-    SK.showToast('loading', `Google 翻譯中… 0 / ${total}`, { progress: 0, startTimer: true });
+    SK.showToast('loading', `${labelPrefix}Google 翻譯中… 0 / ${total}`, { progress: 0, startTimer: true });
 
     try {
       const { done, failures, chars } = await SK.translateUnitsGoogle(units, {
         signal: abortSignal,
-        onProgress: (d, t) => SK.showToast('loading', `Google 翻譯中… ${d} / ${t}`, {
+        onProgress: (d, t) => SK.showToast('loading', `${labelPrefix}Google 翻譯中… ${d} / ${t}`, {
           progress: d / t,
         }),
       });
@@ -925,9 +929,9 @@
       return;
     }
     if (preset.engine === 'google') {
-      SK.translatePageGoogle({ slot });
+      SK.translatePageGoogle({ slot, label: preset.label || null });
     } else {
-      SK.translatePage({ modelOverride: preset.model || null, slot });
+      SK.translatePage({ modelOverride: preset.model || null, slot, label: preset.label || null });
     }
   }
   // 掛到 SK 讓 content-spa.js（SPA 導航續翻）也能呼叫
@@ -1099,9 +1103,11 @@
   (async () => {
     try {
       // v1.2.11: YouTube 字幕自動翻譯（優先於一般 auto-translate）
+      // v1.4.13: 使用者沒設過 ytSubtitle 時視為 true（對齊 DEFAULT_SETTINGS.ytSubtitle.autoTranslate=true）
       if (SK.isYouTubePage?.()) {
         const saved = await browser.storage.sync.get('ytSubtitle');
-        if (saved.ytSubtitle?.autoTranslate) {
+        const ytAutoOn = (saved.ytSubtitle?.autoTranslate !== false);
+        if (ytAutoOn) {
           SK.sendLog('info', 'system', 'YouTube auto-subtitle enabled, activating on load');
           // 稍微延遲，等 content script 完成初始化、XHR 攔截器就位
           setTimeout(() => {

@@ -177,6 +177,50 @@ async function load() {
   const ytPricing = yt.pricing;
   $('ytInputPerMTok').value  = ytPricing?.inputPerMTok  != null ? ytPricing.inputPerMTok  : '';
   $('ytOutputPerMTok').value = ytPricing?.outputPerMTok != null ? ytPricing.outputPerMTok : '';
+
+  // v1.4.13: 三組 preset 快速鍵
+  const presets = Array.isArray(s.translatePresets) && s.translatePresets.length > 0
+    ? s.translatePresets
+    : DEFAULTS.translatePresets;
+  for (const slot of [1, 2, 3]) {
+    const p = presets.find(x => x.slot === slot) || DEFAULTS.translatePresets.find(x => x.slot === slot);
+    $(`preset-label-${slot}`).value = p.label || '';
+    $(`preset-engine-${slot}`).value = p.engine === 'google' ? 'google' : 'gemini';
+    const modelSel = $(`preset-model-${slot}`);
+    if (p.model && [...modelSel.options].some(o => o.value === p.model)) {
+      modelSel.value = p.model;
+    } else {
+      modelSel.value = 'gemini-3-flash-preview';
+    }
+    updatePresetModelVisibility(slot);
+  }
+  refreshPresetKeyBindings();
+}
+
+// v1.4.13: engine='google' 時隱藏 model 欄
+function updatePresetModelVisibility(slot) {
+  const engine = $(`preset-engine-${slot}`).value;
+  const row = $(`preset-model-row-${slot}`);
+  if (row) row.hidden = engine === 'google';
+}
+
+// v1.4.13: 從 chrome.commands.getAll() 讀取實際綁定鍵位顯示在每張 card 右上角
+async function refreshPresetKeyBindings() {
+  try {
+    const cmds = await browser.commands.getAll();
+    for (const slot of [1, 2, 3]) {
+      const cmd = cmds.find(c => c.name === `translate-preset-${slot}`);
+      const keyEl = $(`preset-key-${slot}`);
+      if (!keyEl) continue;
+      if (cmd?.shortcut) {
+        keyEl.textContent = cmd.shortcut;
+        keyEl.removeAttribute('data-unset');
+      } else {
+        keyEl.textContent = '未設定';
+        keyEl.setAttribute('data-unset', '1');
+      }
+    }
+  } catch { /* Safari / 舊瀏覽器不支援 commands API，欄位維持 '—' */ }
 }
 
 async function save() {
@@ -252,6 +296,13 @@ async function save() {
         };
       })(),
     },
+    // v1.4.13: 三組 preset 快速鍵
+    translatePresets: [1, 2, 3].map(slot => {
+      const engine = $(`preset-engine-${slot}`).value === 'google' ? 'google' : 'gemini';
+      const model = engine === 'google' ? null : ($(`preset-model-${slot}`).value || null);
+      const label = ($(`preset-label-${slot}`).value || '').trim() || `預設 ${slot}`;
+      return { slot, engine, model, label };
+    }),
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
     fixedGlossary: (() => {
       // 同步全域表格的最新 UI 值
@@ -290,6 +341,11 @@ $('yt-reset-prompt').addEventListener('click', () => {
   $('ytSystemPrompt').value = DEFAULT_SUBTITLE_SYSTEM_PROMPT;
   markDirty(); // 值已變更，標記為未儲存
 });
+
+// v1.4.13: preset engine 下拉切換時隱藏/顯示 model row
+for (const slot of [1, 2, 3]) {
+  $(`preset-engine-${slot}`).addEventListener('change', () => updatePresetModelVisibility(slot));
+}
 
 // v1.2.39: 切換 YouTube 模型時自動帶入參考計價（與主模型的邏輯相同）
 $('ytModel').addEventListener('change', () => {
