@@ -257,6 +257,18 @@
           if (stats) stats.invisible = (stats.invisible || 0) + 1;
           return NodeFilter.FILTER_REJECT;
         }
+        // v1.4.20: block element 同時有媒體子元素（img/video/...）＋CONTAINER_TAGS 直屬子容器
+        // = 媒體卡片模式（附件清單、圖片庫 item）。
+        // 若整體收進來翻，injectIntoTarget 走 clean-slate 會清空所有子元素（含 img），
+        // 圖片直接消失。改為 FILTER_SKIP，讓 walker 往裡找真正可翻的葉節點。
+        // 典型案例：XenForo 附件 LI：li > [a.file-preview > img, div.file-content]
+        if (
+          SK.containsMedia(el) &&
+          Array.from(el.children).some(c => SK.CONTAINER_TAGS.has(c.tagName))
+        ) {
+          if (stats) stats.mediaCardSkip = (stats.mediaCardSkip || 0) + 1;
+          return NodeFilter.FILTER_SKIP;
+        }
         if (SK.containsBlockDescendant(el)) {
           if (stats) stats.hasBlockDescendant = (stats.hasBlockDescendant || 0) + 1;
           if (!fragmentExtracted.has(el)) {
