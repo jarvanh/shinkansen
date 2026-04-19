@@ -1119,15 +1119,19 @@
         return; // YouTube 頁面不走一般 auto-translate
       }
 
-      // v1.4.12: reload / 瀏覽器前進後退 → 視為使用者主動放棄翻譯，清 sticky 後不繼承
+      // v1.4.18: 只有 reload 清 sticky——使用者按 reload 才是「我想要新鮮狀態」訊號。
+      // 瀏覽器前進後退（back_forward）是歷史切換，應延續既有 sticky：使用者在 A 翻譯
+      // 後點連結到 B 會自動翻譯，按返回鍵回 A 同樣該自動翻譯（一致的「翻譯會跟著我的
+      // 瀏覽上下文」心智模型）。v1.4.12–v1.4.17 曾一併把 back_forward 歸類成「放棄翻譯」
+      // 造成返回頁面顯示英文，v1.4.18 分開處理。
       // （新 tab 開啟的 navigation.type 為 'navigate'，仍走下方 STICKY_QUERY 繼承 opener）
       let navType = null;
       try {
         navType = performance.getEntriesByType('navigation')?.[0]?.type || null;
       } catch { /* 舊環境不支援，視為 navigate */ }
-      if (navType === 'reload' || navType === 'back_forward') {
+      if (navType === 'reload') {
         await browser.runtime.sendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
-        SK.sendLog('info', 'system', 'page reload / back-forward, sticky cleared', { navType, url: location.href });
+        SK.sendLog('info', 'system', 'page reload, sticky cleared', { navType, url: location.href });
       } else {
         // v1.4.11 跨 tab sticky（v1.4.12 改傳 preset slot）：opener tab 的 preset 延用到此 tab
         const stickyResp = await browser.runtime.sendMessage({ type: 'STICKY_QUERY' }).catch(() => null);

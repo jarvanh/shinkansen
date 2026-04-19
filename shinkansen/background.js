@@ -422,7 +422,14 @@ const messageHandlers = {
         // v1.2.39: payload.model 優先（例如 YouTube 字幕用獨立模型時由 content 端傳入）
         model: payload.model || settings.geminiConfig?.model || 'unknown',
       };
-      await usageDB.logTranslation(record);
+      // v1.4.18: YouTube 字幕一支影片會分成多批翻譯，逐批寫入會變幾十筆。
+      // 改由 upsertYouTubeUsage 以 (videoId + model, 1 小時視窗) 合併成一筆；
+      // 換模型或超過 1 小時才拆新筆。網頁翻譯仍走 logTranslation。
+      if (record.source === 'youtube-subtitle' && record.videoId) {
+        await usageDB.upsertYouTubeUsage(record);
+      } else {
+        await usageDB.logTranslation(record);
+      }
     },
   },
   QUERY_USAGE: {

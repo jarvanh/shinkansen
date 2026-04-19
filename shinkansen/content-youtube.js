@@ -927,6 +927,7 @@
         url:   location.href,
         title: document.title,
         source: 'youtube-subtitle',
+        videoId: YT.videoId || getVideoIdFromUrl(),  // v1.4.18: 合併用 key
         model,
         inputTokens:      u.inputTokens     || 0,
         outputTokens:     u.outputTokens    || 0,

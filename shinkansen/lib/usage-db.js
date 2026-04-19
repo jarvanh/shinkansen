@@ -60,6 +60,72 @@ export async function logTranslation(record) {
 }
 
 /**
+ * v1.4.18: 合併同一支 YouTube 影片的用量紀錄。
+ * 規則：若 (videoId + model) 在 mergeWindowMs 內已有紀錄 → 累加 tokens/segments/
+ * cacheHits/durationMs，timestamp 更新為最新；否則新建。換 model 或超過視窗都
+ * 會拆成新紀錄。
+ *
+ * 在 background.js 的 LOG_USAGE handler 為 YouTube 分流呼叫；網頁翻譯仍走
+ * logTranslation（一頁一筆即為自然單位）。
+ *
+ * @param {Object} record — 同 logTranslation 的 shape，需含 `videoId`、`model`、`timestamp`
+ * @param {number} [mergeWindowMs=3600000] — 合併視窗（預設 1 小時）
+ * @returns {Promise<number>} 被寫入 / 更新的紀錄 id
+ */
+export async function upsertYouTubeUsage(record, mergeWindowMs = 3600000) {
+  const videoId = record?.videoId;
+  const model = record?.model;
+  if (!videoId || !model) {
+    // 缺 key 欄位就 fallback 到一般 add，避免誤合併
+    return logTranslation(record);
+  }
+  const now = record.timestamp || Date.now();
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const index = store.index('timestamp');
+    // 用 timestamp 索引反向掃視窗內的紀錄，找首個 videoId+model 相符者。
+    // lowerBound 確保只走視窗內，避免整表掃描。
+    const range = IDBKeyRange.lowerBound(now - mergeWindowMs);
+    const req = index.openCursor(range, 'prev');
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const v = cursor.value;
+        if (v.source === 'youtube-subtitle' && v.videoId === videoId && v.model === model) {
+          const merged = {
+            ...v,
+            inputTokens:       (v.inputTokens       || 0) + (record.inputTokens       || 0),
+            outputTokens:      (v.outputTokens      || 0) + (record.outputTokens      || 0),
+            cachedTokens:      (v.cachedTokens      || 0) + (record.cachedTokens      || 0),
+            billedInputTokens: (v.billedInputTokens || 0) + (record.billedInputTokens || 0),
+            billedCostUSD:     (v.billedCostUSD     || 0) + (record.billedCostUSD     || 0),
+            segments:          (v.segments          || 0) + (record.segments          || 0),
+            cacheHits:         (v.cacheHits         || 0) + (record.cacheHits         || 0),
+            durationMs:        (v.durationMs        || 0) + (record.durationMs        || 0),
+            timestamp:         now,
+            title:             record.title || v.title,
+            url:               record.url   || v.url,
+          };
+          const putReq = cursor.update(merged);
+          putReq.onsuccess = () => resolve(v.id);
+          putReq.onerror = () => reject(putReq.error);
+          return;
+        }
+        cursor.continue();
+      } else {
+        // 視窗內無相符紀錄 → 新建
+        const addReq = store.add(record);
+        addReq.onsuccess = () => resolve(addReq.result);
+        addReq.onerror = () => reject(addReq.error);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
  * 依時間範圍查詢紀錄（按時間倒序）。
  * @param {Object} opts
  * @param {number} [opts.from] — 起始 timestamp（含）
