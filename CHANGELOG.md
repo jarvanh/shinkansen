@@ -7,6 +7,8 @@
 
 ## v1.4.x
 
+**v1.4.6** — 修正 Gemini 有時把換行字元以字面 `\n`（反斜線 + n，兩個可見字元）輸出，而非真正換行符（U+000A）的問題。`pushText` 用 `includes('\n')` 偵測換行，字面 `\n` 無法觸發，導致 `\n` 以兩個字元殘留 DOM。修法：在 `deserializeWithPlaceholders` 的 `normalizeLlmPlaceholders` 之後加一個規範化步驟，把字面 `\n`（`/\\n/g`）替換為真正換行符，再繼續後續的 `collapseCjkSpacesAroundPlaceholders` 與 `parseSegment`。影響函式：`content-serialize.js` → `deserializeWithPlaceholders`。
+
 **v1.4.5** — 修正 Gemini 在翻譯含醫藥/術語內容的 slot 時，會在佔位符括號內插入描述文字（如 `⟦0 drug⟧` → `⟦0⟧`），導致 `normalizeLlmPlaceholders` 無法識別，最終 `⟦` / `⟧` 被剝除、「0 drug」/「/0 drug」裸字串殘留 DOM 的問題。修法：在 `normalizeLlmPlaceholders` 加一條 regex，偵測「數字後有空白 + 非空白文字」的模式並自動清除多餘描述（保留前綴符號與數字）。影響函式：`content-serialize.js` → `normalizeLlmPlaceholders`。
 
 **v1.4.4** — 修正 `<strong><br>段落` 結構翻譯後 `<br>` 消失的問題。根因是 `collapseCjkSpacesAroundPlaceholders` 的 4 個 pattern 使用 `\s+`，會把佔位符標記與 CJK 字元之間的 `\n`（由 `<br>` 序列化來的）一併吃掉，導致還原時找不到 `\n` 而無法產生 `<br>` 元素。修法：將 4 個 pattern 的 `\s+` 改為 `[ \t]+`（只移除空格/tab，保留 `\n`），讓語意換行符能順利通過到 `parseSegment` 的 `pushText` 還原為 `<br>`。

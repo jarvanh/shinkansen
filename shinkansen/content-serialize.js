@@ -256,6 +256,15 @@
     }
 
     translation = SK.normalizeLlmPlaceholders(translation);
+
+    // v1.4.6 修正：Gemini 有時把換行指令解讀為「輸出字面 \n（反斜線 + n）」
+    // 而非真正的換行符（U+000A）。pushText 用 clean.includes('\n') 偵測換行，
+    // 字面 \n（兩字元：0x5C 0x6E）無法觸發，導致「\n」以兩個可見字元殘留 DOM。
+    // 修法：在此統一把字面 \n（兩字元）轉換為真正換行符，再繼續後續流程。
+    if (translation.includes('\\n')) {
+      translation = translation.replace(/\\n/g, '\n');
+    }
+
     translation = SK.collapseCjkSpacesAroundPlaceholders(translation);
     translation = SK.selectBestSlotOccurrences(translation);
 
