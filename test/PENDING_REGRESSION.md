@@ -18,21 +18,8 @@
 
 ## 條目
 
-### v1.4.8 — 2026-04-19 — BBCode DIV「純文字 + BR、無 block 子孫」漏翻（Case B 偵測）
-- **症狀**：`<div class="bbWrapper">段落一<br><br>段落二</div>` 結構（XenForo 純文字回文）整段漏翻；DIV 不在 BLOCK_TAGS_SET 又無 block 子孫，v1.4.7 的 Case A 補做邏輯不涵蓋。
-- **嘗試過 / 為什麼回退**：
-  v1.4.8 試過在 `acceptNode` 非 BLOCK_TAGS_SET 分支加 `else if (!seen.has(el) && isCandidateText(el))` 抓整個 DIV 為 element。**踩 3 條既有 spec 已回退**：
-    - `detect-leaf-content-div`：fixture `#deck-div` 是純文字 DIV，原本由 v1.0.8 的 leaf scan 抓，並計入 `stats.leafContentDiv`。Case B 在 walker 階段就先抓走，計數歸 0。
-    - `detect-nav-anchor-threshold`：fixture 內 `#nav-short` 等主選單獨立 `<a>` 也被 Case B 邏輯吃下（具體 propagation 路徑未追完，可能是 walker 在 `<nav>` 或某層 `<a>`/`<span>` 上意外觸發）。
-    - `detect-nav-content`：麵包屑 `<a>Computing</a> > <a>Laptops</a>` 在 `<nav aria-label="breadcrumbs">` 內，nav 有直接 TEXT「>」（trimmed >= 2 通過）+ 無 block 子孫 → 被 Case B 抓進來。
-- **為什麼還不能寫測試**：
-  需要更深入研究既有偵測 pipeline（walker + leaf scan + anchor threshold + nav 規則）的互動關係，重新設計觸發條件。可能方向：
-    1. **強制有 BR 子元素**：`bbWrapper` 段落結構必含 `<br>`，可作為硬條件。短主選單 / 麵包屑通常無 `<br>`。
-    2. **排除 nav 上下文**：祖先有 `<nav>` 或 `role="navigation"` 直接跳過。
-    3. **直接 TEXT 字數門檻**：>= N 字（類似 leaf-content-div 的 20 字門檻），避開麵包屑。
-    4. **排除「子元素只有 inline 非 BR」**：避免抓到 `<nav>...<a>...<a>...</nav>` 這類純 inline 容器。
-  fixture `test/regression/fixtures/bbcode-div-text.html` 內 `#target-b` 結構已備好。
-- **建議 spec 位置**：擴充 `test/regression/detect-bbcode-div-text.spec.js` 加 Case B 測試 + 跑 `npm test` 確認 `detect-leaf-content-div` / `detect-nav-anchor-threshold` / `detect-nav-content` 仍 pass。
+### ~~v1.4.9 Case B 偵測~~ — 已實作並補測試 → `test/regression/detect-bbcode-div-text.spec.js`（Case B 測試）
+（v1.4.8 試過的 else 分支太寬鬆已回退；v1.4.9 改為 4 重條件全成立才匹配——CONTAINER_TAGS 白名單（DIV/SECTION/ARTICLE/MAIN/ASIDE）+ 至少一個直接 `<br>` + 直接 TEXT >= 20 字 + isCandidateText。新 stats 計數 `containerWithBr` 作 forcing function。SANITY 通過：移除 else if 整段後，Case B fail / Case A 仍 pass / 3 條原本被踩的 spec 也仍 pass。）
 
 ### ~~v1.4.8 inject path~~ — 已補測試 → `test/regression/inject-fragment-no-slots-newline.spec.js`
 （fragment unit + slots=[] + 含字面 `\n` 譯文，呼叫 `SK.injectTranslation` 後驗證 brCount=1 / 無字面 `\n` 殘留 / 無真正換行符 / 兩段中文都出現。SANITY 通過：(i) 移除入口 `\\n→\n` 規範化 → hasLiteralBackslashN=true fail；(ii) 移除無 slots 分支 `\n→<br>` 還原 → hasRealNewline=true fail。實測過後還原。）

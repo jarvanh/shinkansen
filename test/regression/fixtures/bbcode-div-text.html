@@ -2,20 +2,22 @@
 <html lang="en">
 <head><meta charset="UTF-8"><title>BBCode div text fixture</title></head>
 <body>
-<!-- 模擬 XenForo BBCode 渲染結構（v1.4.7 regression fixture）
+<!-- 模擬 XenForo BBCode 渲染結構（v1.4.7 + v1.4.9 regression fixture）
 
-  Case A（已涵蓋）：直接 text + block 子孫（UL/LI）
+  Case A（v1.4.7）：直接 text + block 子孫（UL/LI）
     intro 文字 + Pros: 純文字在 div.bbWrapper，後跟 UL>LI。
     Bug：containsBlockDescendant = true 但 DIV 不在 BLOCK_TAGS_SET → extractInlineFragments 沒被呼叫。
     修法：v1.4.7 在非 BLOCK_TAGS_SET 分支補做 extractInlineFragments。
 
-  Case B（未涵蓋，見 PENDING_REGRESSION v1.4.8 條目）：純文字 + BR（無 block 子孫）
+  Case B（v1.4.9）：純文字 + BR（無 block 子孫）
     多段落文字用 BR 分隔，沒有 UL/LI。
     Bug：containsBlockDescendant = false → 漏翻。
-    v1.4.8 嘗試的「補做 element 單元」else 分支太寬鬆，
-    會踩 detect-leaf-content-div / detect-nav-anchor-threshold / detect-nav-content
-    三條既有 spec，已回退。需要更嚴格的觸發條件設計。
-    #target-b 結構保留，未來重做時可直接複用。
+    修法：v1.4.9 在 else if 加 4 重條件：
+      (1) tag in CONTAINER_TAGS（DIV/SECTION/ARTICLE/MAIN/ASIDE）
+      (2) 至少一個直接 <br> 子元素
+      (3) 直接 TEXT 子節點總長度 >= 20 字
+      (4) isCandidateText 通過
+    與 v1.4.8 試過的「過寬鬆 else 分支」差異：必須 4 條全成立。
 -->
 
 <!-- Case A: 有 block 子孫（UL/LI）-->

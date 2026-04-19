@@ -59,6 +59,11 @@ if (window.__shinkansen_loaded) {
   // querySelector 用的 block tag 選擇器字串（預先組好，containsBlockDescendant 用）
   SK.BLOCK_TAG_SELECTOR = Array.from(SK.BLOCK_TAGS_SET).join(',');
 
+  // v1.4.9: 「container-like」非 BLOCK_TAGS_SET 的 tag——可能扮演段落容器角色，
+  // 與 inline element（A/SPAN/B/I/...）區分。BBCode Case B 的 DIV 偵測用此白名單，
+  // 避免誤抓 inline 元素內的短文字。
+  SK.CONTAINER_TAGS = new Set(['DIV', 'SECTION', 'ARTICLE', 'MAIN', 'ASIDE']);
+
   // 直接排除（純技術性元素）
   SK.HARD_EXCLUDE_TAGS = new Set([
     'SCRIPT', 'STYLE', 'CODE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'BUTTON', 'SELECT',

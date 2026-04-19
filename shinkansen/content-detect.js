@@ -92,6 +92,22 @@
     return true;
   }
 
+  // v1.4.9 Case B helpers
+  function hasBrChild(el) {
+    for (const child of el.childNodes) {
+      if (child.nodeType === Node.ELEMENT_NODE && child.tagName === 'BR') return true;
+    }
+    return false;
+  }
+
+  function directTextLength(el) {
+    let total = 0;
+    for (const child of el.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) total += child.nodeValue.trim().length;
+    }
+    return total;
+  }
+
   // ─── Fragment 抽取 ────────────────────────────────────
 
   function extractInlineFragments(el) {
@@ -169,12 +185,11 @@
         // v1.1.9: 統一使用 BLOCK_TAGS_SET.has() 取代舊版 BLOCK_TAGS.includes()
         if (!SK.BLOCK_TAGS_SET.has(el.tagName)) {
           if (stats) stats.notBlockTag = (stats.notBlockTag || 0) + 1;
-          // v1.4.7: 非 block-tag 容器（DIV、SECTION 等）若同時有直接 TEXT 子節點（有內容）
-          // 且包含 block 子孫，補做 extractInlineFragments，避免論壇 BBCode 風格的文字漏翻。
+          // v1.4.7 / v1.4.9: 非 block-tag 容器（DIV、SECTION 等）的補抓邏輯。
           // 典型案例：XenForo <div class="bbWrapper">
-          //   "I will preface..."<br>"Pros:"<ul><li>...</li></ul>"Overall..."
+          //   Case A: "intro"<br>"Pros:"<ul><li>...</li></ul>"Overall..."
+          //   Case B: "段落一"<br><br>"段落二"
           // DIV 不在 BLOCK_TAGS_SET → 以前直接 FILTER_SKIP，text node 完全不可見。
-          // 結構性特徵：直接 TEXT 子節點（trimmed >= 2 char）+ 有 block 子孫。
           if (!fragmentExtracted.has(el) && !isInsideExcludedContainer(el)) {
             let hasDirectText = false;
             for (const child of el.childNodes) {
@@ -184,6 +199,7 @@
               }
             }
             if (hasDirectText && SK.containsBlockDescendant(el)) {
+              // Case A (v1.4.7)：有 block 子孫 → 抽 inline fragment
               fragmentExtracted.add(el);
               const frags = extractInlineFragments(el);
               for (const f of frags) {
@@ -191,6 +207,20 @@
                 seen.add(f.startNode);
                 if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
               }
+            } else if (
+              // Case B (v1.4.9)：純文字 + BR、無 block 子孫 → 整體當 element 單元
+              // 4 個條件全成立才匹配，避免誤抓 inline element / leaf-content-div / nav 短連結
+              // / 麵包屑（每條對應一個既有 spec：detect-leaf-content-div /
+              // detect-nav-anchor-threshold / detect-nav-content）
+              SK.CONTAINER_TAGS.has(el.tagName) &&
+              !seen.has(el) &&
+              hasBrChild(el) &&
+              directTextLength(el) >= 20 &&
+              isCandidateText(el)
+            ) {
+              results.push({ kind: 'element', el });
+              seen.add(el);
+              if (stats) stats.containerWithBr = (stats.containerWithBr || 0) + 1;
             }
           }
           return NodeFilter.FILTER_SKIP;

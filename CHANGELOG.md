@@ -7,6 +7,8 @@
 
 ## v1.4.x
 
+**v1.4.9** — 補做 BBCode DIV「純文字 + BR、無 block 子孫」（Case B）的偵測，重做 v1.4.8 試過但回退的邏輯。差異是這次條件嚴格 4 重：(1) tag 必須屬於新加的 `SK.CONTAINER_TAGS = {DIV, SECTION, ARTICLE, MAIN, ASIDE}`（排除 inline element 如 A/SPAN/B/I）；(2) 至少有一個直接 `<br>` 子元素（排除 leaf-content-div 那種純文字無 BR 的 DIV，仍由 v1.0.8 leaf scan 處理）；(3) 直接 TEXT 子節點 trimmed 總長度 >= 20 字（與 leaf-content-div 門檻對齊，排除短連結／麵包屑）；(4) `isCandidateText` 通過。新增 stats 計數 `containerWithBr` 作為 forcing function。三條原本被 v1.4.8 踩到的 spec（`detect-leaf-content-div` / `detect-nav-anchor-threshold` / `detect-nav-content`）SANITY 後確認仍 pass。影響函式：`content-detect.js` → `collectParagraphs` → `acceptNode`；新 helpers `hasBrChild` / `directTextLength`；新常數 `content-ns.js` → `SK.CONTAINER_TAGS`。
+
 **v1.4.8** — 修正字面 `\n` 在 fragment no-slots / element no-slots 注入路徑殘留的問題。v1.4.6 的字面 `\n` → 真正換行符規範化只在 `deserializeWithPlaceholders`（有 slots）路徑生效，無 slots 路徑完全繞過。修法：(1) 在 `injectTranslation` 入口統一把字面 `\n`（兩字元）→ 真正換行符（U+000A），覆蓋所有後續路徑；(2) 在 `injectFragmentTranslation` 無 slots 分支補上 `\n` → `<br>` 還原（呼叫 `buildFragmentFromTextWithBr`，與 element no-slots 走的 `replaceTextInPlace` 行為對齊）。影響函式：`content-inject.js` → `injectTranslation` 入口 + `injectFragmentTranslation` 無 slots 分支。
 
 註：原本本版還包含 BBCode DIV「純文字 + BR、無 block 子孫」（Case B）的偵測補強，但實作過於寬鬆，會誤抓既有的 nav 短連結 / leaf content div / 麵包屑（踩 3 條 regression spec），已回退；改記入 PENDING_REGRESSION 待重做。
