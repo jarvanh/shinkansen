@@ -21,41 +21,11 @@
 ### ~~vBulletin td.alt1 翻譯後標題 div 消失 / HR 位置顛倒~~ — 已修復（v1.4.14）→ `test/regression/inject-vbulletin-title-div.spec.js`
 （Cowork 端 Chrome MCP 實地診斷：根因不在 detection，而在 `content-inject.js` `injectIntoTarget`——TD 含 img 觸發 `containsMedia(TD)=true` 走 media-preserving path，把 fragment 塞進最長文字節點所在的 postbitcontrol2，原 smallfont/HR 殘留於其上方。修法：target 有 CONTAINER_TAGS 直屬子元素時改走 clean-slate（`containsMedia && !hasContainerChild` 才走 media path）。SANITY 通過。這是 v1.4.14 起「UI bug 必須 Cowork 實地診斷」新流程的首發；對比前一版被 revert 的 v1.4.14（Claude Code 純推理自以為修好但真實頁面沒用），證明實地驗證規則的必要性。）
 
-### v1.4.12 — 2026-04-19 — 三組 preset 快速鍵 + 統一取消邏輯
-- **新功能不是 bug**：manifest commands 改成 `translate-preset-1/2/3`（Alt+A/S/D），各自對應 `translatePresets` storage 中的一組 `{engine, model, label}`。閒置按 → 啟動該 preset；翻譯中按任一鍵 → abort；已翻譯按任一鍵 → `restorePage`。v1.4.11 sticky 的 storage schema 從 `engine` 字串改存 `slot` number，新 tab 繼承相同 preset。
-- **修在**：
-  - `manifest.json`：commands 全換
-  - `lib/storage.js`：`DEFAULT_SETTINGS.translatePresets` 預設三組
-  - `background.js`：`onCommand` 解析 `translate-preset-N` 派送 `TRANSLATE_PRESET {slot}`；`TRANSLATE_BATCH` handler 接受 `payload.modelOverride`；`handleTranslate` 加 `cacheTag` 參數；`stickyTabs` Map value 改存 slot；三個 STICKY_* handler 更新
-  - `content.js`：新增 `handleTranslatePreset(slot)` 統一入口（掛 `SK.handleTranslatePreset`），`SK.translatePage(options)` / `SK.translatePageGoogle(gtOptions)` 接受 `{modelOverride, slot}`，`SK.translateUnits` 把 modelOverride 塞進 `TRANSLATE_BATCH` payload
-  - `content-ns.js`：STATE 加 `stickySlot`
-  - `content-spa.js`：SPA 續翻讀 `STATE.stickySlot` 優先呼叫 `SK.handleTranslatePreset`
-- **為什麼還沒寫測試**：
-    完整驗證需要 (1) Chrome 真實 `browser.commands.onCommand` 觸發，Playwright extension fixture 無法直接模擬鍵盤快速鍵；(2) 跨 tab `openerTabId` 繼承同 slot 行為（v1.4.11 PENDING 未解的測試延伸到 slot）；(3) 已翻譯 / 翻譯中 / 閒置三分支 × 三個 slot = 9 種行為組合 × 兩種 engine。純 mock chrome.commands API 的 jest-unit 可以寫，但多半只驗 mock 到 mock 的 roundtrip，價值有限。
-- **建議 spec 位置**：`test/regression/preset-hotkey-behavior.spec.js`（Playwright 用 `chrome.tabs.sendMessage` 模擬 `TRANSLATE_PRESET` 訊息進 content script，驗三分支行為）+ `test/jest-unit/storage-translatepresets.test.cjs`（驗 `DEFAULT_SETTINGS.translatePresets` 預設值 + merge 行為）
-- **建議 spec 流程**：
-    1. mock `chrome.runtime.sendMessage` 攔 `TRANSLATE_BATCH`，驗 `payload.modelOverride` 依 slot 填入對的 model
-    2. 閒置送 `TRANSLATE_PRESET {slot:1}` → `STATE.translated` 變 true，`STATE.stickySlot === 1`
-    3. 已翻譯（STATE.translated=true）送 `TRANSLATE_PRESET {slot:2}` → 應 `restorePage`（`STATE.translated` 回 false，不管 slot=幾）
-    4. 翻譯中（STATE.translating=true）送 `TRANSLATE_PRESET {slot:3}` → `STATE.abortController.abort` 被呼叫
-    5. `TRANSLATE_PRESET {slot:3}` 走 Google engine → mock `TRANSLATE_BATCH_GOOGLE` 被呼叫而非 `TRANSLATE_BATCH`
-- **sanity check 思路**：把 `handleTranslatePreset` 裡「已翻譯 → restorePage」那段 gate 成 `if (false)` → 已翻譯按快捷鍵變成不動作，spec 應 fail
+### ~~v1.4.12 preset 快速鍵~~ — 已補測試（v1.4.15）→ `test/regression/preset-hotkey-behavior.spec.js`
+（5 條涵蓋 `handleTranslatePreset(slot)` 三分支 × 三 slot：idle 按 1/2/3 各自觸發對應 engine + modelOverride；translated 狀態按任一鍵 restorePage；translating 狀態按任一鍵 abort。SANITY 四種 break 對應各 test fail。策略：直接 `SK.handleTranslatePreset(slot)` 繞過真實鍵盤、stub translatePage/Google 觀察 payload。）
 
-### v1.4.11 — 2026-04-19 — 跨 tab sticky 翻譯
-- **新功能不是 bug**：使用者在 tab A 按 Option+S 翻譯後，從 A 點連結（含 Cmd+Click / `target="_blank"` / `window.open`）開新 tab B → B 自動翻譯並繼承 sticky；新 tab 再開新 tab 也繼續。restorePage 只清當前 tab。
-- **修在**：`shinkansen/background.js`（`stickyTabs` Map + `chrome.storage.session` 持久化 + `onCreated`/`onRemoved` listener + 三個訊息 handler）、`shinkansen/content.js`（translatePage / translatePageGoogle 成功後送 `STICKY_SET`、restorePage 送 `STICKY_CLEAR`、初始化階段送 `STICKY_QUERY` 自動翻譯）
-- **為什麼還沒寫測試**：
-    完整驗證需要 (1) 真實 Chrome 開新 tab 觸發 `chrome.tabs.onCreated` 並帶 `openerTabId`、(2) 攔截新 tab 的 content script 載入並 mock 其 `TRANSLATE_BATCH`、(3) 跨 page 驗證自動翻譯。Playwright extension fixture 可以做但模板與既有 single-page regression spec 差異大。純 mock chrome.tabs API 的 jest-unit test 可寫但只驗到 mock 行為，無法保證 Chrome 真實 onCreated 帶 openerTabId 的時序與 hydrate 互動正確。
-- **建議 spec 位置**：`test/regression/sticky-cross-tab.spec.js`（Playwright e2e）+ 可選 `test/jest-unit/background-sticky-tabs.test.cjs`（純 background 邏輯 mock unit）
-- **建議 spec 流程**：
-    1. Page A goto fixture，mock `chrome.runtime.sendMessage` 攔 `TRANSLATE_BATCH` 回固定譯文
-    2. evaluate `window.__shinkansen.translate()` 等 `STATE.translated === true`
-    3. 在 A 上 evaluate `window.open('/sticky-target.html', '_blank')` 或 click `<a target="_blank">`，搭配 `context.waitForEvent('page')` 拿到 page B
-    4. 等 B 的 content script 載入並完成自動翻譯（輪詢 `STATE.translated`）
-    5. 斷言：B 的 segment 文本變成譯文、B `STATE.translatedBy` === 'gemini'
-    6. 開「無 opener」的 page C（直接 `context.newPage()` + goto）→ 不應自動翻譯
-    7. 在 B 上 RESTORE → A 仍然 translated（per-tab 獨立）
-- **sanity check 思路**：把 `background.js` 的 onCreated listener 內 `if (!engine) return;` 改成 `return;` 強制不繼承 → page B 不會自動翻譯，spec 應 fail
+### ~~v1.4.11 跨 tab sticky 翻譯~~ — 已補測試（v1.4.15）→ `test/regression/sticky-cross-tab.spec.js`
+（2 條：tab A STICKY_SET → `window.open` → tab B STICKY_QUERY 回同 slot；tab A STICKY_CLEAR 不影響 tab B。SANITY：註解 onCreated 繼承主體，兩條都 fail。「無 opener 不繼承」無法在 Playwright 穩定模擬——`context.newPage` 會設 opener——該保護由 `if (openerId == null) return;` guard 提供，未另寫 regression。）
 
 ### ~~v1.4.9 Case B 偵測~~ — 已實作並補測試 → `test/regression/detect-bbcode-div-text.spec.js`（Case B 測試）
 （v1.4.8 試過的 else 分支太寬鬆已回退；v1.4.9 改為 4 重條件全成立才匹配——CONTAINER_TAGS 白名單（DIV/SECTION/ARTICLE/MAIN/ASIDE）+ 至少一個直接 `<br>` + 直接 TEXT >= 20 字 + isCandidateText。新 stats 計數 `containerWithBr` 作 forcing function。SANITY 通過：移除 else if 整段後，Case B fail / Case A 仍 pass / 3 條原本被踩的 spec 也仍 pass。）
