@@ -7,6 +7,10 @@
 
 ## v1.4.x
 
+**v1.4.8** — 修正字面 `\n` 在 fragment no-slots / element no-slots 注入路徑殘留的問題。v1.4.6 的字面 `\n` → 真正換行符規範化只在 `deserializeWithPlaceholders`（有 slots）路徑生效，無 slots 路徑完全繞過。修法：(1) 在 `injectTranslation` 入口統一把字面 `\n`（兩字元）→ 真正換行符（U+000A），覆蓋所有後續路徑；(2) 在 `injectFragmentTranslation` 無 slots 分支補上 `\n` → `<br>` 還原（呼叫 `buildFragmentFromTextWithBr`，與 element no-slots 走的 `replaceTextInPlace` 行為對齊）。影響函式：`content-inject.js` → `injectTranslation` 入口 + `injectFragmentTranslation` 無 slots 分支。
+
+註：原本本版還包含 BBCode DIV「純文字 + BR、無 block 子孫」（Case B）的偵測補強，但實作過於寬鬆，會誤抓既有的 nav 短連結 / leaf content div / 麵包屑（踩 3 條 regression spec），已回退；改記入 PENDING_REGRESSION 待重做。
+
 **v1.4.7** — 修正 XenForo / BBCode 論壇風格頁面中，`<div class="bbWrapper">` 等非 block-tag 容器內的直接 text 子節點（intro 段落、「Pros:」標題等）漏翻的問題。根因：`DIV` 不在 `BLOCK_TAGS_SET`，`collectParagraphs` walker 對 `.bbWrapper` 直接回 `FILTER_SKIP`，完全沒走到 `containsBlockDescendant` / `extractInlineFragments`，導致 `<LI>` 被翻而 intro 文字完全不可見。修法：在 `acceptNode` 的非 `BLOCK_TAGS_SET` 分支，若元素有直接 TEXT 子節點（trimmed >= 2 chars）且有 block 子孫，補做 `extractInlineFragments`，把文字抽成 fragment 單元。影響函式：`content-detect.js` → `collectParagraphs` → `acceptNode`。
 
 **v1.4.6** — 修正 Gemini 有時把換行字元以字面 `\n`（反斜線 + n，兩個可見字元）輸出，而非真正換行符（U+000A）的問題。`pushText` 用 `includes('\n')` 偵測換行，字面 `\n` 無法觸發，導致 `\n` 以兩個字元殘留 DOM。修法：在 `deserializeWithPlaceholders` 的 `normalizeLlmPlaceholders` 之後加一個規範化步驟，把字面 `\n`（`/\\n/g`）替換為真正換行符，再繼續後續的 `collapseCjkSpacesAroundPlaceholders` 與 `parseSegment`。影響函式：`content-serialize.js` → `deserializeWithPlaceholders`。

@@ -221,6 +221,11 @@
 
   SK.injectTranslation = function injectTranslation(unit, translation, slots) {
     if (!translation) return;
+    // v1.4.8: 統一在注入入口規範化字面 \n（反斜線+n，兩字元）→ 真正換行符（U+000A）。
+    // v1.4.6 在 deserializeWithPlaceholders（有 slots 路徑）加了同樣的規範化，
+    // 但 fragment no-slots / element no-slots 路徑完全繞過 deserializeWithPlaceholders，
+    // 導致字面 \n 殘留可見 DOM 字元。在此入口統一處理，覆蓋所有後續路徑。
+    if (translation.includes('\\n')) translation = translation.replace(/\\n/g, '\n');
     if (unit.kind === 'fragment') {
       return injectFragmentTranslation(unit, translation, slots);
     }
@@ -273,7 +278,12 @@
         newContent = document.createTextNode(cleaned);
       }
     } else {
-      newContent = document.createTextNode(translation);
+      // v1.4.8: 無 slots 時也要把 \n 還原為 <br>（字面 \n 已在 injectTranslation 入口轉換完畢）
+      if (translation.includes('\n')) {
+        newContent = buildFragmentFromTextWithBr(translation);
+      } else {
+        newContent = document.createTextNode(translation);
+      }
     }
 
     const anchor = endNode ? endNode.nextSibling : null;
