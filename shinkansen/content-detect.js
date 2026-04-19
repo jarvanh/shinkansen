@@ -221,6 +221,26 @@
               results.push({ kind: 'element', el });
               seen.add(el);
               if (stats) stats.containerWithBr = (stats.containerWithBr || 0) + 1;
+            } else if (
+              // Case C (v1.4.19)：container 有直接文字 + inline 元素（如 <a>），
+              // 無 block 子孫、無 BR → 抽 inline fragment
+              // 典型案例：XenForo bbWrapper "<p>text</p>" 以外的純行內段落：
+              //   "There is actually <a>some evidence</a> to support..."
+              // Case A 因 !containsBlock 失敗，Case B 因 !hasBR 失敗 → 整段被跳過。
+              // directTextLength >= 20 確保非 nav 短連結（nav 的文字在 <a> 內，直接文字長度趨近 0）
+              SK.CONTAINER_TAGS.has(el.tagName) &&
+              !seen.has(el) &&
+              hasDirectText &&
+              directTextLength(el) >= 20 &&
+              isCandidateText(el)
+            ) {
+              fragmentExtracted.add(el);
+              const frags = extractInlineFragments(el);
+              for (const f of frags) {
+                results.push(f);
+                seen.add(f.startNode);
+                if (stats) stats.inlineMixedFragment = (stats.inlineMixedFragment || 0) + 1;
+              }
             }
           }
           return NodeFilter.FILTER_SKIP;
