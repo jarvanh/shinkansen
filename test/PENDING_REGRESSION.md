@@ -18,18 +18,24 @@
 
 ## 條目
 
-### v1.4.8 — 2026-04-19 — BBCode DIV「純文字 + BR、無 block 子孫」漏翻（Case B）+ inject path 測試覆蓋缺口
-- **症狀**：
-  - (a) 偵測：`<div class="bbWrapper">段落一<br><br>段落二</div>` 結構（XenForo 純文字回文）整段漏翻；DIV 不在 BLOCK_TAGS_SET 又無 block 子孫，v1.4.7 的 Case A 補做邏輯不涵蓋。
-  - (b) 注入：v1.4.8 修正 `injectTranslation` 入口字面 `\n` 規範化 + `injectFragmentTranslation` 無 slots 分支 `\n` → `<br>`，但未補對應 spec。fragment no-slots 是少見路徑（既有 fragment 多有 slots），但仍應有覆蓋。
-- **修在 / 嘗試過**：
-  - (a) v1.4.8 試過在 `acceptNode` 非 BLOCK_TAGS_SET 分支加 `else if (!seen.has(el) && isCandidateText(el))` 抓整個 DIV 為 element。**踩 3 條既有 spec 已回退**：`detect-leaf-content-div`（純文字 DIV 走 leaf path）、`detect-nav-anchor-threshold`（短主選單被誤抓）、`detect-nav-content`（麵包屑被誤抓）。
-  - (b) `content-inject.js`：`injectTranslation` 入口 `if (translation.includes('\\n')) translation = translation.replace(/\\n/g, '\n')`、`injectFragmentTranslation` 無 slots 分支 `if (translation.includes('\n')) buildFragmentFromTextWithBr(...)`。已 ship 但無 spec。
-- **為什麼還不能寫測試（Case B 部分）**：
-  需要設計更嚴格的觸發條件——例如：(i) 直接 TEXT 子節點總長度需 >= N，(ii) 排除已被其他偵測路徑（leaf-content-div / anchor-threshold / nav-content）處理的容器，(iii) 排除主選單 / 麵包屑類結構特徵。先研究既有偵測路徑的決策樹，確定不重疊的觸發條件，再實作。fixture `test/regression/fixtures/bbcode-div-text.html` 內 `#target-b` 結構已備好。
+### v1.4.8 — 2026-04-19 — BBCode DIV「純文字 + BR、無 block 子孫」漏翻（Case B 偵測）
+- **症狀**：`<div class="bbWrapper">段落一<br><br>段落二</div>` 結構（XenForo 純文字回文）整段漏翻；DIV 不在 BLOCK_TAGS_SET 又無 block 子孫，v1.4.7 的 Case A 補做邏輯不涵蓋。
+- **嘗試過 / 為什麼回退**：
+  v1.4.8 試過在 `acceptNode` 非 BLOCK_TAGS_SET 分支加 `else if (!seen.has(el) && isCandidateText(el))` 抓整個 DIV 為 element。**踩 3 條既有 spec 已回退**：
+    - `detect-leaf-content-div`：fixture `#deck-div` 是純文字 DIV，原本由 v1.0.8 的 leaf scan 抓，並計入 `stats.leafContentDiv`。Case B 在 walker 階段就先抓走，計數歸 0。
+    - `detect-nav-anchor-threshold`：fixture 內 `#nav-short` 等主選單獨立 `<a>` 也被 Case B 邏輯吃下（具體 propagation 路徑未追完，可能是 walker 在 `<nav>` 或某層 `<a>`/`<span>` 上意外觸發）。
+    - `detect-nav-content`：麵包屑 `<a>Computing</a> > <a>Laptops</a>` 在 `<nav aria-label="breadcrumbs">` 內，nav 有直接 TEXT「>」（trimmed >= 2 通過）+ 無 block 子孫 → 被 Case B 抓進來。
+- **為什麼還不能寫測試**：
+  需要更深入研究既有偵測 pipeline（walker + leaf scan + anchor threshold + nav 規則）的互動關係，重新設計觸發條件。可能方向：
+    1. **強制有 BR 子元素**：`bbWrapper` 段落結構必含 `<br>`，可作為硬條件。短主選單 / 麵包屑通常無 `<br>`。
+    2. **排除 nav 上下文**：祖先有 `<nav>` 或 `role="navigation"` 直接跳過。
+    3. **直接 TEXT 字數門檻**：>= N 字（類似 leaf-content-div 的 20 字門檻），避開麵包屑。
+    4. **排除「子元素只有 inline 非 BR」**：避免抓到 `<nav>...<a>...<a>...</nav>` 這類純 inline 容器。
+  fixture `test/regression/fixtures/bbcode-div-text.html` 內 `#target-b` 結構已備好。
 - **建議 spec 位置**：擴充 `test/regression/detect-bbcode-div-text.spec.js` 加 Case B 測試 + 跑 `npm test` 確認 `detect-leaf-content-div` / `detect-nav-anchor-threshold` / `detect-nav-content` 仍 pass。
-- **inject path 部分（路徑 A 可寫）**：
-  Mock 一個 fragment unit（`{ kind: 'fragment', el, startNode, endNode }`，slots=[]），呼叫 `SK.injectTranslation(unit, '段一\\n段二', [])`，驗證 DOM 內出現 `<br>`、無可見 `\n` 殘留。Helper `runTestInject` 不直接支援，需要新 helper 或直接在 spec 內設定 fragment unit。
+
+### ~~v1.4.8 inject path~~ — 已補測試 → `test/regression/inject-fragment-no-slots-newline.spec.js`
+（fragment unit + slots=[] + 含字面 `\n` 譯文，呼叫 `SK.injectTranslation` 後驗證 brCount=1 / 無字面 `\n` 殘留 / 無真正換行符 / 兩段中文都出現。SANITY 通過：(i) 移除入口 `\\n→\n` 規範化 → hasLiteralBackslashN=true fail；(ii) 移除無 slots 分支 `\n→<br>` 還原 → hasRealNewline=true fail。實測過後還原。）
 
 ### ~~v1.0.7~~ — 已補 URL 解析測試 → `test/regression/pure-gdoc-url.spec.js`
 （注：跨分頁導向流程 `chrome.tabs.create()` + `tabs.onUpdated` 未涵蓋，需未來 E2E 測試）
