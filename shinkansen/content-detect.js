@@ -254,6 +254,39 @@
           if (stats) stats.notCandidateText = (stats.notCandidateText || 0) + 1;
           return NodeFilter.FILTER_REJECT;
         }
+        // v1.4.17: Block element 有 CONTAINER_TAGS 直屬子容器，且容器內有直屬 <A> 連結時，
+        // 改為只捕捉 <A> 連結本身（而非整個 block）。
+        // 原因：若把整個 block（如 TD）當一個翻譯單元，injectIntoTarget 走 clean-slate 路徑
+        // 會清空 TD 的全部子元素，包含不需翻譯的相鄰容器（如 TD > DIV.smallfont > SPAN.author）。
+        // 典型案例：vBulletin forumdisplay：
+        //   td > div → a[thread_title] + div.smallfont → span(author)
+        // Gemini 翻完 thread title 後 slot 1（作者名）被丟掉 → clean-slate 把整個 TD 清空
+        // → 作者 ID 消失。改為只翻 A 連結，TD 結構完全保留。
+        if (!fragmentExtracted.has(el)) {
+          const containerKids = Array.from(el.children).filter(c =>
+            SK.CONTAINER_TAGS.has(c.tagName));
+          if (containerKids.length > 0) {
+            let capturedLinks = 0;
+            for (const container of containerKids) {
+              for (const child of Array.from(container.children)) {
+                if (child.tagName !== 'A') continue;
+                if (seen.has(child)) continue;
+                if (child.hasAttribute('data-shinkansen-translated')) continue;
+                if (!SK.isVisible(child)) continue;
+                if (!isCandidateText(child)) continue;
+                results.push({ kind: 'element', el: child });
+                seen.add(child);
+                capturedLinks++;
+                if (stats) stats.blockContainerLink = (stats.blockContainerLink || 0) + 1;
+              }
+            }
+            if (capturedLinks > 0) {
+              fragmentExtracted.add(el);
+              if (stats) stats.skipBlockWithContainer = (stats.skipBlockWithContainer || 0) + 1;
+              return NodeFilter.FILTER_SKIP;
+            }
+          }
+        }
         if (stats) stats.acceptedByWalker = (stats.acceptedByWalker || 0) + 1;
         return NodeFilter.FILTER_ACCEPT;
       },
