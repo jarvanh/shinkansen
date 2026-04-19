@@ -245,17 +245,17 @@
   <div class="container">
     <div class="privacy-hero">
       <h2>為什麼做 Shinkansen？</h2>
-      <p>既有的網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——你讀了什麼文章、看了什麼信件，全部被看光。</p>
-      <p>Shinkansen 從第一行程式碼就以隱私為核心設計：</p>
+      <p>既有的網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光。</p>
+      <p>Shinkansen 的出發點就是保護您的隱私：</p>
       <div class="privacy-points">
         <div class="privacy-point">
-          <strong>資料不外傳</strong>——翻譯請求直連 Google Gemini，不經過任何第三方伺服器
+          <strong>資料不外傳</strong>：翻譯請求直連 Google Gemini，不經過任何第三方伺服器
         </div>
         <div class="privacy-point">
-          <strong>設定留在本地</strong>——所有資料只存在你自己的電腦上
+          <strong>設定留在本地</strong>：所有資料只存在你自己的電腦上
         </div>
         <div class="privacy-point">
-          <strong>原始碼完全公開</strong>——任何人都可以檢視程式碼，確認沒有後門
+          <strong>原始碼完全公開</strong>：任何人都可以檢視程式碼，確認沒有後門
         </div>
       </div>
     </div>
@@ -292,16 +292,20 @@
           <p>分批翻譯、逐段注入，頁面逐步變成中文，進度一目瞭然。</p>
         </div>
         <div class="feature">
+          <h3>跨頁自動延續翻譯</h3>
+          <p>三組可自訂快速鍵（<code>Alt+A</code> / <code>Alt+S</code> / <code>Alt+D</code>），一鍵切換引擎與模型。翻譯過的頁面點連結開新分頁、Gmail 切信件、按返回鍵回上一頁都自動翻譯，不用每頁再按一次。</p>
+        </div>
+        <div class="feature">
+          <h3>雙翻譯引擎</h3>
+          <p>Gemini（AI 翻譯、品質最佳、需 API Key）+ Google Translate（免費、不需 API Key、速度更快）並存，重要內容用 Gemini，隨手瀏覽用 Google Translate 省費用。</p>
+        </div>
+        <div class="feature">
           <h3>固定術語表</h3>
           <p>自訂翻譯對照表，確保專有名詞一律使用你指定的譯名。</p>
         </div>
         <div class="feature">
           <h3>翻譯快取</h3>
-          <p>翻過的段落自動快取，同一頁再開不花錢。版本更新自動清舊快取。</p>
-        </div>
-        <div class="feature">
-          <h3>一鍵還原</h3>
-          <p>隨時切回原文對照，<code>Option + S</code> 來回切換。</p>
+          <p>翻過的段落自動快取，同一頁再開不花錢。</p>
         </div>
         <div class="feature">
           <h3>費用透明</h3>
@@ -309,7 +313,7 @@
         </div>
         <div class="feature">
           <h3>YouTube 字幕翻譯</h3>
-          <p>看 YouTube 影片時，英文字幕自動換成中文，跟著影片同步顯示。換片不需重新操作，快轉或調整播放速度都能正確跟上。</p>
+          <p>看 YouTube 影片時，英文字幕自動翻譯為中文。</p>
         </div>
       </div>
     </div>
@@ -338,7 +342,7 @@
           <div class="step-num">3</div>
           <div class="step-body">
             <h3>設定 API Key</h3>
-            <p>點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" style="color:#2563eb;">Gemini API Key</a>。完成！按 <code>Option + S</code> 開始翻譯。</p>
+            <p>點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" style="color:#2563eb;">Gemini API Key</a>。完成！按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）。</p>
           </div>
         </div>
       </div>
