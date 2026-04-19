@@ -39,82 +39,7 @@
     </section>
 
     <section>
-      <h2>效能（翻譯效率調校）</h2>
-      <p class="muted">調整每批翻譯的大小與並行數量，影響翻譯速度與品質的平衡</p>
-      <label>
-        同時並發批次上限
-        <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
-        <small class="muted">同時送出幾批翻譯請求。數字越大翻越快，但也越容易撞到配額上限，長文建議 5–10，短文可設 1（逐批翻譯）</small>
-      </label>
-      <label>
-        每批段數上限
-        <input type="number" id="maxUnitsPerBatch" step="1" min="1" max="100">
-        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 12</small>
-      </label>
-      <label>
-        每批字元預算
-        <input type="number" id="maxCharsPerBatch" step="500" min="500" max="20000">
-        <small class="muted">每一批累積的原文字元數上限（與段數上限先到先封口）。數字越大每批能裝越多內容，但太大可能超出模型輸出長度限制，預設 3500</small>
-      </label>
-      <label>
-        單頁翻譯段落上限
-        <input type="number" id="maxTranslateUnits" step="100" min="0" max="10000">
-        <small class="muted">單次翻譯最多處理幾段。超大頁面（如維基百科長條目）超過此上限時，多餘段落會被略過。設為 0 表示不限制，預設 1000</small>
-      </label>
-    </section>
-
-    <section>
-      <h2>網域規則</h2>
-      <label>
-        自動翻譯網站（每行一個網域，進入時自動翻譯）
-        <textarea id="whitelist" rows="4" placeholder="en.wikipedia.org&#10;medium.com"></textarea>
-      </label>
-    </section>
-
-    <section>
-      <h2>語言偵測</h2>
-      <label class="switch">
-        <input type="checkbox" id="skipTraditionalChinesePage" checked>
-        <span>跳過繁體中文網頁</span>
-      </label>
-      <small class="muted">開啟時，若整頁文字以繁體中文為主，按翻譯會直接跳過。關閉後仍會逐段跳過中文段落，只翻譯外語內容。Gmail 等介面為中文但信件多為英文的網站，建議關閉此選項</small>
-    </section>
-
-    <section>
-      <h2>翻譯進度通知</h2>
-      <label>
-        顯示位置
-        <select id="toastPosition">
-          <option value="bottom-right">右下角</option>
-          <option value="bottom-left">左下角</option>
-          <option value="top-right">右上角</option>
-          <option value="top-left">左上角</option>
-        </select>
-      </label>
-      <label>
-        通知透明度 <span id="toastOpacityLabel">70</span>%
-        <input type="range" id="toastOpacity" min="10" max="100" step="10" value="70">
-        <small class="muted">如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
-      </label>
-      <label class="toggle">
-        <input type="checkbox" id="toastAutoHide" checked>
-        翻譯完成後自動關閉通知
-        <small class="muted">開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉</small>
-      </label>
-    </section>
-
-    <section>
-      <h2>匯入 / 匯出設定</h2>
-      <p class="muted">匯出為 JSON 檔案備份，或從檔案匯入還原（API Key 不包含在匯出入範圍）</p>
-      <div class="btn-row">
-        <button id="export-settings" class="secondary">匯出設定</button>
-        <button id="import-file" class="secondary">匯入設定</button>
-        <input type="file" id="import-input" accept="application/json" hidden>
-      </div>
-    </section>
-
-    <section>
-      <h2>翻譯快捷鍵</h2>
+      <h2>翻譯快速鍵</h2>
       <p class="muted">
         三組可自訂的翻譯預設，對應三個快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
         已翻譯狀態下按任一快速鍵都會還原原文；翻譯中按任一快速鍵則取消翻譯。
@@ -198,6 +123,56 @@
             </select>
           </label>
         </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>網域規則</h2>
+      <label>
+        自動翻譯網站（每行一個網域，進入時自動翻譯）
+        <textarea id="whitelist" rows="4" placeholder="en.wikipedia.org&#10;medium.com"></textarea>
+      </label>
+    </section>
+
+    <section>
+      <h2>語言偵測</h2>
+      <label class="switch">
+        <input type="checkbox" id="skipTraditionalChinesePage" checked>
+        <span>跳過繁體中文網頁</span>
+      </label>
+      <small class="muted">開啟時，若整頁文字以繁體中文為主，按翻譯會直接跳過。關閉後仍會逐段跳過中文段落，只翻譯外語內容。Gmail 等介面為中文但信件多為英文的網站，建議關閉此選項</small>
+    </section>
+
+    <section>
+      <h2>翻譯進度通知</h2>
+      <label>
+        顯示位置
+        <select id="toastPosition">
+          <option value="bottom-right">右下角</option>
+          <option value="bottom-left">左下角</option>
+          <option value="top-right">右上角</option>
+          <option value="top-left">左上角</option>
+        </select>
+      </label>
+      <label>
+        通知透明度 <span id="toastOpacityLabel">70</span>%
+        <input type="range" id="toastOpacity" min="10" max="100" step="10" value="70">
+        <small class="muted">如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="toastAutoHide" checked>
+        翻譯完成後自動關閉通知
+        <small class="muted">開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉</small>
+      </label>
+    </section>
+
+    <section>
+      <h2>匯入 / 匯出設定</h2>
+      <p class="muted">匯出為 JSON 檔案備份，或從檔案匯入還原（API Key 不包含在匯出入範圍）</p>
+      <div class="btn-row">
+        <button id="export-settings" class="secondary">匯出設定</button>
+        <button id="import-file" class="secondary">匯入設定</button>
+        <input type="file" id="import-input" accept="application/json" hidden>
       </div>
     </section>
 
@@ -329,6 +304,31 @@
       <label>
         翻譯 Prompt
         <textarea id="systemInstruction" rows="8"></textarea>
+      </label>
+    </section>
+
+    <section>
+      <h2>效能（翻譯效率調校）</h2>
+      <p class="muted">調整每批翻譯的大小與並行數量，影響翻譯速度與品質的平衡</p>
+      <label>
+        同時並發批次上限
+        <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
+        <small class="muted">同時送出幾批翻譯請求。數字越大翻越快，但也越容易撞到配額上限，長文建議 5–10，短文可設 1（逐批翻譯）</small>
+      </label>
+      <label>
+        每批段數上限
+        <input type="number" id="maxUnitsPerBatch" step="1" min="1" max="100">
+        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 12</small>
+      </label>
+      <label>
+        每批字元預算
+        <input type="number" id="maxCharsPerBatch" step="500" min="500" max="20000">
+        <small class="muted">每一批累積的原文字元數上限（與段數上限先到先封口）。數字越大每批能裝越多內容，但太大可能超出模型輸出長度限制，預設 3500</small>
+      </label>
+      <label>
+        單頁翻譯段落上限
+        <input type="number" id="maxTranslateUnits" step="100" min="0" max="10000">
+        <small class="muted">單次翻譯最多處理幾段。超大頁面（如維基百科長條目）超過此上限時，多餘段落會被略過。設為 0 表示不限制，預設 1000</small>
       </label>
     </section>
 

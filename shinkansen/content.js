@@ -1142,7 +1142,8 @@
       if (!autoTranslate) return;
       if (await SK.isDomainWhitelisted()) {
         SK.sendLog('info', 'system', 'domain in auto-translate list, translating on load', { url: location.href });
-        SK.translatePage();
+        // v1.4.16: toast 前綴顯示「[自動翻譯]」讓使用者知道本次是 whitelist 觸發的，不是自己按的
+        SK.translatePage({ label: '自動翻譯' });
       }
     } catch (err) {
       SK.sendLog('warn', 'system', 'auto-translate check failed on load', { error: err.message });
