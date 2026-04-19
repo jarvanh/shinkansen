@@ -51,12 +51,21 @@
   /**
    * 「注入」helper——回答「要怎麼把譯文寫進 target?」
    * (A) Clean slate 預設：清空 target 後 append content。
-   * (B) Media-preserving 例外：target 含媒體元素時，就地替換最長文字節點。
+   * (B) Media-preserving 例外：target 含媒體元素，且無 CONTAINER_TAGS 直屬子元素時，
+   *     就地替換最長文字節點（保留媒體位置）。
+   *     若 target 有 DIV/SECTION 等容器直屬子元素（如 vBulletin TD > DIV+HR+DIV），
+   *     文字節點分散於不同結構子容器，media-preserving 路徑會把譯文塞進最長文字
+   *     所在的子容器，導致其他結構元素（HR、標題 DIV）殘留在錯誤位置（HR 跑到標題上面）。
+   *     這種情況改走 clean-slate，讓 deserialize 後的 fragment 依正確順序填入 target。
+   *     （v1.4.14 修正 vBulletin 論壇貼文標題翻譯後分隔線位置顛倒）
    */
   function injectIntoTarget(target, content) {
     const isString = typeof content === 'string';
 
-    if (SK.containsMedia(target)) {
+    // (B) 條件：含媒體 && target 無 CONTAINER_TAGS 直屬子元素
+    const hasContainerChild = Array.from(target.children).some(c =>
+      SK.CONTAINER_TAGS.has(c.tagName));
+    if (SK.containsMedia(target) && !hasContainerChild) {
       // (B) media-preserving path
       if (!isString) {
         let fragHasBr = false;
