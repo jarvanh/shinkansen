@@ -86,10 +86,13 @@
       color: #fff;
       font-size: 1.05rem;
       font-weight: 600;
-      padding: 14px 36px;
+      padding: 14px 24px;
       border-radius: 10px;
       text-decoration: none;
       transition: background 0.2s;
+      min-width: 280px;
+      text-align: center;
+      box-sizing: border-box;
     }
     .btn-download:hover { background: #1d4ed8; }
     .btn-download.secondary {
@@ -99,6 +102,12 @@
     }
     .btn-download.secondary:hover {
       background: #eff6ff;
+    }
+    @media (max-width: 600px) {
+      .btn-download {
+        width: 100%;
+        min-width: 0;
+      }
     }
     .hero-sub {
       margin-top: 12px;
