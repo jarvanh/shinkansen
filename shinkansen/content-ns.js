@@ -35,6 +35,14 @@ if (window.__shinkansen_loaded) {
     // v1.4.12: 記錄本次翻譯使用的 preset slot（1/2/3），供 SPA 導航續翻 + 跨 tab sticky 用。
     // null = 非 preset 觸發（例如 autoTranslate 白名單、popup 按鈕舊路徑）。
     stickySlot: null,
+    // v1.5.0: 雙語對照模式
+    // displayMode：本次翻譯要用的模式（'single' 覆蓋 / 'dual' 雙語對照），讀自 storage 的設定值
+    // translatedMode：本次實際翻譯時用的模式（restorePage 依此分派 single / dual 還原邏輯）
+    // translationCache：dual 模式下，原段落 → wrapper 的對照表，供 Content Guard 在 SPA 刪掉
+    //   wrapper 時 re-append 用。Map<originalEl, wrapperEl>
+    displayMode: 'single',
+    translatedMode: null,
+    translationCache: new Map(),
   };
 
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback
@@ -155,6 +163,18 @@ if (window.__shinkansen_loaded) {
 
   // CJK 字元匹配 pattern（serialize 用）
   SK.CJK_CHAR = '[\\u3400-\\u9fff\\uf900-\\ufaff\\u3000-\\u303f\\uff00-\\uffef]';
+
+  // ─── v1.5.0 雙語對照模式常數 ─────────────────────────
+  SK.TRANSLATION_WRAPPER_TAG = 'shinkansen-translation';
+  SK.DEFAULT_MARK_STYLE = 'tint';
+  // 視覺標記合法值（options 頁 radio + content.js sanitize）
+  SK.VALID_MARK_STYLES = new Set(['tint', 'bar', 'dashed', 'none']);
+  // 顯示模式合法值
+  SK.VALID_DISPLAY_MODES = new Set(['single', 'dual']);
+  // 計算「最近的 block 祖先」用的 display 值（雙語模式 inline 段落 wrapper 用）
+  SK.BLOCK_DISPLAY_VALUES = new Set([
+    'block', 'flex', 'grid', 'table', 'list-item', 'flow-root',
+  ]);
 
   // ─── 共用工具函式 ──────────────────────────────────────
 

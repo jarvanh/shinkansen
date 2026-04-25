@@ -167,6 +167,11 @@
 
   function runContentGuard() {
     if (!STATE.translated) return;
+    // v1.5.0: dual 模式分派——監看 wrapper 被 SPA 刪除後 re-append。
+    if (STATE.translatedMode === 'dual') {
+      runContentGuardDual(false);
+      return;
+    }
     let restored = 0;
     for (const [el, savedHTML] of STATE.translatedHTML) {
       if (!el.isConnected) continue;
@@ -181,9 +186,56 @@
     }
   }
 
+  /**
+   * v1.5.0: 雙語模式 Content Guard——遍歷 STATE.translationCache，
+   * 若 wrapper 已被 SPA framework 從 DOM 上拔掉（!isConnected），就依
+   * insertMode 把同一個 wrapper element 重新插回去。
+   *
+   * @param {boolean} ignoreViewport  測試用：略過 viewport 檢查強制全掃
+   * @returns {number} 修復數量
+   */
+  function runContentGuardDual(ignoreViewport) {
+    if (!STATE.translationCache || STATE.translationCache.size === 0) return 0;
+    let restored = 0;
+    for (const [el, info] of STATE.translationCache) {
+      if (!el || !el.isConnected) continue;
+      const { wrapper, insertMode } = info;
+      if (!wrapper) continue;
+      if (wrapper.isConnected) continue;  // wrapper 還在 DOM，不需修
+
+      if (!ignoreViewport) {
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
+      }
+
+      // 依當初的 insertMode 重插（與 SK.injectDual 保持一致）
+      if (insertMode === 'append') {
+        el.appendChild(wrapper);
+      } else if (insertMode === 'afterend-block-ancestor') {
+        const blockAncestor = SK.findBlockAncestor?.(el);
+        if (blockAncestor && blockAncestor !== el.ownerDocument.body) {
+          blockAncestor.insertAdjacentElement('afterend', wrapper);
+        } else {
+          el.insertAdjacentElement('afterend', wrapper);
+        }
+      } else {
+        // 'afterend' 或舊資料無記錄
+        el.insertAdjacentElement('afterend', wrapper);
+      }
+      restored++;
+    }
+    if (restored > 0) {
+      SK.sendLog('info', 'guard', `Content guard re-appended ${restored} dual wrappers`);
+    }
+    return restored;
+  }
+
   // 暴露給 Debug API
   SK.testRunContentGuard = function testRunContentGuard() {
     if (!STATE.translated) return 0;
+    if (STATE.translatedMode === 'dual') {
+      return runContentGuardDual(true);
+    }
     let restored = 0;
     for (const [el, savedHTML] of STATE.translatedHTML) {
       if (!el.isConnected) continue;

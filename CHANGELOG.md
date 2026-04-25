@@ -5,6 +5,26 @@
 
 ---
 
+## v1.5.x
+
+**v1.5.0** — 新增**雙語對照模式**（dual mode）。長期一直只有單語覆蓋（譯文原地取代原文），使用者反映想看英文寫作的同時對照中文，本版正式加入第二種顯示模式：原文保留、譯文以 `<shinkansen-translation>` custom element wrapper 形式 append 在原段落之後/內。Popup 新增「顯示模式」toggle 即時切換 single / dual，設定頁新增「雙語對照視覺標記」section（4 種樣式 + 即時預覽 demo）。實作範圍：
+
+  - `shinkansen/content-ns.js`：STATE 加 `displayMode` / `translatedMode` / `translationCache: Map<originalEl, { wrapper, insertMode }>`；常數 `TRANSLATION_WRAPPER_TAG` / `DEFAULT_MARK_STYLE` / `VALID_MARK_STYLES` / `VALID_DISPLAY_MODES` / `BLOCK_DISPLAY_VALUES`。
+  - `shinkansen/content-inject.js`：`SK.injectTranslation` 入口加 dual dispatch head（`STATE.translatedMode === 'dual' && unit.kind !== 'fragment'` → `SK.injectDual`）。新增 `SK.injectDual` 主入口、`buildDualInner`（依原 tag 決定 wrapper 內部 tag，heading 降級 `<div>` 但繼承字級）、`findBlockAncestor`（inline 段落用，computed display ∈ {block, flex, grid, table, list-item, flow-root}）、`SK.removeDualWrappers`（restore 用）、`SK.ensureDualWrapperStyle`（一次性注入全域 wrapper CSS 到 `<head>`）。slots 路徑共用既有 `deserializeWithPlaceholders` 重建 inline 結構（`<a href>` 等完整保留進 wrapper inner）。
+  - `shinkansen/content-spa.js`：`runContentGuard` 加 dual 分派——`runContentGuardDual` 遍歷 `translationCache`，wrapper 被 SPA 拔掉時依 insertMode（`afterend` / `append` / `afterend-block-ancestor`）把同一個 wrapper element re-append 回去，不重新呼叫 LLM。`SK.testRunContentGuard` 同步 dispatch。
+  - `shinkansen/content.js`：`translatePage` / `translatePageGoogle` 進入時讀 `settings.displayMode` 寫入 `STATE.translatedMode`、讀 `translationMarkStyle` 寫入 `SK.currentMarkStyle`；dual 模式呼叫 `ensureDualWrapperStyle`。`restorePage` 依 `STATE.translatedMode` 分派 single（反向覆寫 originalHTML）/ dual（`querySelectorAll('shinkansen-translation').forEach(remove)`）。新增 `MODE_CHANGED` 訊息 handler——已翻譯狀態下顯示 toast 提示「請按快速鍵重新翻譯以套用」，未翻譯則靜默接收。Debug API 新增 `testInjectDual` / `testRestoreDual`，`setTestState` 支援 `translatedMode` override。
+  - `shinkansen/popup/`：popup.html 新增「顯示模式」toggle（單語覆蓋 / 雙語對照雙按鈕 radiogroup）；popup.css 對應樣式；popup.js 讀 `displayMode` 設初始狀態，切換時 `chrome.storage.sync.set` + `MODE_CHANGED` 訊息送 active tab。
+  - `shinkansen/options/`：options.html「一般設定」分頁加「雙語對照視覺標記」section（demo 預覽 + 4 個 radio：tint 淡底色 / bar 左邊細條 / dashed 虛線底線 / none 無標記）；options.css 加 demo + radio 樣式（dual wrapper CSS 與 content-inject.js inject 的版本對齊）；options.js load/save 處理 `translationMarkStyle`，radio change 即時更新 demo wrapper 的 `data-sk-mark`。
+  - `shinkansen/lib/storage.js`：`DEFAULT_SETTINGS` 加 `displayMode: 'single'` / `translationMarkStyle: 'tint'`。
+
+  特殊容器規格（依 DOM 結構特徵分派，不綁站點/class）：一般 block (P/DIV/...) → wrapper 用原 tag 並 `insertAdjacentElement('afterend')`；H1–H6 → wrapper inner 為 `<div>` + inline style 從 computed style 繼承 font-size/font-weight/line-height（避免 SEO/AT 重複標題）；LI / TD / TH → wrapper inner 為 `<div>`、`appendChild` 進 cell 內部（避免 ol 編號錯位、table 對齊跑掉）；inline 段落（span/a 被偵測時）→ 往上找最近 block 祖先、wrapper 插在 block 祖先 afterend。YouTube 字幕維持單語替換路徑不變。
+
+  新增 10 條 Playwright regression spec（`test/regression/`）：`inject-dual-basic` / `inject-dual-heading`（字級繼承）/ `inject-dual-list`（ol 編號維持）/ `inject-dual-table`（cell 內部）/ `inject-dual-inline`（block 祖先後）/ `inject-dual-preserves-link`（`<a href>` 保留 + slots 路徑）/ `inject-dual-restore`（清乾淨 + 原文不動）/ `inject-dual-mark-style`（4 種 attribute + computed CSS 全綠）/ `inject-dual-mode-switch`（dispatcher 路由）/ `content-guard-dual`（wrapper 被刪 → re-append 同一 element）。共用 fixture `dual.html`。SANITY 全部驗過：(1) 整體：把 `SK.injectDual` short-circuit 成 no-op，8 條 inject-dual-* spec 全部 fail；還原後全綠。(2) Content Guard：把 `wrapper.isConnected` 檢查反向，`content-guard-dual` fail；還原 pass。(3) Mode dispatcher：把 `STATE.translatedMode === 'dual'` 條件改為 `false`，`mode-switch` spec 中 dual 段假裝 single 路徑 fail；還原 pass。
+
+  Full `npm test` 131 → 141 Playwright + 26 Jest 全綠。
+
+  **協作流程同步調整（v1.5.0 起）**：所有開發（含 UI/DOM 改動）一律在 Claude Code 端執行，Cowork 從 v1.4.14 起的「UI bug 修復主力環境」角色降為諮詢幕僚。原因：v1.4.14–v1.4.20 期間幾乎所有 UI bug fix 還是回到 Claude Code 跑 `npm test` + Playwright fixture 驗，Cowork 端用 Chrome MCP 看真實 DOM 已不是 fix loop 必備（fixture 抽出後 Playwright 比 Chrome MCP 自動化程度高得多）；同時兩端切換造成的 git 錯位風險（v1.3.1 / v1.3.3 教訓）每次都要走 §10 通盤檢查防禦，工作流複雜度與實際收益不成比例。CLAUDE.md 同步改寫：檔頭分工段落、§1.5 雙環境結構、§9 Path A 兩階段流程、§工作風格除錯時段落、§不要做的事「不要加回雙語對照模式」條目（本版實作後移除）。
+
 ## v1.4.x
 
 **v1.4.22** — GWS 送審版！修正 v1.4.20 新增的媒體卡片 skip 誤傷含 SVG icon 的標題（例如 Substack 的 `h2.header-anchor-post` 內有 `div.anchor > svg`）。根因：v1.4.20 用 `SK.containsMedia` 判斷媒體，但此函式涵蓋 `img/picture/video/svg/canvas/audio`——SVG 在現代前端常是裝飾性 icon（錨點/外連/展開符號），誤判成「媒體卡片」會把本該翻譯的整段標題或段落 FILTER_SKIP 掉。修法（`content-detect.js` acceptNode BLOCK_TAGS 分支）：把 mediaCardSkip 的判斷從 `SK.containsMedia(el)` 窄化為 `el.querySelector('img, picture, video')`，只收「功能性媒體」（真實內容圖片/影片），排除 svg/canvas/audio。v1.4.20 既有 regression（media-card-attachment fixture 用 `<img>`）仍涵蓋、不受影響。新增 regression spec `test/regression/detect-substack-heading-svg.spec.js`（正向斷言 H2 含 `div.anchor > svg + 文字` 應被偵測為 element unit + mediaCardSkip 不該命中 + H2 文字包含預期標題）+ fixture `substack-heading-svg.html` / `.response.txt`。SANITY：把判斷還原為 `SK.containsMedia` 後斷言 fail（unitCount=0, mediaCardSkip=1）；換回窄化判斷後全綠。Full `npm test` 130 → 131 Playwright + 26 Jest 全綠。

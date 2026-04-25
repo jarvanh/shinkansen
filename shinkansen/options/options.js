@@ -143,6 +143,14 @@ async function load() {
   // v1.0.21: 頁面層級繁中偵測開關
   $('skipTraditionalChinesePage').checked = s.skipTraditionalChinesePage !== false;
 
+  // v1.5.0: 雙語對照視覺標記
+  const validMarks = ['tint', 'bar', 'dashed', 'none'];
+  const savedMark = validMarks.includes(s.translationMarkStyle) ? s.translationMarkStyle : 'tint';
+  for (const r of document.querySelectorAll('input[name="markStyle"]')) {
+    r.checked = (r.value === savedMark);
+  }
+  updateDualDemoMark(savedMark);
+
   // v1.0.29: 固定術語表
   fixedGlossary = {
     global: Array.isArray(s.fixedGlossary?.global) ? s.fixedGlossary.global : [],
@@ -195,6 +203,18 @@ async function load() {
     updatePresetModelVisibility(slot);
   }
   refreshPresetKeyBindings();
+}
+
+// v1.5.0: 雙語視覺標記預覽更新
+function updateDualDemoMark(mark) {
+  const wrapper = document.getElementById('dual-demo-wrapper');
+  if (wrapper) wrapper.setAttribute('data-sk-mark', mark);
+}
+
+function getSelectedMarkStyle() {
+  const checked = document.querySelector('input[name="markStyle"]:checked');
+  const v = checked?.value;
+  return ['tint', 'bar', 'dashed', 'none'].includes(v) ? v : 'tint';
 }
 
 // v1.4.13: engine='google' 時隱藏 model 欄
@@ -271,6 +291,8 @@ async function save() {
     toastPosition: $('toastPosition').value,
     // v1.1.3: Toast 自動關閉
     toastAutoHide: $('toastAutoHide').checked,
+    // v1.5.0: 雙語對照視覺標記
+    translationMarkStyle: getSelectedMarkStyle(),
     // v1.0.21: 頁面層級繁中偵測開關
     skipTraditionalChinesePage: $('skipTraditionalChinesePage').checked,
     // v1.2.11: YouTube 字幕設定
@@ -435,6 +457,11 @@ $('toastOpacity').addEventListener('input', () => {
   $('toastOpacityLabel').textContent = $('toastOpacity').value;
 });
 $('toastPosition').addEventListener('change', markDirty);
+
+// v1.5.0: 雙語視覺標記 radio 切換 → 即時更新 demo wrapper
+for (const r of document.querySelectorAll('input[name="markStyle"]')) {
+  r.addEventListener('change', () => updateDualDemoMark(getSelectedMarkStyle()));
+}
 
 $('reset-defaults').addEventListener('click', async () => {
   if (!confirm('確定要回復所有預設設定嗎？\n\nAPI Key 會被保留，翻譯快取與累計使用統計不受影響。\n此操作無法復原。')) return;

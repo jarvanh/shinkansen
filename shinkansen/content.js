@@ -370,6 +370,19 @@
       }
     }
 
+    // v1.5.0: 讀顯示模式設定，寫進 STATE.translatedMode 鎖定本次翻譯用的模式。
+    // 同一頁中途切模式不會即時生效（避免半翻半改），需重新觸發翻譯。
+    {
+      const mode = settings.displayMode;
+      STATE.translatedMode = (mode === 'dual') ? 'dual' : 'single';
+      STATE.displayMode = STATE.translatedMode;
+      // 雙語視覺標記樣式
+      const ms = settings.translationMarkStyle;
+      SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
+      // 雙語模式才注入 wrapper CSS（單語模式不需要）
+      if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
+    }
+
     STATE.translating = true;
     STATE.abortController = new AbortController();
     const translateStartTime = Date.now();
@@ -641,14 +654,30 @@
     if (editModeActive) toggleEditMode(false);
     SK.cancelRescan();
     SK.stopSpaObserver();
-    STATE.originalHTML.forEach((originalHTML, el) => {
-      el.innerHTML = originalHTML;
-      el.removeAttribute('data-shinkansen-translated');
-    });
+
+    // v1.5.0: dual 模式還原——只移除 wrapper，原文未動所以不需 innerHTML 還原。
+    // single 模式維持原本反向覆寫 originalHTML 邏輯。
+    if (STATE.translatedMode === 'dual') {
+      const tag = SK.TRANSLATION_WRAPPER_TAG;
+      document.querySelectorAll(tag).forEach(n => n.remove());
+      // dual 也可能有少數 fallback 元素走了 single 路徑（fragment unit 不支援 dual），
+      // 一併還原。
+      STATE.originalHTML.forEach((originalHTML, el) => {
+        el.innerHTML = originalHTML;
+        el.removeAttribute('data-shinkansen-translated');
+      });
+    } else {
+      STATE.originalHTML.forEach((originalHTML, el) => {
+        el.innerHTML = originalHTML;
+        el.removeAttribute('data-shinkansen-translated');
+      });
+    }
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
+    STATE.translationCache?.clear?.();  // v1.5.0
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0
+    STATE.translatedMode = null;  // v1.5.0
     STATE.stickyTranslate = false;
     STATE.stickySlot = null;    // v1.4.12
     browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
@@ -775,6 +804,16 @@
           return;
         }
       }
+    }
+
+    // v1.5.0: 顯示模式（與 Gemini 路徑相同邏輯）
+    {
+      const mode = settings.displayMode;
+      STATE.translatedMode = (mode === 'dual') ? 'dual' : 'single';
+      STATE.displayMode = STATE.translatedMode;
+      const ms = settings.translationMarkStyle;
+      SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
+      if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
     }
 
     STATE.translating = true;
@@ -965,6 +1004,18 @@
       SK.translatePageGoogle();
       return;
     }
+    // v1.5.0: 顯示模式切換通知。若已翻譯，提示使用者重新翻譯以套用。
+    // 沒翻譯時不需提示——下次 translatePage 會自動讀新的 displayMode。
+    if (msg?.type === 'MODE_CHANGED') {
+      const mode = msg.mode === 'dual' ? 'dual' : 'single';
+      if (STATE.translated) {
+        const desc = mode === 'dual' ? '雙語對照' : '單語覆蓋';
+        SK.showToast('success', `顯示模式已切換為「${desc}」，請按快速鍵重新翻譯以套用`, {
+          autoHideMs: 5000,
+        });
+      }
+      return;
+    }
     // v1.4.21: popup 勾選狀態直接決定「應該啟或停」，不再走 toggle 翻面
     if (msg?.type === 'SET_SUBTITLE') {
       const enabled = !!msg.payload?.enabled;
@@ -1066,6 +1117,36 @@
       SK.injectTranslation(unit, translation, slots);
       return { sourceText: text, slotCount: slots.length };
     },
+    // v1.5.0: 雙語注入測試入口。可選 markStyle 覆蓋預設。
+    testInjectDual(el, translation, opts) {
+      if (!el || el.nodeType !== Node.ELEMENT_NODE) {
+        throw new Error('testInjectDual: el must be an Element');
+      }
+      SK.ensureDualWrapperStyle?.();
+      if (opts && opts.markStyle && SK.VALID_MARK_STYLES.has(opts.markStyle)) {
+        SK.currentMarkStyle = opts.markStyle;
+      } else if (!SK.currentMarkStyle) {
+        SK.currentMarkStyle = SK.DEFAULT_MARK_STYLE;
+      }
+      const { text, slots } = SK.serializeWithPlaceholders(el);
+      const unit = { kind: 'element', el };
+      SK.injectDual(unit, translation, slots);
+      // 將 STATE.translatedMode 設為 dual 讓 restorePage 等路徑能正確分派
+      STATE.translatedMode = 'dual';
+      STATE.translated = true;
+      return {
+        sourceText: text,
+        slotCount: slots.length,
+        wrapperPresent: !!STATE.translationCache.get(el),
+      };
+    },
+    testRestoreDual() {
+      // 提供 spec 模擬 restorePage 的 dual 分支
+      SK.removeDualWrappers?.();
+      STATE.translationCache?.clear?.();
+      STATE.translated = false;
+      STATE.translatedMode = null;
+    },
     selectBestSlotOccurrences(text) {
       return SK.selectBestSlotOccurrences(text);
     },
@@ -1082,6 +1163,11 @@
     setTestState(overrides) {
       if ('translated' in overrides) STATE.translated = !!overrides.translated;
       if ('stickyTranslate' in overrides) STATE.stickyTranslate = !!overrides.stickyTranslate;
+      // v1.5.0: 暴露 translatedMode 給 spec 切換 dispatcher 行為
+      if ('translatedMode' in overrides) {
+        const m = overrides.translatedMode;
+        STATE.translatedMode = (m === 'dual' || m === 'single') ? m : null;
+      }
     },
     testRunContentGuard() {
       return SK.testRunContentGuard();

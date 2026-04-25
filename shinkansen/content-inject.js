@@ -235,6 +235,15 @@
     // 但 fragment no-slots / element no-slots 路徑完全繞過 deserializeWithPlaceholders，
     // 導致字面 \n 殘留可見 DOM 字元。在此入口統一處理，覆蓋所有後續路徑。
     if (translation.includes('\\n')) translation = translation.replace(/\\n/g, '\n');
+
+    // v1.5.0: 雙語對照模式分派——dual 走 SK.injectDual 走另一條路徑。
+    // 只 element 走得到 dual（fragment unit 結構特殊，dual 模式直接 fallback 走 single）。
+    // 模式由 STATE.translatedMode 決定（translatePage 進入時依 settings.displayMode 設定）。
+    if (STATE.translatedMode === 'dual' && unit.kind !== 'fragment' && SK.injectDual) {
+      SK.injectDual(unit, translation, slots);
+      return;
+    }
+
     if (unit.kind === 'fragment') {
       return injectFragmentTranslation(unit, translation, slots);
     }
@@ -312,5 +321,151 @@
   // 暴露 resolveWriteTarget / injectIntoTarget 供 Debug API testInject 使用
   SK._resolveWriteTarget = resolveWriteTarget;
   SK._injectIntoTarget = injectIntoTarget;
+
+  // ─── v1.5.0 雙語對照模式注入 ────────────────────────
+  // 與 single 模式並列；single 走 SK.injectTranslation 的舊路徑，dual 走這裡。
+  // 設計原則：
+  //   1. 結構性判斷不綁站點/class（硬規則 §8）：依 tagName + computed display 決定 wrapper 形狀
+  //   2. 不動原段落（原文保留），只在原段落旁/內附加 <shinkansen-translation> wrapper
+  //   3. 透過既有 deserializeWithPlaceholders 重建譯文 inline 結構（連結、行內樣式都會保留）
+  //   4. Content Guard 用 STATE.translationCache 追蹤 original → { wrapper, mode } 對應
+
+  /** 找最近的 block 祖先（computed display ∈ BLOCK_DISPLAY_VALUES） */
+  function findBlockAncestor(el) {
+    const win = el.ownerDocument?.defaultView;
+    let cur = el.parentElement;
+    while (cur && cur !== el.ownerDocument.body) {
+      const cs = win?.getComputedStyle?.(cur);
+      if (cs && SK.BLOCK_DISPLAY_VALUES.has(cs.display)) return cur;
+      cur = cur.parentElement;
+    }
+    return cur;  // body 或 null
+  }
+  // 暴露給 content-spa.js（Content Guard dual 分支）使用
+  SK.findBlockAncestor = findBlockAncestor;
+
+  /** 依原段落 tag 決定 wrapper 內部要用哪個 element + 是否需繼承 heading 字級 */
+  function buildDualInner(originalTag, originalEl, translation, slots) {
+    let innerTag;
+    let copyHeadingStyle = false;
+    if (/^H[1-6]$/.test(originalTag)) {
+      innerTag = 'div';
+      copyHeadingStyle = true;
+    } else if (originalTag === 'LI' || originalTag === 'TD' || originalTag === 'TH') {
+      innerTag = 'div';
+    } else if (SK.BLOCK_TAGS_SET.has(originalTag) || originalTag === 'DIV' || originalTag === 'SECTION' || originalTag === 'ARTICLE' || originalTag === 'MAIN' || originalTag === 'ASIDE') {
+      // 一般 block：保留原 tag（P, BLOCKQUOTE, DD, DT, FIGCAPTION, CAPTION, SUMMARY, PRE, FOOTER, DIV 等）
+      innerTag = originalTag.toLowerCase();
+    } else {
+      // Inline 段落（SPAN/A/EM 等被偵測為段落時）
+      innerTag = 'div';
+    }
+    const inner = document.createElement(innerTag);
+    if (copyHeadingStyle) {
+      const win = originalEl.ownerDocument?.defaultView;
+      const cs = win?.getComputedStyle?.(originalEl);
+      if (cs) {
+        if (cs.fontSize)   inner.style.fontSize   = cs.fontSize;
+        if (cs.fontWeight) inner.style.fontWeight = cs.fontWeight;
+        if (cs.lineHeight) inner.style.lineHeight = cs.lineHeight;
+      }
+    }
+
+    // 譯文內容：有 slots 走 deserializer 重建 inline 結構，否則純文字 / br fragment
+    if (slots && slots.length > 0) {
+      const result = SK.deserializeWithPlaceholders(translation, slots);
+      if (result.ok) {
+        inner.appendChild(result.frag);
+      } else {
+        // ok=false fallback：類似 single 路徑——盡力把連結 slot 還原回去
+        const cleaned = SK.stripStrayPlaceholderMarkers(translation);
+        const recovered = tryRecoverLinkSlots(originalEl, cleaned, slots);
+        if (recovered) {
+          inner.appendChild(recovered);
+        } else {
+          inner.appendChild(document.createTextNode(cleaned));
+        }
+      }
+    } else if (translation.includes('\n')) {
+      inner.appendChild(buildFragmentFromTextWithBr(translation));
+    } else {
+      inner.appendChild(document.createTextNode(translation));
+    }
+    return inner;
+  }
+
+  /** 主入口：把譯文以雙語 wrapper 形式注入 DOM */
+  SK.injectDual = function injectDual(unit, translation, slots) {
+    if (!translation) return;
+    // Fragment unit 結構特殊（虛擬段落 = 父容器內的「直接文字節點區段」），
+    // 在 dual 模式下沒有清楚的「插在哪裡」答案——fallback 走 single 路徑。
+    if (unit.kind === 'fragment') {
+      return injectFragmentTranslation(unit, translation, slots);
+    }
+    const original = unit.el;
+    if (!original || !original.parentNode) return;
+    // 同一段已注入過就不要重複（SPA rescan 雙重觸發、Content Guard 觸發都會重打）
+    if (original.hasAttribute('data-shinkansen-dual-source')) return;
+
+    const tag = original.tagName;
+    const inner = buildDualInner(tag, original, translation, slots);
+    const wrapper = original.ownerDocument.createElement(SK.TRANSLATION_WRAPPER_TAG);
+    const mark = SK.currentMarkStyle && SK.VALID_MARK_STYLES.has(SK.currentMarkStyle)
+      ? SK.currentMarkStyle
+      : SK.DEFAULT_MARK_STYLE;
+    wrapper.setAttribute('data-sk-mark', mark);
+    wrapper.appendChild(inner);
+
+    let insertMode;
+    if (tag === 'LI' || tag === 'TD' || tag === 'TH') {
+      original.appendChild(wrapper);
+      insertMode = 'append';
+    } else if (
+      SK.BLOCK_TAGS_SET.has(tag) ||
+      tag === 'DIV' || tag === 'SECTION' || tag === 'ARTICLE' || tag === 'MAIN' || tag === 'ASIDE'
+    ) {
+      original.insertAdjacentElement('afterend', wrapper);
+      insertMode = 'afterend';
+    } else {
+      // Inline 段落：往上找最近 block 祖先
+      const blockAncestor = findBlockAncestor(original);
+      if (blockAncestor && blockAncestor !== original.ownerDocument.body) {
+        blockAncestor.insertAdjacentElement('afterend', wrapper);
+        insertMode = 'afterend-block-ancestor';
+      } else {
+        // 找不到合理祖先，掛在 inline 自身後（次佳）
+        original.insertAdjacentElement('afterend', wrapper);
+        insertMode = 'afterend';
+      }
+    }
+
+    original.setAttribute('data-shinkansen-dual-source', '1');
+    STATE.translationCache.set(original, { wrapper, insertMode });
+  };
+
+  /** 還原 dual 模式：移除所有 wrapper、清乾淨 attribute（restorePage 雙語分支用） */
+  SK.removeDualWrappers = function removeDualWrappers() {
+    const tag = SK.TRANSLATION_WRAPPER_TAG;
+    document.querySelectorAll(tag).forEach(n => n.remove());
+    document.querySelectorAll('[data-shinkansen-dual-source]').forEach(el => {
+      el.removeAttribute('data-shinkansen-dual-source');
+    });
+  };
+
+  /** 全域 wrapper 樣式注入（content.css 跨 host 行為不可靠，inline style 才能保證生效） */
+  SK.ensureDualWrapperStyle = function ensureDualWrapperStyle() {
+    if (document.getElementById('shinkansen-dual-style')) return;
+    const tag = SK.TRANSLATION_WRAPPER_TAG;
+    const style = document.createElement('style');
+    style.id = 'shinkansen-dual-style';
+    // 樣式設計原則：display:block 確保 wrapper 自成一行；mark 用 attribute selector 區分
+    style.textContent =
+      `${tag} { display: block; margin-top: 0.25em; }\n` +
+      `${tag}[data-sk-mark="tint"]   { background-color: #FFF8E1; padding: 2px 4px; }\n` +
+      `${tag}[data-sk-mark="bar"]    { border-left: 2px solid #9CA3AF; padding-left: 8px; }\n` +
+      `${tag}[data-sk-mark="dashed"] { border-bottom: 1px dashed #9CA3AF; }\n` +
+      `${tag}[data-sk-mark="none"]   {}\n`;
+    (document.head || document.documentElement).appendChild(style);
+  };
 
 })(window.__SK);

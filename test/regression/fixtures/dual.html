@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>fixture: v1.5.0 dual-mode injection</title>
+</head>
+<body>
+  <!--
+    對應 v1.5.0 雙語對照模式（dual mode）。本 fixture 集中所有 dual injection
+    需要的 DOM 結構，由 inject-dual-*.spec.js 系列共用：
+      #basic            — 一般 <p>，wrapper afterend
+      #heading          — <h1>，wrapper inner = <div> + 字級繼承
+      #list / #li1..3   — <ol> + 三個 <li>，wrapper appendChild 進每個 li
+      #th1 / #td1       — <th> / <td>，wrapper appendChild 進 cell
+      #inline-target    — span 段落，wrapper afterend 於 block 祖先（#inline-parent）
+      #link-source      — <p> 含 <a>，驗證連結結構保留
+      #restore-source   — restore 路徑專用
+      #mark-{tint,bar,dashed,none} — 4 種 mark style 各一個 target
+  -->
+
+  <p id="basic">Hello world.</p>
+
+  <h1 id="heading" style="font-size: 28px; font-weight: 700; line-height: 1.2;">Title text</h1>
+
+  <ol id="list">
+    <li id="li1">First item</li>
+    <li id="li2">Second item</li>
+    <li id="li3">Third item</li>
+  </ol>
+
+  <table>
+    <tr>
+      <th id="th1">Header A</th>
+      <td id="td1">Data A</td>
+    </tr>
+  </table>
+
+  <div id="inline-container">
+    <p id="inline-parent">Some text <span id="inline-target">important phrase</span> more text.</p>
+  </div>
+
+  <p id="link-source">Visit <a id="anchor" href="https://example.com">our site</a> today.</p>
+
+  <p id="restore-source">Restore me.</p>
+
+  <p id="mark-tint">Tint test</p>
+  <p id="mark-bar">Bar test</p>
+  <p id="mark-dashed">Dashed test</p>
+  <p id="mark-none">None test</p>
+</body>
+</html>
