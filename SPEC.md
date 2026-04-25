@@ -1,6 +1,6 @@
 # Shinkansen — 規格文件（SPEC）
 
-> 一款專注於網頁翻譯的 Chrome Extension，作為 Immersive Translation 的輕量相容品。
+> 一款專注於隱私的網頁翻譯 Chrome Extension。
 
 - 文件版本：v1.0
 - 建立日期：2026-04-08
