@@ -18,6 +18,7 @@
       <button class="tab-btn active" data-tab="settings">一般設定</button>
       <button class="tab-btn" data-tab="gemini">Gemini</button>
       <button class="tab-btn" data-tab="glossary">術語表</button>
+      <button class="tab-btn" data-tab="forbidden">禁用詞清單</button>
       <button class="tab-btn" data-tab="youtube">YouTube 字幕</button>
       <button class="tab-btn" data-tab="usage">用量紀錄</button>
       <button class="tab-btn" data-tab="log">Debug</button>
@@ -443,6 +444,42 @@
     </div>
 
     </div><!-- /tab-glossary -->
+
+    <!-- ═══ 禁用詞清單分頁（v1.5.6 新增） ═══ -->
+    <div id="tab-forbidden" class="tab-panel">
+
+    <section>
+      <h2>禁用詞清單</h2>
+      <p class="muted">
+        針對 LLM 容易漏網的中國大陸用語自訂禁用對照表。內容會以高顯著性區塊
+        注入 Gemini 的 system prompt 末端，明確要求譯文不可使用左欄詞彙、
+        必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文。
+      </p>
+      <div class="glossary-table-wrapper">
+        <table class="glossary-edit-table" id="forbidden-terms-table">
+          <thead>
+            <tr>
+              <th class="forbidden-col-word">禁用詞</th>
+              <th class="forbidden-col-word">替換詞</th>
+              <th>備註</th>
+              <th class="glossary-col-action"></th>
+            </tr>
+          </thead>
+          <tbody id="forbidden-terms-tbody"></tbody>
+        </table>
+      </div>
+      <div class="btn-row" style="margin-top: 8px;">
+        <button id="forbidden-terms-add" class="secondary glossary-add-btn">＋ 新增一條</button>
+        <button id="forbidden-terms-reset" class="secondary glossary-add-btn">還原預設清單</button>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="save-forbidden" class="primary">儲存設定</button>
+      <span id="save-forbidden-status"></span>
+    </div>
+
+    </div><!-- /tab-forbidden -->
 
     <!-- ═══ 用量紀錄分頁 ═══ -->
     <div id="tab-usage" class="tab-panel">

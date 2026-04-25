@@ -327,7 +327,7 @@ export async function extractGlossary(compressedText, settings) {
  * @param {Array<{source:string, target:string}>} [fixedGlossary] 可選的使用者固定術語表（優先級高於 glossary）
  * @returns {string} 完整的 effectiveSystem
  */
-function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary) {
+function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary, forbiddenTerms) {
   const parts = [baseSystem];
 
   // 多段翻譯分隔符與序號規則
@@ -367,6 +367,16 @@ function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fi
     );
   }
 
+  // v1.5.6: 中國用語黑名單。放在所有規則最末端（高於 fixedGlossary）讓 LLM 給予最高權重。
+  // 用 <forbidden_terms_blacklist> XML tag 包起來，跟 DEFAULT_SYSTEM_PROMPT 第 2 條
+  // 的「依本 prompt 末端 <forbidden_terms_blacklist> 區塊」reference 對應。
+  if (forbiddenTerms && forbiddenTerms.length > 0) {
+    const tableLines = forbiddenTerms.map(t => `${t.forbidden} → ${t.replacement}`).join('\n');
+    parts.push(
+      '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國大陸用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
+    );
+  }
+
   return parts.join('\n\n');
 }
 
@@ -386,7 +396,7 @@ function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fi
  * 本地快取命中的段落根本不會送 API，而 implicit cache 命中的段落有送 API
  * 但前綴（system prompt 那一大段）被 Gemini 內部 cache 省下。
  */
-export async function translateBatch(texts, settings, glossary, fixedGlossary) {
+export async function translateBatch(texts, settings, glossary, fixedGlossary, forbiddenTerms) {
   if (!texts?.length) return { translations: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, hadMismatch: false };
   const out = new Array(texts.length);
   const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
@@ -394,7 +404,7 @@ export async function translateBatch(texts, settings, glossary, fixedGlossary) {
   const chunks = packChunks(texts);
   for (const { start, end } of chunks) {
     const slice = texts.slice(start, end);
-    const result = await translateChunk(slice, settings, glossary, fixedGlossary);
+    const result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
     for (let j = 0; j < result.parts.length; j++) out[start + j] = result.parts[j];
     usage.inputTokens += result.usage.inputTokens;
     usage.outputTokens += result.usage.outputTokens;
@@ -404,7 +414,7 @@ export async function translateBatch(texts, settings, glossary, fixedGlossary) {
   return { translations: out, usage, hadMismatch };
 }
 
-async function translateChunk(texts, settings, glossary, fixedGlossary) {
+async function translateChunk(texts, settings, glossary, fixedGlossary, forbiddenTerms) {
   if (!texts?.length) return [];
   const { apiKey, geminiConfig } = settings;
   const {
@@ -433,7 +443,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary) {
   // v0.71: 建構順序很重要——行為規則（換行、佔位符）必須緊跟在基礎翻譯指令後面，
   // 術語表是「參考資料」放最後。若術語表夾在中間會稀釋 LLM 對佔位符規則的注意力，
   // 導致 ⟦*N⟧ 標記洩漏到譯文裡（v0.70 的 bug）。
-  const effectiveSystem = buildEffectiveSystemInstruction(systemInstruction, texts, joined, glossary, fixedGlossary);
+  const effectiveSystem = buildEffectiveSystemInstruction(systemInstruction, texts, joined, glossary, fixedGlossary, forbiddenTerms);
 
   const body = {
     contents: [{ role: 'user', parts: [{ text: joined }] }],
@@ -567,7 +577,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary) {
     const tFallback0 = Date.now();
     for (let fi = 0; fi < texts.length; fi++) {
       const tSeg0 = Date.now();
-      const r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary);
+      const r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary, forbiddenTerms);
       await debugLog('info', 'api', `fallback segment ${fi + 1}/${texts.length}`, { elapsed: Date.now() - tSeg0 });
       aligned.push(r.parts[0] || '');
       aggUsage.inputTokens += r.usage.inputTokens;

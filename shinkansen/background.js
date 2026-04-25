@@ -11,6 +11,7 @@ import { RateLimiter } from './lib/rate-limiter.js';
 import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
+import { detectForbiddenTermLeaks } from './lib/forbidden-terms.js'; // v1.5.6
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
 
@@ -535,6 +536,11 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     }
   }
 
+  // v1.5.6: 中國用語黑名單。從 settings 讀清單後一路傳到 translateBatch（注入到 systemInstruction），
+  // 同時計算 hash 加進 cache key 後綴，讓使用者修改清單後既有快取自動失效。
+  // 空清單時 hash 為空字串，不附加後綴，向下相容既有 v1.5.5 之前的快取 key。
+  const forbiddenTermsList = Array.isArray(settings.forbiddenTerms) ? settings.forbiddenTerms : [];
+
   // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
   // 確保「有術語表」與「無術語表」的翻譯分開快取。
   // v1.4.12: cacheTag 由呼叫端明確指定（'_yt' = 字幕模式 / '' = 網頁翻譯含 preset）。
@@ -548,6 +554,11 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   if (allGlossaryForHash.length > 0) {
     const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
     glossaryKeySuffix = '_g' + fullHash.slice(0, 12);
+  }
+  // v1.5.6: 黑名單 hash。空清單時回傳 ''，不附加後綴。
+  const forbiddenHash = await cache.hashForbiddenTerms(forbiddenTermsList);
+  if (forbiddenHash) {
+    glossaryKeySuffix += '_b' + forbiddenHash;
   }
   // v1.4.12: 把 model 字串納入 cache key，避免同段文字在不同 preset 之間共用快取
   // （例如先按 Alt+A 走 Flash Lite 翻過，再按 Alt+S 走 Flash 應該重新打 API，不該命中 Flash Lite 的舊譯文）。
@@ -596,10 +607,17 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     const t0 = Date.now();
     const totalChars = missingTexts.reduce((s, t) => s + (t?.length || 0), 0);
     debugLog('info', 'api', 'translateBatch start', { texts: missingTexts.length, chars: totalChars });
-    const res = await translateBatch(missingTexts, effectiveSettings, glossary, fixedGlossaryEntries);
+    const res = await translateBatch(missingTexts, effectiveSettings, glossary, fixedGlossaryEntries, forbiddenTermsList);
     fresh = res.translations;
     batchUsage = res.usage;
     batchHadMismatch = res.hadMismatch || false; // v0.94: mismatch 旗標
+
+    // v1.5.6: 翻譯成功後掃描黑名單詞，命中時用 debugLog 寫一條 forbidden-term-leak warn。
+    // 純記錄、不修改譯文（修改交給 prompt，硬規則 §7）。adapter 把 detect 函式的
+    // logger.warn(category, message, data) 介面轉成 debugLog('warn', category, message, data)。
+    detectForbiddenTermLeaks(fresh, missingTexts, forbiddenTermsList, {
+      warn: (category, message, data) => debugLog('warn', category, message, data),
+    });
     batchCostUSD = computeCostUSD(batchUsage.inputTokens, batchUsage.outputTokens, effectivePricing);
     const batchMs = Date.now() - t0;
     debugLog('info', 'api', 'translateBatch done', {

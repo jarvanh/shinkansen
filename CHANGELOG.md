@@ -7,6 +7,16 @@
 
 ## v1.5.x
 
+**v1.5.6** — 新增中國用語黑名單功能 + 修正 v0.83 起 prompt 內錯誤的「進程→線程」對映。
+
+  - **新功能：中國用語黑名單**：可由使用者編輯的禁用詞對照表（預設 25 條：視頻 / 軟件 / 數據 / 網絡 / 質量 / 用戶 / 默認 / 創建 / 實現 / 運行 / 發布 / 屏幕 / 界面 / 文檔 / 操作系統 / 進程 / 線程 / 程序 等）。內容會以 `<forbidden_terms_blacklist>` XML 區塊注入到 systemInstruction 末端（高於 fixedGlossary 的最高顯著性位置），明確要求譯文不可使用左欄詞彙、必須改用右欄。設定頁新增獨立的「禁用詞清單」分頁可編輯。
+  - **修正 prompt 錯字**：v0.83 起 `DEFAULT_SYSTEM_PROMPT` 的 `<linguistic_guidelines>` 第 2 條對映清單中誤寫「進程→線程」——兩者都是中國大陸用語（process 在台灣應為「行程」、thread 應為「執行緒」），原本等於要求 LLM 把 process 翻成另一個簡中詞 thread。新版分開列出兩條正確對映進黑名單，並把 `<linguistic_guidelines>` 第 2 條改寫為指向末端黑名單區塊（避免兩處規則打架）。
+  - **Debug 偵測層**：`lib/forbidden-terms.js` 的 `detectForbiddenTermLeaks()` 在每次翻譯回應後掃描譯文，命中黑名單詞時用 `debugLog('warn', 'forbidden-term-leak', ...)` 寫一筆診斷訊息（含原文與譯文 snippet），方便從 Debug 分頁追查 LLM 漏網案例。**純記錄、不修改譯文**（遵守 CLAUDE.md 硬規則 §7）。
+  - **快取分區**：`lib/cache.js` 新增 `hashForbiddenTerms()` 對清單做穩定 hash（依 `forbidden` 欄位排序後 JSON.stringify 取前 12 字元 SHA-1），加進 cache key 後綴 `_b<hash>`。修改清單後既有快取自動失效；空清單時不附加後綴，向下相容 v1.5.5 之前的快取。`getBatch` / `setBatch` 同步擴充支援結構化 `{ glossaryHash, forbiddenHash, baseSuffix }` 物件 API（向下相容字串 API）。
+  - **3 條新 unit spec + SANITY 全綠**：`forbidden-terms-injection`（4 條）/ `forbidden-terms-leak-detect`（5 條）/ `forbidden-terms-cache-key`（8 條），總 17 條。每條都驗過「破壞 fix → spec fail / 還原 → pass」。
+  - **UI**：「禁用詞清單」拆成獨立分頁（位於「術語表」與「YouTube 字幕」之間），三欄表格（禁用詞 / 替換詞 / 備註）+ 新增 / 還原預設 / 刪除按鈕。tab-bar CSS 加 `white-space: nowrap` + `flex-shrink: 0` 防止 7 個 tab 後文字折行。
+  - Full `npm test` 166 條（Playwright）+ 26 條（Jest）全綠。
+
 **v1.5.5** — 修「編輯譯文」功能與 Content Guard 衝突。
 
   - **Bug**：popup 按「編輯譯文」進入編輯模式後，刪除 + 輸入單字會在 1 秒內被自動還原回原譯文；按「結束編輯」按鈕後，使用者編輯也會被蓋回原譯文。

@@ -175,7 +175,7 @@ a:hover { text-decoration: underline; }
   border-bottom: 2px solid #eee;
 }
 .tab-btn {
-  padding: 10px 24px;
+  padding: 10px 18px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -184,6 +184,10 @@ a:hover { text-decoration: underline; }
   color: #86868b;
   cursor: pointer;
   transition: color .15s, border-color .15s;
+  /* v1.5.6: 7 個 tab 後 flex 分配寬度被壓縮，禁止文字折行——
+     padding 從 24px 降到 18px 留更多橫向空間給文字本體。 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .tab-btn:hover { color: #1d1d1f; }
 .tab-btn.active {
@@ -605,6 +609,10 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em;
 }
 .glossary-delete-domain-btn:hover { background: #fff5f5; }
+
+/* v1.5.6: 中國用語黑名單表格——禁用詞 / 替換詞欄位寬度收窄，
+   讓備註欄能拿到剩餘空間（中英文混雜的說明往往較長）。 */
+.forbidden-col-word { width: 22%; }
 
 /* v1.4.13: 翻譯快捷鍵三張 preset card */
 .preset-cards {

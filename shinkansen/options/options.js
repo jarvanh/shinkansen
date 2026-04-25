@@ -2,7 +2,7 @@
 // v1.0.4: 改為 ES module，從 lib/ 匯入共用常數與工具函式，消除重複程式碼。
 
 import { browser } from '../lib/compat.js';
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from '../lib/storage.js';
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD } from '../lib/format.js';
 
@@ -160,6 +160,10 @@ async function load() {
   renderGlobalTable();
   updateDomainSelect();
   showDomainPanel('');
+
+  // v1.5.6: 中國用語黑名單
+  forbiddenTerms = Array.isArray(s.forbiddenTerms) ? s.forbiddenTerms : DEFAULT_FORBIDDEN_TERMS;
+  renderForbiddenTermsTable();
 
   // v1.2.11: YouTube 字幕設定
   const yt = { ...DEFAULTS.ytSubtitle, ...(s.ytSubtitle || {}) };
@@ -342,6 +346,11 @@ async function save() {
       }
       return { global: cleanGlobal, byDomain: cleanByDomain };
     })(),
+    // v1.5.6: 中國用語黑名單（save 前先同步 UI → 記憶體；過濾兩欄都空的列）
+    forbiddenTerms: (() => {
+      forbiddenTerms = readForbiddenTableEntries();
+      return forbiddenTerms.filter(t => t.forbidden || t.replacement);
+    })(),
   };
   await browser.storage.sync.set(settings);
   $('save-status').textContent = '✓ 已儲存';
@@ -355,6 +364,8 @@ $('save').addEventListener('click', save);
 $('save-gemini').addEventListener('click', save);
 // v1.0.29: 術語表分頁也共用同一個 save()
 $('save-glossary').addEventListener('click', save);
+// v1.5.6: 禁用詞清單分頁
+$('save-forbidden').addEventListener('click', save);
 // v1.2.11: YouTube 字幕分頁
 $('save-youtube').addEventListener('click', save);
 // Debug 分頁
@@ -410,6 +421,9 @@ document.getElementById('tab-gemini').addEventListener('input', markDirty);
 document.getElementById('tab-gemini').addEventListener('change', markDirty);
 document.getElementById('tab-glossary').addEventListener('input', markDirty);
 document.getElementById('tab-glossary').addEventListener('change', markDirty);
+// v1.5.6: 禁用詞清單分頁
+document.getElementById('tab-forbidden').addEventListener('input', markDirty);
+document.getElementById('tab-forbidden').addEventListener('change', markDirty);
 // v1.2.13: YouTube 字幕分頁也需要 dirty 偵測
 document.getElementById('tab-youtube').addEventListener('input', markDirty);
 document.getElementById('tab-youtube').addEventListener('change', markDirty);
@@ -589,6 +603,24 @@ function sanitizeImport(raw) {
     if (typeof gl.blockingThreshold === 'number' && Number.isInteger(gl.blockingThreshold) && gl.blockingThreshold >= 1) glClean.blockingThreshold = gl.blockingThreshold;
     if (typeof gl.maxTerms === 'number' && Number.isInteger(gl.maxTerms) && gl.maxTerms >= 1 && gl.maxTerms <= 500) glClean.maxTerms = gl.maxTerms;
     if (Object.keys(glClean).length > 0) clean.glossary = glClean;
+  }
+
+  // v1.5.6: 中國用語黑名單。整個 array 替換（不做 per-entry merge），
+  // 但會逐筆過濾掉 forbidden 欄位非字串的髒資料。
+  if (Array.isArray(raw.forbiddenTerms)) {
+    const cleanTerms = [];
+    for (const t of raw.forbiddenTerms) {
+      if (!t || typeof t !== 'object') continue;
+      const forbidden = typeof t.forbidden === 'string' ? t.forbidden.trim() : '';
+      const replacement = typeof t.replacement === 'string' ? t.replacement.trim() : '';
+      const note = typeof t.note === 'string' ? t.note : '';
+      if (!forbidden) continue; // 沒有禁用詞欄位的不收
+      cleanTerms.push({ forbidden, replacement, note });
+    }
+    clean.forbiddenTerms = cleanTerms;
+    if (cleanTerms.length !== raw.forbiddenTerms.length) {
+      warnings.push(`forbiddenTerms：${raw.forbiddenTerms.length - cleanTerms.length} 筆格式錯誤，已略過`);
+    }
   }
 
   // domainRules 子物件
@@ -801,6 +833,68 @@ $('fixed-domain-tbody').addEventListener('focusout', () => {
   if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
     fixedGlossary.byDomain[currentDomain] = readGlossaryTableEntries($('fixed-domain-tbody'));
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+// v1.5.6: 中國用語黑名單 CRUD
+// ═══════════════════════════════════════════════════════════
+
+let forbiddenTerms = []; // 記憶體中的清單；load 時從 storage 讀入，save 時寫回
+
+function renderForbiddenTermsTable() {
+  const tbody = $('forbidden-terms-tbody');
+  tbody.innerHTML = forbiddenTerms.map((t, i) =>
+    `<tr data-idx="${i}">` +
+    `<td><input type="text" class="ft-forbidden" value="${escapeAttr(t.forbidden)}" placeholder="禁用詞（簡中）"></td>` +
+    `<td><input type="text" class="ft-replacement" value="${escapeAttr(t.replacement)}" placeholder="替換詞（台灣）"></td>` +
+    `<td><input type="text" class="ft-note" value="${escapeAttr(t.note || '')}" placeholder="（可選）"></td>` +
+    `<td class="glossary-col-action"><button class="glossary-delete-row" data-idx="${i}" title="刪除">×</button></td>` +
+    `</tr>`
+  ).join('');
+}
+
+function readForbiddenTableEntries() {
+  const rows = $('forbidden-terms-tbody').querySelectorAll('tr');
+  const entries = [];
+  for (const row of rows) {
+    const forbidden = (row.querySelector('.ft-forbidden')?.value || '').trim();
+    const replacement = (row.querySelector('.ft-replacement')?.value || '').trim();
+    const note = (row.querySelector('.ft-note')?.value || '').trim();
+    entries.push({ forbidden, replacement, note });
+  }
+  return entries;
+}
+
+$('forbidden-terms-add').addEventListener('click', () => {
+  forbiddenTerms = readForbiddenTableEntries();
+  forbiddenTerms.push({ forbidden: '', replacement: '', note: '' });
+  renderForbiddenTermsTable();
+  // focus 新增列的禁用詞欄
+  const rows = $('forbidden-terms-tbody').querySelectorAll('tr');
+  if (rows.length) rows[rows.length - 1].querySelector('.ft-forbidden')?.focus();
+  markDirty();
+});
+
+$('forbidden-terms-reset').addEventListener('click', () => {
+  if (!confirm('確定要還原預設禁用詞清單嗎？目前的自訂內容會被覆蓋。')) return;
+  // deep copy 預設清單避免 user 編輯後改到 module-level 常數
+  forbiddenTerms = DEFAULT_FORBIDDEN_TERMS.map(t => ({ ...t }));
+  renderForbiddenTermsTable();
+  markDirty();
+});
+
+$('forbidden-terms-tbody').addEventListener('click', (e) => {
+  const btn = e.target.closest('.glossary-delete-row');
+  if (!btn) return;
+  const idx = Number(btn.dataset.idx);
+  forbiddenTerms = readForbiddenTableEntries();
+  forbiddenTerms.splice(idx, 1);
+  renderForbiddenTermsTable();
+  markDirty();
+});
+
+$('forbidden-terms-tbody').addEventListener('focusout', () => {
+  forbiddenTerms = readForbiddenTableEntries();
 });
 
 // ═══════════════════════════════════════════════════════════
