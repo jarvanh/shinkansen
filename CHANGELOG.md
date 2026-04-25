@@ -7,6 +7,22 @@
 
 ## v1.5.x
 
+**v1.5.2** — 修正 v1.5.0 雙語對照模式四個獨立問題（全部由 Jimmy 在 https://www.bbc.com/news/articles/clyepyy82kxo 觀察到），並改善測試環境效能。
+
+  1. **譯文 typography 不繼承**：`<shinkansen-translation>` wrapper 在 block 段落情況走 `insertAdjacentElement('afterend')` 插在原段落「後面」當 sibling，wrapper 內的 inner 不在原 `<p>` 裡——無法繼承 BBC 等網站設在 `p` selector 上的 `font-family / font-size / font-weight / line-height / letter-spacing / color`，視覺上譯文字距 / 行距比原段落緊。修法（`content-inject.js` `buildDualInner`）：所有 dual 注入路徑的 inner 在 build 時用 `getComputedStyle(originalEl)` 抓 6 個 typography 屬性，inline 寫到 inner 上。新增 `inject-dual-typography.spec.js`。
+
+  2. **SPA 替換 inline 段落造成重複注入**：BBC News 等 React 站點初次注入後可能把 inline 段落（如 byline `<span>`）整顆 cloneNode 替換掉，新 element 沒繼承 `data-shinkansen-dual-source` attribute（attribute 在「舊 element」上、舊 element 已不在 DOM），但「舊 wrapper」仍在 DOM（wrapper 是上層 block-ancestor 的 sibling，不會被 inline element 替換連帶刪除）。第二次 `injectDual` 對「新 element」沒有去重保護，又注入第二個 wrapper。修法（`content-inject.js` 加 `findExistingWrapperAtInsertionPoint`）：注入前檢查「預期插入位置」是否已有譯文相符的 wrapper——有則 skip 並把 cache key 從舊 element 換到新 element，讓 Content Guard 後續用新 element 追蹤。新增 `inject-dual-spa-rebuild.spec.js`。
+
+  3. **detector 把譯文回頭當英文段落抓（真正根因）**：BBC byline 譯文「《Inside Health》主持人，BBC Radio 4」CJK 字元佔比 < 50%（人名 / 節目名保留英文），`SK.isTraditionalChinese` 回 false → `isCandidateText` 把譯文當「新英文段落」回傳。SPA observer 觸發 `translateUnits + injectDual` 又疊一個 wrapper；每次 BBC 頁面自然 mutation 觸發 observer，wrapper 再疊一層，視覺呈現「慢慢長出第二、第三個」相同譯文。修法兩條防線：(a) `SHINKANSEN-TRANSLATION` 加進 `SK.HARD_EXCLUDE_TAGS`（content-ns.js），TreeWalker `acceptNode` 整段 reject；(b) `isInsideExcludedContainer`（content-detect.js）祖先檢查也包含 `SHINKANSEN-TRANSLATION`，攔住三條 querySelectorAll 補抓路徑（leaf content div/span、anchor、grid td）繞過 TreeWalker 的 case。新增 `detect-skip-translation-wrapper.spec.js`（fixture 用真實 BBC 中英混排譯文）。
+
+  4. **第三方 iframe 內的圖表不被翻**：Jimmy 觀察 BBC 文章內嵌的 Flourish 資料視覺化（`https://flo.uri.sh/visualisation/...`）整段英文沒被翻。根因：`manifest.json` `content_scripts` 沒設 `all_frames: true`，content script 只在主 frame 載入。修法：(a) manifest 開 `all_frames: true`；(b) content-ns.js 加 pure function `_sk_shouldDisableInFrame(isFrame, width, height, visible)`——iframe 內尺寸 < 200×100 或不可見就設 `SK.disabled = true`，過濾 0×0 廣告 / reCAPTCHA / cookie consent / Cxense / DoubleClick 等技術性 iframe；(c) 7 個 IIFE 模組（content-toast/detect/serialize/inject/spa/youtube + content.js）開頭加 `if (!SK || SK.disabled) return;` 防護。新增 `iframe-gate.spec.js`（pure function unit test 風格驗 8 種輸入）。
+
+  **測試環境改善**：`test/fixtures/extension.js` 改用 Chrome 原生 `--headless=new` 模式（v113+ 支援 MV3 service worker），不再彈視窗搶 focus。full `npm test` 從 ~20 分鐘縮到 ~2 分鐘。可用 `SHINKANSEN_HEADED=1` 環境變數切回 headed 做視覺除錯。
+
+  **CLAUDE.md §9 改寫**：full suite 從「每次修改都跑」降級為「release gate」——日常迭代只跑相關 spec，bump 才走 full suite。
+
+  Full `npm test` 142 → 146 Playwright + 26 Jest 全綠（含 4 條新 spec）。
+
 **v1.5.1** — 修正 v1.5.0 雙語對照模式在 BBC author byline 一類頁面譯文連續疊三個 wrapper 的問題（Jimmy 在 https://www.bbc.com/news/articles/clyepyy82kxo 觀察到「BBC Radio 4 《Inside Health》節目主持人」連續三行譯文疊在淡黃 wrapper 內）。根因：`collectParagraphs` 在這類網站抓到祖先 element + 後代 element 都當成段落單元（祖孫同段重複偵測）。單語模式下後一次 `injectIntoTarget` 會 in-place 覆蓋前一次所以使用者看不到，雙語模式下每次 `SK.injectDual` 都 `insertAdjacentElement('afterend')` 一個 wrapper，所以重複偵測被視覺放大成多重 wrapper。
 
   修法（`content-inject.js` `SK.injectDual` 入口加去重）：注入前檢查祖先鏈與後代是否已有 `data-shinkansen-dual-source` 標記——若祖先已注入過（本元素是後代）或後代已注入過（本元素是祖先），直接 return skip，不重複插 wrapper。`data-shinkansen-dual-source` 既保留了「同 element 不重打」的 v1.5.0 防線，也成為「同段內容（不論祖孫）只插一個」的標記。

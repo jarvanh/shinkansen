@@ -5,6 +5,7 @@
 // v1.1.9: 拆分為 7 個檔案，本檔為主協調層，依賴 content-ns/toast/detect/serialize/inject/spa。
 
 (function(SK) {
+  if (!SK || SK.disabled) return;  // v1.5.2: iframe gate（見 content-ns.js）
 
   const STATE = SK.STATE;
 

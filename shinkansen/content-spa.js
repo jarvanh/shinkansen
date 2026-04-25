@@ -3,6 +3,7 @@
 // MutationObserver 動態段落偵測、Content Guard 週期性修復。
 
 (function(SK) {
+  if (!SK || SK.disabled) return;  // v1.5.2: iframe gate（見 content-ns.js）
 
   const STATE = SK.STATE;
 
