@@ -179,11 +179,17 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 const stickyTabs = new Map(); // tabId → slot (number)
 let _stickyHydrated = false;
 
+// v1.5.4: storage.session 是 Chrome 102+ / Firefox 129+ 才有的 in-memory storage。
+// 舊版 Firefox（< 129）沒有此 API → fallback 到 storage.local（會 disk-persist，
+// 但 onCreated/onRemoved listener 會自動同步，stale 資料風險可接受）。
+// Chrome 端 storage.session 一定存在 → 行為跟修改前完全一致，效能 0 影響。
+const _stickyStorage = (browser.storage && browser.storage.session) ?? browser.storage.local;
+
 async function hydrateStickyTabs() {
   if (_stickyHydrated) return;
   _stickyHydrated = true;
   try {
-    const { stickyTabs: saved } = await browser.storage.session.get('stickyTabs');
+    const { stickyTabs: saved } = await _stickyStorage.get('stickyTabs');
     if (saved && typeof saved === 'object') {
       for (const [tabId, slot] of Object.entries(saved)) {
         // v1.4.12 前的舊值是 'gemini'/'google' 字串，重啟後忽略舊格式避免誤觸發
@@ -199,7 +205,7 @@ async function persistStickyTabs() {
   try {
     const obj = {};
     stickyTabs.forEach((slot, tabId) => { obj[tabId] = slot; });
-    await browser.storage.session.set({ stickyTabs: obj });
+    await _stickyStorage.set({ stickyTabs: obj });
   } catch (err) {
     debugLog('warn', 'system', 'persistStickyTabs failed', { error: err.message });
   }

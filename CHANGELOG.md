@@ -7,6 +7,20 @@
 
 ## v1.5.x
 
+**v1.5.4** — Cross-browser 預備工程 + UI 微調，無新功能、無 bug fix。所有改動對 Chrome 端 0 影響（148 條 spec 全綠）。
+
+  - **Landing Page 功能特色重排**：移除「漸進式翻譯」，加入「雙語對照」並排為第二位（第一位仍為「保留網頁排版」）。
+  - **設定頁底部 footer**：加入彩蛋文字「No coding skills were harmed in the making of this shit.」（11px、淡灰、置中、斜體、上下 24/32px margin）。
+  - **Firefox / Safari prep（為未來移植做最小準備）**：
+    - `manifest.json` 加 `browser_specific_settings.gecko.id`（Chrome 完全忽略未知 manifest 欄位）。
+    - `background.js` `_stickyStorage` helper：`storage.session` 在 Firefox <129 / Safari <16.4 不存在 → 自動 fallback `storage.local`。Chrome 端 storage.session 一直存在，行為跟修改前完全一致。
+    - `content.js` Debug Bridge 從 `callback` 風格統一改為 `Promise` 風格——Firefox / Safari 全版本只認 Promise 而 callback 會壞；Chrome 兩種寫法走同一條 native code path 0 影響。
+    - `options.js` 平台偵測改用 `runtime.getURL('')` prefix（`chrome-extension://` / `moz-extension://` / `safari-web-extension://`）精確區分三平台，比舊版 `globalThis.chrome` 偵測更可靠。Firefox 點「快捷鍵設定」連結會跳 about:addons，Safari 隱藏連結。
+  - **新文件 `FIREFOX_AND_SAFARI_PORT.md`**：記錄已完成 prep + 剩餘 prep checklist + Firefox AMO / Safari Mac App Store 上架步驟。未來真要 port 時當 checklist 直接照做。
+  - **不在本版做的事**：service_worker 改成 scripts（雙 manifest 結構，工程大）、ES module → bundler、AMO 帳號註冊、Apple Developer Program 註冊、改 README / Landing 加 Firefox / Safari 連結（沒目的地不加）。詳見 `FIREFOX_AND_SAFARI_PORT.md`。
+
+  Full `npm test` 148 全綠（無新 spec，靠既有 sticky-cross-tab / preset-hotkey / debug-bridge 系列驗 Chrome 行為等價）。
+
 **v1.5.3** — 雙語對照模式三項小修。
 
   1. **wrapper 未繼承原段落水平 layout**：Jimmy 在 macstories.net Newsletter（https://www.macstories.net/club/macstories-weekly-issue-510/）觀察到原 `<p>` 有 `margin-left` 把段落擠到頁面中段，但譯文 wrapper 從左邊拉滿整行，視覺不對齊。根因：v1.5.2 typography copy 只搬字型相關 6 屬性（font-family/size/weight/line-height/letter-spacing/color），layout 屬性沒搬。修法（`content-inject.js` `injectDual`）：建立 wrapper 後從 originalEl computed style 抓水平 layout 屬性 inline 寫到 wrapper：`marginLeft / marginRight / paddingLeft / paddingRight / maxWidth`。**不**動垂直方向（保留 wrapper 自有的 `margin-top: 0.25em` 段間距與不固定 width）。新增 `inject-dual-horizontal-layout.spec.js`。

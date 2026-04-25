@@ -16,19 +16,22 @@
       window.dispatchEvent(new CustomEvent('shinkansen-debug-response', { detail }));
     };
 
+    // v1.5.4: 全部走 Promise 風格——Chrome 88+ 跟 Firefox 全版本都支援，
+    // 而 callback 風格 Firefox 不認；此前混用會在 Firefox 直接壞。
+    // Chrome 端兩種寫法走同一條 native code path，效能 0 影響。
+    const forwardToBackground = (type, extraPayload) => {
+      const msg = extraPayload === undefined ? { type } : { type, payload: extraPayload };
+      browser.runtime.sendMessage(msg)
+        .then((res) => respond(res || { ok: true }))
+        .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+    };
+
     if (action === 'GET_LOGS') {
-      browser.runtime.sendMessage(
-        { type: 'GET_LOGS', payload: { afterSeq: afterSeq || 0 } },
-        (res) => respond(res || { ok: false, error: 'no response' }),
-      );
+      forwardToBackground('GET_LOGS', { afterSeq: afterSeq || 0 });
     } else if (action === 'CLEAR_LOGS') {
-      browser.runtime.sendMessage({ type: 'CLEAR_LOGS' }, (res) => {
-        respond(res || { ok: true });
-      });
+      forwardToBackground('CLEAR_LOGS');
     } else if (action === 'CLEAR_CACHE') {
-      browser.runtime.sendMessage({ type: 'CLEAR_CACHE' }, (res) => {
-        respond(res || { ok: true });
-      });
+      forwardToBackground('CLEAR_CACHE');
     } else if (action === 'TRANSLATE') {
       respond({ ok: true, triggered: true });
       SK.translatePage();
@@ -40,19 +43,13 @@
         respond({ ok: false, error: 'not translated' });
       }
     } else if (action === 'CLEAR_RPD') {
-      browser.runtime.sendMessage({ type: 'CLEAR_RPD' }, (res) => {
-        respond(res || { ok: true });
-      });
+      forwardToBackground('CLEAR_RPD');
     } else if (action === 'GET_PERSISTED_LOGS') {
       // v1.2.52: 讀取跨 service worker 重啟仍保留的持久化 log
-      browser.runtime.sendMessage({ type: 'GET_PERSISTED_LOGS' }, (res) => {
-        respond(res || { ok: false, error: 'no response' });
-      });
+      forwardToBackground('GET_PERSISTED_LOGS');
     } else if (action === 'CLEAR_PERSISTED_LOGS') {
       // v1.2.52: 清除持久化 log（測試前呼叫，避免舊資料干擾）
-      browser.runtime.sendMessage({ type: 'CLEAR_PERSISTED_LOGS' }, (res) => {
-        respond(res || { ok: true });
-      });
+      forwardToBackground('CLEAR_PERSISTED_LOGS');
     } else if (action === 'GET_STATE') {
       respond({
         ok: true,

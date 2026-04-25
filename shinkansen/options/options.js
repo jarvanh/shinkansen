@@ -636,16 +636,27 @@ $('import-input').addEventListener('change', async (e) => {
   }
 });
 
-// v1.3.16: Safari 沒有 chrome://extensions/shortcuts，偵測平台後隱藏連結
-if (typeof globalThis.chrome !== 'undefined') {
-  $('open-shortcuts').addEventListener('click', (e) => {
+// v1.3.16 / v1.5.4: 平台偵測決定快捷鍵設定連結。
+// 用 runtime.getURL('') 的 prefix 精確區分 Chrome / Firefox / Safari，
+// 比 globalThis.chrome 偵測更可靠（Firefox 全域 chrome 不存在但 browser 在）。
+//   chrome-extension://    → Chrome / Edge → chrome://extensions/shortcuts
+//   moz-extension://       → Firefox       → about:addons（Firefox 沒有深連到 shortcut UI）
+//   safari-web-extension:// → Safari       → 隱藏連結（Safari 不支援 about:* / chrome://*）
+const _extUrl = browser.runtime.getURL('');
+const _shortcutsLink = $('open-shortcuts');
+if (_extUrl.startsWith('moz-extension://')) {
+  _shortcutsLink?.addEventListener('click', (e) => {
+    e.preventDefault();
+    browser.tabs.create({ url: 'about:addons' });
+  });
+} else if (_extUrl.startsWith('chrome-extension://')) {
+  _shortcutsLink?.addEventListener('click', (e) => {
     e.preventDefault();
     browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
   });
 } else {
-  // Safari：隱藏快捷鍵設定連結（Safari 不支援 chrome:// URL）
-  const shortcutsLink = $('open-shortcuts');
-  if (shortcutsLink) shortcutsLink.style.display = 'none';
+  // Safari 或其他：隱藏連結（無法 tabs.create 到內建設定 URL）
+  if (_shortcutsLink) _shortcutsLink.style.display = 'none';
 }
 
 // ═══════════════════════════════════════════════════════════

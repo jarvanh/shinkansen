@@ -709,3 +709,11 @@ shinkansen-translation[data-sk-mark="none"]   {}
 .dual-mark-options input[type="radio"] {
   margin: 0;
 }
+
+.footer-easter-egg {
+  text-align: center;
+  font-size: 11px;
+  color: #9CA3AF;
+  margin: 32px 0 24px;
+  font-style: italic;
+}
