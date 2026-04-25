@@ -7,6 +7,14 @@
 
 ## v1.5.x
 
+**v1.5.1** — 修正 v1.5.0 雙語對照模式在 BBC author byline 一類頁面譯文連續疊三個 wrapper 的問題（Jimmy 在 https://www.bbc.com/news/articles/clyepyy82kxo 觀察到「BBC Radio 4 《Inside Health》節目主持人」連續三行譯文疊在淡黃 wrapper 內）。根因：`collectParagraphs` 在這類網站抓到祖先 element + 後代 element 都當成段落單元（祖孫同段重複偵測）。單語模式下後一次 `injectIntoTarget` 會 in-place 覆蓋前一次所以使用者看不到，雙語模式下每次 `SK.injectDual` 都 `insertAdjacentElement('afterend')` 一個 wrapper，所以重複偵測被視覺放大成多重 wrapper。
+
+  修法（`content-inject.js` `SK.injectDual` 入口加去重）：注入前檢查祖先鏈與後代是否已有 `data-shinkansen-dual-source` 標記——若祖先已注入過（本元素是後代）或後代已注入過（本元素是祖先），直接 return skip，不重複插 wrapper。`data-shinkansen-dual-source` 既保留了「同 element 不重打」的 v1.5.0 防線，也成為「同段內容（不論祖孫）只插一個」的標記。
+
+  根因仍在偵測層的祖孫同段重複（後續視真實樣本決定是否動 `collectParagraphs`），但 dual 路徑必須先有這層防護不要把 detector bug 放大成可見的視覺爆炸——同樣的問題在單語模式下其實一直存在，只是 in-place 覆蓋掩蓋了它。
+
+  新增 regression spec `test/regression/inject-dual-overlap-skip.spec.js`（合成 fixture：外層 div + 內層 p 含同段文字；3 子斷言：(a) 先 inject outer 再 inject inner → wrapper 仍只有 1 個 + inner 不被打 dual-source；(b) 反向順序先 inject inner 再 outer → 同樣 wrapper=1 + outer 不被打 dual-source）。SANITY：把祖先鏈 while 與後代 querySelector 同時 short-circuit 後 wrapperCount 從 1 變 2、spec fail；還原後 pass。Full `npm test` 141 → 142 Playwright + 26 Jest 全綠。
+
 **v1.5.0** — 新增**雙語對照模式**（dual mode）。長期一直只有單語覆蓋（譯文原地取代原文），使用者反映想看英文寫作的同時對照中文，本版正式加入第二種顯示模式：原文保留、譯文以 `<shinkansen-translation>` custom element wrapper 形式 append 在原段落之後/內。Popup 新增「顯示模式」toggle 即時切換 single / dual，設定頁新增「雙語對照視覺標記」section（4 種樣式 + 即時預覽 demo）。實作範圍：
 
   - `shinkansen/content-ns.js`：STATE 加 `displayMode` / `translatedMode` / `translationCache: Map<originalEl, { wrapper, insertMode }>`；常數 `TRANSLATION_WRAPPER_TAG` / `DEFAULT_MARK_STYLE` / `VALID_MARK_STYLES` / `VALID_DISPLAY_MODES` / `BLOCK_DISPLAY_VALUES`。

@@ -47,5 +47,11 @@
   <p id="mark-bar">Bar test</p>
   <p id="mark-dashed">Dashed test</p>
   <p id="mark-none">None test</p>
+
+  <!-- v1.5.1: 祖孫同段重複偵測（BBC author byline 一類）—— -->
+  <!-- 模擬 collectParagraphs 抓到外層 div + 內層 p 都當成段落 unit 的情境 -->
+  <div id="overlap-outer">
+    <p id="overlap-inner">Inside Health presenter, BBC Radio 4</p>
+  </div>
 </body>
 </html>

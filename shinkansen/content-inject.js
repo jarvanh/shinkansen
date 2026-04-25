@@ -407,6 +407,21 @@
     // 同一段已注入過就不要重複（SPA rescan 雙重觸發、Content Guard 觸發都會重打）
     if (original.hasAttribute('data-shinkansen-dual-source')) return;
 
+    // v1.5.1: 祖孫同段去重——若祖先或後代已被 dual-source 標記過，表示「這段內容」
+    // 已經有 wrapper，本元素 skip，避免同一段譯文連續疊多個 wrapper。
+    //
+    // 這是 collectParagraphs 在某些網站（例如 BBC author byline 區塊）抓到祖孫
+    // element 都當成段落單元的問題——單語模式下後一次 in-place 注入會覆蓋前一次
+    // 所以使用者看不到，雙語模式下每次都 append wrapper 所以疊三個被看到。
+    // 真正根因在偵測層的祖孫同段重複（後續視真實樣本決定要不要動 collectParagraphs），
+    // 但 dual 路徑必須先有這層防護不要把 detector bug 放大成可見的視覺爆炸。
+    let anc = original.parentElement;
+    while (anc && anc !== original.ownerDocument.body) {
+      if (anc.hasAttribute && anc.hasAttribute('data-shinkansen-dual-source')) return;
+      anc = anc.parentElement;
+    }
+    if (original.querySelector && original.querySelector('[data-shinkansen-dual-source]')) return;
+
     const tag = original.tagName;
     const inner = buildDualInner(tag, original, translation, slots);
     const wrapper = original.ownerDocument.createElement(SK.TRANSLATION_WRAPPER_TAG);
