@@ -199,12 +199,31 @@ export const DEFAULT_SETTINGS = {
   // 內容會以 <forbidden_terms_blacklist> 區塊注入到 systemInstruction 末端，
   // 且修改清單後快取 key 會帶 _b<hash> 後綴讓既有快取自動失效。
   forbiddenTerms: DEFAULT_FORBIDDEN_TERMS,
+  // v1.5.7: 自訂 OpenAI-compatible Provider。
+  // engine='openai-compat' 的 preset 會走 lib/openai-compat.js 透過 chat.completions
+  // endpoint 翻譯，可接 OpenRouter / Together / DeepSeek / Groq / Ollama 等 provider。
+  // apiKey 不存 sync（getSettings 會從 storage.local 的 customProviderApiKey 注入），
+  // systemPrompt 獨立於 Gemini（黑名單與固定術語表仍共用、由 buildEffectiveSystemInstruction 注入），
+  // 但「預設值」與 Gemini 相同——使用者第一次打開分頁就有完整可用的 prompt，要動再動。
+  // 計價必須使用者自填（OpenRouter 等百種模型不可能內建查表，0 = 不顯示費用）。
+  customProvider: {
+    baseUrl: '',                       // 例如 https://openrouter.ai/api/v1
+    model: '',                         // 例如 anthropic/claude-sonnet-4-5
+    systemPrompt: DEFAULT_SYSTEM_PROMPT, // 預設與 Gemini 相同；空字串時 adapter 套用簡短 fallback
+    temperature: 0.7,
+    inputPerMTok: 0,                   // 自填，0 = 不顯示費用
+    outputPerMTok: 0,
+  },
 };
 
 // v0.62 起：apiKey 改存 browser.storage.local，不走 Google 帳號跨裝置同步。
 // 其餘設定仍存 sync。對下游呼叫端完全透明——getSettings() 回傳的物件
 // 依然有 .apiKey 欄位。
+//
+// v1.5.7 起：自訂 Provider 的 apiKey 也走 storage.local（同樣的設計理由——
+// 避免機密跨裝置同步）。讀取時注入 merged.customProvider.apiKey，存 sync 時要剝掉。
 const API_KEY_STORAGE_KEY = 'apiKey';
+const CUSTOM_PROVIDER_API_KEY = 'customProviderApiKey';
 
 // 一次性遷移：若 sync 裡還殘留 apiKey（舊版 <= v0.61 的使用者）、而 local
 // 還沒有，就把它搬到 local 並從 sync 刪除。呼叫 getSettings() 會自動觸發。
@@ -244,20 +263,37 @@ export async function getSettings() {
     forbiddenTerms: Array.isArray(saved.forbiddenTerms)
       ? saved.forbiddenTerms
       : DEFAULT_SETTINGS.forbiddenTerms,
+    // v1.5.7: customProvider 深層 merge（保留新欄位預設值）
+    customProvider: { ...DEFAULT_SETTINGS.customProvider, ...(saved.customProvider || {}) },
   };
   merged.apiKey = apiKey;
+  // v1.5.7: 從 storage.local 讀 customProvider apiKey 注入
+  const { [CUSTOM_PROVIDER_API_KEY]: cpApiKey = '' } = await browser.storage.local.get(CUSTOM_PROVIDER_API_KEY);
+  merged.customProvider.apiKey = cpApiKey;
   return merged;
 }
 
 export async function setSettings(patch) {
   // 若 patch 含 apiKey，抽出來寫 local；其餘寫 sync
-  if (patch && Object.prototype.hasOwnProperty.call(patch, 'apiKey')) {
-    const { apiKey, ...rest } = patch;
-    await browser.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKey });
-    if (Object.keys(rest).length > 0) {
-      await browser.storage.sync.set(rest);
-    }
-  } else {
-    await browser.storage.sync.set(patch);
+  // v1.5.7: customProvider.apiKey 同樣抽出來寫 local（key: customProviderApiKey）
+  if (!patch) return;
+  const rest = { ...patch };
+
+  // 主 Gemini API Key
+  if (Object.prototype.hasOwnProperty.call(rest, 'apiKey')) {
+    await browser.storage.local.set({ [API_KEY_STORAGE_KEY]: rest.apiKey });
+    delete rest.apiKey;
+  }
+
+  // 自訂 Provider API Key（v1.5.7）
+  if (rest.customProvider && Object.prototype.hasOwnProperty.call(rest.customProvider, 'apiKey')) {
+    const cp = { ...rest.customProvider };
+    await browser.storage.local.set({ [CUSTOM_PROVIDER_API_KEY]: cp.apiKey });
+    delete cp.apiKey;
+    rest.customProvider = cp;
+  }
+
+  if (Object.keys(rest).length > 0) {
+    await browser.storage.sync.set(rest);
   }
 }
