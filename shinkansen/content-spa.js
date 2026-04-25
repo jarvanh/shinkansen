@@ -177,6 +177,9 @@
     for (const [el, savedHTML] of STATE.translatedHTML) {
       if (!el.isConnected) continue;
       if (el.innerHTML === savedHTML) continue;
+      // v1.5.5: 編輯模式下使用者正在改譯文，innerHTML 偏離 savedHTML 是預期的，
+      // guard 不能覆蓋——否則每秒一次 sweep 會把使用者剛打的字蓋回去。
+      if (el.getAttribute('contenteditable') === 'true') continue;
       const rect = el.getBoundingClientRect();
       if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
       el.innerHTML = savedHTML;
@@ -241,6 +244,8 @@
     for (const [el, savedHTML] of STATE.translatedHTML) {
       if (!el.isConnected) continue;
       if (el.innerHTML === savedHTML) continue;
+      // v1.5.5: 與 runContentGuard 對齊——編輯模式 contenteditable 元素不修復
+      if (el.getAttribute('contenteditable') === 'true') continue;
       el.innerHTML = savedHTML;
       restored++;
     }

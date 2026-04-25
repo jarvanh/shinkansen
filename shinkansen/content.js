@@ -931,6 +931,11 @@
       } else {
         el.removeAttribute('contenteditable');
         el.classList.remove('shinkansen-editable');
+        // v1.5.5: 結束編輯時把使用者編輯後的 innerHTML 寫回 guard 快取，
+        // 否則下一次 Content Guard sweep 會把編輯蓋回原譯文。
+        if (STATE.translatedHTML.has(el)) {
+          STATE.translatedHTML.set(el, el.innerHTML);
+        }
       }
     }
     editModeActive = enable;
@@ -1179,6 +1184,10 @@
     },
     testRunContentGuard() {
       return SK.testRunContentGuard();
+    },
+    // v1.5.5: 暴露 toggleEditMode 給 spec 測編輯模式進出對 guard 快取的同步
+    testToggleEditMode(forceState) {
+      return toggleEditMode(forceState);
     },
     testGoogleDocsUrl(urlString) {
       try {

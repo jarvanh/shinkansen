@@ -7,6 +7,17 @@
 
 ## v1.5.x
 
+**v1.5.5** — 修「編輯譯文」功能與 Content Guard 衝突。
+
+  - **Bug**：popup 按「編輯譯文」進入編輯模式後，刪除 + 輸入單字會在 1 秒內被自動還原回原譯文；按「結束編輯」按鈕後，使用者編輯也會被蓋回原譯文。
+  - **根因**：Content Guard 每秒 sweep 比對 `STATE.translatedHTML` 快取與元素 innerHTML，不符就強制覆蓋（用來修 SPA framework 重 render 時把譯文蓋掉）。但這條邏輯沒考慮編輯模式——使用者改 innerHTML 是預期行為，不是框架覆寫。
+  - **修法**（兩處同步）：
+    - `content-spa.js` `runContentGuard` / `SK.testRunContentGuard`：迭代 `STATE.translatedHTML` 時，若 `el.getAttribute('contenteditable') === 'true'` 就 `continue`（編輯中跳過）。
+    - `content.js` `toggleEditMode(false)`：結束編輯時把每個元素當前 `innerHTML` 寫回 `STATE.translatedHTML`，當作新 baseline（contenteditable 已移除，但快取裡是使用者編輯後的版本，guard 比對相符不會修復）。
+  - **新 regression spec** `test/regression/guard-edit-mode-skip.spec.js` 鎖死兩個情境（編輯中 + 結束編輯）。新 fixture `edit-mode-guard-skip.html` + `.response.txt`。
+  - **landing page 下載 URL 改帶版本號**：`releases/latest/download/shinkansen.zip` → `releases/download/v1.5.5/shinkansen-v1.5.5.zip`，使用者下載下來檔名能看出版本。CLAUDE.md §1 版本 bump 同步清單加第 8 條。
+  - Full `npm test` 149 全綠（148 + 新加 guard-edit-mode-skip）。
+
 **v1.5.4** — Cross-browser 預備工程 + UI 微調，無新功能、無 bug fix。所有改動對 Chrome 端 0 影響（148 條 spec 全綠）。
 
   - **Landing Page 功能特色重排**：移除「漸進式翻譯」，加入「雙語對照」並排為第二位（第一位仍為「保留網頁排版」）。
