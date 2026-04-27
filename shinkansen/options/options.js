@@ -1658,6 +1658,14 @@ document.querySelectorAll('.gran-btn').forEach(btn => {
   });
 });
 
+// v1.6.11: 手動重新載入用量紀錄（不需關閉設定頁）
+// 使用者回報：translatePage 寫入新紀錄後,設定頁停留在用量頁也不會自動更新,
+// Cmd+R refresh 也會回到預設分頁。loadUsageData() 已能保留當前的篩選狀態
+// （日期範圍 / 搜尋 / 模型 filter / 粒度）只重抓底層資料,直接呼叫即可。
+$('usage-reload')?.addEventListener('click', () => {
+  loadUsageData();
+});
+
 // 匯出 CSV
 $('usage-export-csv').addEventListener('click', async () => {
   const { from, to } = getUsageDateRange();
