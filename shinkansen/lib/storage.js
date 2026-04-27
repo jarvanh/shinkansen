@@ -181,6 +181,11 @@ export const DEFAULT_SETTINGS = {
   // v1.1.3: Toast 自動關閉——翻譯完成/錯誤等 toast 在數秒後自動消失。
   // 預設開啟。關閉時翻譯完成 toast 需手動點 × 或點擊外部區域才會消失。
   toastAutoHide: true,
+  // v1.6.8: 是否顯示翻譯進度通知（toast 系統 master switch）。
+  // 預設 true 維持現有行為。false 時 SK.showToast() 入口直接 return：
+  // 不建 DOM、不開 Shadow root、不發訊息（與單純調 opacity=0 不同——後者仍會渲染）。
+  // 使用情境：使用者翻譯流量大、不在乎個別頁面進度，希望全靜音。
+  showProgressToast: true,
   // v1.0.21: 頁面層級繁體中文偵測開關。開啟時若整頁文字以繁中為主則跳過不翻譯；
   // 關閉時不做頁面層級檢查（元素層級仍會個別跳過繁中段落）。
   // Gmail 等介面語言為繁中但內容多為英文的網站，可關閉此選項。

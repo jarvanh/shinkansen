@@ -140,6 +140,8 @@ async function load() {
   $('toastPosition').value = s.toastPosition || 'bottom-right';
   // v1.1.3: Toast 自動關閉
   $('toastAutoHide').checked = s.toastAutoHide !== false;
+  // v1.6.8: Toast master switch
+  $('showProgressToast').checked = s.showProgressToast !== false;
 
   // v1.0.21: 頁面層級繁中偵測開關
   $('skipTraditionalChinesePage').checked = s.skipTraditionalChinesePage !== false;
@@ -467,6 +469,8 @@ async function save() {
     toastPosition: $('toastPosition').value,
     // v1.1.3: Toast 自動關閉
     toastAutoHide: $('toastAutoHide').checked,
+    // v1.6.8: Toast master switch（false 完全不顯示，連訊息都不發）
+    showProgressToast: $('showProgressToast').checked,
     // v1.5.0: 雙語對照視覺標記
     translationMarkStyle: getSelectedMarkStyle(),
     // v1.0.21: 頁面層級繁中偵測開關
@@ -860,6 +864,7 @@ function sanitizeImport(raw) {
     rpdOverride:         { type: 'number', min: 1, nullable: true },
     toastAutoHide:       { type: 'boolean' },
     popupButtonSlot:     { type: 'number', min: 1, max: 3, int: true }, // v1.6.6
+    showProgressToast:   { type: 'boolean' }, // v1.6.8
   };
 
   for (const [key, rule] of Object.entries(topRules)) {

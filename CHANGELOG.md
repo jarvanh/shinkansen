@@ -7,6 +7,13 @@
 
 ## v1.6.x
 
+**v1.6.8** — 新增「顯示翻譯進度通知」master switch（一般設定分頁），可完全關閉 toast。
+
+  - **使用者回報**：原本 toast 透明度最低只能設到 10%，沒有「完全關閉」選項；雖然視覺上看不見，但 DOM、Shadow root、訊息與計時器都還在跑。
+  - **新設定**：一般設定 →「翻譯進度通知」section 最上方加 checkbox「顯示翻譯進度通知」（預設 ON 維持現行為），關閉後 `SK.showToast()` 入口直接 return（不渲染 DOM、不發訊息）；切換時即時生效（`onChanged` listener 同步狀態並隱藏目前 toast）。
+  - **新 helper** `SK.shouldShowToast()`（與 `SK.shouldDisableInFrame` 同 pattern）：暴露 master switch 查詢給呼叫端與 regression spec 共用。
+  - **新 regression spec** `test/regression/toast-master-switch.spec.js`：驗證 `SK.shouldShowToast()` 跟著 `storage.showProgressToast` 變化（預設 true / set false 同步 / set true 恢復）。SANITY 已驗（query 函式改成永遠 true → 第 2 步 fail）。
+
 **v1.6.7** — 自訂模型支援本機後端（llama.cpp / Ollama 等）：API Key 允許留空。
 
   - **修使用者回報的 bug**：自訂模型分頁的「測試」按鈕在 API Key 為空時硬擋報錯（`✗ API Key 為空。`），導致 llama.cpp 等不需要 key 的本機後端使用者無法測試也無法翻譯。
