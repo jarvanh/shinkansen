@@ -840,26 +840,19 @@
       </label>
     </section>
 
-    <!-- v1.6.20: 自動產生字幕分句模式三選一，讓使用者比較三條路徑差別 -->
+    <!-- v1.6.23: 簡化為單一 toggle：開啟=混合模式(progressive)、關閉=預設分句(heuristic) -->
     <section>
       <h2>自動產生字幕分句模式</h2>
       <p class="muted">
         僅影響 YouTube <strong>自動產生</strong>的字幕，人工字幕不受此設定影響
       </p>
       <label class="checkbox-label">
-        <input type="radio" name="ytAsrMode" value="heuristic">
-        <strong>預設分句</strong>
-        <small class="muted">與自動產生字幕相同分句方式</small>
-      </label>
-      <label class="checkbox-label">
-        <input type="radio" name="ytAsrMode" value="llm">
-        <strong>AI 分句</strong>
-        <small class="muted">AI 分句 + 翻譯一次完成。分句較自然，token 消耗稍高</small>
-      </label>
-      <label class="checkbox-label">
-        <input type="radio" name="ytAsrMode" value="progressive">
-        <strong>混合模式</strong>
-        <small class="muted">預設分句先顯示（秒出），AI 分句結果回來後替代預設分句版本，兼顧速度與品質</small>
+        <input type="checkbox" id="ytAsrProgressive" checked>
+        <strong>AI 分句模式</strong>
+        <small class="muted">
+          <strong>開啟</strong>：使用 AI 分句，提升字幕品質，些微提升 token 耗費<br>
+          <strong>關閉</strong>：使用 YouTube 自動產生字幕的原始分句邏輯
+        </small>
       </label>
     </section>
 

@@ -34,3 +34,27 @@ export async function maybeWriteWelcomeNotice({ reason, previousVersion, current
   });
   return true;
 }
+
+/**
+ * 判斷 popup 是否該顯示 welcome banner,並標示是否該清除過期殘留。
+ * v1.6.23:加殘留清除邏輯 — 若 welcomeNotice.version 跟當前 manifest 不同 minor 系列,
+ * 代表使用者一直沒按「知道了」拖了多版,該筆已過期,應從 storage 移除避免日後再誤顯示。
+ *
+ * @param {Object|null|undefined} welcomeNotice storage.local.welcomeNotice 內容
+ * @param {string} currentVersion 當前 manifest version
+ * @returns {{ show: boolean, removeStale: boolean }}
+ *   - show: true → popup 該顯示紅點 + welcome banner
+ *   - removeStale: true → 該從 storage 移除 welcomeNotice(過期殘留)
+ */
+export function shouldShowWelcomeNotice(welcomeNotice, currentVersion) {
+  if (!welcomeNotice || !welcomeNotice.version) {
+    return { show: false, removeStale: false };
+  }
+  const noticeParts = String(welcomeNotice.version).split('.').map(Number);
+  const currentParts = String(currentVersion).split('.').map(Number);
+  const sameMinor = noticeParts[0] === currentParts[0] && noticeParts[1] === currentParts[1];
+  if (!sameMinor) {
+    return { show: false, removeStale: true };
+  }
+  return { show: welcomeNotice.dismissed !== true, removeStale: false };
+}

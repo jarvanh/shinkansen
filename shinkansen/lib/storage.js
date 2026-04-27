@@ -191,14 +191,12 @@ export const DEFAULT_SETTINGS = {
     // 而每批 prompt 多 300–500 token 的開銷在高頻字幕場景累積可觀。
     applyFixedGlossary: false,
     applyForbiddenTerms: false,
-    // v1.6.20: ASR(YouTube 自動字幕)分句模式。三選一:
-    //   'heuristic'   = 預設。純 client-side 啟發式分句後送 TRANSLATE_SUBTITLE_BATCH 逐句翻。
-    //                   延遲最低(~1-2s),分句精度中。
-    //   'llm'         = 純 LLM 自由分句(timestamp mode,D' 原版)。
-    //                   分句精度最高(LLM 看上下文)但延遲較高(2-3s)。
-    //   'progressive' = 啟發式先顯示(秒出),同時 fire-and-forget LLM 跑覆蓋。
-    //                   首條中文 1-2s,2-3s 後 LLM 結果覆蓋成更精緻版本。
-    asrMode: 'heuristic',
+    // v1.6.20: ASR(YouTube 自動字幕)分句模式。內部三值,UI 簡化為單一 toggle(v1.6.23):
+    //   'heuristic'   = 預設分句:純 client-side 啟發式,延遲最低(~1-2s)。toggle 關閉時用。
+    //   'progressive' = 混合模式(預設):先 heuristic 顯示(秒出),同時 LLM 跑覆蓋成更精緻版本。
+    //                   兼顧速度與品質。toggle 開啟時用(預設)。
+    //   'llm'         = 純 LLM 自由分句(內部保留,UI 不再可選)。
+    asrMode: 'progressive',
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限

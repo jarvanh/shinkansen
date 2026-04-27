@@ -3,6 +3,7 @@
 import { browser } from '../lib/compat.js';
 import { formatBytes, formatTokens, formatUSD } from '../lib/format.js';
 import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
+import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
 import { isWorthNotifying } from '../lib/update-check.js';
 import { pickPopupSlot } from '../lib/storage.js';
 
@@ -144,7 +145,11 @@ async function init() {
   let welcomeShown = false;
   try {
     const { welcomeNotice } = await browser.storage.local.get('welcomeNotice');
-    if (welcomeNotice && welcomeNotice.version && welcomeNotice.dismissed !== true) {
+    const decision = shouldShowWelcomeNotice(welcomeNotice, manifest.version);
+    if (decision.removeStale) {
+      // 過期殘留(不同 minor 系列)→ 清除避免日後誤顯示
+      await browser.storage.local.remove('welcomeNotice');
+    } else if (decision.show) {
       welcomeShown = true;
       $('update-dot').hidden = false;
       $('welcome-banner').hidden = false;
@@ -274,13 +279,12 @@ $('glossary-toggle').addEventListener('change', async (e) => {
 // 舊版點擊送 TOGGLE_SUBTITLE，content.js 走「翻面」YT.active；當設定值與 YT.active
 // desync（例如使用者手動按 Alt+S 啟動過、或處於 init 800ms 延遲窗口）時，點擊會反向作用。
 // 改為送 SET_SUBTITLE { enabled }，content.js 依 enabled 直接決定啟/停/no-op。
+// v1.6.23:改為「Option → Popup」單向 sync。popup toggle 變動只通知當前 tab 即時啟 / 停,
+// **不寫** storage 避免反向覆蓋 Option 的全域設定。Option 設定影響「下次進 YouTube 頁的預設行為」,
+// popup 的勾選只控制「當前 tab」即時狀態。
 $('yt-subtitle-toggle').addEventListener('change', async (e) => {
   const enabled = e.target.checked;
   try {
-    // 1. 更新設定（影響下次進 YouTube 頁是否自動啟動字幕翻譯）
-    const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
-    await browser.storage.sync.set({ ytSubtitle: { ...ytSubtitle, autoTranslate: enabled } });
-    // 2. 通知當前分頁把運行狀態調成 enabled
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
       await browser.tabs.sendMessage(tab.id, {
@@ -289,13 +293,23 @@ $('yt-subtitle-toggle').addEventListener('change', async (e) => {
       }).catch(() => {});
     }
   } catch (err) {
-    statusEl.textContent = '狀態：無法切換字幕翻譯，請重新整理頁面';
+    statusEl.textContent = '狀態：無法切換字幕翻譯,請重新整理頁面';
     statusEl.style.color = '#ff3b30';
   }
 });
 
 $('options-btn').addEventListener('click', () => {
   browser.runtime.openOptionsPage();
+});
+
+// v1.6.23:popup 開著時 reactive sync ytSubtitle.autoTranslate(設定頁同步寫 storage 後立即反映)
+// popup 通常 click 外面就關閉,但 detached popup window 或極短時間視窗下這條 listener 確保一致
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync') return;
+  if (!changes.ytSubtitle) return;
+  const newVal = changes.ytSubtitle.newValue || {};
+  // ytSubtitle.autoTranslate 預設視為 true(對齊 init 邏輯)
+  $('yt-subtitle-toggle').checked = newVal.autoTranslate !== false;
 });
 
 // v1.0.3: 編輯譯文按鈕

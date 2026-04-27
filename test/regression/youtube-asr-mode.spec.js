@@ -1147,6 +1147,85 @@ test('youtube-asr-mode: replaceRange 用 LLM 原始 endMs 不用 adjustedEnd(避
   await page.close();
 });
 
+test('youtube-asr-mode: chrome 顯示時 overlay 上移避開進度條(:not(.ytp-autohide) CSS rule)', async ({
+  context,
+  localServer,
+}) => {
+  // 驗證 v1.6.23 修法:
+  //   YouTube 在控制列(chrome)隱藏時加 .ytp-autohide 到 .html5-video-player,顯示時移除。
+  //   全域 style 內含規則 `.html5-video-player:not(.ytp-autohide) shinkansen-yt-overlay
+  //   { --sk-cue-bottom: 60px; }`,讓 overlay 在 chrome 顯示時上移避開進度條。
+  //   shadow DOM 內 .window `bottom: var(--sk-cue-bottom, 30px)` 透過 CSS variable 繼承自動切換。
+  //
+  // 驗證點:
+  //   1. 全域 style 含 :not(.ytp-autohide) selector + --sk-cue-bottom: 60px
+  //   2. shadow DOM 內 .window CSS 含 var(--sk-cue-bottom, 30px)
+  //
+  // SANITY CHECK 已完成:
+  //   把全域 style 內 `:not(.ytp-autohide)` 規則整段註解掉
+  //   → 此 test fail(全域 style 不含該 selector)→ 還原 pass。
+
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('video', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+  await evaluate(`window.__SK.isYouTubePage = () => true`);
+
+  // dispatch ASR caption 觸發 _setAsrHidingMode + _ensureOverlay
+  await evaluate(`
+    chrome.runtime.sendMessage = async function() { return { ok: true }; };
+    const json3 = JSON.stringify({
+      events: [{ tStartMs: 1000, segs: [{ utf8: 'hello' }] }],
+    });
+    window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
+      detail: { url: 'https://www.youtube.com/api/timedtext?v=ABC&lang=en&kind=asr', responseText: json3 },
+    }));
+  `);
+  await page.waitForTimeout(150);
+
+  // 驗證 1:全域 stylesheet 真的有 :not(.ytp-autohide) rule(用 cssRules API,
+  // 而非 textContent 字串比對 — comment 內的字串會誤通過)
+  const ruleInfo = await evaluate(`(() => {
+    const style = document.getElementById('shinkansen-asr-hide-css');
+    if (!style || !style.sheet) return { hasRule: false, ruleSelector: null, ruleCss: null };
+    for (const rule of style.sheet.cssRules) {
+      if (rule.selectorText && rule.selectorText.includes(':not(.ytp-autohide)')) {
+        return {
+          hasRule: true,
+          ruleSelector: rule.selectorText,
+          ruleCss: rule.cssText,
+        };
+      }
+    }
+    return { hasRule: false, ruleSelector: null, ruleCss: null };
+  })()`);
+  expect(
+    ruleInfo.hasRule,
+    `全域 stylesheet 應有 :not(.ytp-autohide) 規則(active rule,非 comment)`,
+  ).toBe(true);
+  expect(
+    ruleInfo.ruleCss,
+    'rule 應設 --sk-cue-bottom 用 calc(60px + 字體高度) 動態避開進度條',
+  ).toMatch(/--sk-cue-bottom:\s*calc\(60px\s*\+\s*var\(--sk-cue-size/);
+
+  // 驗證 2:shadow DOM 內 .window 用 CSS variable
+  const shadowCss = await evaluate(`(() => {
+    const root = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+    const host = root ? root.querySelector('shinkansen-yt-overlay') : null;
+    if (!host || !host.shadowRoot) return '';
+    const styleEl = host.shadowRoot.querySelector('style');
+    return styleEl ? styleEl.textContent : '';
+  })()`);
+  expect(
+    shadowCss,
+    `shadow DOM .window 應用 var(--sk-cue-bottom, 30px)。實際 css: ${shadowCss.slice(0, 200)}`,
+  ).toContain('var(--sk-cue-bottom');
+  expect(shadowCss, '應有 transition: bottom 平滑切換').toContain('transition: bottom');
+
+  await page.close();
+});
+
 test('youtube-asr-mode: 非 ASR(kind 不存在)走原 TRANSLATE_SUBTITLE_BATCH 路徑', async ({
   context,
   localServer,

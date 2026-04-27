@@ -53,6 +53,10 @@ button.secondary:hover { background: #f0f4ff; }
   margin-top: 14px;
   font-size: 13px;
 }
+/* v1.6.23:同 .update-dot / .update-banner 的 hidden 覆寫修法——
+   .row 上面顯式 display:flex 覆蓋了 user agent 的 [hidden] { display: none },
+   讓 yt-subtitle-row 在非 YouTube 頁面也錯誤顯示。明確列 .row[hidden] 才能蓋住。 */
+.row[hidden] { display: none !important; }
 
 .row select {
   padding: 4px 8px;
@@ -149,6 +153,10 @@ button.link.small:hover { text-decoration: underline; }
   vertical-align: super;
   font-size: 0;
 }
+/* v1.6.23: 同 .update-banner 的 hidden 覆寫修法——上面 .update-dot 顯式
+   display:inline-block 會覆蓋 user agent 的 [hidden] { display: none } 規則,
+   讓 hidden=true 的紅點仍渲染。明確列 .update-dot[hidden] 才能蓋住。 */
+.update-dot[hidden] { display: none !important; }
 .update-banner {
   /* v1.6.3: 從 <a> 改 <button>——加 button reset 維持 banner 視覺 */
   display: flex;

@@ -191,11 +191,9 @@ async function load() {
   const ytEngineEl = $('ytEngine');
   if (ytEngineEl) ytEngineEl.value = yt.engine || 'gemini';
   $('ytAutoTranslate').checked       = yt.autoTranslate       === true;
-  // v1.6.20: ASR 合句模式 radio(預設 progressive)
-  const ytAsrModeVal = ['heuristic', 'llm', 'progressive'].includes(yt.asrMode) ? yt.asrMode : 'heuristic';
-  document.querySelectorAll('input[name="ytAsrMode"]').forEach(el => {
-    el.checked = el.value === ytAsrModeVal;
-  });
+  // v1.6.23: ASR 分句改單一 toggle——開啟=progressive(混合模式)、關閉=heuristic(預設分句)。
+  // 舊 'llm' 值視為 progressive(行為相近,LLM 結果仍會顯示;只是改成漸進方式)。
+  $('ytAsrProgressive').checked = yt.asrMode !== 'heuristic';
   // v1.5.8: 字幕是否套用固定術語表 / 黑名單
   $('ytApplyFixedGlossary').checked  = yt.applyFixedGlossary  === true;
   $('ytApplyForbiddenTerms').checked = yt.applyForbiddenTerms === true;
@@ -510,11 +508,8 @@ async function save() {
     ytSubtitle: {
       engine: ($('ytEngine')?.value || 'gemini'),  // v1.4.0
       autoTranslate:      $('ytAutoTranslate').checked,
-      // v1.6.20: ASR 合句模式
-      asrMode: (() => {
-        const v = document.querySelector('input[name="ytAsrMode"]:checked')?.value;
-        return ['heuristic', 'llm', 'progressive'].includes(v) ? v : 'heuristic';
-      })(),
+      // v1.6.23: ASR 分句單一 toggle——checked=progressive(混合)、unchecked=heuristic
+      asrMode: $('ytAsrProgressive').checked ? 'progressive' : 'heuristic',
       // v1.5.8: 字幕是否套用固定術語表 / 黑名單
       applyFixedGlossary:  $('ytApplyFixedGlossary').checked,
       applyForbiddenTerms: $('ytApplyForbiddenTerms').checked,

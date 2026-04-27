@@ -661,10 +661,12 @@
               "PingFang TC", "Microsoft JhengHei", "微軟正黑體",
               "Heiti TC", "Noto Sans CJK TC", sans-serif);
           }
-          /* .window:絕對定位的字幕視窗,水平居中於 player,垂直貼底 30px */
+          /* .window:絕對定位的字幕視窗,水平居中於 player,垂直 bottom 由 CSS variable 控制
+             (chrome 顯示時上移避開控制列,見全域 CSS 規則 .html5-video-player:not(.ytp-autohide) ...) */
           .window {
             position: absolute;
-            bottom: 30px;
+            bottom: var(--sk-cue-bottom, 30px);
+            transition: bottom 0.25s ease;
             left: 0;
             right: 0;
             display: flex;
@@ -811,6 +813,13 @@
             visibility: hidden !important;
             opacity: 0 !important;
             pointer-events: none !important;
+          }
+          /* 控制列(chrome)顯示時讓 overlay 上移避開進度條:
+             YouTube 在 chrome 隱藏時加 .ytp-autohide 到 .html5-video-player,顯示時移除。
+             :not(.ytp-autohide) 命中代表 chrome 顯示中,把 CSS variable 推給 host element,
+             shadow DOM 內 .window 透過 var() 自動繼承 → bottom 從預設 30px 改為 60px。 */
+          .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG} {
+            --sk-cue-bottom: calc(60px + var(--sk-cue-size, 22px));
           }
         `;
         document.head.appendChild(style);
@@ -1308,7 +1317,7 @@
       //   - 'heuristic'   = F:啟發式合句 + 既有 TRANSLATE_SUBTITLE_BATCH(逐句翻)。延遲低、精度中。
       //   - 'llm'         = D':LLM 自由合句 + timestamp mode(_runAsrWindow)。延遲高、精度最高。
       //   - 'progressive' = E:先 heuristic 顯示(秒出),同時 fire-and-forget LLM 跑覆蓋。
-      const asrMode = config.asrMode || 'heuristic';  // 預設 heuristic
+      const asrMode = config.asrMode || 'progressive';  // 預設 progressive(混合模式)
 
       if (asrMode === 'heuristic' || asrMode === 'progressive') {
         try {

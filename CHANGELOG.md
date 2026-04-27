@@ -64,6 +64,17 @@
 
 ---
 
+## v1.7.x
+
+**v1.7.0** — YouTube 自動產生字幕(ASR)整套生產級體驗 + 設定簡化。Highlights:**AI 智慧分句**——把整批 ASR 片段送 Gemini 依語意重新分句後翻譯,中文字幕從「破碎的詞」變「完整句子」;**混合模式預設**——預設分句先秒出,AI 分句結果回來後替換成更精緻版本;**字幕 overlay 整句穩定顯示**——完全旁路 YouTube 原生 caption-segment 一字一字跳的問題,控制列出現時自動上移避開進度條;**設定 UI 簡化**——三選一 radio → 單一「AI 分句模式」toggle(開啟=混合 / 關閉=原始分句);**popup 紅點 CSS bug 修**——`.update-dot[hidden]` 規則漏寫導致殘留紅點永遠顯示。
+
+  - **AI 智慧分句**:`TRANSLATE_ASR_SUBTITLE_BATCH` 用 timestamp mode JSON,LLM 自由合句 + 時間戳對齊驗證。輸入 `[{s,e,t}]` → 輸出 `[{s,e,t}]`,合句後逐句翻譯,token 用量略高於原始分句但中文閱讀體驗大幅提升。
+  - **設定簡化(`options.html` + `options.js`)**:`ytSubtitle.asrMode` 內部仍三值('heuristic' / 'llm' / 'progressive'),UI 只顯示一個 checkbox(開啟=progressive、關閉=heuristic)。預設 progressive。舊 'llm' 值 load 時自動 normalize 為 progressive。
+  - **Popup → Option 改為單向 sync**:popup yt-subtitle-toggle 變動只發 SET_SUBTITLE 給當前 tab,**不**寫 storage,避免反向覆蓋 Option 全域設定。
+  - **welcome notice 殘留清除**:`shouldShowWelcomeNotice(welcomeNotice, currentVersion)` helper,不同 minor 系列的歷史殘留 popup 開啟時自動清除。
+  - **CSS specificity bug 雙修**:`.update-dot[hidden]` + `.row[hidden]` 補 `display: none !important`(原 `.update-dot { display: inline-block }` / `.row { display: flex }` 覆蓋了 user agent `[hidden]`)。
+  - **CLAUDE.md §13 §14 新硬規則**:UI 中文標點全形 + 說明段落尾端不加句號,Python 批次轉換腳本附在規則內。
+
 ## v1.6.x
 
 **v1.6.22** — 混合模式字幕「預設 / AI 分句疊來疊去 + 中段消失」雙修:`_upsertDisplayCue` 加 `replaceRange` 選項,LLM 路徑寫入時清除被覆蓋範圍內殘留的 heuristic cue + sort by startMs;清除上限改用 LLM 原始 `endMs`(非延長後 `adjustedEnd`),避免閱讀延長範圍誤清 LLM 沒涵蓋的中段 heuristic 接力 cue。新 2 條 regression spec(疊來疊去 + 不誤清 SANITY 雙驗證)。286 條 spec 全綠。

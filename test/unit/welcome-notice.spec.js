@@ -31,7 +31,7 @@ globalThis.chrome = {
   },
 };
 
-const { maybeWriteWelcomeNotice } = await import('../../shinkansen/lib/welcome-notice.js');
+const { maybeWriteWelcomeNotice, shouldShowWelcomeNotice } = await import('../../shinkansen/lib/welcome-notice.js');
 const { RELEASE_HIGHLIGHTS } = await import('../../shinkansen/lib/release-highlights.js');
 
 function clearStore() { for (const k of Object.keys(store)) delete store[k]; }
@@ -97,6 +97,41 @@ test.describe('maybeWriteWelcomeNotice', () => {
     });
     expect(wrote).toBe(false);
     expect(store.welcomeNotice).toBeUndefined();
+  });
+});
+
+test.describe('shouldShowWelcomeNotice', () => {
+  test('沒 welcomeNotice → 不顯示也不需清除', () => {
+    expect(shouldShowWelcomeNotice(null, '1.6.22')).toEqual({ show: false, removeStale: false });
+    expect(shouldShowWelcomeNotice(undefined, '1.6.22')).toEqual({ show: false, removeStale: false });
+    expect(shouldShowWelcomeNotice({}, '1.6.22')).toEqual({ show: false, removeStale: false });
+  });
+
+  test('同 minor + dismissed=false → 顯示', () => {
+    const r = shouldShowWelcomeNotice({ version: '1.6.0', dismissed: false }, '1.6.22');
+    expect(r).toEqual({ show: true, removeStale: false });
+  });
+
+  test('同 minor + dismissed=true → 不顯示但保留(使用者已讀過)', () => {
+    const r = shouldShowWelcomeNotice({ version: '1.6.0', dismissed: true }, '1.6.22');
+    expect(r).toEqual({ show: false, removeStale: false });
+  });
+
+  test('不同 minor(歷史殘留 v1.5 → v1.6.x manifest)→ 不顯示且該清除', () => {
+    const r = shouldShowWelcomeNotice({ version: '1.5.7', dismissed: false }, '1.6.22');
+    expect(r).toEqual({ show: false, removeStale: true });
+  });
+
+  test('不同 major(歷史殘留 v0.x → v1.x.x manifest)→ 不顯示且該清除', () => {
+    const r = shouldShowWelcomeNotice({ version: '0.99.0', dismissed: false }, '1.0.0');
+    expect(r).toEqual({ show: false, removeStale: true });
+  });
+
+  test('未來版本(welcomeNotice.version > manifest 但同 minor)→ 顯示', () => {
+    // 罕見 case:storage 有更新版的 welcomeNotice 但 manifest 還是舊版(降版後 storage 殘留)
+    // 仍當 same-minor 處理(顯示)
+    const r = shouldShowWelcomeNotice({ version: '1.6.99', dismissed: false }, '1.6.22');
+    expect(r).toEqual({ show: true, removeStale: false });
   });
 });
 
