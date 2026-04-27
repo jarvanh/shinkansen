@@ -2,6 +2,17 @@
 
 import { browser } from '../lib/compat.js';
 import { formatBytes, formatTokens, formatUSD } from '../lib/format.js';
+import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
+import { isWorthNotifying } from '../lib/update-check.js';
+
+// v1.6.5: 把 markdown 風的 **粗體** 標記轉成 <strong>，其他字符做 escapeHtml
+function highlightToHtml(s) {
+  const esc = String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return esc.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -85,6 +96,19 @@ async function refreshShortcutHint() {
   }
 }
 
+// v1.6.5: welcome banner「知道了」按鈕——標記 welcomeNotice.dismissed=true 永久關閉
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('#welcome-banner-dismiss')) return;
+  e.preventDefault();
+  try {
+    await browser.runtime.sendMessage({ type: 'WELCOME_NOTICE_DISMISSED' });
+    $('welcome-banner').hidden = true;
+    $('update-dot').hidden = true; // 紅點也清掉（除非還有 update-banner，但 welcome 顯示時 update 沒顯示）
+  } catch (err) {
+    console.error('[shinkansen] welcome-banner dismiss failed', err);
+  }
+});
+
 // v1.6.3: 用 document-level event delegation 處理 update banner 點擊，
 // 不依賴 init() async timing 也不靠 a-tag navigate 行為——任何時候 button 出現在
 // DOM 都能 click 觸發。click handler 內臨時讀 storage 拿 release URL，最穩固。
@@ -113,22 +137,43 @@ async function init() {
 
   refreshShortcutHint();
 
-  // v1.6.1: 更新提示 — 有新版時顯示版本紅點 + banner
-  // v1.6.3: popup 對 <a target="_blank"> 不會開新分頁、會在 popup 內 navigate
-  //         （chrome popup 行為與 webview 不同），改用 JS click handler 攔截 +
-  //         chrome.tabs.create() 在主視窗開新分頁 + window.close() 收掉 popup。
+  // v1.6.5: welcome banner（CWS 剛升級）優先於 update banner（GitHub 有新版）顯示。
+  // 兩者互斥——CWS 自動升級後使用者不需要看「有新版可下載」（已在最新），看「歡迎升級」即可；
+  // unpacked 使用者沒 onInstalled update 事件，看到的是黃色 update banner。
+  let welcomeShown = false;
   try {
-    const { disableUpdateNotice } = await browser.storage.sync.get('disableUpdateNotice');
-    if (disableUpdateNotice !== true) {
-      const { updateAvailable } = await browser.storage.local.get('updateAvailable');
-      if (updateAvailable && updateAvailable.version && updateAvailable.releaseUrl) {
-        $('update-dot').hidden = false;
-        const banner = $('update-banner');
-        banner.hidden = false;
-        $('update-banner-version').textContent = `v${updateAvailable.version}（你目前是 v${manifest.version}）`;
-      }
+    const { welcomeNotice } = await browser.storage.local.get('welcomeNotice');
+    if (welcomeNotice && welcomeNotice.version && welcomeNotice.dismissed !== true) {
+      welcomeShown = true;
+      $('update-dot').hidden = false;
+      $('welcome-banner').hidden = false;
+      $('welcome-banner-title').textContent = `🎉 已升級至 v${welcomeNotice.version}`;
+      $('welcome-bullets').innerHTML = RELEASE_HIGHLIGHTS
+        .map(h => `<li>${highlightToHtml(h)}</li>`)
+        .join('');
     }
-  } catch { /* 讀取失敗就略過 */ }
+  } catch { /* 略 */ }
+
+  // v1.6.1: 更新提示 — 有新版時顯示版本紅點 + banner（welcome 顯示時跳過）
+  if (!welcomeShown) {
+    try {
+      const { disableUpdateNotice } = await browser.storage.sync.get('disableUpdateNotice');
+      if (disableUpdateNotice !== true) {
+        const { updateAvailable } = await browser.storage.local.get('updateAvailable');
+        // v1.6.5: belt-and-suspenders — banner 顯示前再次驗 storage.version 真的 >
+        // 當前 manifest.version。即使 storage 殘留 stale 資料（例如之前測試殘留、
+        // update-check 還沒跑、或 fetch 失敗未清），UI 層也不會錯誤顯示「有新版」
+        // 然後跳到自身版本的 release 頁。
+        if (updateAvailable && updateAvailable.version && updateAvailable.releaseUrl
+            && isWorthNotifying(updateAvailable.version, manifest.version)) {
+          $('update-dot').hidden = false;
+          const banner = $('update-banner');
+          banner.hidden = false;
+          $('update-banner-version').textContent = `v${updateAvailable.version}（你目前是 v${manifest.version}）`;
+        }
+      }
+    } catch { /* 讀取失敗就略過 */ }
+  }
 
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
   const { autoTranslate = false, displayMode = 'single' } = await browser.storage.sync.get(['autoTranslate', 'displayMode']);

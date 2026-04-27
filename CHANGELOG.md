@@ -7,6 +7,19 @@
 
 ## v1.6.x
 
+**v1.6.5** — 新增 CWS 自動更新後的「歡迎升級」提示（popup banner + 翻譯成功 toast 兩處）；同時修三個更新提示機制的潛在 bug。
+
+  - **新功能：CWS 自動更新後的歡迎提示**：使用者透過 Chrome Web Store 自動升級到 major/minor 新版時，下次開 popup 會看到綠色「🎉 已升級至 vX.Y」banner + 三條近期重大更新 bullet + 「知道了」按鈕（永久 dismiss）；翻譯成功 toast 也順帶顯示一次「已升級至 vX.Y — 點工具列圖示看新功能」（每日節流）。Patch 級自動更新（1.6.4 → 1.6.5）跳過避免高頻打擾。
+  - **新模組** `lib/release-highlights.js`：近期重大更新文字單一來源，下次新功能升級時改一處同步生效。
+  - **新模組** `lib/welcome-notice.js`：封裝 onInstalled handler 內的判斷邏輯（reason='update' + previousVersion + isWorthNotifying）方便 unit 測試。
+  - **release.sh 加 minor/major bump 提醒**：偵測到 major 或 minor 不同時印警告 + 暫停等使用者按 Enter 繼續或 Ctrl+C 中止，提醒檢查 RELEASE_HIGHLIGHTS 是否要更新（純內部升級可用通用條目「改善效能與穩定性」之類）。
+  - **修法：時區造成跨日重複顯示**：`new Date().toISOString().slice(0, 10)` 取的是 **UTC 日期**，台灣（UTC+8）使用者凌晨 0–8 點仍是 UTC 昨天，導致「今日已 dismiss」誤判為「跨日要重新顯示」（剛點過幾小時又看到）。新加 `localTodayKey()` helper 統一用本地時區，content-ns.js 鏡像一份（content script 不能 import lib），涵蓋 4 處（markUpdateNoticeShown / shouldShowTodayNotice / WELCOME_NOTICE_TOAST_SHOWN handler / maybeBuildXxxNotice）。
+  - **修法：banner 顯示前缺二次過濾**：popup / options banner 顯示條件原本只看「storage 內 updateAvailable 物件存在」，沒檢查 storage 內版本是否真的 > 當前版本。導致 storage 殘留 stale 資料時 banner 仍錯誤顯示「v1.6.4 可下載 你目前是 v1.6.4」這種詭異訊息。修法：三處（popup / options / content-ns）顯示前都加 `isWorthNotifying(storage.version, current)` 二次過濾。
+  - **修法（最關鍵）：CSS `display: flex` 覆寫 hidden attribute**：`.update-banner / .welcome-banner / .update-banner-row` 三處都寫 `display: flex`，class selector specificity 高於 user-agent stylesheet 的 `[hidden] { display: none }`，導致 hidden=true 仍顯示空殼 banner。從 v1.6.1 update banner 上線就潛在存在的 bug，但之前一直在測「storage 有資料」場景所以 JS 主動設 hidden=false 顯示，沒被觀察到。修法：三處 CSS 各加 `[hidden] { display: none !important }` 強制覆寫。
+  - **belt-and-suspenders 多層防禦**：(1) update-check 寫 storage 前 isWorthNotifying；(2) 偵測到 latest === current 主動清 storage；(3) 三層 UI 顯示前再 isWorthNotifying 過濾；(4) dismissed=true / disableUpdateNotice=true 永久關閉；(5) lastNoticeShownDate 每日節流（本地時區）。
+  - **新加 spec**：`test/unit/welcome-notice.spec.js`（9 條：major/minor 寫入、patch/install/browser_update/降版/缺 prev 不寫、RELEASE_HIGHLIGHTS 結構驗證）；`update-check.spec.js` 補 1 條 `localTodayKey` 用本地時區驗證。
+  - Full `npm test` 211 條（Playwright）+ 26 條（Jest）全綠。
+
 **v1.6.4** — 修 popup / 設定頁 update banner 點擊行為（彻底擺脫 a-tag navigate 的怪 bug）+ 加 patch 級更新節流避免高頻打擾。版號跳過 1.6.3（用作測試假 release）。
 
   - **修法 1：兩處 banner 從 `<a>` 改 `<button>`**：v1.6.1 ~ v1.6.2 期間 popup banner 點擊跳到 popup.html#、設定頁 banner 點擊跳到 options.html# 自身的 bug，根因是 `<a target="_blank" href="#">` 在 chrome popup 環境下不會開新分頁、會 navigate 到 href 自身。改成 `<button type="button">` 徹底擺脫 a-tag 預設 navigate。

@@ -52,7 +52,7 @@ globalThis.fetch = async (url) => {
   return nextFetchResponse;
 };
 
-const { checkForUpdate, parseVersion, isNewer, isWorthNotifying, markUpdateNoticeShown, shouldShowTodayNotice } =
+const { checkForUpdate, parseVersion, isNewer, isWorthNotifying, markUpdateNoticeShown, shouldShowTodayNotice, localTodayKey } =
   await import('../../shinkansen/lib/update-check.js');
 
 function clearStore() { for (const k of Object.keys(store)) delete store[k]; }
@@ -89,6 +89,23 @@ test.describe('parseVersion / isNewer', () => {
     expect(isNewer('1.6.0', '1.6.0')).toBe(false);  // 相同
     expect(isNewer('1.5.9', '1.6.0')).toBe(false);  // 舊版
     expect(isNewer('v1.6.1', 'v1.6.0')).toBe(true); // v 前綴容忍
+  });
+
+  test('localTodayKey 用本地時區（不是 UTC），格式 YYYY-MM-DD', () => {
+    const k = localTodayKey();
+    expect(k).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // 與 new Date() 的本地年月日一致（防止誤用 UTC）
+    const d = new Date();
+    const expected = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    expect(k).toBe(expected);
+    // 在 UTC+0 以外時區，UTC 日期可能與本地差一天 — 確保我們不是用 UTC 計算
+    // （測試環境 timezone 可能是 UTC，那這條退化為 == 對照組；非 UTC 環境會抓到 bug）
+    const utcKey = new Date().toISOString().slice(0, 10);
+    if (utcKey !== expected) {
+      // 在跨日邊界時刻 UTC 與本地不同——確保我們用的是本地
+      expect(k).toBe(expected);
+      expect(k).not.toBe(utcKey);
+    }
   });
 
   test('isWorthNotifying：只 major / minor 升才提示，patch 不提示', () => {
@@ -191,7 +208,9 @@ test.describe('shouldShowTodayNotice / markUpdateNoticeShown', () => {
   });
 
   test('lastNoticeShownDate === 今天 → 回 null（節流生效）', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // v1.6.5: 用本地時區（與 production localTodayKey 同步）
+    const _d = new Date();
+    const today = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`;
     store.updateAvailable = { version: '1.6.1', releaseUrl: 'http://x', lastNoticeShownDate: today };
     expect(await shouldShowTodayNotice()).toBeNull();
   });
@@ -199,7 +218,9 @@ test.describe('shouldShowTodayNotice / markUpdateNoticeShown', () => {
   test('markUpdateNoticeShown 寫入今天日期', async () => {
     store.updateAvailable = { version: '1.6.1', releaseUrl: 'http://x' };
     await markUpdateNoticeShown();
-    const today = new Date().toISOString().slice(0, 10);
+    // v1.6.5: 用本地時區（與 production localTodayKey 同步）
+    const _d = new Date();
+    const today = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, '0')}-${String(_d.getDate()).padStart(2, '0')}`;
     expect(store.updateAvailable.lastNoticeShownDate).toBe(today);
   });
 });

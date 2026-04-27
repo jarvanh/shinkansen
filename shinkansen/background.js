@@ -13,7 +13,8 @@ import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
 import { detectForbiddenTermLeaks } from './lib/forbidden-terms.js'; // v1.5.6
-import { checkForUpdate, markUpdateNoticeShown } from './lib/update-check.js'; // v1.6.1
+import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/update-check.js'; // v1.6.1
+import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
 
@@ -324,6 +325,28 @@ const messageHandlers = {
   UPDATE_NOTICE_DISMISSED: {
     async: true,
     handler: () => markUpdateNoticeShown(),
+  },
+  // v1.6.5: 「知道了」按鈕（popup banner）標記永久 dismissed=true
+  WELCOME_NOTICE_DISMISSED: {
+    async: true,
+    handler: async () => {
+      const { welcomeNotice } = await browser.storage.local.get('welcomeNotice');
+      if (!welcomeNotice) return;
+      await browser.storage.local.set({
+        welcomeNotice: { ...welcomeNotice, dismissed: true },
+      });
+    },
+  },
+  // v1.6.5: toast 顯示過 welcome notice 後標記今天日期（每日節流，避免每次翻譯都嘮叨）
+  WELCOME_NOTICE_TOAST_SHOWN: {
+    async: true,
+    handler: async () => {
+      const { welcomeNotice } = await browser.storage.local.get('welcomeNotice');
+      if (!welcomeNotice) return;
+      await browser.storage.local.set({
+        welcomeNotice: { ...welcomeNotice, lastNoticeShownDate: localTodayKey() },
+      });
+    },
   },
   // v1.5.7: API Key 測試 — 設定頁「測試」按鈕觸發。
   // Gemini 走 GET models/<model>?key=<key> 不耗 token；
@@ -1123,11 +1146,24 @@ browser.commands.onCommand.addListener(async (command) => {
 });
 
 // ─── 安裝/更新事件 ─────────────────────────────────────────
-browser.runtime.onInstalled.addListener(async ({ reason }) => {
-  debugLog('info', 'system', `extension ${reason}`, { version: browser.runtime.getManifest().version });
+browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
+  debugLog('info', 'system', `extension ${reason}`, {
+    version: browser.runtime.getManifest().version,
+    previousVersion: previousVersion || null,
+  });
   // 安裝/更新時也檢查一次版本（雙重保險，SW 啟動時已經跑過一次）
   const currentVersion = browser.runtime.getManifest().version;
   await cache.checkVersionAndClear(currentVersion);
+
+  // v1.6.5: CWS 自動更新到 major / minor 新版時，寫 welcomeNotice 讓使用者下次
+  // 開 popup 或翻譯成功 toast 時看到「🎉 已升級至 vX.Y」+ 重大更新清單。
+  // patch 級小修跳過避免高頻打擾——邏輯封裝在 lib/welcome-notice.js 方便 unit 測試。
+  const wrote = await maybeWriteWelcomeNotice({ reason, previousVersion, currentVersion });
+  if (wrote) {
+    debugLog('info', 'system', 'welcome notice written', {
+      from: previousVersion, to: currentVersion,
+    });
+  }
 
   // v0.62 起：API Key 從 browser.storage.sync 搬到 browser.storage.local，
   // 避免跨 Google 帳號同步。這裡做一次主動遷移：若 sync 裡還殘留舊的 apiKey，

@@ -24,6 +24,20 @@ const GITHUB_RELEASES_URL =
 const STORAGE_KEY = 'updateAvailable';
 
 /**
+ * 取「今日」鍵字串 'YYYY-MM-DD' — **使用本地時區**而非 UTC。
+ * 重要：絕對不要用 `new Date().toISOString().slice(0,10)`——那是 UTC 日期，
+ * 台灣（UTC+8）使用者凌晨 0–8 點之間仍是 UTC 昨天，會讓節流判斷出錯（剛 dismiss
+ * 過幾小時又看到提示）。所有與 lastNoticeShownDate 比對的地方都要用此 helper。
+ */
+export function localTodayKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
  * 把 'v1.6.0' / '1.6.0' 字串解析成 [major, minor, patch] 陣列；
  * 任何非數字段視為 0，避免 'v1.6.0-beta' 解析爆掉。
  */
@@ -157,9 +171,8 @@ export async function markUpdateNoticeShown() {
   const existing = await browser.storage.local.get(STORAGE_KEY);
   const cur = existing[STORAGE_KEY];
   if (!cur) return;
-  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
   await browser.storage.local.set({
-    [STORAGE_KEY]: { ...cur, lastNoticeShownDate: today },
+    [STORAGE_KEY]: { ...cur, lastNoticeShownDate: localTodayKey() },
   });
 }
 
@@ -170,8 +183,7 @@ export async function markUpdateNoticeShown() {
 export async function shouldShowTodayNotice() {
   const { [STORAGE_KEY]: cur } = await browser.storage.local.get(STORAGE_KEY);
   if (!cur || !cur.version) return null;
-  const today = new Date().toISOString().slice(0, 10);
-  if (cur.lastNoticeShownDate === today) return null;
+  if (cur.lastNoticeShownDate === localTodayKey()) return null;
   return { version: cur.version, releaseUrl: cur.releaseUrl };
 }
 

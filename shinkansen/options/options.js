@@ -5,6 +5,7 @@ import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD } from '../lib/format.js';
+import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
 const DEFAULTS = DEFAULT_SETTINGS;
@@ -243,8 +244,10 @@ async function load() {
     const disableUpdateNotice = s.disableUpdateNotice === true;
     if (!disableUpdateNotice) {
       const { updateAvailable } = await browser.storage.local.get('updateAvailable');
-      if (updateAvailable && updateAvailable.version && updateAvailable.releaseUrl) {
-        const manifest = browser.runtime.getManifest();
+      const manifest = browser.runtime.getManifest();
+      // v1.6.5: belt-and-suspenders — 必須 storage.version 真的 > current 才顯示
+      if (updateAvailable && updateAvailable.version && updateAvailable.releaseUrl
+          && isWorthNotifying(updateAvailable.version, manifest.version)) {
         $('update-banner-row').hidden = false;
         $('update-banner-version').textContent = `v${updateAvailable.version}（你目前是 v${manifest.version}）`;
         // click handler 改用 document delegation 在外面掛（避免 init() async race）
