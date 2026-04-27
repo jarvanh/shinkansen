@@ -243,6 +243,21 @@ async function load() {
     popupSlotSel.value = ([1, 2, 3].includes(slotVal) ? slotVal : 2).toString();
   }
 
+  // v1.6.13: 自動翻譯網站使用的 preset slot
+  const autoSlotSel = $('auto-translate-slot');
+  if (autoSlotSel) {
+    // 同步顯示文字「預設 N: <label>」
+    for (const p of presets) {
+      const slot = Number(p.slot);
+      if (!slot) continue;
+      const label = (p.label && p.label.trim()) || `預設 ${slot}`;
+      const opt = autoSlotSel.querySelector(`option[value="${slot}"]`);
+      if (opt) opt.textContent = `預設 ${slot}：${label}`;
+    }
+    const autoSlotVal = Number(s.autoTranslateSlot);
+    autoSlotSel.value = ([1, 2, 3].includes(autoSlotVal) ? autoSlotVal : 2).toString();
+  }
+
   // v1.5.7: cache presets 與 customProvider 給用量紀錄「模型」欄的 modelToLabel() 用
   _presetsCache = presets;
   _customProviderCache = cp || { model: '' };
@@ -515,6 +530,11 @@ async function save() {
     // v1.6.6: 工具列「翻譯本頁」按鈕對應的 preset slot
     popupButtonSlot: (() => {
       const v = Number($('popup-button-slot')?.value);
+      return [1, 2, 3].includes(v) ? v : 2;
+    })(),
+    // v1.6.13: 自動翻譯網站(白名單)觸發時走的 preset slot
+    autoTranslateSlot: (() => {
+      const v = Number($('auto-translate-slot')?.value);
       return [1, 2, 3].includes(v) ? v : 2;
     })(),
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
@@ -864,6 +884,7 @@ function sanitizeImport(raw) {
     rpdOverride:         { type: 'number', min: 1, nullable: true },
     toastAutoHide:       { type: 'boolean' },
     popupButtonSlot:     { type: 'number', min: 1, max: 3, int: true }, // v1.6.6
+    autoTranslateSlot:   { type: 'number', min: 1, max: 3, int: true }, // v1.6.13
     showProgressToast:   { type: 'boolean' }, // v1.6.8
   };
 

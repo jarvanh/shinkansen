@@ -164,6 +164,15 @@
         自動翻譯網站（每行一個網域，進入時自動翻譯）
         <textarea id="whitelist" rows="4" placeholder="en.wikipedia.org&#10;medium.com"></textarea>
       </label>
+      <label class="popup-button-slot-label">
+        自動翻譯使用的預設
+        <select id="auto-translate-slot">
+          <option value="1">預設 1</option>
+          <option value="2">預設 2</option>
+          <option value="3">預設 3</option>
+        </select>
+        <small class="muted">進入白名單網域時走哪一組預設(等同自動按下對應的快速鍵)。預設 slot 2 與 v1.6.12 之前的行為一致</small>
+      </label>
     </section>
 
     <section>
@@ -259,7 +268,12 @@
     <div id="tab-gemini" class="tab-panel">
 
     <section>
-      <h2>Gemini 模型與參數</h2>
+      <h2>Gemini 模型與參數(後備路徑)</h2>
+      <p class="muted">
+        <strong>日常翻譯由「一般設定 → 翻譯快速鍵」中各預設自選的模型決定</strong>，不走這裡。
+        此區塊只在以下少數情境生效:(1) 上方「測試 API Key」按鈕用此模型驗證 key 與配額;
+        (2) 極少數沒走 preset 快速鍵的後備路徑。建議與「預設 2」設定相同。
+      </p>
       <label>
         模型
         <select id="model">
@@ -286,8 +300,12 @@
     </section>
 
     <section>
-      <h2>模型計價（USD）</h2>
-      <p class="muted">用於計算翻譯成本，單位為「每 1M tokens 的美金價格」。切換模型時會自動帶入參考價，你也可以手動修改。請至 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a> 查詢最新費率</p>
+      <h2>模型計價(後備路徑)</h2>
+      <p class="muted">
+        <strong>preset 快速鍵翻譯的計價自動從內建表查</strong>(切 preset 模型不需要動這裡)。
+        此處單價只在「上方後備模型」實際被觸發時用。單位為「每 1M tokens 的美金價格」。
+        請至 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a> 查詢最新費率
+      </p>
       <label>
         Input tokens 單價（USD / 1M tokens）
         <input type="number" id="inputPerMTok" step="0.01" min="0" placeholder="0.30">

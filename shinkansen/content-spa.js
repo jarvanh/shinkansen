@@ -80,10 +80,17 @@
     }
 
     try {
-      const { autoTranslate = false } = await browser.storage.sync.get('autoTranslate');
+      const { autoTranslate = false, autoTranslateSlot } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot']);
       if (autoTranslate && await SK.isDomainWhitelisted()) {
-        SK.sendLog('info', 'spa', 'SPA nav: domain in auto-translate list, translating', { url: location.href });
-        SK.translatePage();
+        // v1.6.13: 走指定 preset slot,讓 SPA 導航的白名單觸發跟使用者期待的快速鍵一致。
+        const n = Number(autoTranslateSlot);
+        const slot = [1, 2, 3].includes(n) ? n : 2;
+        SK.sendLog('info', 'spa', 'SPA nav: domain in auto-translate list, translating', { url: location.href, slot });
+        if (typeof SK.handleTranslatePreset === 'function') {
+          SK.handleTranslatePreset(slot);
+        } else {
+          SK.translatePage();
+        }
         return;
       }
     } catch (err) {

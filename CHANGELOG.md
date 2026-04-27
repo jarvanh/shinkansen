@@ -38,6 +38,7 @@
 
 ### 設定頁與用量紀錄
 
+- **v1.6.13** — 自動翻譯白名單可指定使用哪一組預設(原本走 Gemini 全域模型,現在跟快速鍵行為一致);Gemini 分頁的「模型/計價」section 重新標示為「後備路徑專用」消除混淆
 - **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕(不需關閉設定頁也能看到最新紀錄)
 - **v1.6.0** — 設定頁加入「重設所有參數」與「重置為預設 Prompt」按鈕；每批段數預設 12→20；用量紀錄時間 filter 改 24 小時制 + 「現在時間」按鈕
 - **v1.5.7** — 用量紀錄「模型」欄改顯示 preset 標籤；Google MT 同 URL 批次自動合併
@@ -57,6 +58,21 @@
 ---
 
 ## v1.6.x
+
+**v1.6.13** — 解 Gemini 模型設定混淆:自動翻譯白名單改走 preset slot + Gemini 分頁的「全域模型 + 計價」section 重新標示為「後備路徑專用」。254 條 spec 全綠。
+
+  - **使用者回報的 UX 混淆**:快速鍵預設卡片可選 Gemini 模型,Gemini 分頁底下也有一個「Gemini 模型」全域下拉。使用者改 preset 模型後到 Gemini 分頁看到另一個 model 設定不知道兩者怎麼互動,實際生效規則是「preset 有設就覆蓋全域,沒設 fallback 全域」(`background.js#TRANSLATE_BATCH#modelOverride`)。但 v1.4.12 起所有快速鍵 + popup 按鈕都帶 modelOverride,**全域 model 在 95% 場景沒被用到**,卻佔據 Gemini 分頁最顯眼位置。
+  - **修法 1:加 `autoTranslateSlot` 設定**(白名單觸發改走 preset slot):
+    - `lib/storage.js#DEFAULT_SETTINGS.autoTranslateSlot = 2`(預設 Flash,與 v1.6.12 之前的全域 fallback 等價)
+    - `lib/storage.js#pickAutoTranslateSlot(raw)` helper(同 `pickPopupSlot` 對稱設計,範圍外 fallback 2)
+    - `content.js` 首次載入 + `content-spa.js` SPA 導航兩處的 autoTranslate 觸發路徑改成 `SK.handleTranslatePreset(slot)` 取代裸 `SK.translatePage()`,白名單翻譯與 Alt+S 行為對齊(走 preset.model 的 modelOverride)。
+    - 設定頁「網域規則」section 加「自動翻譯使用的預設」dropdown,與「工具列『翻譯本頁』按鈕」section 設計對稱。
+  - **修法 2:Gemini 分頁標題重新框定**:
+    - 「Gemini 模型與參數」→ 「**Gemini 模型與參數(後備路徑)**」+ section 開頭 muted 說明「日常翻譯由翻譯快速鍵的 preset 自選模型決定,此處只在(1)上方『測試 API Key』按鈕(2)極少數沒走 preset 的後備路徑時生效」
+    - 「模型計價」→ 「**模型計價(後備路徑)**」+ 說明「preset 翻譯的計價自動從內建表查,此處單價只在後備模型實際被觸發時用」
+  - **新 unit spec** `test/unit/auto-translate-slot.spec.js`(4 條):合法 1/2/3 / 字串 coerce / undefined fallback / 範圍外 fallback。SANITY 已驗(把 fallback 從 2 改 1 → 2 條 fail)。
+  - **未動 storage migration**:既有使用者的 `geminiConfig.model` 仍保留(僅後備路徑使用,不會壞掉);新使用者升級 v1.6.13 後白名單會自動走 slot 2,行為等價於升級前。
+  - Full `npm test` 254 條(228 Playwright + 26 Jest) 全綠。
 
 **v1.6.12** — 修 Pro 模型翻譯失敗(`Budget 0 is invalid. This model only works in thinking mode`)+ 整體升級到 Gemini 3 推薦的 `thinkingLevel` API。250 條 spec 全綠。
 
