@@ -6,7 +6,7 @@
 // 不能 import 此 module）。
 
 /**
- * 近期重大更新（給使用者看的，要白話簡短，不超過三條）。
+ * 近期重大更新（給使用者看的，要白話簡短，不超過四條）。
  * 順序由近到遠（最新放最前）。
  *
  * 維護規則（release.sh 的 minor/major bump 提醒會提示這條）：
@@ -23,6 +23,7 @@
  */
 export const RELEASE_HIGHLIGHTS = [
   '新增**AI 智慧分句**，YouTube 自動產生字幕經 AI 重新分句，讓中文字幕更自然好讀',
-  '新增**自訂 AI 模型**功能，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等百種模型',
+  '新增**雙語對照模式**，原文 + 譯文並列顯示',
   '新增**中國用語黑名單**，明確要求 LLM 不能用視頻 / 軟件 / 數據等中國用語',
+  '新增**自訂 AI 模型**功能，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等百種模型',
 ];
