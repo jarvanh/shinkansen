@@ -10,7 +10,8 @@
     "test:unit": "playwright test test/unit/",
     "test:version": "playwright test test/version-check.spec.js",
     "test:jest": "jest --config jest.config.cjs",
-    "test:all": "playwright test && jest --config jest.config.cjs"
+    "test:all": "playwright test && jest --config jest.config.cjs",
+    "debug": "node tools/debug-harness.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

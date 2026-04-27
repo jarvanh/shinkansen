@@ -37,6 +37,7 @@
 
 ### 設定頁與用量紀錄
 
+- **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕(不需關閉設定頁也能看到最新紀錄)
 - **v1.6.0** — 設定頁加入「重設所有參數」與「重置為預設 Prompt」按鈕；每批段數預設 12→20；用量紀錄時間 filter 改 24 小時制 + 「現在時間」按鈕
 - **v1.5.7** — 用量紀錄「模型」欄改顯示 preset 標籤；Google MT 同 URL 批次自動合併
 
@@ -55,6 +56,15 @@
 ---
 
 ## v1.6.x
+
+**v1.6.11** — 用量紀錄分頁加「重新載入」按鈕 + 新增 standalone debug harness 工具(內部開發用,不影響使用者)。
+
+  - **使用者面向:用量紀錄「重新載入」按鈕**:設定頁「用量紀錄」分頁底部操作列加 `<button id="usage-reload">重新載入</button>`,放在「匯出 CSV」前。使用者回報:translatePage 寫入新紀錄後,設定頁停留在用量分頁不會自動刷新,Cmd+R 也會回到預設分頁。新按鈕呼叫既有的 `loadUsageData()`(會保留當前的篩選狀態:日期範圍 / 搜尋字串 / 模型 filter / 日週月粒度),只重抓底層資料 + 重渲染。`title` attribute 提示「不需關閉設定頁」。
+  - **內部 dev tooling:`tools/debug-harness.js`**:standalone Node script(不在 extension 內,不影響使用者),Claude Code 用來在真實站點上自驗修改後的 extension 行為。流程:`launchPersistentContext` 自動載 extension → navigate 到目標 URL → 透過 Debug Bridge `TRANSLATE` 觸發翻譯 → 輪詢 `GET_STATE` 等狀態 idle → dump DOM 翻譯狀態 + warn/error log → 截圖到 `.playwright-mcp/`。用法:`npm run debug` 或 `TARGET_URL=https://... node tools/debug-harness.js`。支援 `--keep`(留 browser)/`--no-translate`(免 API key)/`--fresh`(砍 user data dir)/`SHINKANSEN_HEADED=1`(顯示視窗)旗標。CDP `Runtime.evaluate` 走 isolated world `contextId`,可直接呼叫 Debug Bridge CustomEvent(與 `test/regression/helpers/run-inject.js` 同套機制)。
+  - **CLAUDE.md 更新**:除錯手段優先序從「Playwright fixture / Chrome MCP / 真實頁面人眼」三段改為「fixture / debug-harness / Chrome MCP / 真實頁面人眼」四段,新加「自動化除錯(真實站點 probe)」說明 + 「修偵測類 bug 的硬規則:先 probe 真實站點再改 code」工作流(對應歷史教訓 Wikipedia ambox v0.51-v0.54 三輪修復)。
+  - **`.gitignore` 加 `.playwright-mcp/`(harness 截圖輸出) + `tools/probe-*.js`(一次性 probe 腳本)**:probe 腳本是「跑真實站點驗假設」的拋棄式工具,用完即刪不進版控。
+  - **不需 regression spec**:harness 是 dev tooling 不影響 extension 行為;按鈕純 UI 補漏(click → 既有函式),既有 245 條 spec 已涵蓋 loadUsageData 路徑。
+  - Full `npm test` 245 條(219 Playwright + 26 Jest) 全綠。
 
 **v1.6.10** — 分頁隱藏時暫停 Content Guard 與 SPA URL 輪詢(背景分頁能源優化)。245 條 spec 全綠(219 Playwright + 26 Jest,含 1 條新加 regression spec)。
 
