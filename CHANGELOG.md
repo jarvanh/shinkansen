@@ -42,6 +42,7 @@
 
 ### 效能與穩定性
 
+- **v1.6.10** — 分頁切到背景時暫停 Content Guard 與 SPA URL 輪詢,降低背景分頁的 CPU 與電力消耗
 - **v1.6.9** — 段落偵測階段大幅優化,長頁（Wikipedia / 論壇 / 長 Medium）翻譯啟動明顯變快
 
 ### 通知與更新提示
@@ -54,6 +55,14 @@
 ---
 
 ## v1.6.x
+
+**v1.6.10** — 分頁隱藏時暫停 Content Guard 與 SPA URL 輪詢(背景分頁能源優化)。245 條 spec 全綠(219 Playwright + 26 Jest,含 1 條新加 regression spec)。
+
+  - **Content Guard `document.hidden` gate**：原本 `runContentGuard` 由 `setInterval(1000ms)` 觸發,只要 STATE.translated=true 就永遠在跑。每次 sweep 都遍歷 `STATE.translatedHTML` Map(可能上百 entry),每 entry 呼叫 `getBoundingClientRect` 強制 layout reflow。即使分頁切到背景使用者根本看不到,也照樣每秒 force layout 一次,純消耗 CPU + 電力(尤其 macOS 筆電 / iPad 等需要省電的裝置)。新加 `if (document.hidden) return;` early-return,分頁隱藏時跳過。切回前景時下一次 sweep 在 1 秒內修復,使用者無感差異。
+  - **SPA URL 輪詢 `document.hidden` gate**：原本 `setInterval(500ms)` 比對 `location.href !== spaLastUrl`,2 次/秒永遠在跑。背景分頁不會由使用者觸發導航,輪詢只是 pushState patch 沒套到的 safety net,在隱藏分頁完全無作用。新加同樣 `if (document.hidden) return;`,切回前景時 visibilitychange listener 補一次 catch-up。
+  - **新 regression spec** `test/regression/guard-hidden-tab-gate.spec.js`(1 條,SANITY 已驗):透過 `Object.defineProperty(document, 'hidden', ...)` 模擬分頁隱藏,呼叫新增的 `_testRunContentGuardProd` debug hook(production 路徑,所有 gate 啟用),驗證 hidden=true 時不修復、切回 visible 後修復。
+  - **不在本版做的事**:MutationObserver 沒加 hidden gate(SPA 框架在背景時可能加新內容,切回前景時需要立即翻譯,跳過 mutation 風險過大)。`spaObserverDebounceTimer` 也保持原樣。後續若觀察到背景分頁的 mutation 量大且確認可安全跳過再評估。
+  - **不影響的場景**:分頁可見時行為完全不變;`testRunContentGuard`(test API,繞過 viewport gate)也繞過 hidden gate,既有 spec 不受影響。
 
 **v1.6.9** — 段落偵測效能優化（針對長頁如 Wikipedia / 論壇 / 長 Medium）。`collectParagraphs` 三項內部優化,行為等價,244 條 spec（218 Playwright + 26 Jest）全綠。
 
