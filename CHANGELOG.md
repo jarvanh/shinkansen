@@ -11,6 +11,7 @@
 
 ### 翻譯引擎與模型
 
+- **v1.6.12** — 修 Pro 模型(`gemini-3-pro-preview` / `gemini-2.5-pro` 等)翻譯失敗 bug,並升級到 Gemini 3 推薦的 `thinkingLevel` API
 - **v1.6.7** — 自訂模型支援本機後端（llama.cpp / Ollama 等不需 API Key 的服務）
 - **v1.5.7** — 新增「自訂 OpenAI 相容模型」分頁，可接 OpenRouter / Together / DeepSeek / Groq / Fireworks / Ollama 等任何 OpenAI 相容端點
 
@@ -56,6 +57,19 @@
 ---
 
 ## v1.6.x
+
+**v1.6.12** — 修 Pro 模型翻譯失敗(`Budget 0 is invalid. This model only works in thinking mode`)+ 整體升級到 Gemini 3 推薦的 `thinkingLevel` API。250 條 spec 全綠。
+
+  - **使用者回報的 bug**:設定頁切到 Pro 模型(如 `gemini-3-pro-preview` / `gemini-2.5-pro`)後翻譯失敗,toast 顯示「翻譯部分失敗:50/50 段失敗」加 API 錯誤訊息「Budget 0 is invalid. This model only works in thinking mode」。
+  - **根因(用 `tools/probe-gemini-pro.js` 真實 API 驗證後確認)**:`lib/gemini.js` 主翻譯與術語表兩處 generationConfig 寫死 `thinkingConfig: { thinkingBudget: 0 }`,Gemini Pro 系列 API 強制 thinking-only(`Pro 模型必須思考`),不允許 budget=0。從 Gemini 2.5 起此限制就存在,Gemini 3 加碼推薦改用 `thinkingLevel` 取代 `thinkingBudget`(後者標記 not recommended)。
+  - **修法**:新增 `pickThinkingConfig(model)` helper(export 出來方便 unit spec 測試),依模型名選 thinking level:
+    - 含 `pro` (case-insensitive) → `{ thinkingLevel: 'low' }`(probe 實測 'minimal' 在 Gemini 3 Pro 被拒,最低支援 'low')
+    - 其他(Flash / Flash Lite) → `{ thinkingLevel: 'minimal' }`(thoughts=0 等同舊 budget=0,不額外計費)
+    `extractGlossary` 與 `translateChunk` 兩處改呼 `pickThinkingConfig(model)`。
+  - **新 unit spec** `test/unit/gemini-thinking-config.spec.js`(5 條):Pro 對映 'low' / Flash 對映 'minimal' / case-insensitive / 空值 fallback / 不送舊 thinkingBudget 欄位。SANITY 已驗(把 fix 改回「Pro 也回 minimal」→ 2 條 Pro spec fail)。
+  - **既有 spec 同步更新**:`glossary-json-parsing.spec.js` 與 `segment-mismatch-fallback.spec.js` 內鎖死舊 `{ thinkingBudget: 0 }` 的 3 條 assertion 改成 `{ thinkingLevel: 'minimal' }`(test settings 用的是 `gemini-2.5-flash`,對映 minimal)。
+  - **Pro 模型成本警示**:Pro 強制 thinking 即使 'low' 也會花 ~240 thoughts token / request,翻譯本來就不需要深度推理,Pro 對翻譯品質提升微乎其微但成本可能比 Flash 貴 10 倍以上。設定頁尚未加成本警告(範圍外,先解 bug),建議使用者用 Pro 之前先看用量紀錄分頁觀察費用。
+  - Full `npm test` 250 條(224 Playwright + 26 Jest) 全綠。
 
 **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕 + 新增 standalone debug harness 工具(內部開發用,不影響使用者)。
 
