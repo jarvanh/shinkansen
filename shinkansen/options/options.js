@@ -227,6 +227,20 @@ async function load() {
   }
   refreshPresetKeyBindings();
 
+  // v1.6.6: 工具列「翻譯本頁」按鈕的 preset slot dropdown
+  // 用 preset.label 動態填 option 內容（讓使用者看到「Flash Lite / Flash / Google MT」這類標籤而非「預設 1/2/3」）
+  const popupSlotSel = $('popup-button-slot');
+  if (popupSlotSel) {
+    for (const slot of [1, 2, 3]) {
+      const p = presets.find(x => x.slot === slot) || DEFAULTS.translatePresets.find(x => x.slot === slot);
+      const label = (p.label && p.label.trim()) || `預設 ${slot}`;
+      const opt = popupSlotSel.querySelector(`option[value="${slot}"]`);
+      if (opt) opt.textContent = `預設 ${slot}：${label}`;
+    }
+    const slotVal = Number(s.popupButtonSlot);
+    popupSlotSel.value = ([1, 2, 3].includes(slotVal) ? slotVal : 2).toString();
+  }
+
   // v1.5.7: cache presets 與 customProvider 給用量紀錄「模型」欄的 modelToLabel() 用
   _presetsCache = presets;
   _customProviderCache = cp || { model: '' };
@@ -494,6 +508,11 @@ async function save() {
       const label = ($(`preset-label-${slot}`).value || '').trim() || `預設 ${slot}`;
       return { slot, engine, model, label };
     }),
+    // v1.6.6: 工具列「翻譯本頁」按鈕對應的 preset slot
+    popupButtonSlot: (() => {
+      const v = Number($('popup-button-slot')?.value);
+      return [1, 2, 3].includes(v) ? v : 2;
+    })(),
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
     fixedGlossary: (() => {
       // 同步全域表格的最新 UI 值
@@ -840,6 +859,7 @@ function sanitizeImport(raw) {
     tpmOverride:         { type: 'number', min: 1, nullable: true },
     rpdOverride:         { type: 'number', min: 1, nullable: true },
     toastAutoHide:       { type: 'boolean' },
+    popupButtonSlot:     { type: 'number', min: 1, max: 3, int: true }, // v1.6.6
   };
 
   for (const [key, rule] of Object.entries(topRules)) {

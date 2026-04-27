@@ -7,6 +7,13 @@
 
 ## v1.6.x
 
+**v1.6.6** — 新增「工具列『翻譯本頁』按鈕」可指定對應的翻譯預設。
+
+  - **新設定**：一般設定分頁多一個 section「工具列『翻譯本頁』按鈕」，dropdown 三選項顯示各 preset 的 label（例如「預設 1：Flash Lite / 預設 2：Flash / 預設 3：Google MT」），預設仍為 slot 2（與 v1.4.12 起的 popup 硬碼行為一致），現有使用者升級不會感受到任何行為差異。
+  - **改 popup.js**：「翻譯本頁」按鈕改送 `TRANSLATE_PRESET { slot: settings.popupButtonSlot }` 取代既有硬碼 `TOGGLE_TRANSLATE`；content.js 的 `TOGGLE_TRANSLATE` handler 仍保留作 backward-compat 路徑。
+  - **新 helper** `lib/storage.js#pickPopupSlot`：共用 slot 解析（合法 1/2/3 原樣回 / 其餘 fallback 2），popup.js 與 unit spec 共用同一段邏輯。
+  - **新 unit spec** `test/unit/popup-button-slot.spec.js`（4 條）：合法 / 字串 coerce / undefined fallback / 範圍外 fallback。SANITY 已驗（fallback 改 1 → 2 條 fail）。
+
 **v1.6.5** — 新增 CWS 自動更新後的「歡迎升級」提示（popup banner + 翻譯成功 toast 兩處）；同時修三個更新提示機制的潛在 bug。
 
   - **新功能：CWS 自動更新後的歡迎提示**：使用者透過 Chrome Web Store 自動升級到 major/minor 新版時，下次開 popup 會看到綠色「🎉 已升級至 vX.Y」banner + 三條近期重大更新 bullet + 「知道了」按鈕（永久 dismiss）；翻譯成功 toast 也順帶顯示一次「已升級至 vX.Y — 點工具列圖示看新功能」（每日節流）。Patch 級自動更新（1.6.4 → 1.6.5）跳過避免高頻打擾。

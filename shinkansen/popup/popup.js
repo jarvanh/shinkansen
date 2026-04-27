@@ -4,6 +4,7 @@ import { browser } from '../lib/compat.js';
 import { formatBytes, formatTokens, formatUSD } from '../lib/format.js';
 import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
 import { isWorthNotifying } from '../lib/update-check.js';
+import { pickPopupSlot } from '../lib/storage.js';
 
 // v1.6.5: 把 markdown 風的 **粗體** 標記轉成 <strong>，其他字符做 escapeHtml
 function highlightToHtml(s) {
@@ -220,8 +221,11 @@ $('translate-btn').addEventListener('click', async () => {
   const mode = $('translate-btn').dataset.mode;
   statusEl.textContent = mode === 'restore' ? '狀態：正在還原原文…' : '狀態：正在翻譯…';
   try {
-    // TOGGLE_TRANSLATE 在 content.js 是 toggle 行為：已翻譯 → 還原，反之翻譯
-    await browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' });
+    // v1.6.6: 讀 settings.popupButtonSlot 決定按鈕對應的 preset slot（預設 2 = Flash）
+    // content.js handleTranslatePreset 自帶 toggle 行為（已翻譯 → 還原 / 翻譯中 → abort / 閒置 → 翻譯）
+    const { popupButtonSlot } = await browser.storage.sync.get('popupButtonSlot');
+    const slot = pickPopupSlot(popupButtonSlot);
+    await browser.tabs.sendMessage(tab.id, { type: 'TRANSLATE_PRESET', payload: { slot } });
     window.close();
   } catch (err) {
     statusEl.textContent = '狀態：無法在此頁面執行，請重新整理後再試';
