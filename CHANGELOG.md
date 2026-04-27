@@ -11,6 +11,7 @@
 
 ### 翻譯引擎與模型
 
+- **v1.6.19** — Code review 後修 5 條穩健性 bug:YouTube 字幕並行批次某批失敗不再拖累其他批字幕、跨 tab sticky 翻譯在 SW 喚醒當下連開多 tab 不再漏繼承、設定頁可正確輸入 0(不會被靜默改回預設)、fragment 注入遇到 DOM 重排不再 crash、batch timer 不再洩漏
 - **v1.6.18** — 自訂模型分頁加「思考強度」(自動 / 關閉 / 低 / 中 / 高)統一控制,涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking API 差異;另加「進階 JSON」逃生口給 power user 透傳 provider 專屬參數
 - **v1.6.12** — 修 Pro 模型(`gemini-3-pro-preview` / `gemini-2.5-pro` 等)翻譯失敗 bug,並升級到 Gemini 3 推薦的 `thinkingLevel` API
 - **v1.6.7** — 自訂模型支援本機後端（llama.cpp / Ollama 等不需 API Key 的服務）
@@ -63,6 +64,20 @@
 ---
 
 ## v1.6.x
+
+**v1.6.19** — Code review audit 後修 5 條穩健性 bug:YouTube 字幕並行批次容錯、跨 tab sticky race、設定頁 `||` 0 falsy、fragment 注入 anchor、Promise.race timer leak。272 條 spec 全綠。
+
+  - **Bug B(中)— `content-youtube.js:564-585` translateWindowFrom 後續批次改 `Promise.allSettled`**:舊 `Promise.all` 任一批 reject 整個拒絕,外層 catch 跳過 `YT.batchApiMs = _batchApiMs` 同步 → debug 面板某些 batch 顯示「…」不會更新;失敗那批的字幕也不寫進 captionMap。改 allSettled 後失敗只 log 該批、其他批字幕仍正常寫回。abort 路徑也補同步 batchApiMs。
+  - **Bug A(中)— `background.js:200-235` `hydrateStickyTabs` 用 promise lock**:舊版 `if (_stickyHydrated) return; _stickyHydrated = true;` 兩行同步沒問題,但接著 `await storage.session.get` 期間第二個 `tabs.onCreated` listener 進來時直接 return(_stickyHydrated=true),Map 還空 → `stickyTabs.get(openerId)` 拿不到 slot → 漏繼承 sticky。改用 `_stickyHydratingPromise` 共用 in-flight promise,所有並行 caller 等到 Map 真正填好。
+  - **Bug C(低)— `options.js` 新增 `parseUserNum` helper,load/save/reset 三處 `\|\|` → `??`**:使用者設定頁輸入 `0`(safetyMargin / maxRetries / maxConcurrentBatches / maxUnitsPerBatch / maxCharsPerBatch / maxTranslateUnits)→ 舊版 `Number(v) \|\| default` 把 0 當 falsy 改回預設,使用者重開設定頁看到「我打的 0 怎麼變回 20」。新 `parseUserNum`:空字串/NaN 走 default,合法數字(含 0)保留。
+  - **Bug D(低)— `content-inject.js:317-322` fragment anchor 加 `endNode.parentNode === el` guard**:舊 `endNode.nextSibling` 在 endNode 被 SPA framework reparent 後會指向別的 parent 內的 sibling,`el.insertBefore` 拋 `NotFoundError`。新版偵測 endNode 已不在 el → anchor=null → 安全 appendChild。
+  - **Bug E(低)— `content.js:130-158` 新增 `sendMessageWithTimeout` helper**:舊 `Promise.race([sendMessage, setTimeout reject])` 在 sendMessage 先 settle 時不 clearTimeout,90s 後 timer 仍 fire。改 helper `.finally(() => clearTimeout(timer))`。兩處 call site(Gemini batch / Google Translate batch)都改用。
+  - **新 regression spec(2 條,SANITY 已驗)**:
+    - `youtube-batch-allsettled.spec.js`:mock 三批 sendMessage,batch 1 reject、其他成功,驗證 captionMap 仍含 batch 0+2 的 entries(≥9 條)、`YT.batchApiMs[2]` 已同步出去(>0)。SANITY:回退 Promise.all 後 batchApiMs[2]=undefined fail。
+    - `inject-fragment-detached-endnode.spec.js`:fixture 內 `.lead-a/.lead-b/.trailing` 三 children,spec 把 `.lead-b` reparent 到 detached div(模擬 SPA reconcile),驗證 `injectTranslation` 不拋 NotFoundError。SANITY:回退 anchor guard 後 insertBefore NotFoundError fail。
+  - **PENDING(3 條走路徑 B,理由各自寫)**:Bug A(時序窄窗難可控的 race)、Bug C(`parseUserNum` 沒 export)、Bug E(timer leak 屬實作細節 + 影響極低)。
+  - **Code review audit 注記**:本版起點是「review 整個 codebase 找 bug」。4 個 audit agent 並行掃描 12K 行得 36 條候選,Claude Code 端逐條看 source 驗證後 31 條判定為**誤報**(如 `content-spa.js:166 setInterval 多重保護不存在`、`cache.js:39-46 flushTouches 競態` 等,實際 code 早已有對應防護或 agent 看錯行號)。Agent 推理常用「可能/若...就會」,沒看完整上下文就下判斷,符合 §11 「以真實資料為基石,不靠推理」的反例。確認的 5 條才動 code。
+  - Full `npm test` 272 條(246 Playwright + 26 Jest)全綠。
 
 **v1.6.18** — 自訂模型新增「思考強度」統一控制 + 進階 JSON 透傳,涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking schema。296 條 spec 全綠。
 

@@ -560,12 +560,30 @@
           });
 
         // v1.2.56: batch 0 先 await（暖熱 cache），再並行送 batch 1+
+        // v1.6.19: 後續批次改用 allSettled——任一批 reject 不再讓整批字幕沒寫回，
+        // 成功的批次保留(captionMap.set 在 _runBatch 的 .then 內已自己寫過),失敗只 log。
         if (batches.length > 0) {
-          await _runBatch(batches[0], 0);
-          YT.lastApiMs = _batchApiMs[0]; // batch 0 是第一個完成的，記錄其耗時
-          if (!YT.active) return;  // v1.3.5: try-finally 會清理
+          try {
+            await _runBatch(batches[0], 0);
+            YT.lastApiMs = _batchApiMs[0]; // batch 0 是第一個完成的，記錄其耗時
+          } catch (err) {
+            SK.sendLog('error', 'youtube', 'batch 0 failed', { error: err.message });
+          }
+          if (!YT.active) {
+            YT.batchApiMs = _batchApiMs;  // v1.6.19: abort 也要同步,debug 面板才能反映 batch 0 耗時
+            return;  // v1.3.5: try-finally 會清理
+          }
           if (batches.length > 1) {
-            await Promise.all(batches.slice(1).map((bu, i) => _runBatch(bu, i + 1)));
+            const settled = await Promise.allSettled(
+              batches.slice(1).map((bu, i) => _runBatch(bu, i + 1))
+            );
+            settled.forEach((r, i) => {
+              if (r.status === 'rejected') {
+                SK.sendLog('error', 'youtube', `batch ${i + 1} failed`, {
+                  error: r.reason?.message || String(r.reason),
+                });
+              }
+            });
           }
         }
 

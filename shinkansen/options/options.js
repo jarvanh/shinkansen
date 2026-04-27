@@ -59,6 +59,15 @@ function applyTierToInputs(tier, model) {
 
 const $ = (id) => document.getElementById(id);
 
+// v1.6.19: 解析 input value——空字串/非法字元走 default,合法有限數字(含 0、負數)保留。
+// 取代 `Number(v) || default`(會把 0 當 falsy 改回預設)的舊寫法。
+function parseUserNum(rawValue, defaultValue) {
+  const v = String(rawValue ?? '').trim();
+  if (v === '') return defaultValue;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : defaultValue;
+}
+
 async function load() {
   const saved = await browser.storage.sync.get(null);
   // v0.62 起：apiKey 改存 browser.storage.local，不跟 Google 帳號同步
@@ -105,14 +114,16 @@ async function load() {
   if (s.rpmOverride) $('rpm').value = s.rpmOverride;
   if (s.tpmOverride) $('tpm').value = s.tpmOverride;
   if (s.rpdOverride) $('rpd').value = s.rpdOverride;
-  const marginPct = Math.round((s.safetyMargin || 0.1) * 100);
+  // v1.6.19: 統一用 ?? 不用 || ——使用者輸入 0(safety margin / batch size)是合法
+  // 設定意圖,|| 會把 0 當 falsy 默默改回預設值,造成 UI 「我設了 0 卻看到 10%」。
+  const marginPct = Math.round((s.safetyMargin ?? 0.1) * 100);
   $('safetyMargin').value = marginPct;
   $('safetyMarginLabel').textContent = marginPct;
-  $('maxConcurrentBatches').value = s.maxConcurrentBatches || 10;
+  $('maxConcurrentBatches').value = s.maxConcurrentBatches ?? 10;
   $('maxUnitsPerBatch').value = s.maxUnitsPerBatch ?? 20;
   $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? 3500;
   $('maxTranslateUnits').value = s.maxTranslateUnits ?? 1000;
-  $('maxRetries').value = s.maxRetries || 3;
+  $('maxRetries').value = s.maxRetries ?? 3;
 
   // v0.69: 術語表一致化設定
   const gl = { ...DEFAULTS.glossary, ...(s.glossary || {}) };
@@ -457,12 +468,14 @@ async function save() {
     },
     debugLog: $('debugLog').checked,
     tier: $('tier').value,
+    // v1.6.19: 改用 parseUserNum——空字串/非法字元走 default,合法數字(含 0)保留。
+    // 沿用 `|| default` 會把使用者明確打的 0 一律當 falsy 改回預設,造成 UI 不一致。
     safetyMargin: Number($('safetyMargin').value) / 100,
-    maxRetries: Number($('maxRetries').value) || 3,
-    maxConcurrentBatches: Number($('maxConcurrentBatches').value) || 10,
-    maxUnitsPerBatch: Number($('maxUnitsPerBatch').value) || 20,
-    maxCharsPerBatch: Number($('maxCharsPerBatch').value) || 3500,
-    maxTranslateUnits: Number($('maxTranslateUnits').value) ?? 1000,
+    maxRetries: parseUserNum($('maxRetries').value, 3),
+    maxConcurrentBatches: parseUserNum($('maxConcurrentBatches').value, 10),
+    maxUnitsPerBatch: parseUserNum($('maxUnitsPerBatch').value, 20),
+    maxCharsPerBatch: parseUserNum($('maxCharsPerBatch').value, 3500),
+    maxTranslateUnits: parseUserNum($('maxTranslateUnits').value, 1000),
     // 只有 custom tier 才寫入 override(其他 tier 的數字從對照表讀,不存)
     rpmOverride: $('tier').value === 'custom' ? (Number($('rpm').value) || null) : null,
     tpmOverride: $('tier').value === 'custom' ? (Number($('tpm').value) || null) : null,
@@ -686,7 +699,7 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   // 配額（先填 tier 觸發 RPM/TPM/RPD readonly 帶值，再清掉 override）
   $('tier').value = D.tier;
   applyTierToInputs(D.tier, D.geminiConfig.model);
-  $('safetyMargin').value = Math.round((D.safetyMargin || 0.1) * 100);
+  $('safetyMargin').value = Math.round((D.safetyMargin ?? 0.1) * 100);
   $('safetyMarginLabel').textContent = $('safetyMargin').value;
   $('maxRetries').value = D.maxRetries;
   // 效能

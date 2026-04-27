@@ -199,7 +199,7 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 // 持久化於 chrome.storage.session，service worker 休眠重啟後仍保留。
 
 const stickyTabs = new Map(); // tabId → slot (number)
-let _stickyHydrated = false;
+let _stickyHydratingPromise = null;
 
 // v1.5.4: storage.session 是 Chrome 102+ / Firefox 129+ 才有的 in-memory storage。
 // 舊版 Firefox（< 129）沒有此 API → fallback 到 storage.local（會 disk-persist，
@@ -207,20 +207,26 @@ let _stickyHydrated = false;
 // Chrome 端 storage.session 一定存在 → 行為跟修改前完全一致，效能 0 影響。
 const _stickyStorage = (browser.storage && browser.storage.session) ?? browser.storage.local;
 
-async function hydrateStickyTabs() {
-  if (_stickyHydrated) return;
-  _stickyHydrated = true;
-  try {
-    const { stickyTabs: saved } = await _stickyStorage.get('stickyTabs');
-    if (saved && typeof saved === 'object') {
-      for (const [tabId, slot] of Object.entries(saved)) {
-        // v1.4.12 前的舊值是 'gemini'/'google' 字串，重啟後忽略舊格式避免誤觸發
-        if (typeof slot === 'number') stickyTabs.set(Number(tabId), slot);
+// v1.6.19: 用 promise lock 取代 boolean flag——舊版在 `_stickyHydrated = true`
+// 與 `await storage.get` 之間第二個 caller 直接 return,但 Map 還空,結果
+// 後續 onCreated 拿不到 sticky slot。改成共用同一個 in-flight promise,
+// 所有並行 caller 都等到 Map 真正填好。
+function hydrateStickyTabs() {
+  if (_stickyHydratingPromise) return _stickyHydratingPromise;
+  _stickyHydratingPromise = (async () => {
+    try {
+      const { stickyTabs: saved } = await _stickyStorage.get('stickyTabs');
+      if (saved && typeof saved === 'object') {
+        for (const [tabId, slot] of Object.entries(saved)) {
+          // v1.4.12 前的舊值是 'gemini'/'google' 字串，重啟後忽略舊格式避免誤觸發
+          if (typeof slot === 'number') stickyTabs.set(Number(tabId), slot);
+        }
       }
+    } catch (err) {
+      debugLog('warn', 'system', 'hydrateStickyTabs failed', { error: err.message });
     }
-  } catch (err) {
-    debugLog('warn', 'system', 'hydrateStickyTabs failed', { error: err.message });
-  }
+  })();
+  return _stickyHydratingPromise;
 }
 
 async function persistStickyTabs() {
