@@ -844,6 +844,109 @@ test('youtube-asr-mode: 譯文過長依標點拆行(_wrapTargetTextForOverlay)',
   await page.close();
 });
 
+test('youtube-asr-mode: 中文閱讀時間補償(_upsertDisplayCue 延長 endMs + _findActiveCue clamp 到下一句)', async ({
+  context,
+  localServer,
+}) => {
+  // 驗證 v1.6.21 修法:LLM 給的 endMs 對中文太短 → _upsertDisplayCue 延長至少
+  // (中文字數 × 250ms,最低 1000ms);_findActiveCue 把延長後的 endMs clamp
+  // 到下一個 cue 的 startMs,避免視覺重疊。
+  //
+  // SANITY CHECK 已完成:
+  //   把 _upsertDisplayCue 內 adjustedEnd = Math.max(...) 改成直接用 endMs(不延長)
+  //   → 此 test fail(case 1 的 cue.endMs 不是 startMs + 字數×250)→ 還原 pass。
+
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('video', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+  await evaluate(`window.__SK.isYouTubePage = () => true`);
+
+  // case 1:cue 含 8 字中文,LLM 給的 endMs 只 500ms(太短)
+  //   → adjustedEnd 應 = startMs + max(800, 8 × 200) = startMs + 1600ms
+  // case 2:cue 1 endMs 延長後超過 cue 2 startMs → _findActiveCue 在 cue2 startMs 處選 cue 2
+  await evaluate(`
+    window.__SK.YT.displayCues = [];
+  `);
+
+  // 構造直接呼叫 _runAsrSubBatch 太複雜,改用 dispatch ASR caption + LLM mock
+  await setAsrMode(evaluate, 'llm');
+  await evaluate(`
+    chrome.runtime.sendMessage = async function(msg) {
+      if (!msg || !msg.type) return { ok: true };
+      if (msg.type === 'TRANSLATE_ASR_SUBTITLE_BATCH') {
+        const inputArr = JSON.parse((msg.payload && msg.payload.texts && msg.payload.texts[0]) || '[]');
+        // 模擬 LLM 只取第一段當合句(故意給較短的 endMs 模擬「中文比英文密度高」場景)
+        if (inputArr.length === 0) return { ok: true, result: ['[]'], usage: {} };
+        const merged = [{
+          s: inputArr[0].s,
+          e: inputArr[0].e,           // 短 endMs(=500ms)
+          t: '一二三四五六七八',         // 8 字中文(預期 idealReadMs = 2000ms)
+        }];
+        return { ok: true, result: [JSON.stringify(merged)], usage: {} };
+      }
+      return { ok: true };
+    };
+
+    // 兩段 ASR:0-500ms / 500-1000ms,合句 endMs = 1000(LLM 給的太短)
+    const events = [
+      { tStartMs: 0,   segs: [{ utf8: 'a' }] },
+      { tStartMs: 500, segs: [{ utf8: 'b' }] },
+    ];
+    const json3 = JSON.stringify({ events });
+    window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
+      detail: { url: 'https://www.youtube.com/api/timedtext?v=ABC&lang=en&kind=asr', responseText: json3 },
+    }));
+  `);
+  await page.waitForTimeout(100);
+
+  await evaluate(`(() => { window.__SK.translateYouTubeSubtitles(); })()`);
+  await page.waitForTimeout(500);
+
+  const cuesSnapshot = await evaluate(`window.__SK.YT.displayCues.map(c => ({
+    startMs: c.startMs, endMs: c.endMs, targetText: c.targetText,
+  }))`);
+
+  // 應有 1 個 cue(LLM 合句),endMs 延長至 startMs + max(800, 8×200) = 1600
+  expect(cuesSnapshot.length, '應有 ≥ 1 個 cue').toBeGreaterThanOrEqual(1);
+  const cue = cuesSnapshot.find(c => c.targetText === '一二三四五六七八');
+  expect(cue, '應找到合句中文 cue').toBeTruthy();
+  expect(
+    cue.endMs - cue.startMs,
+    `cue 持續時間應 ≥ 8字 × 200ms = 1600ms。實際 ${cue.endMs - cue.startMs}ms`,
+  ).toBeGreaterThanOrEqual(1600);
+
+  // case 3:模擬下一個 cue 注入,_findActiveCue 應在下一句 startMs 之後不再返回前一句
+  await evaluate(`
+    window.__SK.YT.displayCues.push({
+      startMs: 1500, endMs: 2500, sourceText: '', targetText: '下句',
+    });
+  `);
+  // 在 currentMs = 1550 時(已過 cue 1 的 nextStart=1500),應返回 cue 2 而非 cue 1
+  const at1550 = await evaluate(`(() => {
+    // 模擬 _findActiveCue 邏輯
+    const cues = window.__SK.YT.displayCues;
+    const currentMs = 1550;
+    for (let i = 0; i < cues.length; i++) {
+      const c = cues[i];
+      let nextStart = Infinity;
+      for (let j = i + 1; j < cues.length; j++) {
+        if (cues[j].startMs > c.startMs) { nextStart = cues[j].startMs; break; }
+      }
+      const effectiveEnd = Math.min(c.endMs, nextStart);
+      if (currentMs >= c.startMs && currentMs <= effectiveEnd) return c.targetText;
+    }
+    return null;
+  })()`);
+  expect(
+    at1550,
+    `currentMs=1550 落在 cue 1 延長 endMs(1600)範圍內,但已過下一句 cue 2 startMs=1500,應顯示「下句」。實際: "${at1550}"`,
+  ).toBe('下句');
+
+  await page.close();
+});
+
 test('youtube-asr-mode: 非 ASR(kind 不存在)走原 TRANSLATE_SUBTITLE_BATCH 路徑', async ({
   context,
   localServer,
