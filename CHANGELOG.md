@@ -38,6 +38,7 @@
 
 ### 設定頁與用量紀錄
 
+- **v1.6.17** — 設定頁次按鈕視覺對齊主按鈕(高度/字級一致,主按鈕仍突出)
 - **v1.6.16** — 自訂模型分頁預填 OpenRouter DeepSeek V4 Pro(只剩 API Key 要填即可啟動);Gemini 分頁移除「後備路徑單價」UI;reset 按鈕補清空 v1.6.14 的計價覆蓋表
 - **v1.6.15** — Gemini 分頁移除「全域 Gemini 模型」下拉(後備路徑已不需要),Service Tier 搬到「LLM 參數微調」section
 - **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」(原預設 2 突顯為「主要預設」加藍邊框);Gemini 分頁加 per-model 計價覆蓋表(Google 改價時可手動更新)
@@ -61,6 +62,13 @@
 ---
 
 ## v1.6.x
+
+**v1.6.17** — 設定頁次按鈕(`.secondary`)CSS 對齊主按鈕(`.primary`)的高度與字級。262 條 spec 全綠。
+
+  - **使用者面向**:設定頁的「儲存設定」(主按鈕)與「重設所有參數」(次按鈕)在 v1.6.16 之前因 padding / font-size / font-weight / border 累積差異,視覺高度差約 6px,看起來不像同一組按鈕。修法:`button.secondary` padding 從 `8px 16px` → `9px 20px`,font-size 從 `13px` → `14px`,讓兩按鈕高度貼齊;主按鈕仍因粗字 600 + 較大 padding(10px 24px)+ 無 border 視覺較突出,符合「主動作 vs 次動作」design pattern。
+  - **影響範圍**:全 extension 的 `.secondary` 按鈕(共 16 處,15 處 options 分頁 + 1 處 popup「編輯譯文」)都會跟著對齊,提升整體視覺一致性。功能不受影響。
+  - **未動其他 CSS**:`.btn-row` 對齊 / `.actions` flex container 等保持原樣。
+  - Full `npm test` 262 條(236 Playwright + 26 Jest) 全綠。
 
 **v1.6.16** — 移除「後備路徑單價」UI、reset 補清空計價覆蓋、自訂模型預填 OpenRouter DeepSeek V4 Pro。262 條 spec 全綠。
 

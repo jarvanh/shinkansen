@@ -118,12 +118,17 @@ button.primary {
 button.primary:hover { background: #0077ed; }
 
 button.secondary {
-  padding: 8px 16px;
+  /* v1.6.17: 高度與字級對齊 .primary(padding 9px 20px + font-size 14px),
+     保留 secondary 自身視覺性(白底藍邊細字)。primary 因 padding 10px 24px
+     + 粗字 600 + 無 border 仍視覺較突出,符合「主動作 vs 次動作」design pattern。
+     box-sizing: content-box 下 secondary 總高 ≈ 9*2 + 14*1.2 + 2(border) ≈ 38px;
+     primary 總高 ≈ 10*2 + 14*1.2 ≈ 37px,差距在 1px 內視覺一致。 */
+  padding: 9px 20px;
   background: #fff;
   color: #0071e3;
   border: 1px solid #0071e3;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
 }
 button.secondary:hover { background: #f0f7ff; }
