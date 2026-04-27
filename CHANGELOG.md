@@ -38,6 +38,7 @@
 
 ### 設定頁與用量紀錄
 
+- **v1.6.15** — Gemini 分頁移除「全域 Gemini 模型」下拉(後備路徑已不需要),Service Tier 搬到「LLM 參數微調」section
 - **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」(原預設 2 突顯為「主要預設」加藍邊框);Gemini 分頁加 per-model 計價覆蓋表(Google 改價時可手動更新)
 - **v1.6.13** — 自動翻譯白名單可指定使用哪一組預設(原本走 Gemini 全域模型,現在跟快速鍵行為一致);Gemini 分頁的「模型/計價」section 重新標示為「後備路徑專用」消除混淆
 - **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕(不需關閉設定頁也能看到最新紀錄)
@@ -59,6 +60,18 @@
 ---
 
 ## v1.6.x
+
+**v1.6.15** — 移除 Gemini 分頁的「Gemini 模型與參數(後備路徑)」section,Service Tier 搬到「LLM 參數微調」section。262 條 spec 全綠。
+
+  - **使用者面向**:Gemini 分頁原本最上方的「Gemini 模型與參數(後備路徑)」整個 section 移除。Service Tier 搬到「LLM 參數微調」section 內(放在 Temperature 之上)。原因:v1.4.12 起 preset modelOverride 機制涵蓋翻譯流程 95%+ 場景,v1.6.13 補完自動翻譯白名單路徑後,**全域 model dropdown 真正活著的後備路徑剩下兩個**:
+    - 「測試 API Key」按鈕用此 model 驗證 key
+    - cache key 構建(每批翻譯帶當前 model 進 cache key,但永遠是 modelOverride 後的值,不是全域 dropdown 的值)
+    既然 95%+ 場景沒走到全域 dropdown,且使用者多次回報「兩個 Gemini 模型設定」混淆,直接移除是最乾淨方案。
+  - **「測試 API Key」按鈕改用主要預設(slot 2)的 model**:`getSelectedModel()` 改讀 `preset-engine-2 / preset-model-2`(若主要預設引擎不是 gemini → fallback `DEFAULTS.geminiConfig.model`)。
+  - **storage 不踩 migration**:`settings.geminiConfig.model` 欄位**保留**(只是 UI 不再顯示),既有使用者升級無感;save() 時從 `browser.storage.sync.get('geminiConfig')` 拉現存值寫回,保留結構。
+  - **連帶清理**:移除 `applyModelPricing` 函式 + `SERVICE_TIER_MULTIPLIER` 常數(原本是 model dropdown 切換時自動帶價的便利功能,UI 移除後沒觸發點;v1.6.14 已加 per-model override 表取代「自動帶價」的 UX);移除 `toggleCustomModelInput` + `.custom-model-row` CSS(自行輸入欄位隨 dropdown 一起移除);Gemini 重設按鈕的 confirm 文字同步更新欄位清單。
+  - **不在本版做的事**:`extractGlossary` 與 `translateChunk` 仍從 `settings.geminiConfig.model` destructure(實際拿到的永遠是 modelOverride 後的值,handleTranslate 入口都帶 modelOverride);沒拆出 model 欄位;`background.js:35` rate limiter init log 仍 log 全域 model(預設值,僅供 debug)。完全清理掉 `geminiConfig.model` 結構需要 storage migration,風險不對等收益。
+  - Full `npm test` 262 條(236 Playwright + 26 Jest) 全綠。
 
 **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」+ 模型計價支援使用者覆蓋(防 Google 改價)。262 條 spec 全綠。
 

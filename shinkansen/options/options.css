@@ -92,8 +92,7 @@ textarea { resize: vertical; font-family: -apple-system, 'PingFang TC', sans-ser
 .api-test-result[data-state="loading"] { background: #f2f2f7; color: #555;    border: 1px solid #e5e5ea; }
 
 /* 自行輸入模型 ID（v0.64） */
-.custom-model-row { margin-top: 6px; }
-.custom-model-row input { margin-top: 0; }
+/* v1.6.15: .custom-model-row 隨全域 model dropdown 一起移除(自行輸入欄位失效) */
 
 .muted { color: #86868b; font-size: 12px; }
 

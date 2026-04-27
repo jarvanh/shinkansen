@@ -268,38 +268,6 @@
     <div id="tab-gemini" class="tab-panel">
 
     <section>
-      <h2>Gemini 模型與參數(後備路徑)</h2>
-      <p class="muted">
-        <strong>日常翻譯由「一般設定 → 翻譯快速鍵」中各預設自選的模型決定</strong>，不走這裡。
-        此區塊只在以下少數情境生效:(1) 上方「測試 API Key」按鈕用此模型驗證 key 與配額;
-        (2) 極少數沒走 preset 快速鍵的後備路徑。建議與「主要預設」設定相同。
-      </p>
-      <label>
-        模型
-        <select id="model">
-          <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 翻譯品質普普，不要求最高品質可用</option>
-          <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）— 推薦選擇，翻譯品質高價格便宜</option>
-          <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）— Flash 就夠厲害了，中樂透的話我也無法阻止你用這個最頂的</option>
-          <option value="__custom__">自行輸入模型 ID…</option>
-        </select>
-        <div id="custom-model-row" class="custom-model-row" hidden>
-          <input type="text" id="custom-model-input" placeholder="輸入 Gemini API 模型 ID，例如 gemini-3-pro">
-        </div>
-        <small class="muted">括號內為 Standard tier 參考價（input / output，每 1M tokens USD）。選「自行輸入」可使用未列出的模型</small>
-      </label>
-      <label>
-        服務層級（Service Tier）— 影響費用與延遲
-        <select id="serviceTier">
-          <option value="DEFAULT">預設（不指定，安全相容）</option>
-          <option value="FLEX">Flex（省 50%，但翻譯速度會明顯變慢）</option>
-          <option value="STANDARD">Standard（原價）</option>
-          <option value="PRIORITY">Priority（優先，更貴）</option>
-        </select>
-        <small class="muted">注意：Service Tier 僅較新模型支援（如 gemini-3-flash-preview），舊模型請用「預設」避免錯誤</small>
-      </label>
-    </section>
-
-    <section>
       <h2>模型計價</h2>
       <p class="muted">
         Shinkansen 內建已知 Gemini 模型的標準層級單價(<strong id="pricing-calibrated-date">2026-04</strong> 校準),
@@ -394,6 +362,16 @@
 
     <section>
       <h2>LLM 參數微調</h2>
+      <label>
+        服務層級（Service Tier）— 影響費用與延遲
+        <select id="serviceTier">
+          <option value="DEFAULT">預設（不指定，安全相容）</option>
+          <option value="FLEX">Flex（省 50%，但翻譯速度會明顯變慢）</option>
+          <option value="STANDARD">Standard（原價）</option>
+          <option value="PRIORITY">Priority（優先，更貴）</option>
+        </select>
+        <small class="muted">注意：Service Tier 僅較新模型支援（如 gemini-3-flash-preview），舊模型請用「預設」避免錯誤</small>
+      </label>
       <label>
         Temperature
         <input type="number" id="temperature" step="0.1" min="0" max="2">

@@ -19,41 +19,23 @@ const MODEL_PRICING = Object.fromEntries(
 );
 
 
+// v1.6.15: 全域 #model dropdown 已移除（v1.4.12 起 preset modelOverride 涵蓋
+// 95%+ 場景,真實後備路徑剩 testGeminiKey 按鈕 + cache key 構建）。改讀
+// 「主要預設」(slot 2)的 model;若 slot 2 引擎不是 gemini → fallback 到
+// DEFAULTS.geminiConfig.model(避免 testGeminiKey 沒 model 可送)。
 function getSelectedModel() {
-  const sel = $('model').value;
-  if (sel === '__custom__') {
-    return ($('custom-model-input').value || '').trim() || DEFAULTS.geminiConfig.model;
+  const engineSel = $('preset-engine-2');
+  const modelSel = $('preset-model-2');
+  if (engineSel?.value === 'gemini' && modelSel?.value) {
+    return modelSel.value;
   }
-  return sel;
+  return DEFAULTS.geminiConfig.model;
 }
 
-// v0.64：切換自行輸入欄位的可見性
-function toggleCustomModelInput() {
-  const isCustom = $('model').value === '__custom__';
-  $('custom-model-row').hidden = !isCustom;
-}
-
-// Service Tier 價格倍率（以 Standard 為基準）
-// 來源：https://ai.google.dev/gemini-api/docs/flex-inference / priority-inference（2026-04-09）
-// Flex = 50% 折扣 → 0.5 倍；Priority = 最高 200% → 2.0 倍（保守估計）
-const SERVICE_TIER_MULTIPLIER = {
-  DEFAULT:  1.0,
-  STANDARD: 1.0,
-  FLEX:     0.5,
-  PRIORITY: 2.0,
-};
-
-// v0.64：模型變更 / Service Tier 變更 → 自動帶入參考價到模型計價欄位
-function applyModelPricing(model, tierOverride) {
-  const baseModel = model;
-  const p = MODEL_PRICING[baseModel];
-  if (!p) return; // 自行輸入或查不到參考價時不動現有值
-  const tier = tierOverride || $('serviceTier').value || 'DEFAULT';
-  const mult = SERVICE_TIER_MULTIPLIER[tier] ?? 1.0;
-  // 保留兩位小數，避免浮點誤差
-  $('inputPerMTok').value = +(p.input * mult).toFixed(2);
-  $('outputPerMTok').value = +(p.output * mult).toFixed(2);
-}
+// v1.6.15: SERVICE_TIER_MULTIPLIER + applyModelPricing 已移除。
+// 原本是「全域 model dropdown 切換時自動帶入參考價到後備路徑單價」的便利功能,
+// model dropdown 移除後不再有觸發點;且 v1.6.14 已加 per-model override 表
+// 取代「自動帶價」的 UX 功能。後備路徑單價現在純由使用者填,不自動連動 service tier。
 
 function applyTierToInputs(tier, model) {
   const rpmEl = $('rpm');
@@ -89,16 +71,8 @@ async function load() {
     apiKey: localApiKey,
   };
   $('apiKey').value = s.apiKey;
-  const modelSelect = $('model');
-  const savedModel = s.geminiConfig.model;
-  const hasOption = [...modelSelect.options].some((o) => o.value === savedModel);
-  if (hasOption) {
-    modelSelect.value = savedModel;
-  } else {
-    modelSelect.value = '__custom__';
-    $('custom-model-input').value = savedModel;
-  }
-  toggleCustomModelInput();
+  // v1.6.15: 全域 #model dropdown 已移除,不再從 storage 載入到 UI。
+  // settings.geminiConfig.model 仍保留 storage 結構（避免 migration）但 UI 不顯示。
   $('serviceTier').value = s.geminiConfig.serviceTier;
   $('temperature').value = s.geminiConfig.temperature;
   $('topP').value = s.geminiConfig.topP;
@@ -454,9 +428,13 @@ async function save() {
   // v0.62 起：apiKey 單獨寫到 browser.storage.local，不進 sync
   const apiKeyValue = $('apiKey').value.trim();
   await browser.storage.local.set({ apiKey: apiKeyValue });
+  // v1.6.15: 讀回現存的 geminiConfig.model 不從 UI 取(全域 dropdown 已移除)。
+  // 保留 storage 欄位避免 migration,且 testGeminiKey 已改走「主要預設」的 model。
+  const existing = await browser.storage.sync.get('geminiConfig');
+  const existingModel = existing.geminiConfig?.model || DEFAULTS.geminiConfig.model;
   const settings = {
     geminiConfig: {
-      model: getSelectedModel(),
+      model: existingModel,
       serviceTier: $('serviceTier').value,
       temperature: Number($('temperature').value),
       topP: Number($('topP').value),
@@ -671,17 +649,10 @@ $('cp-reset-prompt')?.addEventListener('click', () => {
 // 不直接寫 storage（要使用者按「儲存設定」才生效），避免誤觸毀掉自訂設定無法回復。
 // 不影響其他分頁（術語表 / 禁用詞 / 自訂模型 / YouTube 字幕）；要全部清空仍走「一般設定 → 回復預設設定」。
 $('gemini-reset-all')?.addEventListener('click', () => {
-  if (!confirm('確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：模型、Service Tier、計價、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Top P、Top K、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後仍需點「儲存設定」才會生效。')) return;
+  if (!confirm('確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：Service Tier、計價、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Top P、Top K、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後仍需點「儲存設定」才會生效。')) return;
   const D = DEFAULTS;
-  // 模型 + service tier
-  const modelSel = $('model');
-  if ([...modelSel.options].some(o => o.value === D.geminiConfig.model)) {
-    modelSel.value = D.geminiConfig.model;
-  } else {
-    modelSel.value = '__custom__';
-    $('custom-model-input').value = D.geminiConfig.model;
-  }
-  toggleCustomModelInput();
+  // v1.6.15: 全域 #model dropdown 已移除,不再 reset 模型 UI;只 reset service tier。
+  // settings.geminiConfig.model 由「儲存設定」按鈕從 storage 讀回沿用。
   $('serviceTier').value = D.geminiConfig.serviceTier;
   // LLM 參數
   $('temperature').value     = D.geminiConfig.temperature;
@@ -719,7 +690,9 @@ $('ytEngine')?.addEventListener('change', () => {
   updateYtPromptCostHint();
 });
 // v1.5.8: 字幕模型 / 計價變動時重算 cost hint
-for (const id of ['ytModel', 'ytInputPerMTok', 'cp-model', 'cp-inputPerMTok', 'inputPerMTok', 'model']) {
+// v1.6.15: 移除 'model'(全域 dropdown 已移除)。preset-model-2 切換不影響字幕成本估算
+// 因為字幕用獨立的 ytSubtitle.model;字幕 prompt token 成本估算只看字幕端設定。
+for (const id of ['ytModel', 'ytInputPerMTok', 'cp-model', 'cp-inputPerMTok', 'inputPerMTok']) {
   $(id)?.addEventListener('change', updateYtPromptCostHint);
   $(id)?.addEventListener('input', updateYtPromptCostHint);
 }
@@ -838,20 +811,12 @@ $('test-api-key').addEventListener('click', async () => {
   });
 });
 
-// Tier 或 Model 變更 → 自動更新 RPM/TPM/RPD 顯示
+// Tier 變更 → 自動更新 RPM/TPM/RPD 顯示
+// v1.6.15: 全域 model dropdown 已移除,Service Tier 已搬到 LLM 參數微調 section。
+// applyModelPricing(model) 在這裡也失去意義(model 不再從 UI 變,計價走 v1.6.14 per-model
+// override 表;Service Tier 影響的是內建表 multiplier,但「後備路徑單價」不再隨 tier 變)。
 $('tier').addEventListener('change', () => {
   applyTierToInputs($('tier').value, getSelectedModel());
-});
-// v0.64：Model 變更 → 更新 rate limit + 自動帶入參考價 + 切換自行輸入欄位
-$('model').addEventListener('change', () => {
-  toggleCustomModelInput();
-  const model = getSelectedModel();
-  applyTierToInputs($('tier').value, model);
-  applyModelPricing(model);
-});
-// Service Tier 變更 → 重新計算模型計價（Flex 半價、Priority 兩倍）
-$('serviceTier').addEventListener('change', () => {
-  applyModelPricing(getSelectedModel());
 });
 $('safetyMargin').addEventListener('input', () => {
   $('safetyMarginLabel').textContent = $('safetyMargin').value;
