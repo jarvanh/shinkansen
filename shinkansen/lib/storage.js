@@ -207,6 +207,10 @@ export const DEFAULT_SETTINGS = {
   // v1.6.1: 「不再顯示更新提示」toggle。預設 false（顯示提示）。
   // 對應 storage.local 的 updateAvailable 物件由 lib/update-check.js 寫入，不在 sync。
   disableUpdateNotice: false,
+  // v1.6.6: 工具列「翻譯本頁」按鈕對應的 preset slot（1/2/3）。
+  // 預設 slot 2 = Flash（與 v1.4.12 開始 popup 按鈕硬碼映射的行為一致）。
+  // 使用者可在一般設定改成其他 preset，按 popup 按鈕等同按該 slot 的快速鍵。
+  popupButtonSlot: 2,
   // v1.5.7: 自訂 OpenAI-compatible Provider。
   // engine='openai-compat' 的 preset 會走 lib/openai-compat.js 透過 chat.completions
   // endpoint 翻譯，可接 OpenRouter / Together / DeepSeek / Groq / Ollama 等 provider。
@@ -279,6 +283,14 @@ export async function getSettings() {
   const { [CUSTOM_PROVIDER_API_KEY]: cpApiKey = '' } = await browser.storage.local.get(CUSTOM_PROVIDER_API_KEY);
   merged.customProvider.apiKey = cpApiKey;
   return merged;
+}
+
+// v1.6.6: 工具列「翻譯本頁」按鈕的 preset slot 解析
+// raw 來自 storage.sync.popupButtonSlot（可能是 number / string / undefined / 0 / 999）
+// 不在 1/2/3 範圍一律 fallback 2（與 v1.4.12 起的 popup 硬碼行為一致）
+export function pickPopupSlot(raw) {
+  const n = Number(raw);
+  return [1, 2, 3].includes(n) ? n : 2;
 }
 
 export async function setSettings(patch) {
