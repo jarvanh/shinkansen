@@ -1282,12 +1282,21 @@
         }
       }
 
-      const { autoTranslate = false } = await browser.storage.sync.get('autoTranslate');
+      const { autoTranslate = false, autoTranslateSlot } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot']);
       if (!autoTranslate) return;
       if (await SK.isDomainWhitelisted()) {
-        SK.sendLog('info', 'system', 'domain in auto-translate list, translating on load', { url: location.href });
-        // v1.4.16: toast 前綴顯示「[自動翻譯]」讓使用者知道本次是 whitelist 觸發的，不是自己按的
-        SK.translatePage({ label: '自動翻譯' });
+        // v1.6.13: 走指定 preset slot 而非裸 translatePage(),讓白名單行為跟使用者
+        // 期待的「按下對應快速鍵」一致(走 preset.model 的 modelOverride)。
+        // 沒設過 / 範圍外時 fallback slot 2,跟 v1.6.12 之前的行為等價。
+        const n = Number(autoTranslateSlot);
+        const slot = [1, 2, 3].includes(n) ? n : 2;
+        SK.sendLog('info', 'system', 'domain in auto-translate list, translating on load', { url: location.href, slot });
+        if (typeof SK.handleTranslatePreset === 'function') {
+          SK.handleTranslatePreset(slot);
+        } else {
+          // 防禦性 fallback(理論上 SK.handleTranslatePreset 永遠在 content.js 內 export)
+          SK.translatePage({ label: '自動翻譯' });
+        }
       }
     } catch (err) {
       SK.sendLog('warn', 'system', 'auto-translate check failed on load', { error: err.message });

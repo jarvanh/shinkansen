@@ -216,6 +216,11 @@ export const DEFAULT_SETTINGS = {
   // 預設 slot 2 = Flash（與 v1.4.12 開始 popup 按鈕硬碼映射的行為一致）。
   // 使用者可在一般設定改成其他 preset，按 popup 按鈕等同按該 slot 的快速鍵。
   popupButtonSlot: 2,
+  // v1.6.13: 自動翻譯網站(白名單)觸發時要用哪一組 preset。預設 slot 2 = Flash。
+  // 修法前自動翻譯路徑直接 SK.translatePage() 不帶 slot,fallback 全域 geminiConfig.model;
+  // 使用者改 preset model 後 Alt+S 走新 model,但白名單路徑仍走全域 → UX 不一致。
+  // 改成走 SK.handleTranslatePreset(autoTranslateSlot) 後,白名單與快速鍵行為對齊。
+  autoTranslateSlot: 2,
   // v1.5.7: 自訂 OpenAI-compatible Provider。
   // engine='openai-compat' 的 preset 會走 lib/openai-compat.js 透過 chat.completions
   // endpoint 翻譯，可接 OpenRouter / Together / DeepSeek / Groq / Ollama 等 provider。
@@ -294,6 +299,13 @@ export async function getSettings() {
 // raw 來自 storage.sync.popupButtonSlot（可能是 number / string / undefined / 0 / 999）
 // 不在 1/2/3 範圍一律 fallback 2（與 v1.4.12 起的 popup 硬碼行為一致）
 export function pickPopupSlot(raw) {
+  const n = Number(raw);
+  return [1, 2, 3].includes(n) ? n : 2;
+}
+
+// v1.6.13: 自動翻譯網站(白名單)的 preset slot 解析。
+// raw 來自 storage.sync.autoTranslateSlot;範圍外一律 fallback 2(與 popup 對稱)。
+export function pickAutoTranslateSlot(raw) {
   const n = Number(raw);
   return [1, 2, 3].includes(n) ? n : 2;
 }
