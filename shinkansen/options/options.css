@@ -727,6 +727,12 @@ a:hover { text-decoration: underline; }
   padding: 14px;
   background: #fbfbfd;
 }
+/* v1.6.14: 主要預設視覺強化——藍邊 + 淡藍底突顯 */
+.preset-card-primary {
+  border: 2px solid #0071e3;
+  background: #f0f6ff;
+  box-shadow: 0 2px 6px rgba(0, 113, 227, 0.08);
+}
 .preset-card-header {
   display: flex;
   align-items: center;
@@ -735,6 +741,34 @@ a:hover { text-decoration: underline; }
   font-size: 14px;
 }
 .preset-card-header strong { color: #1d1d1f; }
+.preset-card-primary .preset-card-header strong { color: #0071e3; font-size: 15px; }
+
+/* v1.6.14: per-model 計價覆蓋表(Gemini 分頁) */
+.model-pricing-overrides {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.model-pricing-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 120px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #d2d2d7;
+  border-radius: 6px;
+  background: #fbfbfd;
+}
+.model-pricing-label strong { display: block; font-size: 14px; color: #1d1d1f; }
+.model-pricing-label small { display: block; margin-top: 2px; font-size: 12px; }
+.model-pricing-row input[type="number"] {
+  height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #d2d2d7;
+  border-radius: 4px;
+  font-size: 13px;
+}
 .preset-key {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;

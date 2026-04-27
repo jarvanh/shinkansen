@@ -604,7 +604,9 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   // 優先順序：pricingOverride（字幕獨立計價） > modelOverride 查表 > settings.pricing
   let effectivePricing = pricingOverride;
   if (!effectivePricing && geminiOverrides.model) {
-    effectivePricing = getPricingForModel(geminiOverrides.model);
+    // v1.6.14: 帶 settings 讓 getPricingForModel 先查使用者的 modelPricingOverrides,
+    // 沒有 override 才 fallback 內建表(Google 改價時使用者能自己更新單價)。
+    effectivePricing = getPricingForModel(geminiOverrides.model, settings);
   }
   if (!effectivePricing) {
     effectivePricing = settings.pricing;

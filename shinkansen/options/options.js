@@ -107,6 +107,20 @@ async function load() {
   $('systemInstruction').value = s.geminiConfig.systemInstruction;
   $('inputPerMTok').value = s.pricing.inputPerMTok;
   $('outputPerMTok').value = s.pricing.outputPerMTok;
+  // v1.6.14: per-model 計價覆蓋
+  const overrides = s.modelPricingOverrides || {};
+  const fillOverride = (id, model, key) => {
+    const el = $(id);
+    if (!el) return;
+    const v = overrides[model]?.[key];
+    el.value = (Number.isFinite(Number(v)) ? Number(v) : '');
+  };
+  fillOverride('override-lite-input',  'gemini-3.1-flash-lite-preview', 'inputPerMTok');
+  fillOverride('override-lite-output', 'gemini-3.1-flash-lite-preview', 'outputPerMTok');
+  fillOverride('override-flash-input', 'gemini-3-flash-preview', 'inputPerMTok');
+  fillOverride('override-flash-output','gemini-3-flash-preview', 'outputPerMTok');
+  fillOverride('override-pro-input',   'gemini-3.1-pro-preview', 'inputPerMTok');
+  fillOverride('override-pro-output',  'gemini-3.1-pro-preview', 'outputPerMTok');
   $('whitelist').value = (s.domainRules.whitelist || []).join('\n');
   $('debugLog').checked = s.debugLog;
 
@@ -230,14 +244,15 @@ async function load() {
   refreshPresetKeyBindings();
 
   // v1.6.6: 工具列「翻譯本頁」按鈕的 preset slot dropdown
-  // 用 preset.label 動態填 option 內容（讓使用者看到「Flash Lite / Flash / Google MT」這類標籤而非「預設 1/2/3」）
+  // v1.6.14: slot 2 顯示「主要預設」、slot 1/3 顯示「預設 2/3」(順延編號:原預設 1 → 預設 2,原預設 2 → 主要預設,原預設 3 維持)
+  const slotTitle = (slot) => slot === 2 ? '主要預設' : `預設 ${slot === 1 ? 2 : 3}`;
   const popupSlotSel = $('popup-button-slot');
   if (popupSlotSel) {
     for (const slot of [1, 2, 3]) {
       const p = presets.find(x => x.slot === slot) || DEFAULTS.translatePresets.find(x => x.slot === slot);
-      const label = (p.label && p.label.trim()) || `預設 ${slot}`;
+      const label = (p.label && p.label.trim()) || slotTitle(slot);
       const opt = popupSlotSel.querySelector(`option[value="${slot}"]`);
-      if (opt) opt.textContent = `預設 ${slot}：${label}`;
+      if (opt) opt.textContent = `${slotTitle(slot)}：${label}`;
     }
     const slotVal = Number(s.popupButtonSlot);
     popupSlotSel.value = ([1, 2, 3].includes(slotVal) ? slotVal : 2).toString();
@@ -246,13 +261,12 @@ async function load() {
   // v1.6.13: 自動翻譯網站使用的 preset slot
   const autoSlotSel = $('auto-translate-slot');
   if (autoSlotSel) {
-    // 同步顯示文字「預設 N: <label>」
     for (const p of presets) {
       const slot = Number(p.slot);
       if (!slot) continue;
-      const label = (p.label && p.label.trim()) || `預設 ${slot}`;
+      const label = (p.label && p.label.trim()) || slotTitle(slot);
       const opt = autoSlotSel.querySelector(`option[value="${slot}"]`);
-      if (opt) opt.textContent = `預設 ${slot}：${label}`;
+      if (opt) opt.textContent = `${slotTitle(slot)}：${label}`;
     }
     const autoSlotVal = Number(s.autoTranslateSlot);
     autoSlotSel.value = ([1, 2, 3].includes(autoSlotVal) ? autoSlotVal : 2).toString();
@@ -536,6 +550,28 @@ async function save() {
     autoTranslateSlot: (() => {
       const v = Number($('auto-translate-slot')?.value);
       return [1, 2, 3].includes(v) ? v : 2;
+    })(),
+    // v1.6.14: per-model 計價覆蓋(Google 改價時使用者自填)。
+    // 兩欄都是合法數字才寫入 entry,任一欄空白整個 model 不存(走內建表)。
+    modelPricingOverrides: (() => {
+      const collect = (model, inputId, outputId) => {
+        const i = $(inputId)?.value?.trim();
+        const o = $(outputId)?.value?.trim();
+        if (i === '' || o === '') return null;
+        const ni = Number(i), no = Number(o);
+        if (!Number.isFinite(ni) || !Number.isFinite(no) || ni < 0 || no < 0) return null;
+        return { model, inputPerMTok: ni, outputPerMTok: no };
+      };
+      const rows = [
+        collect('gemini-3.1-flash-lite-preview', 'override-lite-input',  'override-lite-output'),
+        collect('gemini-3-flash-preview',         'override-flash-input', 'override-flash-output'),
+        collect('gemini-3.1-pro-preview',         'override-pro-input',   'override-pro-output'),
+      ].filter(Boolean);
+      const out = {};
+      for (const r of rows) {
+        out[r.model] = { inputPerMTok: r.inputPerMTok, outputPerMTok: r.outputPerMTok };
+      }
+      return out;
     })(),
     // v1.0.29: 固定術語表（save 前先同步 UI → 記憶體）
     fixedGlossary: (() => {
@@ -885,6 +921,7 @@ function sanitizeImport(raw) {
     toastAutoHide:       { type: 'boolean' },
     popupButtonSlot:     { type: 'number', min: 1, max: 3, int: true }, // v1.6.6
     autoTranslateSlot:   { type: 'number', min: 1, max: 3, int: true }, // v1.6.13
+    modelPricingOverrides: { type: 'object' }, // v1.6.14
     showProgressToast:   { type: 'boolean' }, // v1.6.8
   };
 

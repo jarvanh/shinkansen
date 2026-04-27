@@ -64,7 +64,7 @@
       <div class="preset-cards">
         <div class="preset-card" data-slot="1">
           <div class="preset-card-header">
-            <strong>預設 1</strong>
+            <strong>預設 2</strong>
             <span class="preset-key" id="preset-key-1">—</span>
           </div>
           <label>
@@ -89,9 +89,9 @@
           </label>
         </div>
 
-        <div class="preset-card" data-slot="2">
+        <div class="preset-card preset-card-primary" data-slot="2">
           <div class="preset-card-header">
-            <strong>預設 2</strong>
+            <strong>主要預設</strong>
             <span class="preset-key" id="preset-key-2">—</span>
           </div>
           <label>
@@ -151,8 +151,8 @@
       <label class="popup-button-slot-label">
         對應的翻譯預設
         <select id="popup-button-slot">
-          <option value="1">預設 1</option>
-          <option value="2">預設 2</option>
+          <option value="1">預設 2</option>
+          <option value="2">主要預設</option>
           <option value="3">預設 3</option>
         </select>
       </label>
@@ -167,11 +167,11 @@
       <label class="popup-button-slot-label">
         自動翻譯使用的預設
         <select id="auto-translate-slot">
-          <option value="1">預設 1</option>
-          <option value="2">預設 2</option>
+          <option value="1">預設 2</option>
+          <option value="2">主要預設</option>
           <option value="3">預設 3</option>
         </select>
-        <small class="muted">進入白名單網域時走哪一組預設(等同自動按下對應的快速鍵)。預設 slot 2 與 v1.6.12 之前的行為一致</small>
+        <small class="muted">進入白名單網域時走哪一組預設(等同自動按下對應的快速鍵)。預設「主要預設」與 v1.6.12 之前的行為一致</small>
       </label>
     </section>
 
@@ -272,7 +272,7 @@
       <p class="muted">
         <strong>日常翻譯由「一般設定 → 翻譯快速鍵」中各預設自選的模型決定</strong>，不走這裡。
         此區塊只在以下少數情境生效:(1) 上方「測試 API Key」按鈕用此模型驗證 key 與配額;
-        (2) 極少數沒走 preset 快速鍵的後備路徑。建議與「預設 2」設定相同。
+        (2) 極少數沒走 preset 快速鍵的後備路徑。建議與「主要預設」設定相同。
       </p>
       <label>
         模型
@@ -300,11 +300,48 @@
     </section>
 
     <section>
-      <h2>模型計價(後備路徑)</h2>
+      <h2>模型計價</h2>
       <p class="muted">
-        <strong>preset 快速鍵翻譯的計價自動從內建表查</strong>(切 preset 模型不需要動這裡)。
-        此處單價只在「上方後備模型」實際被觸發時用。單位為「每 1M tokens 的美金價格」。
-        請至 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a> 查詢最新費率
+        Shinkansen 內建已知 Gemini 模型的標準層級單價(<strong id="pricing-calibrated-date">2026-04</strong> 校準),
+        用於計算翻譯成本顯示在翻譯完成通知與「用量紀錄」分頁。Google 改價時可在下方覆蓋對應模型,空白表示用內建價。
+        詳細費率見 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a>。
+      </p>
+      <p class="muted" style="font-size: 13px;">
+        Preset 翻譯的計價優先順序:覆蓋值 → 內建表 → 下方「後備路徑單價」。單位皆為「每 1M tokens 的美金價格」。
+      </p>
+
+      <div class="model-pricing-overrides">
+        <div class="model-pricing-row" data-model="gemini-3.1-flash-lite-preview">
+          <div class="model-pricing-label">
+            <strong>Flash Lite</strong>
+            <small class="muted">內建 $0.10 / $0.30</small>
+          </div>
+          <input type="number" id="override-lite-input" step="0.01" min="0" placeholder="0.10" aria-label="Flash Lite input 覆蓋">
+          <input type="number" id="override-lite-output" step="0.01" min="0" placeholder="0.30" aria-label="Flash Lite output 覆蓋">
+        </div>
+        <div class="model-pricing-row" data-model="gemini-3-flash-preview">
+          <div class="model-pricing-label">
+            <strong>Flash</strong>
+            <small class="muted">內建 $0.50 / $3.00</small>
+          </div>
+          <input type="number" id="override-flash-input" step="0.01" min="0" placeholder="0.50" aria-label="Flash input 覆蓋">
+          <input type="number" id="override-flash-output" step="0.01" min="0" placeholder="3.00" aria-label="Flash output 覆蓋">
+        </div>
+        <div class="model-pricing-row" data-model="gemini-3.1-pro-preview">
+          <div class="model-pricing-label">
+            <strong>Pro</strong>
+            <small class="muted">內建 $2.00 / $12.00</small>
+          </div>
+          <input type="number" id="override-pro-input" step="0.01" min="0" placeholder="2.00" aria-label="Pro input 覆蓋">
+          <input type="number" id="override-pro-output" step="0.01" min="0" placeholder="12.00" aria-label="Pro output 覆蓋">
+        </div>
+      </div>
+
+      <hr style="margin: 20px 0; border: 0; border-top: 1px solid #e5e5ea;">
+
+      <h3 style="font-size: 14px; margin-bottom: 8px;">後備路徑單價</h3>
+      <p class="muted" style="font-size: 13px;">
+        只在上方「Gemini 模型與參數(後備路徑)」實際被觸發時生效(自訂 model 名 / autoTranslate 沒走 preset 等情境)。
       </p>
       <label>
         Input tokens 單價（USD / 1M tokens）

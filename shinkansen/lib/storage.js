@@ -221,6 +221,10 @@ export const DEFAULT_SETTINGS = {
   // 使用者改 preset model 後 Alt+S 走新 model,但白名單路徑仍走全域 → UX 不一致。
   // 改成走 SK.handleTranslatePreset(autoTranslateSlot) 後,白名單與快速鍵行為對齊。
   autoTranslateSlot: 2,
+  // v1.6.14: per-model 計價覆蓋表。Google 改價時內建表(lib/model-pricing.js)會過時,
+  // 使用者可在「Gemini 分頁 → 模型計價」針對 lite/flash/pro 個別覆蓋。
+  // 結構:{ [modelName]: { inputPerMTok, outputPerMTok } };空欄位或缺 entry → fallback 內建表。
+  modelPricingOverrides: {},
   // v1.5.7: 自訂 OpenAI-compatible Provider。
   // engine='openai-compat' 的 preset 會走 lib/openai-compat.js 透過 chat.completions
   // endpoint 翻譯，可接 OpenRouter / Together / DeepSeek / Groq / Ollama 等 provider。

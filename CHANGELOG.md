@@ -38,6 +38,7 @@
 
 ### 設定頁與用量紀錄
 
+- **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」(原預設 2 突顯為「主要預設」加藍邊框);Gemini 分頁加 per-model 計價覆蓋表(Google 改價時可手動更新)
 - **v1.6.13** — 自動翻譯白名單可指定使用哪一組預設(原本走 Gemini 全域模型,現在跟快速鍵行為一致);Gemini 分頁的「模型/計價」section 重新標示為「後備路徑專用」消除混淆
 - **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕(不需關閉設定頁也能看到最新紀錄)
 - **v1.6.0** — 設定頁加入「重設所有參數」與「重置為預設 Prompt」按鈕；每批段數預設 12→20；用量紀錄時間 filter 改 24 小時制 + 「現在時間」按鈕
@@ -58,6 +59,23 @@
 ---
 
 ## v1.6.x
+
+**v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」+ 模型計價支援使用者覆蓋(防 Google 改價)。262 條 spec 全綠。
+
+  - **使用者面向 1:翻譯預設改名**:設定頁三張卡片標題從「預設 1 / 預設 2 / 預設 3」改成「**預設 2 / 主要預設 / 預設 3**」(原預設 2 是日常最常用,改名為「主要預設」突顯;原預設 1 順延編號為「預設 2」;預設 3 維持)。
+    - slot 2 卡片視覺強化:藍色邊框 + 淡藍底 + 標題加深加大。
+    - 「工具列『翻譯本頁』按鈕」與「自動翻譯網站使用的預設」兩個 dropdown 文字同步:「主要預設 / 預設 2 / 預設 3」。
+    - manifest commands description 同步:Alt+S 描述為「翻譯主要預設」。
+    - **內部 storage slot 編號 1/2/3 維持不變**(沒有 migration 風險),只動 UI 標籤。
+  - **使用者面向 2:per-model 計價覆蓋**:Google 改價時內建表(`lib/model-pricing.js`)會過時。原本只有後備路徑能填單價,preset 路徑硬走內建查表。Gemini 分頁的「模型計價」section 重新設計:
+    - 上半新增 per-model 覆蓋表(Lite / Flash / Pro 三組),每組顯示「內建 $X / $Y」+ 兩個 input(input/output 單價);填了就用,空白 fallback 內建。
+    - 加 `LAST_CALIBRATED_DATE = '2026-04'` 常數,UI 顯示「**(2026-04 校準)**」提示使用者內建表可能過時。
+    - 下半保留原「後備路徑單價」(只在後備路徑實際被觸發時用)。
+    - storage 加 `modelPricingOverrides: {}`(預設空物件,使用者沒覆蓋就 fallback 內建)。
+  - **getPricingForModel 簽名變更**:加 `settings` 參數,優先順序「override → 內建表 → null」。`background.js` line 607 呼叫處同步帶 settings。
+  - **新 unit spec** `test/unit/model-pricing-override.spec.js`(8 條):override 優先 / 字串 coerce / 非合法數字 fallback 內建 / 其他 model 不受影響 / 內建表 fallback / 未知 model null / 空值 null / LAST_CALIBRATED_DATE 格式驗證。SANITY 已驗。
+  - **不踩 storage migration**:既有使用者升級 v1.6.14,`modelPricingOverrides` 預設空物件,行為跟之前完全等價(內建表查價);改名只動 UI 標籤,內部 slot 編號 / `popupButtonSlot` / `autoTranslateSlot` / preset 卡片 storage 結構全部不變。
+  - Full `npm test` 262 條(236 Playwright + 26 Jest) 全綠。
 
 **v1.6.13** — 解 Gemini 模型設定混淆:自動翻譯白名單改走 preset slot + Gemini 分頁的「全域模型 + 計價」section 重新標示為「後備路徑專用」。254 條 spec 全綠。
 
