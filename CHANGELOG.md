@@ -40,6 +40,10 @@
 - **v1.6.0** — 設定頁加入「重設所有參數」與「重置為預設 Prompt」按鈕；每批段數預設 12→20；用量紀錄時間 filter 改 24 小時制 + 「現在時間」按鈕
 - **v1.5.7** — 用量紀錄「模型」欄改顯示 preset 標籤；Google MT 同 URL 批次自動合併
 
+### 效能與穩定性
+
+- **v1.6.9** — 段落偵測階段大幅優化,長頁（Wikipedia / 論壇 / 長 Medium）翻譯啟動明顯變快
+
 ### 通知與更新提示
 
 - **v1.6.8** — 「顯示翻譯進度通知」master switch（可完全關閉 toast）
@@ -51,7 +55,13 @@
 
 ## v1.6.x
 
-**v1.6.8** — 新增「顯示翻譯進度通知」master switch（一般設定分頁），可完全關閉 toast。
+**v1.6.9** — 段落偵測效能優化（針對長頁如 Wikipedia / 論壇 / 長 Medium）。`collectParagraphs` 三項內部優化,行為等價,244 條 spec（218 Playwright + 26 Jest）全綠。
+
+  - **`innerText` → `textContent`**（5 處）：`isCandidateText` / leaf anchor 補抓 / leaf div/span 補抓 / grid cell 補抓（4 處呼叫）。`innerText` 每次呼叫都觸發 layout reflow（瀏覽器需重算整頁版面後才回字串）,在長頁面上動輒被叫上千次,是偵測階段最大瓶頸。`textContent` 純讀 DOM 字串樹不 force layout,對長度判斷 / 語言偵測場景語意等價。`isInteractiveWidgetContainer` 刻意保留 innerText（>=300 字判定該函式語意要求「使用者實際看得到的字數」,改成 textContent 會讓含隱藏 modal/menu 字的 Twitter / Gmail widget 漏過篩選被誤翻）。
+  - **leaf div/span 收緊 selector 為 `:not(:has(*))`**：原本 `document.querySelectorAll('div, span')` 在長頁可能回傳數萬個 element,後續 JS forEach 才用 `d.children.length > 0` 過濾掉非葉節點。改成讓原生 CSS engine 直接過濾「無 element 子節點」的 div/span,實測長頁從幾萬 element 降至數百個,後續 isVisible / textContent / isCandidateText 等檢查減少 95% 以上呼叫。`:has()` Chrome 105+ / Firefox 121+ / Safari 15.4+ 都已 stable 多年,Manifest V3 環境零相容性風險。
+  - **`isInsideExcludedContainer` 加 per-call memo**：偵測階段反覆問「這個元素是否在被排除的容器內」（FOOTER/role=banner/contenteditable/譯文 wrapper 等）,每次都要從 el 走到 body,長頁同一條祖先鏈會被走數百次。新加 `Map<el, bool>` cache,任何後代命中已算過的祖先即 O(1) 短路。memo 為純函式緩存（單次 collectParagraphs 期間 DOM 不變動）,語意完全等價。
+  - **行為等價驗證**:65 條相關 spec（27 detect / 38 inject+guard+spa+iframe+restore+sticky）+ full suite 244 條全綠。
+ 新增「顯示翻譯進度通知」master switch（一般設定分頁），可完全關閉 toast。
 
   - **使用者回報**：原本 toast 透明度最低只能設到 10%，沒有「完全關閉」選項；雖然視覺上看不見，但 DOM、Shadow root、訊息與計時器都還在跑。
   - **新設定**：一般設定 →「翻譯進度通知」section 最上方加 checkbox「顯示翻譯進度通知」（預設 ON 維持現行為），關閉後 `SK.showToast()` 入口直接 return（不渲染 DOM、不發訊息）；切換時即時生效（`onChanged` listener 同步狀態並隱藏目前 toast）。
