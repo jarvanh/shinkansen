@@ -557,6 +557,39 @@
         Temperature
         <input type="number" id="cp-temperature" step="0.1" min="0" max="2" placeholder="0.7">
       </label>
+
+      <!-- v1.6.18: thinking 控制 -->
+      <label>
+        思考強度
+        <select id="cp-thinking-level">
+          <option value="auto">自動（用 provider 預設）</option>
+          <option value="off">關閉</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+        </select>
+        <small class="muted">
+          依 baseUrl 與模型自動翻譯成對應 provider 的 thinking API
+          （OpenRouter <code>reasoning.effort</code>、DeepSeek <code>extra_body.thinking</code>、
+          Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、
+          Grok <code>reasoning_effort</code>、Qwen <code>extra_body.enable_thinking</code>）。
+          翻譯任務 thinking 通常無感但會多花 token；建議「關閉」省成本，
+          除非你的模型只能在 thinking 開啟時翻譯（如 DeepSeek-R1 / QwQ）。
+          不認識的 provider 走「自動」。
+        </small>
+      </label>
+
+      <details>
+        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;">進階：自訂 request body 額外參數（JSON,覆蓋上方思考強度）</summary>
+        <textarea id="cp-extra-body-json" rows="4" placeholder='例：{"reasoning":{"max_tokens":4000},"top_k":40}' style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
+        <small class="muted">
+          內容會深層 merge 進 chat.completions request body,可用來:
+          (1) 強制覆蓋上方「思考強度」自動產生的設定;
+          (2) 加 provider 專屬參數(例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、
+          Anthropic 的 <code>metadata</code>)。
+          格式錯誤會在 Debug 分頁 log 一條 warn 並忽略,翻譯不會中斷。
+        </small>
+      </details>
     </section>
 
     <section>

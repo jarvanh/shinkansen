@@ -244,6 +244,16 @@ export const DEFAULT_SETTINGS = {
     temperature: 0.7,
     inputPerMTok: 0.435,                // OpenRouter DeepSeek V4 Pro Standard tier 參考價
     outputPerMTok: 0.87,
+    // v1.6.18: thinking 控制(統一 5 級對映 + 進階 JSON 透傳)。
+    //   thinkingLevel:'auto' 不送任何 thinking 參數,讓 provider 自選預設(最安全 fallback);
+    //   'off' / 'low' / 'medium' / 'high' 由 lib/openai-compat-thinking.js 偵測 provider 後
+    //   翻譯成對應 API 寫法(OpenRouter unified reasoning / DeepSeek extra_body.thinking /
+    //   Claude thinking.type / OpenAI o reasoning_effort / Grok reasoning_effort / Qwen
+    //   extra_body.enable_thinking)。
+    //   extraBodyJson:使用者自填 JSON 字串,deep merge 到 request body,可覆蓋自動 mapping
+    //   並加 provider 專屬參數(top_k / metadata 等)。預設空白(進階使用者才需要)。
+    thinkingLevel: 'auto',
+    extraBodyJson: '',
   },
 };
 

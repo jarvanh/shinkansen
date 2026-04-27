@@ -11,6 +11,7 @@
 
 ### 翻譯引擎與模型
 
+- **v1.6.18** — 自訂模型分頁加「思考強度」(自動 / 關閉 / 低 / 中 / 高)統一控制,涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking API 差異;另加「進階 JSON」逃生口給 power user 透傳 provider 專屬參數
 - **v1.6.12** — 修 Pro 模型(`gemini-3-pro-preview` / `gemini-2.5-pro` 等)翻譯失敗 bug,並升級到 Gemini 3 推薦的 `thinkingLevel` API
 - **v1.6.7** — 自訂模型支援本機後端（llama.cpp / Ollama 等不需 API Key 的服務）
 - **v1.5.7** — 新增「自訂 OpenAI 相容模型」分頁，可接 OpenRouter / Together / DeepSeek / Groq / Fireworks / Ollama 等任何 OpenAI 相容端點
@@ -62,6 +63,32 @@
 ---
 
 ## v1.6.x
+
+**v1.6.18** — 自訂模型新增「思考強度」統一控制 + 進階 JSON 透傳,涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking schema。296 條 spec 全綠。
+
+  - **使用者面向**:自訂模型分頁加「思考強度」dropdown(`自動 / 關閉 / 低 / 中 / 高`)。內部依 baseUrl + model 偵測 provider 自動翻譯成對應 API 寫法,使用者不必懂各家 thinking API 差異。同時加「進階」摺疊區,讓 power user 自填 JSON 直接 merge 進 chat.completions request body(可覆蓋自動 mapping、加 provider 專屬參數)。
+  - **6 家 provider mapping(2026-04 校準,文件來源見下)**:
+    - OpenRouter unified: `reasoning: { effort: low/medium/high, exclude: true }`(off → exclude=true)
+    - DeepSeek native: `extra_body.thinking: { type: enabled/disabled }`
+    - Claude (Anthropic): `thinking: { type: adaptive/disabled }`(高 → adaptive,低 → adaptive,off → disabled)
+    - OpenAI o-series: `reasoning_effort: minimal/low/medium/high`(off → minimal,沒真 disable)
+    - Grok (xAI): `reasoning_effort: low/medium/high`(off → 不送,因 grok 多數 model 不支援 disable)
+    - Qwen: `extra_body.enable_thinking: true/false`
+    - 不認識的 provider → 不送(走 provider 預設,避免送未知參數導致 4xx)
+  - **新檔 `lib/openai-compat-thinking.js`**(150 行):export `detectProvider` / `buildNativeThinking` / `safeParseJson` / `deepMerge` / `buildThinkingPayload`。`safeParseJson` 對 user 進階 JSON 做容錯處理,格式錯誤時 debugLog 一條 warn 並回 `{}`(不阻斷翻譯)。
+  - **新 unit spec** `test/unit/openai-compat-thinking-mapping.spec.js`(34 條):provider 偵測 11 條(baseUrl 優先 / model name fallback / unknown)+ buildNativeThinking 9 條(各 provider × level)+ safeParseJson 4 條(合法 / 空白 / 非 object / 格式錯)+ deepMerge 4 條(遞迴 / 覆蓋 / 陣列 / 型別衝突)+ buildThinkingPayload 整合 7 條(預設 / native / extraBody 覆蓋 / 加額外欄位 / auto / 解析失敗)。SANITY 已驗(把 OpenRouter 偵測破壞 → 5 條 fail,還原後全綠)。
+  - **lib/openai-compat.js 整合**:translateChunk 加 import + 入口 `buildThinkingPayload({ baseUrl, model, level, extraBodyRaw, onWarn })`,結果 spread 進 chat.completions request body。既有 7 條 openai-compat-injection / 3 條 segment-mismatch / 5 條 usage spec 不受影響(只新增 body 欄位,不動既有路徑)。
+  - **`DEFAULT_SETTINGS.customProvider` 加 2 欄**:`thinkingLevel: 'auto'`(預設不干涉)、`extraBodyJson: ''`(預設空白)。既有使用者升級 v1.6.18 後行為不變(auto 等同舊版完全不送 thinking 參數,讓 provider 自選預設)。
+  - **不在本版做的事**:沒處理 Gemini 路徑(走 lib/gemini.js,v1.6.12 已有 pickThinkingConfig 獨立處理);Grok 自動偵測限制在 model name 含 grok(沒分 multi-agent vs reasoning model,因 baseUrl 區分不易)。
+  - Full `npm test` 296 條(270 Playwright + 26 Jest) 全綠。
+
+  **資料來源(thinking schema)**:
+  - [OpenRouter Reasoning Tokens](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)
+  - [DeepSeek Thinking Mode](https://api-docs.deepseek.com/guides/thinking_mode)
+  - [Anthropic Claude Extended Thinking](https://platform.claude.com/docs/en/docs/build-with-claude/extended-thinking)
+  - [OpenAI Reasoning Models Guide](https://developers.openai.com/api/docs/guides/reasoning)
+  - [xAI Grok Reasoning](https://docs.x.ai/docs/guides/reasoning)
+  - [Qwen Deep Thinking (Aliyun Model Studio)](https://help.aliyun.com/zh/model-studio/deep-thinking)
 
 **v1.6.17** — 設定頁次按鈕(`.secondary`)CSS 對齊主按鈕(`.primary`)的高度與字級。262 條 spec 全綠。
 
