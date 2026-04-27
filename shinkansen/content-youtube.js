@@ -902,17 +902,37 @@
   const _ASR_READ_MS_PER_CHAR = 200;
   const _ASR_MIN_READ_MS       = 800;
 
-  // 加入 cue 到 displayCues。同 startMs 取代(progressive 模式 LLM 覆蓋 heuristic 用)。
-  // endMs 自動延長至少夠中文閱讀時間。
-  function _upsertDisplayCue(startMs, endMs, sourceText, targetText) {
+  // 加入 cue 到 displayCues。
+  //   - 同 startMs upsert(progressive 模式 LLM 覆蓋 heuristic 用)
+  //   - opts.replaceRange=true(LLM 路徑用):清除 startMs 落在 (新 cue.startMs, LLM 原始 endMs)
+  //     範圍內的舊 cue,避免 progressive 模式下「LLM 沒同 startMs」的 heuristic cue 殘留 →
+  //     視覺上預設分句 / AI 分句疊來疊去。**用 LLM 原始 endMs 不用延長後 adjustedEnd**:
+  //     閱讀延長只是「給使用者讀完已有譯文的時間」,不該擴張 LLM 認為涵蓋的範圍。誤用 adjustedEnd
+  //     會把 LLM 沒 cover 的中段 heuristic cue 清掉,造成中段字幕消失。
+  //   - 寫完按 startMs 排序,確保 _findActiveCue 找 nextStart 順序正確
+  // endMs 自動延長至少夠中文閱讀時間(用於顯示 cue 的 endMs)。
+  function _upsertDisplayCue(startMs, endMs, sourceText, targetText, opts) {
     const cues = SK.YT.displayCues;
     const trans = String(targetText || '');
+    const llmEndMs = Number(endMs) || 0;          // LLM 原始 endMs(供 replaceRange 用)
     const idealReadMs = Math.max(_ASR_MIN_READ_MS, trans.length * _ASR_READ_MS_PER_CHAR);
-    const adjustedEnd = Math.max(Number(endMs) || 0, Number(startMs) + idealReadMs);
+    const adjustedEnd = Math.max(llmEndMs, Number(startMs) + idealReadMs);
     const next = { startMs, endMs: adjustedEnd, sourceText: sourceText || '', targetText: trans };
+
+    // LLM 路徑清除被覆蓋的舊 cues(heuristic 殘留)。
+    // 範圍上限用 llmEndMs 不用 adjustedEnd——避免清掉 LLM 沒 cover 的中段 heuristic。
+    if (opts && opts.replaceRange) {
+      for (let i = cues.length - 1; i >= 0; i--) {
+        const c = cues[i];
+        if (c.startMs > startMs && c.startMs < llmEndMs) cues.splice(i, 1);
+      }
+    }
+
     const idx = cues.findIndex(c => c.startMs === startMs);
     if (idx >= 0) cues[idx] = next;
     else cues.push(next);
+
+    cues.sort((a, b) => a.startMs - b.startMs);
   }
 
   // ─── ASR 子批切分(gap-aware + lead-time aware streaming) ────
@@ -1041,7 +1061,7 @@
       }
       // G 路徑:寫 displayCues 給 overlay 用(progressive 模式覆蓋 heuristic 寫的同 startMs)
       const sourceText = covered.map(seg => seg.text).join(' ');
-      _upsertDisplayCue(sStart, validEnd, sourceText, trans);
+      _upsertDisplayCue(sStart, validEnd, sourceText, trans, { replaceRange: true });
       writtenCount++;
     }
 

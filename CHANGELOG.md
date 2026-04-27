@@ -66,6 +66,12 @@
 
 ## v1.6.x
 
+**v1.6.22** — 混合模式字幕「預設 / AI 分句疊來疊去 + 中段消失」雙修:`_upsertDisplayCue` 加 `replaceRange` 選項,LLM 路徑寫入時清除被覆蓋範圍內殘留的 heuristic cue + sort by startMs;清除上限改用 LLM 原始 `endMs`(非延長後 `adjustedEnd`),避免閱讀延長範圍誤清 LLM 沒涵蓋的中段 heuristic 接力 cue。新 2 條 regression spec(疊來疊去 + 不誤清 SANITY 雙驗證)。286 條 spec 全綠。
+
+  - **`_upsertDisplayCue(opts.replaceRange)`(`content-youtube.js`)** — LLM 路徑(`_runAsrSubBatch`)呼叫時帶 `{ replaceRange: true }`,清除 startMs 落在 `(新 cue.startMs, llmEndMs)` 範圍內的舊 cue,避免 progressive 模式下 heuristic 中段 cue 殘留 → 視覺上預設分句 / AI 分句疊來疊去。
+  - **`adjustedEnd` vs `llmEndMs` 區分** — `adjustedEnd` 是「閱讀時間補償」用於顯示 endMs;`llmEndMs` 是「LLM 認為涵蓋的範圍」用於 replaceRange。誤用 adjustedEnd 會清掉 LLM 沒 cover 的中段 heuristic,造成中段字幕消失。
+  - **displayCues 排序** — `cues.sort((a, b) => a.startMs - b.startMs)`,確保 `_findActiveCue` 找 `nextStart` 順序正確。
+
 **v1.6.21** — AI 分句字幕「消失太快」修正:LLM 給的 endMs 是「下一段 ASR startMs」(英文密度),中文閱讀速度比英文慢 → `_upsertDisplayCue` 自動延長 endMs 至少 `max(800ms, 中文字數 × 200ms)`,讓使用者讀得完;`_findActiveCue` 加 `effectiveEnd = min(cue.endMs, 下一個 cue.startMs)` clamp 邏輯,前一句不會視覺壓到後一句。新 1 條 regression spec(8 字中文延長到 1600ms + clamp 到下一句 startMs 雙驗證)。284 條 spec 全綠。
 
   - **`_upsertDisplayCue`(`content-youtube.js`)** — 寫 cue 時 `adjustedEnd = max(LLM endMs, startMs + max(800, 字數 × 200))`,實測校準參數(初版 250/1000 偏長 0.5s,改為 200/800)。
