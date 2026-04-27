@@ -137,3 +137,31 @@ button.link {
 .cache-info { color: #86868b; font-size: 11px; }
 button.link.small { font-size: 12px; }
 button.link.small:hover { text-decoration: underline; }
+
+/* v1.6.1: 更新提示 */
+.update-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff3b30;
+  margin-left: 6px;
+  vertical-align: super;
+  font-size: 0;
+}
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: #fff8e1;
+  border: 1px solid #f5b800;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #2c2a1f;
+  text-decoration: none;
+}
+.update-banner:hover { background: #fff3c4; }
+.update-banner strong { color: #1d1d1f; }
+.update-banner span { color: #6e6e73; }

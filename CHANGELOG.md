@@ -7,6 +7,20 @@
 
 ## v1.6.x
 
+**v1.6.1** — 新增 GitHub Releases 自動更新提示，解決手動安裝（unpacked / GitHub）使用者不知道有新版可下載的問題。
+
+  - **新模組 `lib/update-check.js`**：透過 GitHub Releases API（`https://api.github.com/repos/jimmysu0309/shinkansen/releases/latest`）拿最新 `tag_name`，與 `manifest.version` 三段式比對；只對 `installType === 'development'` / `'sideload'` 觸發（CWS 安裝跳過避免與原生自動更新撞車）。
+  - **三層觸發**確保使用快速鍵不開 popup 的使用者也看得到提示：(1) SW 第一次喚醒 fire-and-forget；(2) `chrome.runtime.onStartup`（Chrome 啟動時）；(3) `chrome.alarms 'update-check'` 24h 定時備援（Chrome 一直開著的 case）。GitHub API 未驗證 60 req/hr/IP 上限離爆量很遠。
+  - **三層 UI 提示**（同樣為了確保不會錯過）：
+    - **翻譯成功 toast**：detail 下方加黃底 callout「📦 vX.Y.Z 可下載 — 點此前往」+ 「×」按鈕，**每日節流**（同日翻譯多次只第一次顯示），點連結或「×」都標記今日已顯示
+    - **Popup**：標題後紅點 + 黃底 banner 顯示「v1.6.1（你目前是 v1.6.0）」
+    - **設定頁「一般設定」分頁頂部** banner + 「不再提示」按鈕（寫入 `disableUpdateNotice: true` 永久關閉）
+  - **storage 結構**：`chrome.storage.local.updateAvailable: { version, releaseUrl, checkedAt, lastNoticeShownDate }`；`DEFAULT_SETTINGS.disableUpdateNotice: false`（toggle 走 sync 跨裝置同步）。失敗（network / 4xx / non-JSON）不清舊紀錄，避免 stale flap；版本一致時主動清掉 storage 避免殘留。
+  - **新 message handler**：`UPDATE_NOTICE_DISMISSED`（toast 內互動觸發 `markUpdateNoticeShown` 寫今日日期）。
+  - **manifest 加 `alarms` permission**（24h 定時用）；`chrome.management.getSelf()` 不需 permission 故未加 `management`，避免 CWS 審核疑慮。
+  - **12 條新 unit spec** `test/unit/update-check.spec.js`：parseVersion / isNewer 三段式比對、checkForUpdate 五個情境（latest > / === / < current、CWS 跳過、network error 不清 stale、保留 lastNoticeShownDate）、shouldShowTodayNotice / markUpdateNoticeShown 節流邏輯。SANITY 驗破壞 isNewer 與 isManualInstall 各別 fail。
+  - Full `npm test` 199 條（Playwright）+ 26 條（Jest）全綠。
+
 **v1.6.0** — v1.5.7 之後一系列 UX 打磨與多項調整累積到 1.6.0 minor bump。
 
   - **YouTube 字幕分頁版面重組**：tab 移到「一般設定」右邊（最常用功能優先）；section 順序改為「自動翻譯 → 翻譯引擎 → Gemini 設定（合併原翻譯模型 + Temperature） → 進階：固定術語表 & 禁用詞清單 → 翻譯視窗設定 → 字幕翻譯 Prompt」。「Gemini 設定」與「字幕翻譯 Prompt」兩個 wrapper 依引擎條件顯示——選 Google Translate 全隱藏、選自訂模型只剩 Prompt（共用「自訂模型」分頁的 baseUrl/model/key）。

@@ -92,6 +92,21 @@ async function init() {
 
   refreshShortcutHint();
 
+  // v1.6.1: 更新提示 — 有新版時顯示版本紅點 + banner
+  try {
+    const { disableUpdateNotice } = await browser.storage.sync.get('disableUpdateNotice');
+    if (disableUpdateNotice !== true) {
+      const { updateAvailable } = await browser.storage.local.get('updateAvailable');
+      if (updateAvailable && updateAvailable.version) {
+        $('update-dot').hidden = false;
+        const banner = $('update-banner');
+        banner.href = updateAvailable.releaseUrl;
+        banner.hidden = false;
+        $('update-banner-version').textContent = `v${updateAvailable.version}（你目前是 v${manifest.version}）`;
+      }
+    }
+  } catch { /* 讀取失敗就略過 */ }
+
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
   const { autoTranslate = false, displayMode = 'single' } = await browser.storage.sync.get(['autoTranslate', 'displayMode']);
   const { apiKey = '' } = await browser.storage.local.get(['apiKey']);

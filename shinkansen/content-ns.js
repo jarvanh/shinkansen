@@ -342,4 +342,22 @@ if (window.__shinkansen_loaded) {
     }
     return main;
   };
+
+  // v1.6.1: 翻譯成功 toast 顯示「有新版可下載」前的判斷 helper。
+  // 同時檢查：(1) storage.local.updateAvailable 有版本資訊；(2) 今日尚未顯示過；
+  // (3) 使用者沒勾「不再顯示更新提示」。三條件全成立才回傳 { version, releaseUrl }，
+  // 否則回 null（toast 隱藏 update notice 區塊）。
+  SK.maybeBuildUpdateNotice = async function maybeBuildUpdateNotice() {
+    try {
+      const { disableUpdateNotice } = await browser.storage.sync.get('disableUpdateNotice');
+      if (disableUpdateNotice === true) return null;
+      const { updateAvailable } = await browser.storage.local.get('updateAvailable');
+      if (!updateAvailable || !updateAvailable.version) return null;
+      const today = new Date().toISOString().slice(0, 10);
+      if (updateAvailable.lastNoticeShownDate === today) return null;
+      return { version: updateAvailable.version, releaseUrl: updateAvailable.releaseUrl };
+    } catch {
+      return null;
+    }
+  };
 }

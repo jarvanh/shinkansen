@@ -603,10 +603,13 @@
           localCacheHitSegments: pageUsage.cacheHits,
           url: location.href,
         });
+        // v1.6.1: 翻譯成功 toast 順帶顯示「有新版可下載」（每日節流）。
+        const updateNotice = await SK.maybeBuildUpdateNotice();
         SK.showToast('success', successMsg, {
           progress: 1,
           stopTimer: true,
           detail,
+          updateNotice,
         });
       }
 
@@ -899,10 +902,13 @@
         const successMsg = truncatedCount > 0
           ? `Google 翻譯完成（${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`
           : `Google 翻譯完成（${total} 段）`;
+        // v1.6.1: 同 Gemini 路徑 — 成功 toast 順帶顯示「有新版可下載」
+        const updateNotice = await SK.maybeBuildUpdateNotice();
         SK.showToast('success', successMsg, {
           progress: 1,
           stopTimer: true,
           detail: `${chars.toLocaleString()} 字元 · 免費`,
+          updateNotice,
         });
       }
 

@@ -48,6 +48,36 @@
         line-height: 1.4;
       }
       .detail[hidden] { display: none; }
+      /* v1.6.1: 更新提示區塊（成功 toast 偶爾顯示一次，每日節流） */
+      .update-notice {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 6px;
+        padding: 6px 10px;
+        background: #fff8e1;
+        border: 1px solid #f5b800;
+        border-radius: 6px;
+        font-size: 12px;
+        color: #2c2a1f;
+      }
+      .update-notice[hidden] { display: none; }
+      .update-notice .un-link {
+        color: #0071e3;
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .update-notice .un-link:hover { text-decoration: underline; }
+      .update-notice .un-dismiss {
+        margin-left: auto;
+        background: none;
+        border: 0;
+        color: #6e6e73;
+        font-size: 11px;
+        cursor: pointer;
+        padding: 0 4px;
+      }
+      .update-notice .un-dismiss:hover { color: #1d1d1f; }
       .timer {
         font-variant-numeric: tabular-nums;
         color: #86868b;
@@ -103,6 +133,11 @@
         <button class="close" id="close" title="關閉">×</button>
       </div>
       <div class="detail" id="detail" hidden></div>
+      <div class="update-notice" id="update-notice" hidden>
+        <span>📦</span>
+        <a class="un-link" id="un-link" href="#" target="_blank" rel="noopener"></a>
+        <button class="un-dismiss" id="un-dismiss" type="button" title="今天不再提示">×</button>
+      </div>
       <div class="bar"><div class="bar-fill" id="fill"></div></div>
     </div>
   `;
@@ -147,6 +182,18 @@
   const toastEl = shadow.getElementById('toast');
   const toastMsgEl = shadow.getElementById('msg');
   const toastDetailEl = shadow.getElementById('detail');
+  // v1.6.1: 更新提示元素 — showToast 用 opts.updateNotice 觸發；點擊「下載」連結
+  // 與「×」都會送 UPDATE_NOTICE_DISMISSED 訊息標記今天已顯示，達成每日節流。
+  const updateNoticeEl = shadow.getElementById('update-notice');
+  const updateNoticeLink = shadow.getElementById('un-link');
+  const updateNoticeDismiss = shadow.getElementById('un-dismiss');
+  function dismissUpdateNotice() {
+    updateNoticeEl.hidden = true;
+    try { browser.runtime.sendMessage({ type: 'UPDATE_NOTICE_DISMISSED' }).catch(() => {}); }
+    catch { /* runtime context invalidated when extension reload */ }
+  }
+  updateNoticeLink.addEventListener('click', dismissUpdateNotice);
+  updateNoticeDismiss.addEventListener('click', (e) => { e.preventDefault(); dismissUpdateNotice(); });
   const toastTimerEl = shadow.getElementById('timer');
   const toastFillEl = shadow.getElementById('fill');
   shadow.getElementById('close').addEventListener('click', () => SK.hideToast());
@@ -203,6 +250,15 @@
     } else {
       toastDetailEl.textContent = '';
       toastDetailEl.hidden = true;
+    }
+
+    // v1.6.1: 更新提示——僅在 success toast 且呼叫端有判斷今日尚未顯示時傳入
+    if (opts.updateNotice && opts.updateNotice.version && opts.updateNotice.releaseUrl) {
+      updateNoticeLink.textContent = `v${opts.updateNotice.version} 可下載 — 點此前往`;
+      updateNoticeLink.href = opts.updateNotice.releaseUrl;
+      updateNoticeEl.hidden = false;
+    } else {
+      updateNoticeEl.hidden = true;
     }
 
     if (opts.progress != null) {

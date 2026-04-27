@@ -7,11 +7,17 @@
 </head>
 <body>
   <header>
-    <h1>🚄 Shinkansen</h1>
+    <h1>🚄 Shinkansen<span class="update-dot" id="update-dot" hidden title="有新版可下載"></span></h1>
     <span class="version" id="version"></span>
   </header>
 
   <main>
+    <!-- v1.6.1: 有新版可下載時顯示 banner -->
+    <a id="update-banner" class="update-banner" hidden href="#" target="_blank" rel="noopener">
+      <strong>📦 有新版可下載</strong>
+      <span id="update-banner-version"></span>
+    </a>
+
     <button id="translate-btn" class="primary">翻譯本頁</button>
     <button id="edit-btn" class="secondary" hidden>編輯譯文</button>
 

@@ -204,6 +204,9 @@ export const DEFAULT_SETTINGS = {
   // 內容會以 <forbidden_terms_blacklist> 區塊注入到 systemInstruction 末端，
   // 且修改清單後快取 key 會帶 _b<hash> 後綴讓既有快取自動失效。
   forbiddenTerms: DEFAULT_FORBIDDEN_TERMS,
+  // v1.6.1: 「不再顯示更新提示」toggle。預設 false（顯示提示）。
+  // 對應 storage.local 的 updateAvailable 物件由 lib/update-check.js 寫入，不在 sync。
+  disableUpdateNotice: false,
   // v1.5.7: 自訂 OpenAI-compatible Provider。
   // engine='openai-compat' 的 preset 會走 lib/openai-compat.js 透過 chat.completions
   // endpoint 翻譯，可接 OpenRouter / Together / DeepSeek / Groq / Ollama 等 provider。

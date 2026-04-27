@@ -13,6 +13,7 @@ import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
 import { detectForbiddenTermLeaks } from './lib/forbidden-terms.js'; // v1.5.6
+import { checkForUpdate, markUpdateNoticeShown } from './lib/update-check.js'; // v1.6.1
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
 
@@ -77,6 +78,24 @@ function estimateInputTokens(texts) {
     debugLog('info', 'cache', 'cache up-to-date', { version: currentVersion });
   }
 })();
+
+// ─── v1.6.1: GitHub Releases 更新檢查 ────────────────────────
+// 三層觸發確保使用快速鍵不開 popup 的使用者也能即時看到新版提示：
+//   1. SW 第一次喚醒 fire-and-forget（最早可跑的時機）
+//   2. chrome.runtime.onStartup（Chrome 啟動時）
+//   3. chrome.alarms 'update-check' 24h 定時（Chrome 一直開著的備援）
+// CWS 安裝（installType='normal'）會在 update-check.js 內被跳過，不會打 GitHub API。
+checkForUpdate().catch(err => debugLog('warn', 'update-check', 'initial check failed', { error: err.message }));
+
+browser.runtime.onStartup?.addListener(() => {
+  checkForUpdate().catch(err => debugLog('warn', 'update-check', 'onStartup check failed', { error: err.message }));
+});
+
+browser.alarms?.create('update-check', { periodInMinutes: 60 * 24 });
+browser.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name !== 'update-check') return;
+  checkForUpdate().catch(err => debugLog('warn', 'update-check', 'alarm check failed', { error: err.message }));
+});
 
 // ─── 使用量累計（browser.storage.local) ────────────────────
 // 結構：
@@ -300,6 +319,11 @@ const messageHandlers = {
         yt.applyFixedGlossary === true,
         yt.applyForbiddenTerms === true);
     },
+  },
+  // v1.6.1: 使用者點 toast 內「下載」連結或「×」時，標記今日已顯示更新提示（每日節流）
+  UPDATE_NOTICE_DISMISSED: {
+    async: true,
+    handler: () => markUpdateNoticeShown(),
   },
   // v1.5.7: API Key 測試 — 設定頁「測試」按鈕觸發。
   // Gemini 走 GET models/<model>?key=<key> 不耗 token；
