@@ -355,7 +355,11 @@ if (window.__shinkansen_loaded) {
       if (!updateAvailable || !updateAvailable.version) return null;
       const today = new Date().toISOString().slice(0, 10);
       if (updateAvailable.lastNoticeShownDate === today) return null;
-      return { version: updateAvailable.version, releaseUrl: updateAvailable.releaseUrl };
+      // v1.6.3: 三層 fallback URL（同 popup / options click handler）—— storage 缺 releaseUrl
+      // 也能跳到合理頁面，不會因為一個欄位缺失整個提示就失效
+      const releaseUrl = updateAvailable.releaseUrl
+        || `https://github.com/jimmysu0309/shinkansen/releases/tag/v${updateAvailable.version}`;
+      return { version: updateAvailable.version, releaseUrl };
     } catch {
       return null;
     }

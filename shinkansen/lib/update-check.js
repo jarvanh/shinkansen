@@ -49,6 +49,21 @@ function isNewer(latest, current) {
 }
 
 /**
+ * 判斷是否值得提示使用者更新。**只有 major 或 minor 升級才提示**，patch 級小修
+ * 不打擾使用者（例如 1.6.4 → 1.6.5 不提示、1.6.4 → 1.7.0 / 2.0.0 才提示）。
+ * 設計理由：頻繁的 patch 提示會讓使用者疲勞、忽略真正重要的版本。
+ * @returns {boolean} 是否該顯示更新提示
+ */
+function isWorthNotifying(latest, current) {
+  const a = parseVersion(latest);
+  const b = parseVersion(current);
+  if (a[0] > b[0]) return true;       // major 升
+  if (a[0] < b[0]) return false;
+  if (a[1] > b[1]) return true;       // minor 升
+  return false;                        // 同 major.minor，patch 級差異不提示
+}
+
+/**
  * 是否為「需要手動更新」的安裝來源（非 Chrome Web Store）。
  * @returns {Promise<boolean>}
  */
@@ -106,7 +121,8 @@ export async function checkForUpdate() {
   const latestVersion = String(latestTag).replace(/^v/, '');
   const releaseUrl = json?.html_url || `https://github.com/jimmysu0309/shinkansen/releases/tag/${latestTag}`;
 
-  if (isNewer(latestVersion, currentVersion)) {
+  // v1.6.4: 只對 major / minor 升級提示——patch 級小修不打擾使用者。
+  if (isWorthNotifying(latestVersion, currentVersion)) {
     const payload = {
       version: latestVersion,
       releaseUrl,
@@ -160,4 +176,4 @@ export async function shouldShowTodayNotice() {
 }
 
 // 匯出供測試
-export { parseVersion, isNewer };
+export { parseVersion, isNewer, isWorthNotifying };

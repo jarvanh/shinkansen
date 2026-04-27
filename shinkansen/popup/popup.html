@@ -12,11 +12,12 @@
   </header>
 
   <main>
-    <!-- v1.6.1: 有新版可下載時顯示 banner -->
-    <a id="update-banner" class="update-banner" hidden href="#" target="_blank" rel="noopener">
+    <!-- v1.6.1: 有新版可下載時顯示 banner（v1.6.3 改 button 不依賴 a-tag navigate
+         避免 popup 環境下 <a target="_blank"> 反而 navigate 到 popup.html# 的怪 bug） -->
+    <button id="update-banner" class="update-banner" type="button" hidden>
       <strong>📦 有新版可下載</strong>
       <span id="update-banner-version"></span>
-    </a>
+    </button>
 
     <button id="translate-btn" class="primary">翻譯本頁</button>
     <button id="edit-btn" class="secondary" hidden>編輯譯文</button>

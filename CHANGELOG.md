@@ -7,6 +7,16 @@
 
 ## v1.6.x
 
+**v1.6.4** — 修 popup / 設定頁 update banner 點擊行為（彻底擺脫 a-tag navigate 的怪 bug）+ 加 patch 級更新節流避免高頻打擾。版號跳過 1.6.3（用作測試假 release）。
+
+  - **修法 1：兩處 banner 從 `<a>` 改 `<button>`**：v1.6.1 ~ v1.6.2 期間 popup banner 點擊跳到 popup.html#、設定頁 banner 點擊跳到 options.html# 自身的 bug，根因是 `<a target="_blank" href="#">` 在 chrome popup 環境下不會開新分頁、會 navigate 到 href 自身。改成 `<button type="button">` 徹底擺脫 a-tag 預設 navigate。
+  - **修法 2：用 document-level event delegation**：banner click handler 不再依賴 init() async timing 一次性掛上，改在檔案頂層註冊一次 document.addEventListener('click', ...)，handler 內臨時 await storage 拿 release URL，避免任何 race condition。
+  - **修法 3：三層 fallback URL**：popup / options / toast 三處 click 邏輯都改成 `storage.releaseUrl > /tag/v${version} > /releases 索引頁` 三層 fallback——即使 storage 內缺 releaseUrl 或損壞（早期 race 寫入問題），使用者點 banner 仍會跳到合理頁面。content-ns.js 的 `maybeBuildUpdateNotice()` 也加同樣 fallback。
+  - **新行為：patch 級更新不提示**（`isWorthNotifying` 函式）：頻繁 patch 提示會讓使用者疲勞、忽略真正重要的版本。新規則只對 major / minor 升級提示——例如 1.6.4 → 1.6.5 不提示、1.6.4 → 1.7.0 / 2.0.0 才提示。`checkForUpdate()` 改用 `isWorthNotifying` 判斷是否寫 storage / 觸發提示。
+  - **新增 spec**：`isWorthNotifying` 三段式邏輯（major/minor 升提示、patch 升不提示、相同/舊版不提示）；既有 `checkForUpdate` test fixture 從 patch diff（1.6.0→1.6.1）改為 minor diff（1.6.0→1.7.0），同時新加「latest 只是 patch 升 → 不寫 storage」對照組。
+  - **跳號 v1.6.3**：v1.6.3 tag 用於測試 update notice 流程的假 release，code 沒實際 bump 到 1.6.3，本版直接跳到 v1.6.4。
+  - Full `npm test` 201 條（Playwright）+ 26 條（Jest）全綠。
+
 **v1.6.2** — 修 v1.6.1 設定頁更新 banner 點擊跳到自身 settings 頁的 bug。
 
   - **根因**：v1.6.1 的設定頁 banner HTML 結構是 `<a target="_blank"><strong>...</strong><span>...</span><button>不再提示</button></a>`——把 `<button>` 巢嵌在 `<a>` 裡是 invalid HTML，Chrome 解析後行為錯亂，點 banner 主體沒開新分頁、反而被當成 navigate 到 `href="#"`（即當前 settings 頁）。

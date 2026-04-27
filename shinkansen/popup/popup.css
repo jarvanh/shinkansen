@@ -150,6 +150,7 @@ button.link.small:hover { text-decoration: underline; }
   font-size: 0;
 }
 .update-banner {
+  /* v1.6.3: 從 <a> 改 <button>——加 button reset 維持 banner 視覺 */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -161,6 +162,10 @@ button.link.small:hover { text-decoration: underline; }
   font-size: 12px;
   color: #2c2a1f;
   text-decoration: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
 }
 .update-banner:hover { background: #fff3c4; }
 .update-banner strong { color: #1d1d1f; }
