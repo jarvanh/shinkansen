@@ -165,6 +165,11 @@ async function load() {
   $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : 0.7;
   $('cp-inputPerMTok').value = cp.inputPerMTok != null ? cp.inputPerMTok : '';
   $('cp-outputPerMTok').value = cp.outputPerMTok != null ? cp.outputPerMTok : '';
+  // v1.6.18: thinking 控制
+  const validLevels = ['auto', 'off', 'low', 'medium', 'high'];
+  const tl = validLevels.includes(cp.thinkingLevel) ? cp.thinkingLevel : 'auto';
+  if ($('cp-thinking-level')) $('cp-thinking-level').value = tl;
+  if ($('cp-extra-body-json')) $('cp-extra-body-json').value = (typeof cp.extraBodyJson === 'string') ? cp.extraBodyJson : '';
   // 從 storage.local 讀 customProviderApiKey
   const { customProviderApiKey = '' } = await browser.storage.local.get('customProviderApiKey');
   $('cp-apiKey').value = customProviderApiKey;
@@ -575,6 +580,7 @@ async function save() {
       return forbiddenTerms.filter(t => t.forbidden || t.replacement);
     })(),
     // v1.5.7: 自訂 OpenAI-compatible Provider
+    // v1.6.18: 加入 thinkingLevel + extraBodyJson(各家 thinking schema 統一抽象)
     customProvider: {
       baseUrl: ($('cp-baseUrl').value || '').trim(),
       model: ($('cp-model').value || '').trim(),
@@ -582,6 +588,11 @@ async function save() {
       temperature: Number($('cp-temperature').value) || 0.7,
       inputPerMTok: Number($('cp-inputPerMTok').value) || 0,
       outputPerMTok: Number($('cp-outputPerMTok').value) || 0,
+      thinkingLevel: (() => {
+        const v = $('cp-thinking-level')?.value;
+        return ['auto', 'off', 'low', 'medium', 'high'].includes(v) ? v : 'auto';
+      })(),
+      extraBodyJson: ($('cp-extra-body-json')?.value || '').trim(),
     },
   };
   // v1.5.7: customProvider.apiKey 走 storage.local（與主 apiKey 同樣設計），先抽出再寫 sync
