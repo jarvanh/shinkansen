@@ -141,7 +141,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   if (!texts?.length) return { parts: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 } };
   const cp = settings.customProvider || {};
   const { baseUrl, model, systemPrompt, temperature, apiKey } = cp;
-  if (!apiKey) throw new Error('尚未設定自訂 Provider 的 API Key，請至設定頁填入。');
+  // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key）；商用後端漏填會自然 401
   if (!model) throw new Error('尚未設定自訂 Provider 的模型 ID。');
 
   // 多段時加序號標記（與 Gemini 同邏輯）
@@ -167,7 +167,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   };
 
   const url = resolveChatCompletionsUrl(baseUrl);
-  const headers = { 'Authorization': `Bearer ${apiKey}` };
+  // v1.6.7: apiKey 為空時不送 Authorization（本機 llama.cpp / Ollama 等不需要 key）
+  const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
 
   await debugLog('info', 'api', 'openai-compat request', {
     baseUrl, model, segments: texts.length, chars: joined.length,

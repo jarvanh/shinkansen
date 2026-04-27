@@ -511,13 +511,13 @@
       <label>
         API Key
         <div class="api-key-row">
-          <input type="password" id="cp-apiKey" placeholder="貼上對應 provider 的 API Key">
+          <input type="password" id="cp-apiKey" placeholder="貼上對應 provider 的 API Key（本機 llama.cpp / Ollama 等可留空）">
           <button type="button" id="cp-toggle-apiKey" class="ghost-btn" aria-label="顯示 API Key">顯示</button>
           <button type="button" id="cp-test-apiKey" class="ghost-btn" aria-label="測試 API Key">測試</button>
         </div>
         <div id="cp-test-apiKey-result" class="api-test-result" hidden></div>
         <small class="muted">
-          僅存在你的瀏覽器本機（與 Gemini API Key 同樣不跨裝置同步、不上傳任何伺服器）。
+          僅存在你的瀏覽器本機（與 Gemini API Key 同樣不跨裝置同步、不上傳任何伺服器）；本機後端（llama.cpp / Ollama 等）可留空
         </small>
       </label>
       <label>

@@ -815,13 +815,16 @@ async function testCustomProvider(payload) {
   const apiKey = (payload?.apiKey || '').trim();
   if (!baseUrl) return { ok: false, message: 'Base URL 為空。' };
   if (!model) return { ok: false, message: '模型 ID 為空。' };
-  if (!apiKey) return { ok: false, message: 'API Key 為空。' };
+  // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key）。商用後端
+  // 若漏填會自然回 401，錯誤訊息由 provider 提供（例如 OpenAI: "Incorrect API key"）。
 
   const url = /\/chat\/completions$/.test(baseUrl) ? baseUrl : baseUrl + '/chat/completions';
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      headers,
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: 'ping' }],
@@ -855,7 +858,7 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   // v1.5.8: cpOverrides 給字幕路徑覆蓋特定欄位（例如 systemPrompt 改用字幕專屬），
   // 其他欄位（baseUrl / model / apiKey / 計價）仍走「自訂模型」分頁主設定。
   const cp = { ...(settings.customProvider || {}), ...(cpOverrides || {}) };
-  if (!cp.apiKey) throw new Error('尚未設定自訂 Provider 的 API Key，請至設定頁填入。');
+  // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key）；商用後端漏填會自然 401
   if (!cp.baseUrl) throw new Error('尚未設定自訂 Provider 的 Base URL。');
   if (!cp.model) throw new Error('尚未設定自訂 Provider 的模型 ID。');
 
