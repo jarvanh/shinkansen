@@ -7,6 +7,13 @@
 
 ## v1.6.x
 
+**v1.6.2** — 修 v1.6.1 設定頁更新 banner 點擊跳到自身 settings 頁的 bug。
+
+  - **根因**：v1.6.1 的設定頁 banner HTML 結構是 `<a target="_blank"><strong>...</strong><span>...</span><button>不再提示</button></a>`——把 `<button>` 巢嵌在 `<a>` 裡是 invalid HTML，Chrome 解析後行為錯亂，點 banner 主體沒開新分頁、反而被當成 navigate 到 `href="#"`（即當前 settings 頁）。
+  - **修法**：拆成 `div` wrapper + 內部 `<a>` + 並列 `<button>` 結構（HTML valid），對應 CSS 改成 `.update-banner-row` flex container + `.update-banner-link` 主體；options.js 的 `hidden` 切換管 wrapper 而非 `<a>`。
+  - **popup banner 不受影響**：popup 的 banner 沒嵌 button（只有 strong + span），是合法 HTML，不用動。
+  - Full `npm test` 199 條（Playwright）+ 26 條（Jest）全綠。
+
 **v1.6.1** — 新增 GitHub Releases 自動更新提示，解決手動安裝（unpacked / GitHub）使用者不知道有新版可下載的問題。
 
   - **新模組 `lib/update-check.js`**：透過 GitHub Releases API（`https://api.github.com/repos/jimmysu0309/shinkansen/releases/latest`）拿最新 `tag_name`，與 `manifest.version` 三段式比對；只對 `installType === 'development'` / `'sideload'` 觸發（CWS 安裝跳過避免與原生自動更新撞車）。

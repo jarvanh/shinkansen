@@ -241,10 +241,9 @@ async function load() {
     if (!disableUpdateNotice) {
       const { updateAvailable } = await browser.storage.local.get('updateAvailable');
       if (updateAvailable && updateAvailable.version) {
-        const banner = $('update-banner');
         const manifest = browser.runtime.getManifest();
-        banner.href = updateAvailable.releaseUrl;
-        banner.hidden = false;
+        $('update-banner').href = updateAvailable.releaseUrl;
+        $('update-banner-row').hidden = false;
         $('update-banner-version').textContent = `v${updateAvailable.version}（你目前是 v${manifest.version}）`;
       }
     }
@@ -256,7 +255,7 @@ $('update-banner-dismiss')?.addEventListener('click', async (e) => {
   e.preventDefault();
   e.stopPropagation();
   await browser.storage.sync.set({ disableUpdateNotice: true });
-  $('update-banner').hidden = true;
+  $('update-banner-row').hidden = true;
 });
 
 // v1.5.0: 雙語視覺標記預覽更新
