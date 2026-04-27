@@ -231,14 +231,19 @@ export const DEFAULT_SETTINGS = {
   // apiKey 不存 sync（getSettings 會從 storage.local 的 customProviderApiKey 注入），
   // systemPrompt 獨立於 Gemini（黑名單與固定術語表仍共用、由 buildEffectiveSystemInstruction 注入），
   // 但「預設值」與 Gemini 相同——使用者第一次打開分頁就有完整可用的 prompt，要動再動。
-  // 計價必須使用者自填（OpenRouter 等百種模型不可能內建查表，0 = 不顯示費用）。
+  //
+  // v1.6.16: baseUrl/model/pricing 預填 OpenRouter DeepSeek V4 Pro,使用者只要填 API Key
+  // 就能啟動。資料來源 https://openrouter.ai/deepseek/deepseek-v4-pro(2026-04 校準)。
+  // 既有使用者升級後若 storage 內已有 customProvider entry(例如打開過自訂模型分頁),
+  // 此預設不會覆蓋(getSettings 對 customProvider 走淺 merge,saved 在後);要套用新預設
+  // 需手動清空欄位或重新匯入設定。新使用者第一次打開設定頁就看到預填值。
   customProvider: {
-    baseUrl: '',                       // 例如 https://openrouter.ai/api/v1
-    model: '',                         // 例如 anthropic/claude-sonnet-4-5
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'deepseek/deepseek-v4-pro',
     systemPrompt: DEFAULT_SYSTEM_PROMPT, // 預設與 Gemini 相同；空字串時 adapter 套用簡短 fallback
     temperature: 0.7,
-    inputPerMTok: 0,                   // 自填，0 = 不顯示費用
-    outputPerMTok: 0,
+    inputPerMTok: 0.435,                // OpenRouter DeepSeek V4 Pro Standard tier 參考價
+    outputPerMTok: 0.87,
   },
 };
 

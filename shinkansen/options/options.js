@@ -79,8 +79,8 @@ async function load() {
   $('topK').value = s.geminiConfig.topK;
   $('maxOutputTokens').value = s.geminiConfig.maxOutputTokens;
   $('systemInstruction').value = s.geminiConfig.systemInstruction;
-  $('inputPerMTok').value = s.pricing.inputPerMTok;
-  $('outputPerMTok').value = s.pricing.outputPerMTok;
+  // v1.6.16: 後備路徑單價 UI 已移除(對應 input element 不存在),不再從 settings 載入到 UI。
+  // settings.pricing 仍保留 storage 結構作 belt-and-suspenders(background.js:610 fallback 路徑保留)。
   // v1.6.14: per-model 計價覆蓋
   const overrides = s.modelPricingOverrides || {};
   const fillOverride = (id, model, key) => {
@@ -351,7 +351,9 @@ function updateYtPromptCostHint() {
   const ytModel = $('ytModel').value;
   const ytInput = parseFloat($('ytInputPerMTok').value);
   const mainModel = getSelectedModel();
-  const mainInput = parseFloat($('inputPerMTok').value);
+  // v1.6.16: 後備路徑單價 UI 已移除;mainInput fallback 改用主要預設(slot 2)的內建表 pricing。
+  // 這個 hint 是設定頁字幕 prompt 開銷估算用,翻譯實際計費走獨立路徑(yt.pricing / customProvider / preset modelOverride),不受影響。
+  const mainInput = MODEL_PRICING[mainModel]?.input ?? 0;
 
   if (engine === 'openai-compat') {
     // 自訂模型字幕路徑用 customProvider 那組
@@ -430,7 +432,8 @@ async function save() {
   await browser.storage.local.set({ apiKey: apiKeyValue });
   // v1.6.15: 讀回現存的 geminiConfig.model 不從 UI 取(全域 dropdown 已移除)。
   // 保留 storage 欄位避免 migration,且 testGeminiKey 已改走「主要預設」的 model。
-  const existing = await browser.storage.sync.get('geminiConfig');
+  // v1.6.16: 同樣讀回 settings.pricing(後備路徑單價 UI 也移除了)。
+  const existing = await browser.storage.sync.get(['geminiConfig', 'pricing']);
   const existingModel = existing.geminiConfig?.model || DEFAULTS.geminiConfig.model;
   const settings = {
     geminiConfig: {
@@ -442,10 +445,8 @@ async function save() {
       maxOutputTokens: Number($('maxOutputTokens').value),
       systemInstruction: $('systemInstruction').value,
     },
-    pricing: {
-      inputPerMTok: Number($('inputPerMTok').value) || 0,
-      outputPerMTok: Number($('outputPerMTok').value) || 0,
-    },
+    // v1.6.16: 後備路徑單價 UI 已移除,從 storage 拉現存值寫回(沿用 v1.6.15 對 geminiConfig.model 的同 pattern)
+    pricing: existing.pricing || DEFAULTS.pricing,
     domainRules: {
       whitelist: $('whitelist').value.split('\n').map(s => s.trim()).filter(Boolean),
     },
@@ -649,7 +650,7 @@ $('cp-reset-prompt')?.addEventListener('click', () => {
 // 不直接寫 storage（要使用者按「儲存設定」才生效），避免誤觸毀掉自訂設定無法回復。
 // 不影響其他分頁（術語表 / 禁用詞 / 自訂模型 / YouTube 字幕）；要全部清空仍走「一般設定 → 回復預設設定」。
 $('gemini-reset-all')?.addEventListener('click', () => {
-  if (!confirm('確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：Service Tier、計價、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Top P、Top K、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後仍需點「儲存設定」才會生效。')) return;
+  if (!confirm('確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：Service Tier、模型計價覆蓋（清空走內建表）、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Top P、Top K、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後仍需點「儲存設定」才會生效。')) return;
   const D = DEFAULTS;
   // v1.6.15: 全域 #model dropdown 已移除,不再 reset 模型 UI;只 reset service tier。
   // settings.geminiConfig.model 由「儲存設定」按鈕從 storage 讀回沿用。
@@ -661,8 +662,16 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('maxOutputTokens').value = D.geminiConfig.maxOutputTokens;
   $('systemInstruction').value = D.geminiConfig.systemInstruction;
   // 計價
-  $('inputPerMTok').value  = D.pricing.inputPerMTok;
-  $('outputPerMTok').value = D.pricing.outputPerMTok;
+  // v1.6.16: 後備路徑單價 UI 已移除,reset 不再動 settings.pricing 欄位。
+  // v1.6.14: per-model override 欄位 reset 為空(預設 modelPricingOverrides:{} 對應 UI 全空 = 走內建表)。
+  for (const id of [
+    'override-lite-input',  'override-lite-output',
+    'override-flash-input', 'override-flash-output',
+    'override-pro-input',   'override-pro-output',
+  ]) {
+    const el = $(id);
+    if (el) el.value = '';
+  }
   // 配額（先填 tier 觸發 RPM/TPM/RPD readonly 帶值，再清掉 override）
   $('tier').value = D.tier;
   applyTierToInputs(D.tier, D.geminiConfig.model);
@@ -692,7 +701,8 @@ $('ytEngine')?.addEventListener('change', () => {
 // v1.5.8: 字幕模型 / 計價變動時重算 cost hint
 // v1.6.15: 移除 'model'(全域 dropdown 已移除)。preset-model-2 切換不影響字幕成本估算
 // 因為字幕用獨立的 ytSubtitle.model;字幕 prompt token 成本估算只看字幕端設定。
-for (const id of ['ytModel', 'ytInputPerMTok', 'cp-model', 'cp-inputPerMTok', 'inputPerMTok']) {
+// v1.6.16: 移除 'inputPerMTok'(後備路徑單價 UI 已移除)
+for (const id of ['ytModel', 'ytInputPerMTok', 'cp-model', 'cp-inputPerMTok']) {
   $(id)?.addEventListener('change', updateYtPromptCostHint);
   $(id)?.addEventListener('input', updateYtPromptCostHint);
 }

@@ -38,6 +38,7 @@
 
 ### 設定頁與用量紀錄
 
+- **v1.6.16** — 自訂模型分頁預填 OpenRouter DeepSeek V4 Pro(只剩 API Key 要填即可啟動);Gemini 分頁移除「後備路徑單價」UI;reset 按鈕補清空 v1.6.14 的計價覆蓋表
 - **v1.6.15** — Gemini 分頁移除「全域 Gemini 模型」下拉(後備路徑已不需要),Service Tier 搬到「LLM 參數微調」section
 - **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」(原預設 2 突顯為「主要預設」加藍邊框);Gemini 分頁加 per-model 計價覆蓋表(Google 改價時可手動更新)
 - **v1.6.13** — 自動翻譯白名單可指定使用哪一組預設(原本走 Gemini 全域模型,現在跟快速鍵行為一致);Gemini 分頁的「模型/計價」section 重新標示為「後備路徑專用」消除混淆
@@ -60,6 +61,15 @@
 ---
 
 ## v1.6.x
+
+**v1.6.16** — 移除「後備路徑單價」UI、reset 補清空計價覆蓋、自訂模型預填 OpenRouter DeepSeek V4 Pro。262 條 spec 全綠。
+
+  - **使用者面向 1:後備路徑單價 UI 移除**:Gemini 分頁的「模型計價」section 下半「後備路徑單價」整段(input/output 兩個欄位 + 說明文字)移除。原因 v1.6.15 把全域 model dropdown 拿掉後,`settings.pricing` 唯一可達路徑(`background.js:610` fallback)在「preset cards 只能選 3 個合法 model」前提下永遠不可達。`settings.pricing` storage 欄位保留作 belt-and-suspenders;UI 入口完全消失。
+  - **使用者面向 2:reset「重設所有參數」補清空 v1.6.14 的計價覆蓋表**:之前 reset 漏掉新加的 6 個 per-model override 欄位(Lite / Flash / Pro × input/output),按下 reset 後計價覆蓋值仍保留。修法:reset handler 加 6 個 input.value=''(預設 modelPricingOverrides:{} 對應 UI 全空 = 走內建表)。confirm 對話框文字同步更新,「計價」改成「模型計價覆蓋(清空走內建表)」明確告知行為。
+  - **使用者面向 3:自訂模型預填 OpenRouter DeepSeek V4 Pro**:`DEFAULT_SETTINGS.customProvider` 的 baseUrl/model/inputPerMTok/outputPerMTok 從空字串/0 改為 OpenRouter DeepSeek V4 Pro 的官方資料(來源 https://openrouter.ai/deepseek/deepseek-v4-pro,2026-04 校準)。新使用者打開自訂模型分頁立刻看到所有欄位預填,只剩 API Key 要填即可啟動。既有使用者若 storage 內已有 customProvider entry(打開過分頁),新預設不會自動覆蓋(getSettings 對 customProvider 走淺 merge,saved 在後);要套用走「回復預設設定」清掉 storage.sync 後重新 load 即可看到 DeepSeek 預填。
+  - **連帶清理**:options.js 移除 `inputPerMTok` event listener(全域成本估算 listener 陣列)、`updateYtPromptCostHint` 的 `mainInput` fallback 改用內建表 `MODEL_PRICING[mainModel]?.input ?? 0`(避免讀已不存在的 element 拋錯)。
+  - **完整 reset audit**:逐欄 audit DEFAULT_SETTINGS 與 load() 對映,確認所有預設值都正確載入(0 個漏洞,5 個設計如此的 nuance:apiKey 在 storage.local 故意保留 / model + pricing UI 移除但走 sync.clear 路徑仍能 reset / popup 管的 autoTranslate+displayMode+disableUpdateNotice 不在 options 頁 UI 但 sync.clear 仍清 / fixedGlossary 預設空白 / glossary 隱藏欄位透過 save 從 storage 拉空 fallback DEFAULT)。
+  - Full `npm test` 262 條(236 Playwright + 26 Jest) 全綠。
 
 **v1.6.15** — 移除 Gemini 分頁的「Gemini 模型與參數(後備路徑)」section,Service Tier 搬到「LLM 參數微調」section。262 條 spec 全綠。
 
