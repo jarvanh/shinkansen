@@ -66,6 +66,11 @@
 
 ## v1.6.x
 
+**v1.6.21** — AI 分句字幕「消失太快」修正:LLM 給的 endMs 是「下一段 ASR startMs」(英文密度),中文閱讀速度比英文慢 → `_upsertDisplayCue` 自動延長 endMs 至少 `max(800ms, 中文字數 × 200ms)`,讓使用者讀得完;`_findActiveCue` 加 `effectiveEnd = min(cue.endMs, 下一個 cue.startMs)` clamp 邏輯,前一句不會視覺壓到後一句。新 1 條 regression spec(8 字中文延長到 1600ms + clamp 到下一句 startMs 雙驗證)。284 條 spec 全綠。
+
+  - **`_upsertDisplayCue`(`content-youtube.js`)** — 寫 cue 時 `adjustedEnd = max(LLM endMs, startMs + max(800, 字數 × 200))`,實測校準參數(初版 250/1000 偏長 0.5s,改為 200/800)。
+  - **`_findActiveCue`** — loop 內計算 `nextStart` 取「startMs 嚴格大於當前 cue 的下一個 cue」,`effectiveEnd = min(cue.endMs, nextStart)` 確保前一句延長後不會壓到後一句顯示。同 startMs(progressive 模式 LLM 覆蓋 heuristic)的情況不算下一句。
+
 **v1.6.20** — YouTube 自動產生字幕(ASR)整套重做:overlay 顯示完全旁路原生 caption-segment 跳動 + 整句穩定顯示;三種分句模式(預設啟發式 / AI 自由分句 / 混合模式漸進覆蓋);譯文過長依標點動態斷行(2 行為主,maxLine 動態對應 video 寬);字體 / 顏色 / 透明度 / 字型動態同步原生英文字幕;勾「自動翻譯字幕」+ CC 未開時 forceSubtitleReload 主動開 CC;UI 用語「自動產生字幕分句模式」「預設分句 / AI 分句 / 混合模式」+ 中文標點全形修正。共新增 11 條 regression(9 條 ASR + 2 條 auto-CC)。280+ 條 spec 全綠。
 
   - **G 路徑(`content-youtube.js` overlay 架構)** — 注入 `<shinkansen-yt-overlay>` 到 `#movie_player`,Shadow DOM 隔離 CSS;`displayCues = [{startMs, endMs, sourceText, targetText}]`,video.timeupdate 驅動找 active cue,整句進整句出。原生 caption-window 由全域 CSS `visibility:hidden` 隱藏(保留 layout 才能讀 native font-size)。

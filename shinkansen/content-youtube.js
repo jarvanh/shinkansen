@@ -858,11 +858,21 @@
 
   // displayCues 找當前命中的 cue。資料量典型 < 200,linear scan 足夠。
   // 若使用者拖進度條跳到很遠位置,timeupdate 觸發後會自動命中新 cue。
+  //
+  // v1.6.21:effectiveEnd clamp 到「下一個 cue 的 startMs」,避免閱讀補償延長(_upsertDisplayCue
+  // 內) 造成的 endMs 跟下一句重疊;若無下一句,沿用 cue.endMs。
   function _findActiveCue(currentMs) {
     const cues = SK.YT.displayCues;
     for (let i = 0; i < cues.length; i++) {
       const c = cues[i];
-      if (currentMs >= c.startMs && currentMs <= c.endMs) return c;
+      // 找出下一個 startMs 嚴格大於當前 cue 的 cue 當作 clamp 上限
+      // (排除 progressive 模式同 startMs 覆蓋的情況)
+      let nextStart = Infinity;
+      for (let j = i + 1; j < cues.length; j++) {
+        if (cues[j].startMs > c.startMs) { nextStart = cues[j].startMs; break; }
+      }
+      const effectiveEnd = Math.min(c.endMs, nextStart);
+      if (currentMs >= c.startMs && currentMs <= effectiveEnd) return c;
     }
     return null;
   }
@@ -885,11 +895,22 @@
     _setOverlayContent(cue ? cue.targetText : '');
   }
 
+  // 中文閱讀時間補償:LLM 自由分句把多段 ASR 合成一句中文,中文密度高,
+  // 原 endMs(=該句最後一個 ASR 片段的 startMs)往往讓使用者讀不完。
+  //   每字 200ms + 最低 800ms 下限(實測校準:250/1000 偏長 ~0.5s)。
+  //   超過下一句 startMs 時由 _findActiveCue 自動 clamp,不會視覺重疊。
+  const _ASR_READ_MS_PER_CHAR = 200;
+  const _ASR_MIN_READ_MS       = 800;
+
   // 加入 cue 到 displayCues。同 startMs 取代(progressive 模式 LLM 覆蓋 heuristic 用)。
+  // endMs 自動延長至少夠中文閱讀時間。
   function _upsertDisplayCue(startMs, endMs, sourceText, targetText) {
     const cues = SK.YT.displayCues;
+    const trans = String(targetText || '');
+    const idealReadMs = Math.max(_ASR_MIN_READ_MS, trans.length * _ASR_READ_MS_PER_CHAR);
+    const adjustedEnd = Math.max(Number(endMs) || 0, Number(startMs) + idealReadMs);
+    const next = { startMs, endMs: adjustedEnd, sourceText: sourceText || '', targetText: trans };
     const idx = cues.findIndex(c => c.startMs === startMs);
-    const next = { startMs, endMs, sourceText: sourceText || '', targetText: targetText || '' };
     if (idx >= 0) cues[idx] = next;
     else cues.push(next);
   }
