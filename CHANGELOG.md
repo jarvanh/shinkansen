@@ -7,6 +7,13 @@
 
 ## v1.6.x
 
+**v1.6.7** — 自訂模型支援本機後端（llama.cpp / Ollama 等）：API Key 允許留空。
+
+  - **修使用者回報的 bug**：自訂模型分頁的「測試」按鈕在 API Key 為空時硬擋報錯（`✗ API Key 為空。`），導致 llama.cpp 等不需要 key 的本機後端使用者無法測試也無法翻譯。
+  - **三處同步移除 / 條件化**：(1) `background.js#testCustomProvider` 拿掉「API Key 為空」前置 guard；(2) `background.js#handleTranslateCustom` 拿掉 `cp.apiKey` 必填 throw；(3) `lib/openai-compat.js#translateChunk` 拿掉同樣 throw、且 fetch headers 在 apiKey 為空時不送 `Authorization`（OpenAI 相容規範允許省略）。商用後端（OpenAI / OpenRouter / DeepSeek 等）漏填 key 時自然回 401，錯誤訊息由 provider 提供（例如「Incorrect API key」），對使用者也很清楚。
+  - **UI 提示更新**：自訂模型分頁的 API Key 欄位 placeholder 與下方說明文字加上「本機 llama.cpp / Ollama 等可留空」。
+  - **新 unit spec 兩條**：apiKey 為空 → 不 throw 且 headers 不含 Authorization；apiKey undefined（settings 沒這欄位）→ 同上。SANITY 已驗（headers 改回硬送 → 兩條 fail）。
+
 **v1.6.6** — 新增「工具列『翻譯本頁』按鈕」可指定對應的翻譯預設。
 
   - **新設定**：一般設定分頁多一個 section「工具列『翻譯本頁』按鈕」，dropdown 三選項顯示各 preset 的 label（例如「預設 1：Flash Lite / 預設 2：Flash / 預設 3：Google MT」），預設仍為 slot 2（與 v1.4.12 起的 popup 硬碼行為一致），現有使用者升級不會感受到任何行為差異。
