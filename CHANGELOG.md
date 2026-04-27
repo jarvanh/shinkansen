@@ -33,6 +33,7 @@
 
 ### YouTube 字幕翻譯
 
+- **v1.6.20** — YouTube 自動產生字幕整套重做:三種分句模式可切換(預設分句 / AI 分句 / 混合模式)、字幕完全旁路原生跳動 + 整句穩定顯示、譯文過長依標點動態斷行(2 行為主)、字體 / 顏色 / 透明度 / 字型動態對齊原生英文字幕;勾「自動翻譯字幕」+ CC 未開時自動開啟 CC
 - **v1.6.0** — 字幕分頁 tab 移到「一般設定」右邊；section 重組為「自動翻譯 → 翻譯引擎 → Gemini 設定 → 進階 → 視窗設定 → Prompt」
 - **v1.6.0** — 字幕引擎新增「自訂模型」選項（與文章翻譯共用設定，prompt 可獨立）
 - **v1.6.0** — 字幕新增「字幕也套用『固定術語表』/『禁用詞清單』」兩個 toggle（預設關，省 token）
@@ -64,6 +65,13 @@
 ---
 
 ## v1.6.x
+
+**v1.6.20** — YouTube 自動產生字幕(ASR)整套重做:overlay 顯示完全旁路原生 caption-segment 跳動 + 整句穩定顯示;三種分句模式(預設啟發式 / AI 自由分句 / 混合模式漸進覆蓋);譯文過長依標點動態斷行(2 行為主,maxLine 動態對應 video 寬);字體 / 顏色 / 透明度 / 字型動態同步原生英文字幕;勾「自動翻譯字幕」+ CC 未開時 forceSubtitleReload 主動開 CC;UI 用語「自動產生字幕分句模式」「預設分句 / AI 分句 / 混合模式」+ 中文標點全形修正。共新增 11 條 regression(9 條 ASR + 2 條 auto-CC)。280+ 條 spec 全綠。
+
+  - **G 路徑(`content-youtube.js` overlay 架構)** — 注入 `<shinkansen-yt-overlay>` 到 `#movie_player`,Shadow DOM 隔離 CSS;`displayCues = [{startMs, endMs, sourceText, targetText}]`,video.timeupdate 驅動找 active cue,整句進整句出。原生 caption-window 由全域 CSS `visibility:hidden` 隱藏(保留 layout 才能讀 native font-size)。
+  - **三種分句模式** — `ytSubtitle.asrMode = 'heuristic' | 'llm' | 'progressive'`,預設 `heuristic`。`heuristic` 走 client-side rule-based pipeline(split / merge / compact + 英文詞彙列表);`llm` 走 timestamp mode(`TRANSLATE_ASR_SUBTITLE_BATCH` JSON `[{s,e,t}]` 自由合句 + 時間戳邊界驗證);`progressive` heuristic 先 await 顯示後 LLM fire-and-forget 覆蓋。
+  - **譯文 wrap** — `_wrapTargetText` 以動態 `_calcMaxLineChars()`(`videoWidth × 0.7 / (fontSize × 0.8)`,clamp [15, 35])為門檻,優先在標點後切;regex 用 unicode escape `,.:;!?，．：；！？、。` 確保字符集純淨。
+  - **auto-CC** — `forceSubtitleReload` 在 CC `aria-pressed=false` 時主動 click + 設 `_autoCcToggled` 每 session 只自動開一次,尊重使用者後續手動關 CC 不再補開。
 
 **v1.6.19** — Code review audit 後修 5 條穩健性 bug:YouTube 字幕並行批次容錯、跨 tab sticky race、設定頁 `||` 0 falsy、fragment 注入 anchor、Promise.race timer leak。272 條 spec 全綠。
 

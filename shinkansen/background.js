@@ -5,7 +5,7 @@ import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
-import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
+import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -297,6 +297,37 @@ const messageHandlers = {
       return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt',
         yt.applyFixedGlossary === true,
         yt.applyForbiddenTerms === true);
+    },
+  },
+  // v1.6.20: ASR(YouTube 自動字幕)專用——LLM 自由合句 + 時間戳對齊路徑(D' 模式,
+  // timestamp mode)。
+  // 與 TRANSLATE_SUBTITLE_BATCH 的差異:
+  //   - 走獨立 system prompt(DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT),允許 LLM 自由合句
+  //   - texts 是單一元素(整視窗包成 [{s,e,t}] JSON 字串),不分批
+  //   - cache key tag '_yt_asr',跟 _yt 分區避免互打
+  //   - 字幕 settings 沿用 ytSubtitle(model / temperature / pricing),只覆寫 systemInstruction
+  TRANSLATE_ASR_SUBTITLE_BATCH: {
+    async: true,
+    handler: async (payload, sender) => {
+      const _tReceived = Date.now();
+      const s = await getSettings();
+      const _settingsMs = Date.now() - _tReceived;
+      debugLog('info', 'youtube', 'asr subtitle batch received', {
+        inputBytes: payload?.texts?.[0]?.length || 0,
+        settingsMs: _settingsMs,
+      });
+      const yt = s.ytSubtitle || {};
+      const geminiOverrides = {
+        // ASR 模式不沿用使用者自訂的 ytSubtitle.systemPrompt(那是逐條翻譯版本,規則不適用 ASR JSON 模式)
+        systemInstruction: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
+        // ASR 合句需要一點推理,但翻譯仍應穩定;沿用 ytSubtitle.temperature
+        temperature: yt.temperature ?? 0.1,
+      };
+      if (yt.model) geminiOverrides.model = yt.model;
+      const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+      // ASR 路徑不套用固定術語表 / 黑名單(ASR prompt 已內含禁用詞規則,且 JSON 包裝增加術語注入難度)
+      return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt_asr',
+        false, false);
     },
   },
   // v1.4.0: Google Translate 網頁翻譯（不需 API Key，不走 rate limiter，快取 key 用 _gt 後綴）

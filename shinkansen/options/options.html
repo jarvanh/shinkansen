@@ -59,7 +59,7 @@
       <p class="muted">
         三組可自訂的翻譯預設，對應三個快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
         已翻譯狀態下按任一快速鍵都會還原原文；翻譯中按任一快速鍵則取消翻譯。
-        鍵位可至 <a href="#" id="open-shortcuts">chrome://extensions/shortcuts</a> 變更。
+        鍵位可至 <a href="#" id="open-shortcuts">chrome://extensions/shortcuts</a> 變更
       </p>
       <div class="preset-cards">
         <div class="preset-card" data-slot="1">
@@ -171,7 +171,7 @@
           <option value="2">主要預設</option>
           <option value="3">預設 3</option>
         </select>
-        <small class="muted">進入白名單網域時走哪一組預設(等同自動按下對應的快速鍵)。預設「主要預設」與 v1.6.12 之前的行為一致</small>
+        <small class="muted">進入白名單網域時走哪一組預設（等同自動按下對應的快速鍵）。預設「主要預設」與 v1.6.12 之前的行為一致</small>
       </label>
     </section>
 
@@ -189,12 +189,12 @@
       <h2>雙語對照視覺標記</h2>
       <p class="muted">
         當顯示模式設為「雙語對照」時，譯文會以新段落形式 append 在原文之後。
-        以下選項決定譯文段落的視覺標記樣式（顯示模式本身可在 popup 切換）。
+        以下選項決定譯文段落的視覺標記樣式（顯示模式本身可在 popup 切換）
       </p>
       <div class="dual-demo">
         <p class="dual-demo-original">The quick brown fox jumps over the lazy dog.</p>
         <shinkansen-translation id="dual-demo-wrapper" data-sk-mark="tint">
-          <p class="dual-demo-translation">敏捷的棕狐跨越懶狗。</p>
+          <p class="dual-demo-translation">敏捷的棕狐跨越懶狗</p>
         </shinkansen-translation>
       </div>
       <div class="dual-mark-options">
@@ -256,10 +256,10 @@
 
     <section class="license-section">
       <h2>授權資訊</h2>
-      <p>Shinkansen 採用 <strong>Elastic License 2.0 (ELv2)</strong> 授權。</p>
-      <p>你可以自由查看原始碼、學習、修改、自己使用，但<strong>不能把 Shinkansen（或改寫版本）包成服務拿去賣</strong>。</p>
+      <p>Shinkansen 採用 <strong>Elastic License 2.0 (ELv2)</strong> 授權</p>
+      <p>你可以自由查看原始碼、學習、修改、自己使用，但<strong>不能把 Shinkansen（或改寫版本）包成服務拿去賣</strong></p>
       <p class="muted">完整條款請見擴充功能目錄內的 LICENSE 檔案，或參閱 <a href="https://www.elastic.co/licensing/elastic-license" target="_blank" rel="noopener">Elastic License 2.0 官方全文</a></p>
-      <p class="muted">作者：Jimmy Su ・ Twitter (X)：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
+      <p class="muted">作者：Jimmy Su ・ Twitter (X）：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
     </section>
 
     </div><!-- /tab-settings -->
@@ -270,12 +270,12 @@
     <section>
       <h2>模型計價</h2>
       <p class="muted">
-        Shinkansen 內建已知 Gemini 模型的標準層級單價(<strong id="pricing-calibrated-date">2026-04</strong> 校準),
-        用於計算翻譯成本顯示在翻譯完成通知與「用量紀錄」分頁。Google 改價時可在下方覆蓋對應模型,空白表示用內建價。
-        詳細費率見 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a>。
+        Shinkansen 內建已知 Gemini 模型的標準層級單價（<strong id="pricing-calibrated-date">2026-04</strong> 校準），
+        用於計算翻譯成本顯示在翻譯完成通知與「用量紀錄」分頁。Google 改價時可在下方覆蓋對應模型，空白表示用內建價。
+        詳細費率見 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a>
       </p>
       <p class="muted" style="font-size: 13px;">
-        Preset 翻譯的計價優先順序:覆蓋值 → 內建表 → 下方「後備路徑單價」。單位皆為「每 1M tokens 的美金價格」。
+        Preset 翻譯的計價優先順序:覆蓋值 → 內建表 → 下方「後備路徑單價」。單位皆為「每 1M tokens 的美金價格」
       </p>
 
       <div class="model-pricing-overrides">
@@ -509,10 +509,10 @@
       <p class="muted">
         想用 Gemini 之外的模型？設定一組 OpenAI 相容端點即可接
         OpenRouter（含 Anthropic / Gemini / DeepSeek / Llama / Qwen / Grok 等百種模型）、
-        Ollama 本機、Together、Groq、Fireworks、OpenAI 自家等。
+        Ollama 本機、Together、Groq、Fireworks、OpenAI 自家等
       </p>
       <p class="muted">
-        設定完成後，到「一般設定」分頁的「翻譯快速鍵」，把任一組預設引擎改為「自訂模型」，即可使用快速鍵啟動翻譯。
+        設定完成後，到「一般設定」分頁的「翻譯快速鍵」，把任一組預設引擎改為「自訂模型」，即可使用快速鍵啟動翻譯
       </p>
       <label>
         Base URL
@@ -520,7 +520,7 @@
         <small class="muted">
           OpenAI 相容模型端點的根目錄。系統會自動接 <code>/chat/completions</code>。
           常見：<code>https://openrouter.ai/api/v1</code>、<code>https://api.together.xyz/v1</code>、
-          <code>http://localhost:11434/v1</code>（Ollama）。
+          <code>http://localhost:11434/v1</code>（Ollama）
         </small>
       </label>
       <label>
@@ -529,7 +529,7 @@
         <small class="muted">
           OpenRouter 的 model ID 格式為 <code>provider/model</code>（如
           <code>anthropic/claude-sonnet-4-5</code>、<code>google/gemini-2.5-flash</code>、
-          <code>deepseek/deepseek-chat</code>）；其他端點直接填 model 名稱。
+          <code>deepseek/deepseek-chat</code>）；其他端點直接填 model 名稱
         </small>
       </label>
       <label>
@@ -549,7 +549,7 @@
         <textarea id="cp-systemPrompt" rows="8" placeholder="留空使用內建簡短預設 prompt"></textarea>
         <small class="muted">
           自訂模型用獨立的翻譯 prompt（不繼承 Gemini 分頁的設定）；
-          但「固定術語表」與「禁用詞清單」會自動共用注入到 prompt 末端。
+          但「固定術語表」與「禁用詞清單」會自動共用注入到 prompt 末端
         </small>
       </label>
       <button type="button" id="cp-reset-prompt" class="secondary">重置為預設 Prompt（與 Gemini 同）</button>
@@ -575,19 +575,19 @@
           Grok <code>reasoning_effort</code>、Qwen <code>extra_body.enable_thinking</code>）。
           翻譯任務 thinking 通常無感但會多花 token；建議「關閉」省成本，
           除非你的模型只能在 thinking 開啟時翻譯（如 DeepSeek-R1 / QwQ）。
-          不認識的 provider 走「自動」。
+          不認識的 provider 走「自動」
         </small>
       </label>
 
       <details>
-        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;">進階：自訂 request body 額外參數（JSON,覆蓋上方思考強度）</summary>
+        <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;">進階：自訂 request body 額外參數（JSON，覆蓋上方思考強度）</summary>
         <textarea id="cp-extra-body-json" rows="4" placeholder='例：{"reasoning":{"max_tokens":4000},"top_k":40}' style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
         <small class="muted">
-          內容會深層 merge 進 chat.completions request body,可用來:
-          (1) 強制覆蓋上方「思考強度」自動產生的設定;
-          (2) 加 provider 專屬參數(例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、
+          內容會深層 merge 進 chat.completions request body，可用來:
+          (1) 強制覆蓋上方「思考強度」自動產生的設定；
+          (2) 加 provider 專屬參數（例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、
           Anthropic 的 <code>metadata</code>)。
-          格式錯誤會在 Debug 分頁 log 一條 warn 並忽略,翻譯不會中斷。
+          格式錯誤會在 Debug 分頁 log 一條 warn 並忽略，翻譯不會中斷
         </small>
       </details>
     </section>
@@ -597,7 +597,7 @@
       <p class="muted">
         請填入 input / output 單價，
         系統會用來估算翻譯費用顯示在翻譯完成通知與「用量紀錄」分頁。填 <strong>0</strong> 代表不顯示費用
-        （token 數仍會記錄）。
+        （token 數仍會記錄）
       </p>
       <label>
         Input tokens 單價（USD / 1M tokens）
@@ -624,7 +624,7 @@
       <p class="muted">
         針對 LLM 容易漏網的中國大陸用語自訂禁用對照表。內容會以高顯著性區塊
         注入 Gemini 的 system prompt 末端，明確要求譯文不可使用左欄詞彙、
-        必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文。
+        必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文
       </p>
       <div class="glossary-table-wrapper">
         <table class="glossary-edit-table" id="forbidden-terms-table">
@@ -840,6 +840,29 @@
       </label>
     </section>
 
+    <!-- v1.6.20: 自動產生字幕分句模式三選一，讓使用者比較三條路徑差別 -->
+    <section>
+      <h2>自動產生字幕分句模式</h2>
+      <p class="muted">
+        僅影響 YouTube <strong>自動產生</strong>的字幕，人工字幕不受此設定影響
+      </p>
+      <label class="checkbox-label">
+        <input type="radio" name="ytAsrMode" value="heuristic">
+        <strong>預設分句</strong>
+        <small class="muted">與自動產生字幕相同分句方式</small>
+      </label>
+      <label class="checkbox-label">
+        <input type="radio" name="ytAsrMode" value="llm">
+        <strong>AI 分句</strong>
+        <small class="muted">AI 分句 + 翻譯一次完成。分句較自然，token 消耗稍高</small>
+      </label>
+      <label class="checkbox-label">
+        <input type="radio" name="ytAsrMode" value="progressive">
+        <strong>混合模式</strong>
+        <small class="muted">預設分句先顯示（秒出），AI 分句結果回來後替代預設分句版本，兼顧速度與品質</small>
+      </label>
+    </section>
+
     <!-- v1.4.0: 字幕翻譯引擎選擇 -->
     <section>
       <h2>翻譯引擎</h2>
@@ -852,7 +875,7 @@
         </select>
         <small class="muted">
           選擇 Google Translate 時，下方模型、計價、Prompt 設定均不作用（Google MT 不支援自訂 Prompt）。<br>
-          選擇「自訂模型」時，會使用「自訂模型」分頁設定的 Base URL / 模型 ID / API Key / Prompt（與文章翻譯共用同一組）；下方模型、計價也不作用。
+          選擇「自訂模型」時，會使用「自訂模型」分頁設定的 Base URL / 模型 ID / API Key / Prompt（與文章翻譯共用同一組）；下方模型、計價也不作用
         </small>
       </label>
     </section>
@@ -893,7 +916,7 @@
       <h2>進階：固定術語表 & 禁用詞清單</h2>
       <p class="muted">
         是否把「術語表」分頁的固定術語表、與「禁用詞清單」分頁的中國用語黑名單也注入到字幕翻譯的 prompt？<br>
-        <strong>預設關閉以省 token</strong>——字幕本來就走獨立 prompt，且字幕短句 LLM 不太會誤翻黑名單詞，套用收益小、開銷會在高頻字幕場景累積。
+        <strong>預設關閉以省 token</strong>——字幕本來就走獨立 prompt，且字幕短句 LLM 不太會誤翻黑名單詞，套用收益小、開銷會在高頻字幕場景累積
       </p>
       <label class="checkbox-label">
         <input type="checkbox" id="ytApplyFixedGlossary">

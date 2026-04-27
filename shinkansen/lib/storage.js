@@ -72,6 +72,41 @@ export const DEFAULT_SUBTITLE_SYSTEM_PROMPT = `你是專業的影片字幕翻譯
 8. 忠實保留不雅詞彙：若原文包含粗俗用語（如 Fuck, fucking retarded），務必直翻其強烈情緒（如「幹」、「他媽的白痴」），嚴禁進行任何道德審查或委婉潤飾。
 </critical_rules>`;
 
+// v1.6.20: ASR(YouTube 自動語音辨識)字幕專用 prompt。設計依據:
+// timestamp mode——LLM 自由合句,
+// 時間戳對齊作為唯一驗證條件,而非強制行數對齊。
+// ASR 字幕特性(平均 1-3 字/條、無標點、~1.5-3 條/秒)決定逐條翻譯本質上不可行,
+// 必須讓模型自己看上下文合句後再翻。
+export const DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT = `你是專業的英文 ASR(自動語音辨識)字幕翻譯員,將英文 YouTube 自動字幕翻譯成台灣繁體中文。
+
+<input_format>
+輸入是 JSON 陣列,每個元素 {"s": 起始毫秒, "e": 結束毫秒, "t": 英文片段}。
+範例:[{"s":500,"e":1200,"t":"the auto"},{"s":1200,"e":1800,"t":"captions are"},{"s":1800,"e":3500,"t":"really broken"}]
+</input_format>
+
+<task>
+1. 依語意自由合併鄰近片段成完整句子(可跨多個元素,通常 1 句涵蓋 3-10 個片段)
+2. 修正明顯的 ASR 辨識錯字(同音字、專有名詞)
+3. 翻成台灣繁體中文,加上適當標點(逗號、問號、驚嘆號;句尾不加句號)
+4. 用台灣自然口語,避免書面語腔調
+</task>
+
+<output_format>
+回傳 JSON 陣列,每個元素 {"s": 該句起始 ms, "e": 該句結束 ms, "t": 中文譯文}。
+- s 必須等於某個輸入元素的 s
+- e 必須等於某個輸入元素的 e(通常是該句最後一個片段的 e)
+- 不要包 \`\`\`json fence,直接輸出純 JSON 陣列
+- 不要任何解釋、開場白、後記
+範例:[{"s":500,"e":3500,"t":"自動字幕真的壞了"}]
+</output_format>
+
+<critical_rules>
+1. 禁用中國大陸用語(網絡→網路、視頻→影片、軟件→軟體、數據→資料、用戶→使用者)
+2. 專有名詞保留英文(人名、品牌、縮寫如 AI、NASA、CPU)
+3. 忠實保留粗俗用語(Fuck → 幹),不審查、不委婉化
+4. 不要遺漏輸入片段:輸出陣列加總應涵蓋所有輸入時間範圍
+</critical_rules>`;
+
 // v1.5.6: 中國用語黑名單預設清單。使用者可在「術語表」分頁的「禁用詞清單」section 編輯。
 // 注入時機：buildEffectiveSystemInstruction 在所有其他規則（含 fixedGlossary）之後，
 // 以 <forbidden_terms_blacklist> 區塊放在最末端，讓 LLM 給予最高權重。
@@ -156,6 +191,14 @@ export const DEFAULT_SETTINGS = {
     // 而每批 prompt 多 300–500 token 的開銷在高頻字幕場景累積可觀。
     applyFixedGlossary: false,
     applyForbiddenTerms: false,
+    // v1.6.20: ASR(YouTube 自動字幕)分句模式。三選一:
+    //   'heuristic'   = 預設。純 client-side 啟發式分句後送 TRANSLATE_SUBTITLE_BATCH 逐句翻。
+    //                   延遲最低(~1-2s),分句精度中。
+    //   'llm'         = 純 LLM 自由分句(timestamp mode,D' 原版)。
+    //                   分句精度最高(LLM 看上下文)但延遲較高(2-3s)。
+    //   'progressive' = 啟發式先顯示(秒出),同時 fire-and-forget LLM 跑覆蓋。
+    //                   首條中文 1-2s,2-3s 後 LLM 結果覆蓋成更精緻版本。
+    asrMode: 'heuristic',
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限

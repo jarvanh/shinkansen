@@ -191,6 +191,11 @@ async function load() {
   const ytEngineEl = $('ytEngine');
   if (ytEngineEl) ytEngineEl.value = yt.engine || 'gemini';
   $('ytAutoTranslate').checked       = yt.autoTranslate       === true;
+  // v1.6.20: ASR 合句模式 radio(預設 progressive)
+  const ytAsrModeVal = ['heuristic', 'llm', 'progressive'].includes(yt.asrMode) ? yt.asrMode : 'heuristic';
+  document.querySelectorAll('input[name="ytAsrMode"]').forEach(el => {
+    el.checked = el.value === ytAsrModeVal;
+  });
   // v1.5.8: 字幕是否套用固定術語表 / 黑名單
   $('ytApplyFixedGlossary').checked  = yt.applyFixedGlossary  === true;
   $('ytApplyForbiddenTerms').checked = yt.applyForbiddenTerms === true;
@@ -505,6 +510,11 @@ async function save() {
     ytSubtitle: {
       engine: ($('ytEngine')?.value || 'gemini'),  // v1.4.0
       autoTranslate:      $('ytAutoTranslate').checked,
+      // v1.6.20: ASR 合句模式
+      asrMode: (() => {
+        const v = document.querySelector('input[name="ytAsrMode"]:checked')?.value;
+        return ['heuristic', 'llm', 'progressive'].includes(v) ? v : 'heuristic';
+      })(),
       // v1.5.8: 字幕是否套用固定術語表 / 黑名單
       applyFixedGlossary:  $('ytApplyFixedGlossary').checked,
       applyForbiddenTerms: $('ytApplyForbiddenTerms').checked,
