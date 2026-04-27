@@ -834,6 +834,7 @@ shinkansen-translation[data-sk-mark="none"]   {}
   margin-bottom: 16px;
 }
 .update-banner-link {
+  /* v1.6.3: 從 <a> 改 <button>——加 button reset 維持 banner 視覺 */
   flex: 1;
   display: flex;
   align-items: center;
@@ -845,6 +846,9 @@ shinkansen-translation[data-sk-mark="none"]   {}
   font-size: 13px;
   color: #2c2a1f;
   text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
 }
 .update-banner-link:hover { background: #fff3c4; text-decoration: none; }
 .update-banner-link strong { color: #1d1d1f; }

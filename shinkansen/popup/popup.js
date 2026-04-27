@@ -85,6 +85,27 @@ async function refreshShortcutHint() {
   }
 }
 
+// v1.6.3: 用 document-level event delegation 處理 update banner 點擊，
+// 不依賴 init() async timing 也不靠 a-tag navigate 行為——任何時候 button 出現在
+// DOM 都能 click 觸發。click handler 內臨時讀 storage 拿 release URL，最穩固。
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('#update-banner')) return;
+  e.preventDefault();
+  try {
+    const { updateAvailable } = await browser.storage.local.get('updateAvailable');
+    // 三層 fallback：storage.releaseUrl > 用 version 組 tag URL > releases 索引頁
+    // 即使 storage 內缺 releaseUrl 或損壞也能跳到合理頁面
+    const url = updateAvailable?.releaseUrl
+      || (updateAvailable?.version
+        ? `https://github.com/jimmysu0309/shinkansen/releases/tag/v${updateAvailable.version}`
+        : 'https://github.com/jimmysu0309/shinkansen/releases');
+    await browser.tabs.create({ url });
+    window.close();
+  } catch (err) {
+    console.error('[shinkansen] update-banner click failed', err);
+  }
+});
+
 async function init() {
   // 從 manifest 動態讀版本號，避免日後忘記同步
   const manifest = browser.runtime.getManifest();
@@ -93,14 +114,16 @@ async function init() {
   refreshShortcutHint();
 
   // v1.6.1: 更新提示 — 有新版時顯示版本紅點 + banner
+  // v1.6.3: popup 對 <a target="_blank"> 不會開新分頁、會在 popup 內 navigate
+  //         （chrome popup 行為與 webview 不同），改用 JS click handler 攔截 +
+  //         chrome.tabs.create() 在主視窗開新分頁 + window.close() 收掉 popup。
   try {
     const { disableUpdateNotice } = await browser.storage.sync.get('disableUpdateNotice');
     if (disableUpdateNotice !== true) {
       const { updateAvailable } = await browser.storage.local.get('updateAvailable');
-      if (updateAvailable && updateAvailable.version) {
+      if (updateAvailable && updateAvailable.version && updateAvailable.releaseUrl) {
         $('update-dot').hidden = false;
         const banner = $('update-banner');
-        banner.href = updateAvailable.releaseUrl;
         banner.hidden = false;
         $('update-banner-version').textContent = `v${updateAvailable.version}（你目前是 v${manifest.version}）`;
       }

@@ -52,7 +52,7 @@ globalThis.fetch = async (url) => {
   return nextFetchResponse;
 };
 
-const { checkForUpdate, parseVersion, isNewer, markUpdateNoticeShown, shouldShowTodayNotice } =
+const { checkForUpdate, parseVersion, isNewer, isWorthNotifying, markUpdateNoticeShown, shouldShowTodayNotice } =
   await import('../../shinkansen/lib/update-check.js');
 
 function clearStore() { for (const k of Object.keys(store)) delete store[k]; }
@@ -90,25 +90,48 @@ test.describe('parseVersion / isNewer', () => {
     expect(isNewer('1.5.9', '1.6.0')).toBe(false);  // 舊版
     expect(isNewer('v1.6.1', 'v1.6.0')).toBe(true); // v 前綴容忍
   });
+
+  test('isWorthNotifying：只 major / minor 升才提示，patch 不提示', () => {
+    // major 升 → 提示
+    expect(isWorthNotifying('2.0.0', '1.6.4')).toBe(true);
+    expect(isWorthNotifying('2.0.0', '1.99.99')).toBe(true);
+    // minor 升 → 提示
+    expect(isWorthNotifying('1.7.0', '1.6.4')).toBe(true);
+    expect(isWorthNotifying('1.7.0', '1.6.99')).toBe(true);
+    // patch 升 → **不提示**（避免高頻小改打擾使用者）
+    expect(isWorthNotifying('1.6.5', '1.6.4')).toBe(false);
+    expect(isWorthNotifying('1.6.10', '1.6.0')).toBe(false);
+    // 相同 → 不提示
+    expect(isWorthNotifying('1.6.4', '1.6.4')).toBe(false);
+    // 舊版 → 不提示
+    expect(isWorthNotifying('1.5.9', '1.6.0')).toBe(false);
+  });
 });
 
 test.describe('checkForUpdate', () => {
-  test('latest > current → 寫入 updateAvailable + 回 hasUpdate=true', async () => {
-    nextFetchResponse = makeOkResp('v1.6.1');
+  test('latest minor 升 → 寫入 updateAvailable + 回 hasUpdate=true', async () => {
+    nextFetchResponse = makeOkResp('v1.7.0');
     const result = await checkForUpdate();
     expect(result.checked).toBe(true);
     expect(result.hasUpdate).toBe(true);
-    expect(result.version).toBe('1.6.1');
+    expect(result.version).toBe('1.7.0');
     expect(store.updateAvailable).toBeDefined();
-    expect(store.updateAvailable.version).toBe('1.6.1');
-    expect(store.updateAvailable.releaseUrl).toContain('releases/tag/v1.6.1');
+    expect(store.updateAvailable.version).toBe('1.7.0');
+    expect(store.updateAvailable.releaseUrl).toContain('releases/tag/v1.7.0');
+  });
+
+  test('latest 只是 patch 升 → **不**寫 storage（避免小修打擾）', async () => {
+    nextFetchResponse = makeOkResp('v1.6.1');  // 1.6.1 vs current 1.6.0 是 patch 級
+    const result = await checkForUpdate();
+    expect(result.hasUpdate).toBe(false);
+    expect(store.updateAvailable).toBeUndefined();
   });
 
   test('latest === current → 清掉 storage.updateAvailable + 回 hasUpdate=false', async () => {
     // 先模擬「之前偵測過有新版」
-    store.updateAvailable = { version: '1.6.1', releaseUrl: 'old' };
-    manifestVersion = '1.6.1';
-    nextFetchResponse = makeOkResp('v1.6.1');
+    store.updateAvailable = { version: '1.7.0', releaseUrl: 'old' };
+    manifestVersion = '1.7.0';
+    nextFetchResponse = makeOkResp('v1.7.0');
     const result = await checkForUpdate();
     expect(result.checked).toBe(true);
     expect(result.hasUpdate).toBe(false);
@@ -116,7 +139,7 @@ test.describe('checkForUpdate', () => {
   });
 
   test('latest < current → 不寫 storage（極端，例如 GitHub 撤回 release）', async () => {
-    manifestVersion = '1.6.1';
+    manifestVersion = '1.7.0';
     nextFetchResponse = makeOkResp('v1.6.0');
     const result = await checkForUpdate();
     expect(result.hasUpdate).toBe(false);
@@ -144,13 +167,13 @@ test.describe('checkForUpdate', () => {
 
   test('保留 lastNoticeShownDate（多次 check 之間每日節流不會被覆蓋）', async () => {
     store.updateAvailable = {
-      version: '1.6.1',
+      version: '1.7.0',
       releaseUrl: 'old',
       lastNoticeShownDate: '2026-04-27',
     };
-    nextFetchResponse = makeOkResp('v1.6.2'); // 又有新版
+    nextFetchResponse = makeOkResp('v1.8.0'); // 又有新 minor 版
     await checkForUpdate();
-    expect(store.updateAvailable.version).toBe('1.6.2'); // 版本更新
+    expect(store.updateAvailable.version).toBe('1.8.0'); // 版本更新
     expect(store.updateAvailable.lastNoticeShownDate).toBe('2026-04-27'); // 日期保留
   });
 });

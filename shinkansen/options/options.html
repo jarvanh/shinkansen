@@ -28,13 +28,15 @@
     <!-- ═══ 一般設定分頁 ═══ -->
     <div id="tab-settings" class="tab-panel active">
 
-    <!-- v1.6.1: 有新版可下載時顯示 banner（div wrapper + a + button 並列；
-         不能把 button 巢嵌在 a 裡——HTML invalid，Chrome 點 banner 主體會錯亂） -->
+    <!-- v1.6.1: 有新版可下載時顯示 banner
+         v1.6.3: 主體從 <a> 改成 <button>，徹底擺脫 a-tag 預設 navigate 行為——
+         不論 href 有沒有被正確覆寫、不論 target=_blank 在 chrome-extension scheme
+         的處理是否符合預期，button 的唯一 click 行為就是 JS handler。 -->
     <div id="update-banner-row" class="update-banner-row" hidden>
-      <a id="update-banner" class="update-banner-link" href="#" target="_blank" rel="noopener">
+      <button id="update-banner" class="update-banner-link" type="button">
         <strong>📦 有新版可下載</strong>
         <span id="update-banner-version"></span>
-      </a>
+      </button>
       <button id="update-banner-dismiss" class="update-banner-dismiss" type="button" title="不再顯示更新提示">不再提示</button>
     </div>
 

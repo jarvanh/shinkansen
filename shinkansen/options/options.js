@@ -236,15 +236,18 @@ async function load() {
   updateYtPromptCostHint();
 
   // v1.6.1: 更新提示 banner — 有新版且使用者未關閉提示時顯示
+  // v1.6.3: 加 click handler 攔截改用 chrome.tabs.create()，避免 href 被任何理由
+  //         （updateAvailable.releaseUrl undefined / race condition）保留 "#" 時，
+  //         <a target="_blank"> 會 navigate 到 options.html# 跳出另一個設定頁。
   try {
     const disableUpdateNotice = s.disableUpdateNotice === true;
     if (!disableUpdateNotice) {
       const { updateAvailable } = await browser.storage.local.get('updateAvailable');
-      if (updateAvailable && updateAvailable.version) {
+      if (updateAvailable && updateAvailable.version && updateAvailable.releaseUrl) {
         const manifest = browser.runtime.getManifest();
-        $('update-banner').href = updateAvailable.releaseUrl;
         $('update-banner-row').hidden = false;
         $('update-banner-version').textContent = `v${updateAvailable.version}（你目前是 v${manifest.version}）`;
+        // click handler 改用 document delegation 在外面掛（避免 init() async race）
       }
     }
   } catch { /* 略 */ }
@@ -256,6 +259,26 @@ $('update-banner-dismiss')?.addEventListener('click', async (e) => {
   e.stopPropagation();
   await browser.storage.sync.set({ disableUpdateNotice: true });
   $('update-banner-row').hidden = true;
+});
+
+// v1.6.3: update banner 主體用 document-level delegation 處理，不依賴 init() timing。
+// click handler 內臨時讀 storage 拿最新 releaseUrl，避免 init() race condition。
+document.addEventListener('click', async (e) => {
+  // closest 同時涵蓋點 banner 內的 strong / span 子元素
+  const banner = e.target.closest('#update-banner');
+  if (!banner) return;
+  e.preventDefault();
+  try {
+    const { updateAvailable } = await browser.storage.local.get('updateAvailable');
+    // 三層 fallback：storage.releaseUrl > 用 version 組 tag URL > releases 索引頁
+    const url = updateAvailable?.releaseUrl
+      || (updateAvailable?.version
+        ? `https://github.com/jimmysu0309/shinkansen/releases/tag/v${updateAvailable.version}`
+        : 'https://github.com/jimmysu0309/shinkansen/releases');
+    await browser.tabs.create({ url });
+  } catch (err) {
+    console.error('[shinkansen] update-banner click failed', err);
+  }
 });
 
 // v1.5.0: 雙語視覺標記預覽更新
