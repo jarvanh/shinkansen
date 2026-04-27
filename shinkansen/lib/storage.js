@@ -151,6 +151,11 @@ export const DEFAULT_SETTINGS = {
     model: '',
     // v1.2.39: 獨立計價——null 表示與主模型計價相同；設定後用於字幕費用計算
     pricing: null,
+    // v1.5.8: 字幕路徑「是否套用固定術語表 / 中國用語黑名單」。預設 false 省 token——
+    // 字幕本來就走獨立 prompt 設計，且字幕短句 LLM 不太會誤翻黑名單詞，套用收益小、
+    // 而每批 prompt 多 300–500 token 的開銷在高頻字幕場景累積可觀。
+    applyFixedGlossary: false,
+    applyForbiddenTerms: false,
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限

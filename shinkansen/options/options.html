@@ -11,16 +11,16 @@
 
   <div class="container">
     <h1>🚄 Shinkansen</h1>
-    <p class="muted">功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a></p>
+    <p class="muted"><a href="https://jimmysu0309.github.io/shinkansen/" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a></p>
 
     <!-- v0.86: Tab 切換列（v1.0.28: 設定拆為一般設定 + Gemini；v1.0.29: 新增術語表） -->
     <nav class="tab-bar">
       <button class="tab-btn active" data-tab="settings">一般設定</button>
+      <button class="tab-btn" data-tab="youtube">YouTube 字幕</button>
       <button class="tab-btn" data-tab="gemini">Gemini</button>
       <button class="tab-btn" data-tab="custom-provider">自訂模型</button>
       <button class="tab-btn" data-tab="glossary">術語表</button>
       <button class="tab-btn" data-tab="forbidden">禁用詞清單</button>
-      <button class="tab-btn" data-tab="youtube">YouTube 字幕</button>
       <button class="tab-btn" data-tab="usage">用量紀錄</button>
       <button class="tab-btn" data-tab="log">Debug</button>
     </nav>
@@ -206,7 +206,7 @@
 
     <section>
       <h2>回復預設設定</h2>
-      <p class="muted">將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請分別在 Popup 點「清除快取」與「重置統計」處理）。</p>
+      <p class="muted">將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請分別在 Popup 點「清除快取」與「重置統計」處理）</p>
       <button id="reset-defaults" class="secondary">回復預設設定</button>
     </section>
 
@@ -219,7 +219,7 @@
       <h2>授權資訊</h2>
       <p>Shinkansen 採用 <strong>Elastic License 2.0 (ELv2)</strong> 授權。</p>
       <p>你可以自由查看原始碼、學習、修改、自己使用，但<strong>不能把 Shinkansen（或改寫版本）包成服務拿去賣</strong>。</p>
-      <p class="muted">完整條款請見擴充功能目錄內的 LICENSE 檔案，或參閱 <a href="https://www.elastic.co/licensing/elastic-license" target="_blank" rel="noopener">Elastic License 2.0 官方全文</a>。</p>
+      <p class="muted">完整條款請見擴充功能目錄內的 LICENSE 檔案，或參閱 <a href="https://www.elastic.co/licensing/elastic-license" target="_blank" rel="noopener">Elastic License 2.0 官方全文</a></p>
       <p class="muted">作者：Jimmy Su ・ Twitter (X)：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
     </section>
 
@@ -241,7 +241,7 @@
         <div id="custom-model-row" class="custom-model-row" hidden>
           <input type="text" id="custom-model-input" placeholder="輸入 Gemini API 模型 ID，例如 gemini-3-pro">
         </div>
-        <small class="muted">括號內為 Standard tier 參考價（input / output，每 1M tokens USD）。選「自行輸入」可使用未列出的模型。</small>
+        <small class="muted">括號內為 Standard tier 參考價（input / output，每 1M tokens USD）。選「自行輸入」可使用未列出的模型</small>
       </label>
       <label>
         服務層級（Service Tier）— 影響費用與延遲
@@ -346,7 +346,7 @@
       <label>
         每批段數上限
         <input type="number" id="maxUnitsPerBatch" step="1" min="1" max="100">
-        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 12</small>
+        <small class="muted">每一批最多包含幾段。這裡的「段」是指網頁上一個獨立的文字區塊（例如一個段落、一個標題、一個列表項目），由網頁結構自動偵測。數字越大每批翻越多，但太大容易導致翻譯對齊失準，預設 20</small>
       </label>
       <label>
         每批字元預算
@@ -362,6 +362,7 @@
 
     <div class="actions">
       <button id="save-gemini" class="primary">儲存設定</button>
+      <button id="gemini-reset-all" class="secondary" type="button" title="把本分頁所有欄位重設為預設值（按下後仍需點「儲存設定」才會生效）">重設所有參數</button>
       <span id="save-gemini-status"></span>
     </div>
 
@@ -373,7 +374,7 @@
     <!-- 固定術語表 -->
     <section>
       <h2>固定術語表</h2>
-      <p class="muted">手動指定「原文 → 譯文」對照。每次翻譯時會注入 Gemini 的 system prompt，強制模型遵守你指定的譯法。固定術語的優先級高於自動擷取的術語。</p>
+      <p class="muted">手動指定「原文 → 譯文」對照。每次翻譯時會注入 Gemini 的 system prompt，強制模型遵守你指定的譯法。固定術語的優先級高於自動擷取的術語</p>
 
       <h3 class="glossary-scope-title">全域（所有網站共用）</h3>
       <div class="glossary-table-wrapper">
@@ -459,16 +460,16 @@
       <p class="muted">
         想用 Gemini 之外的模型？設定一組 OpenAI 相容端點即可接
         OpenRouter（含 Anthropic / Gemini / DeepSeek / Llama / Qwen / Grok 等百種模型）、
-        Ollama 本機、Together、Groq、Fireworks、OpenAI 自家、DeepSeek 直連等。
+        Ollama 本機、Together、Groq、Fireworks、OpenAI 自家等。
       </p>
       <p class="muted">
-        設定完成後，到「一般設定」分頁的「翻譯快速鍵」把任一組預設引擎改為「自訂模型」即可使用快速鍵啟動翻譯。
+        設定完成後，到「一般設定」分頁的「翻譯快速鍵」，把任一組預設引擎改為「自訂模型」，即可使用快速鍵啟動翻譯。
       </p>
       <label>
         Base URL
         <input type="text" id="cp-baseUrl" placeholder="例如：https://openrouter.ai/api/v1">
         <small class="muted">
-          OpenAI-compatible 端點的根目錄。系統會自動接 <code>/chat/completions</code>。
+          OpenAI 相容模型端點的根目錄。系統會自動接 <code>/chat/completions</code>。
           常見：<code>https://openrouter.ai/api/v1</code>、<code>https://api.together.xyz/v1</code>、
           <code>http://localhost:11434/v1</code>（Ollama）。
         </small>
@@ -502,6 +503,7 @@
           但「固定術語表」與「禁用詞清單」會自動共用注入到 prompt 末端。
         </small>
       </label>
+      <button type="button" id="cp-reset-prompt" class="secondary">重置為預設 Prompt（與 Gemini 同）</button>
       <label>
         Temperature
         <input type="number" id="cp-temperature" step="0.1" min="0" max="2" placeholder="0.7">
@@ -512,7 +514,7 @@
       <h2>模型計價（USD）</h2>
       <p class="muted">
         請填入 input / output 單價，
-        系統會用來估算翻譯費用顯示在 toast / 用量紀錄。填 <strong>0</strong> 代表不顯示費用
+        系統會用來估算翻譯費用顯示在翻譯完成通知與「用量紀錄」分頁。填 <strong>0</strong> 代表不顯示費用
         （token 數仍會記錄）。
       </p>
       <label>
@@ -666,14 +668,14 @@
           <input type="checkbox" id="ytDebugToast">
           <div class="checkbox-body">
             顯示字幕翻譯即時狀態面板
-            <small class="muted">開啟後，字幕翻譯啟動時頁面左上角會出現一個即時狀態面板，顯示 buffer、batch API 耗時、captionMap 大小等診斷資訊。各欄位含意詳見 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/DEBUG-BOARD.md" target="_blank" rel="noopener">DEBUG-BOARD.md</a>。</small>
+            <small class="muted">開啟後，字幕翻譯啟動時頁面左上角會出現一個即時狀態面板，顯示 buffer、batch API 耗時、captionMap 大小等診斷資訊。各欄位含意詳見 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/DEBUG-BOARD.md" target="_blank" rel="noopener">DEBUG-BOARD.md</a></small>
           </div>
         </label>
         <label class="checkbox-label">
           <input type="checkbox" id="ytOnTheFly">
           <div class="checkbox-body">
             啟用 On-the-fly 備援翻譯
-            <small class="muted">開啟後，當字幕出現時若尚未預翻（captionMap 未命中），會即時送 API 翻譯。使用較慢的模型（如 Flash Lite）時建議關閉，避免即時翻譯請求阻塞預翻進度。預設關閉。</small>
+            <small class="muted">開啟後，當字幕出現時若尚未預翻（captionMap 未命中），會即時送 API 翻譯。使用較慢的模型（如 Flash Lite）時建議關閉，避免即時翻譯請求阻塞預翻進度。預設關閉</small>
           </div>
         </label>
       </section>
@@ -746,6 +748,15 @@
     <!-- ═══ YouTube 字幕分頁（v1.2.11 新增） ═══ -->
     <div id="tab-youtube" class="tab-panel">
 
+    <section>
+      <h2>自動翻譯</h2>
+      <label class="checkbox-label">
+        <input type="checkbox" id="ytAutoTranslate">
+        偵測到 YouTube 影片時自動翻譯字幕
+        <small class="muted">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動在 Popup 開啟開關</small>
+      </label>
+    </section>
+
     <!-- v1.4.0: 字幕翻譯引擎選擇 -->
     <section>
       <h2>翻譯引擎</h2>
@@ -754,71 +765,86 @@
         <select id="ytEngine">
           <option value="gemini">Gemini（預設，品質較高，需要 API Key）</option>
           <option value="google">Google Translate（免費，速度較快，不需 API Key）</option>
+          <option value="openai-compat">自訂模型（與「自訂模型」分頁共用設定）</option>
         </select>
-        <small class="muted">選擇 Google Translate 時，下方模型、計價、Prompt 設定均不作用（Google MT 不支援自訂 Prompt）。</small>
+        <small class="muted">
+          選擇 Google Translate 時，下方模型、計價、Prompt 設定均不作用（Google MT 不支援自訂 Prompt）。<br>
+          選擇「自訂模型」時，會使用「自訂模型」分頁設定的 Base URL / 模型 ID / API Key / Prompt（與文章翻譯共用同一組）；下方模型、計價也不作用。
+        </small>
       </label>
     </section>
 
+    <!-- v1.5.8: 「Gemini 設定」（合併原翻譯模型 + 翻譯參數 Temperature）僅 Gemini 引擎適用 -->
+    <div id="yt-gemini-only-sections">
+      <section>
+        <h2>Gemini 設定</h2>
+        <p class="muted">括號為 Standard tier 參考價（input / output，每 1M tokens USD）</p>
+        <label>
+          模型
+          <select id="ytModel">
+            <option value="">（與文章翻譯相同）</option>
+            <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 便宜，字幕品質足夠</option>
+            <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）— 推薦</option>
+            <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）— 大炮打小鳥，不推薦</option>
+          </select>
+          <small class="muted">選擇模型後，下方計價會自動帶入參考價；你也可以手動修改</small>
+        </label>
+        <label>
+          字幕 Input 單價（USD / 1M tokens）
+          <input type="number" id="ytInputPerMTok" step="0.01" min="0" placeholder="（與文章翻譯相同）">
+          <small class="muted">空白表示使用與文章翻譯相同的計價，不需重複設定</small>
+        </label>
+        <label>
+          字幕 Output 單價（USD / 1M tokens）
+          <input type="number" id="ytOutputPerMTok" step="0.01" min="0" placeholder="（與文章翻譯相同）">
+        </label>
+        <label>
+          Temperature
+          <input type="number" id="ytTemperature" step="0.05" min="0" max="2">
+        </label>
+      </section>
+    </div><!-- /yt-gemini-only-sections -->
+
+    <!-- v1.5.8: 字幕是否套用全域的固定術語表 / 中國用語黑名單。預設關省 token。 -->
     <section>
-      <h2>自動翻譯</h2>
+      <h2>進階：固定術語表 & 禁用詞清單</h2>
+      <p class="muted">
+        是否把「術語表」分頁的固定術語表、與「禁用詞清單」分頁的中國用語黑名單也注入到字幕翻譯的 prompt？<br>
+        <strong>預設關閉以省 token</strong>——字幕本來就走獨立 prompt，且字幕短句 LLM 不太會誤翻黑名單詞，套用收益小、開銷會在高頻字幕場景累積。
+      </p>
       <label class="checkbox-label">
-        <input type="checkbox" id="ytAutoTranslate">
-        偵測到 YouTube 影片時自動翻譯字幕
-        <small class="muted">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動在 Popup 開啟開關。</small>
+        <input type="checkbox" id="ytApplyFixedGlossary">
+        字幕翻譯也套用「固定術語表」
       </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="ytApplyForbiddenTerms">
+        字幕翻譯也套用「禁用詞清單」
+      </label>
+      <div id="yt-prompt-cost-hint" class="muted" style="margin-top: 12px; padding: 10px 12px; background: #f5f5f7; border-radius: 6px; font-size: 12px; line-height: 1.5;">
+        <!-- 動態填入：以目前字幕模型 + 計價估算「打開後一支 30 分鐘影片約多花多少錢」 -->
+      </div>
     </section>
 
     <section>
       <h2>翻譯視窗設定</h2>
-      <p class="muted">字幕依時間分批翻譯。每批翻譯涵蓋一段時間內的字幕，在快用完前提前翻好下一批。</p>
+      <p class="muted">字幕依時間分批翻譯。每批翻譯涵蓋一段時間內的字幕，在快用完前提前翻好下一批</p>
       <label>
         每批涵蓋秒數
         <input type="number" id="ytWindowSizeS" step="5" min="10" max="120">
-        <small class="muted">每次送去翻譯的字幕涵蓋幾秒（預設 30 秒）。數字越大每次翻越多，但第一次等待時間也越長。</small>
+        <small class="muted">每次送去翻譯的字幕涵蓋幾秒（預設 30 秒）。數字越大每次翻越多，但第一次等待時間也越長</small>
       </label>
       <label>
         提前觸發秒數
         <input type="number" id="ytLookaheadS" step="1" min="3" max="30">
-        <small class="muted">在目前批次快用完前幾秒，提前翻好下一批（預設 10 秒）。建議不低於 5 秒。</small>
+        <small class="muted">在目前批次快用完前幾秒，提前翻好下一批（預設 10 秒）。建議不低於 5 秒</small>
       </label>
     </section>
 
-    <!-- v1.2.39: 字幕獨立模型設定 -->
-    <section>
-      <h2>翻譯模型</h2>
-      <p class="muted">括號為 Standard tier 參考價（input / output，每 1M tokens USD）。</p>
-      <label>
-        模型
-        <select id="ytModel">
-          <option value="">（與文章翻譯相同）</option>
-          <option value="gemini-3.1-flash-lite-preview">gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 便宜，字幕品質足夠</option>
-          <option value="gemini-3-flash-preview">gemini-3-flash-preview（$0.50 / $3.00）— 推薦</option>
-          <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview（$2.00 / $12.00）— 大炮打小鳥，不推薦</option>
-        </select>
-        <small class="muted">選擇模型後，下方計價會自動帶入參考價；你也可以手動修改。</small>
-      </label>
-      <label>
-        字幕 Input 單價（USD / 1M tokens）
-        <input type="number" id="ytInputPerMTok" step="0.01" min="0" placeholder="（與文章翻譯相同）">
-        <small class="muted">空白表示使用與文章翻譯相同的計價，不需重複設定。</small>
-      </label>
-      <label>
-        字幕 Output 單價（USD / 1M tokens）
-        <input type="number" id="ytOutputPerMTok" step="0.01" min="0" placeholder="（與文章翻譯相同）">
-      </label>
-    </section>
 
-    <section>
-      <h2>翻譯參數</h2>
-      <label>
-        Temperature
-        <input type="number" id="ytTemperature" step="0.05" min="0" max="2">
-      </label>
-    </section>
-
-    <section>
-      <h2>字幕翻譯 System Prompt</h2>
-      <p class="muted">字幕翻譯使用獨立的 system prompt，與文章翻譯分開。字幕著重口語化、逐段保持、不合併。</p>
+    <!-- v1.5.8: 字幕翻譯 Prompt 對 Gemini 與自訂模型都適用（Google MT 才隱藏） -->
+    <section id="yt-prompt-section">
+      <h2>字幕翻譯 Prompt</h2>
+      <p class="muted">字幕翻譯使用獨立的 prompt，與文章翻譯分開。字幕著重口語化、逐段保持、不合併</p>
       <label>
         <textarea id="ytSystemPrompt" rows="14" style="font-family: monospace; font-size: 12px;"></textarea>
       </label>

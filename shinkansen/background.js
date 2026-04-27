@@ -267,7 +267,10 @@ const messageHandlers = {
       if (yt.model) geminiOverrides.model = yt.model;
       // ytSubtitle.pricing 非空時傳入，讓 handleTranslate 用正確計價計算費用
       const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
-      return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt');
+      // v1.5.8: 字幕路徑預設不套用固定術語表 / 黑名單，使用者可在 YouTube 字幕分頁開 toggle
+      return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt',
+        yt.applyFixedGlossary === true,
+        yt.applyForbiddenTerms === true);
     },
   },
   // v1.4.0: Google Translate 網頁翻譯（不需 API Key，不走 rate limiter，快取 key 用 _gt 後綴）
@@ -279,7 +282,24 @@ const messageHandlers = {
   // 不走 rate limiter，cache key 加 baseUrl hash + model 分區。
   TRANSLATE_BATCH_CUSTOM: {
     async: true,
-    handler: (payload, sender) => handleTranslateCustom(payload, sender),
+    handler: (payload, sender) => handleTranslateCustom(payload, sender, '_oc'),
+  },
+  // v1.5.8: 字幕用自訂模型，與網頁翻譯共用 customProvider 設定但 cache key 用 '_oc_yt'
+  // 命名空間（同 '_yt' 對 Gemini、'_gt_yt' 對 Google MT 的字幕分區慣例）。
+  // 對 systemPrompt 走 cpOverrides 覆蓋成字幕專屬（ytSubtitle.systemPrompt）；
+  // 字幕未自訂時 fallback 到主自訂模型 prompt。
+  TRANSLATE_SUBTITLE_BATCH_CUSTOM: {
+    async: true,
+    handler: async (payload, sender) => {
+      const s = await getSettings();
+      const yt = s.ytSubtitle || {};
+      const ytPrompt = (yt.systemPrompt || '').trim();
+      const overrides = ytPrompt ? { systemPrompt: ytPrompt } : null;
+      // v1.5.8: 字幕路徑同 Gemini 字幕路徑，預設不套用固定術語表 / 黑名單
+      return handleTranslateCustom(payload, sender, '_oc_yt', overrides,
+        yt.applyFixedGlossary === true,
+        yt.applyForbiddenTerms === true);
+    },
   },
   // v1.5.7: API Key 測試 — 設定頁「測試」按鈕觸發。
   // Gemini 走 GET models/<model>?key=<key> 不耗 token；
@@ -519,7 +539,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // pricingOverride：傳入時（如 YouTube 獨立計價）使用；null 則沿用 settings.pricing
-async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOverride = null, cacheTag = '') {
+async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOverride = null, cacheTag = '', applyFixedGlossary = true, applyForbiddenTerms = true) {
   const settings = await getSettings();
   if (!settings.apiKey) {
     throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
@@ -544,8 +564,9 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   }
 
   // v1.0.29: 讀取固定術語表（全域 + 當前網域），合併後傳給 translateBatch
+  // v1.5.8: 字幕路徑（applyFixedGlossary=false）跳過讀取，省 prompt token
   let fixedGlossaryEntries = null;
-  const fg = settings.fixedGlossary;
+  const fg = applyFixedGlossary ? settings.fixedGlossary : null;
   if (fg) {
     const globalEntries = Array.isArray(fg.global) ? fg.global.filter(e => e.source && e.target) : [];
     let domainEntries = [];
@@ -567,7 +588,9 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   // v1.5.6: 中國用語黑名單。從 settings 讀清單後一路傳到 translateBatch（注入到 systemInstruction），
   // 同時計算 hash 加進 cache key 後綴，讓使用者修改清單後既有快取自動失效。
   // 空清單時 hash 為空字串，不附加後綴，向下相容既有 v1.5.5 之前的快取 key。
-  const forbiddenTermsList = Array.isArray(settings.forbiddenTerms) ? settings.forbiddenTerms : [];
+  // v1.5.8: 字幕路徑（applyForbiddenTerms=false）跳過，省 prompt token。
+  const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
+    ? settings.forbiddenTerms : [];
 
   // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
   // 確保「有術語表」與「無術語表」的翻譯分開快取。
@@ -780,9 +803,11 @@ async function testCustomProvider(payload) {
 // provider 自己處理配額；既有 fetchWithRetry 的 429 退避已能應付），cache key
 // 用 _oc base tag + baseUrl hash + safe model 分區，計價來自 customProvider 自填。
 // 與 Gemini 共用：fixedGlossary、forbiddenTerms、自動 glossary 注入、cache module。
-async function handleTranslateCustom(payload, sender) {
+async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverrides = null, applyFixedGlossary = true, applyForbiddenTerms = true) {
   const settings = await getSettings();
-  const cp = settings.customProvider || {};
+  // v1.5.8: cpOverrides 給字幕路徑覆蓋特定欄位（例如 systemPrompt 改用字幕專屬），
+  // 其他欄位（baseUrl / model / apiKey / 計價）仍走「自訂模型」分頁主設定。
+  const cp = { ...(settings.customProvider || {}), ...(cpOverrides || {}) };
   if (!cp.apiKey) throw new Error('尚未設定自訂 Provider 的 API Key，請至設定頁填入。');
   if (!cp.baseUrl) throw new Error('尚未設定自訂 Provider 的 Base URL。');
   if (!cp.model) throw new Error('尚未設定自訂 Provider 的模型 ID。');
@@ -791,8 +816,9 @@ async function handleTranslateCustom(payload, sender) {
   const glossary = payload.glossary || null;
 
   // 重用 handleTranslate 內的 fixedGlossary 合併邏輯
+  // v1.5.8: 字幕路徑（applyFixedGlossary=false）跳過
   let fixedGlossaryEntries = null;
-  const fg = settings.fixedGlossary;
+  const fg = applyFixedGlossary ? settings.fixedGlossary : null;
   if (fg) {
     const globalEntries = Array.isArray(fg.global) ? fg.global.filter(e => e.source && e.target) : [];
     let domainEntries = [];
@@ -810,10 +836,12 @@ async function handleTranslateCustom(payload, sender) {
     }
   }
 
-  const forbiddenTermsList = Array.isArray(settings.forbiddenTerms) ? settings.forbiddenTerms : [];
+  // v1.5.8: 字幕路徑（applyForbiddenTerms=false）跳過
+  const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
+    ? settings.forbiddenTerms : [];
 
-  // Cache key：'_oc' base tag + glossary/forbidden hash + baseUrl hash + safe model
-  let suffix = '_oc';
+  // Cache key：'_oc' (網頁) / '_oc_yt' (字幕) base tag + glossary/forbidden hash + baseUrl hash + safe model
+  let suffix = cacheTag;
   const allGlossaryForHash = [
     ...(glossary || []).map(e => `${e.source}:${e.target}`),
     ...(fixedGlossaryEntries || []).map(e => `F:${e.source}:${e.target}`),

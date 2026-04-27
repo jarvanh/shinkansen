@@ -221,6 +221,27 @@
       color: #555;
     }
 
+    /* 近期重大更新 */
+    .recent-updates {
+      list-style: none;
+      padding: 0;
+      margin: 1rem 0 0;
+      display: grid;
+      gap: 0.6rem;
+      max-width: 760px;
+    }
+    .recent-updates li {
+      padding: 0.85rem 1.1rem;
+      background: #fff8e1;
+      border-left: 3px solid #f5b800;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      color: #2c2a1f;
+    }
+    .recent-updates li strong {
+      color: #1d1d1f;
+    }
+
     /* Privacy Hero — 專案核心動機 */
     .privacy-hero {
       background: #f0f5fa;
@@ -284,7 +305,7 @@
       <p class="tagline">你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的電腦直接呼叫 Google Gemini 翻譯，不經過任何第三方</p>
       <div class="btn-row">
         <a href="https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg" class="btn-download">從 Chrome Web Store 安裝<span class="btn-version">v<!-- cws-version-start -->1.4.22<!-- cws-version-end --> · 已上架</span></a>
-        <a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.5.7/shinkansen-v1.5.7.zip" class="btn-download secondary">GitHub 下載 beta 版手動安裝<span class="btn-version">v1.5.7 · beta</span></a>
+        <a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.6.0/shinkansen-v1.6.0.zip" class="btn-download secondary">GitHub 下載 beta 版手動安裝<span class="btn-version">v1.6.0 · beta</span></a>
       </div>
       <p class="hero-sub">開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a></p>
     </div>
@@ -365,6 +386,18 @@
           <p>每次翻譯即時顯示花費多少錢，設定頁可回查過去每一筆翻譯紀錄的 token 用量與費用，支援圖表與 CSV 匯出</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- Recent updates -->
+  <section>
+    <div class="container">
+      <h2>近期重大更新</h2>
+      <ul class="recent-updates">
+        <li>新增<strong>雙語對照模式</strong>，原文 + 譯文並列顯示</li>
+        <li>新增<strong>中國用語黑名單</strong>，明確要求 LLM 不能用視頻 / 軟件 / 數據等中國用語</li>
+        <li>新增<strong>自訂 AI 模型</strong>功能，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等百種模型</li>
+      </ul>
     </div>
   </section>
 

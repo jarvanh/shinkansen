@@ -519,9 +519,11 @@
 
         // 批次處理器（每批完成後立刻注入 captionMap 並替換 DOM 字幕）
         // v1.4.0: 依 config.engine 路由到對應的翻譯 handler
-        const _subtitleMsgType = (config.engine === 'google')
-          ? 'TRANSLATE_SUBTITLE_BATCH_GOOGLE'
-          : 'TRANSLATE_SUBTITLE_BATCH';
+        // v1.5.8: 加 'openai-compat' 第三引擎，走自訂模型 / customProvider 共用設定
+        const _subtitleMsgType =
+          config.engine === 'google'        ? 'TRANSLATE_SUBTITLE_BATCH_GOOGLE' :
+          config.engine === 'openai-compat' ? 'TRANSLATE_SUBTITLE_BATCH_CUSTOM' :
+                                              'TRANSLATE_SUBTITLE_BATCH';
 
         const _runBatch = (batchUnits, b) =>
           browser.runtime.sendMessage({

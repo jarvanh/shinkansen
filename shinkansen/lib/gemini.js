@@ -385,6 +385,11 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     model, serviceTier, segments: texts.length, chars: joined.length,
     // v1.5.7: 送進 LLM 的原文前 300 字 — 將來任何「譯文沒按預期出現」都能對照原文 / 譯文確認 LLM 行為
     inputPreview: joined.slice(0, 300),
+    // v1.5.8: 本批 prompt 末端注入的「自動術語表 / 固定術語表 / 禁用詞清單」實際條數，
+    // 讓使用者從 Debug 分頁看出：YouTube 字幕的兩個 toggle 是否生效、文章翻譯有沒有讀到設定
+    glossaryCount: glossary?.length || 0,
+    fixedGlossaryCount: fixedGlossary?.length || 0,
+    forbiddenTermsCount: forbiddenTerms?.length || 0,
   });
 
   const t0 = Date.now();

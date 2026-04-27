@@ -692,6 +692,28 @@ a:hover { text-decoration: underline; }
    讓備註欄能拿到剩餘空間（中英文混雜的說明往往較長）。 */
 .forbidden-col-word { width: 22%; }
 
+/* v1.5.8: 備註欄 input focus 時浮起放寬，編輯時看得到完整內容。
+   未 focus 時維持單行欄寬，過長文字截斷（hover tooltip 看完整）。 */
+.ft-note-cell {
+  position: relative;
+}
+.ft-note:focus {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto;
+  /* 至少撐到能看到一段完整中英文混雜備註，但不超出 viewport */
+  min-width: 380px;
+  max-width: min(600px, 80vw);
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #0071e3;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
 /* v1.4.13: 翻譯快捷鍵三張 preset card */
 .preset-cards {
   display: grid;

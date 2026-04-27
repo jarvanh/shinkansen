@@ -172,6 +172,10 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   await debugLog('info', 'api', 'openai-compat request', {
     baseUrl, model, segments: texts.length, chars: joined.length,
     inputPreview: joined.slice(0, 300), // v1.5.7: 對齊 gemini.js
+    // v1.5.8: 本批 prompt 末端注入的條數（同 gemini.js）
+    glossaryCount: glossary?.length || 0,
+    fixedGlossaryCount: fixedGlossary?.length || 0,
+    forbiddenTermsCount: forbiddenTerms?.length || 0,
   });
 
   const t0 = Date.now();

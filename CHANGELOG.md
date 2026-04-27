@@ -5,6 +5,25 @@
 
 ---
 
+## v1.6.x
+
+**v1.6.0** — v1.5.7 之後一系列 UX 打磨與多項調整累積到 1.6.0 minor bump。
+
+  - **YouTube 字幕分頁版面重組**：tab 移到「一般設定」右邊（最常用功能優先）；section 順序改為「自動翻譯 → 翻譯引擎 → Gemini 設定（合併原翻譯模型 + Temperature） → 進階：固定術語表 & 禁用詞清單 → 翻譯視窗設定 → 字幕翻譯 Prompt」。「Gemini 設定」與「字幕翻譯 Prompt」兩個 wrapper 依引擎條件顯示——選 Google Translate 全隱藏、選自訂模型只剩 Prompt（共用「自訂模型」分頁的 baseUrl/model/key）。
+  - **YouTube 字幕新加自訂模型引擎**：「翻譯引擎」下拉從「Gemini / Google MT」擴成三選項（加「自訂模型」）。字幕路徑與文章翻譯共用 `customProvider` baseUrl/model/apiKey/計價，但 prompt 字幕專屬（`ytSubtitle.systemPrompt` 走 cpOverrides 覆蓋）；cache key 用 `_oc_yt` 命名空間。
+  - **字幕路徑省 token toggle**：YouTube 字幕分頁新增「字幕也套用『固定術語表』/『禁用詞清單』」兩個 toggle（預設關），含動態成本估算（依目前模型與計價算「打開後一支 30 分鐘影片約多花多少」）。字幕本來就走獨立 prompt 設計，且字幕短句 LLM 不太會誤翻黑名單詞，預設關省下高頻字幕場景的累積 token 開銷。
+  - **Bug 修正：preset 自訂模型引擎被強制重置**：`save()` 端 whitelist 只認 `'google'/'gemini'`，使用者選「自訂模型」儲存後被強制改回 `'gemini'`——意即 v1.5.7 上線後使用者的自訂模型 preset 從未真正生效。修法：擴 whitelist 為三選項，model 欄只對 gemini 有意義。
+  - **「重設所有參數」按鈕**：Gemini 分頁底部「儲存設定」旁加，confirm 對話框防誤觸；不直接寫 storage，要使用者按「儲存設定」才生效。
+  - **「重置為預設 Prompt」按鈕**：自訂模型分頁加，把翻譯 Prompt 重設為與 Gemini 同款 `DEFAULT_SYSTEM_PROMPT`。
+  - **每批段數上限預設 12 → 20**：減少高頻 API call、提升整體翻譯效率。
+  - **用量紀錄時間 filter 改 24 小時制**：放棄 `<input type="datetime-local">`（Chrome 對它的時間制完全跟 OS locale 走、HTML 無法 override），改成「`<input type="date">` + 兩個 `<select>` (HH 00–23 / MM 00–59)」拆三段，24h 制完全由 select option 控制；新加「現在時間」按鈕一鍵把「到」設為當下時間。
+  - **用量紀錄版面對齊**：所有 widget 統一 `height: 32px` + 同 border / radius / padding；日週月按鈕從第一列搬到第二列與搜尋框並排；模型篩選 select 收斂為固定 200px 寬不再被內容撐爆觸發 wrap；「現在時間」貼第一列右側、「全部模型」貼第二列右側形成兩端勻稱。
+  - **Debug log 新增 prompt 注入計數**：`api: gemini request` / `api: openai-compat request` 加 `glossaryCount` / `fixedGlossaryCount` / `forbiddenTermsCount` 三欄，使用者從 Debug 分頁直接看出本批 prompt 末端注入了幾條（驗證 YouTube 字幕的兩個 toggle 是否生效、文章翻譯有沒有讀到設定）。
+  - **禁用詞清單 UI**：備註欄加 `title` attribute（hover 顯示原生 tooltip 看完整內容）+ focus 時 input 浮起放寬（CSS `position:absolute` lift），編輯時看得到完整文字。
+  - **設定頁文字調整一輪**：所有 muted 說明段落結尾句號移除（14 處）；自訂模型分頁多處用詞統一（OpenAI 相容、模型計價、翻譯 Prompt、移除過時引導文字）；landing page 用詞統一；DEFAULT_FORBIDDEN_TERMS 對照表標題從「中國大陸用語」改為「中國用語」（與全域用語規範對齊）。
+  - **Landing page 加「近期重大更新」section**：列出雙語對照模式 / 中國用語黑名單 / 自訂 AI 模型三條近期亮點。
+  - Full `npm test` 187 條（Playwright）+ 26 條（Jest）全綠。
+
 ## v1.5.x
 
 **v1.5.7** — 新增自訂 OpenAI 相容模型功能 + 用量紀錄多項改進 + WordPress 含 hero 圖標題的偵測/注入修法 + 設定頁版面對齊與多處文字調整。

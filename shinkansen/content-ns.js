@@ -181,7 +181,7 @@ if (window.__shinkansen_loaded) {
   // ─── 翻譯流程常數 ─────────────────────────────────────
   // 注意：content script 無法 import ES module，以下兩個值鏡像 lib/constants.js，
   // 修改時必須同步更新 lib/constants.js（lib/gemini.js 與 lib/storage.js 的單一來源）。
-  SK.DEFAULT_UNITS_PER_BATCH = 12;
+  SK.DEFAULT_UNITS_PER_BATCH = 20;
   SK.DEFAULT_CHARS_PER_BATCH = 3500;
   SK.DEFAULT_MAX_CONCURRENT = 10;
   SK.DEFAULT_MAX_TOTAL_UNITS = 1000;
