@@ -321,7 +321,8 @@
         }
         if (response.rpdExceeded) rpdWarning = true;
         if (response.hadMismatch) hadAnyMismatch = true;
-        translations.forEach((tr, j) => SK.injectTranslation(job.units[j], tr, job.slots[j]));
+        // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+        translations.forEach((tr, j) => SK.injectTranslation(job.units[j], SK.sanitizeMarkers(tr), job.slots[j]));
         done += job.texts.length;
         if (onProgress) onProgress(done, total, hadAnyMismatch);
       } catch (err) {
@@ -374,7 +375,8 @@
           firstChunkResolve(true);
         } else if (message.type === 'STREAMING_SEGMENT') {
           const idx = message.payload.segmentIdx;
-          const tr = message.payload.translation;
+          // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+          const tr = SK.sanitizeMarkers(message.payload.translation);
           if (typeof idx === 'number' && idx >= 0 && idx < job.texts.length && tr) {
             try {
               SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
@@ -391,13 +393,25 @@
         } else if (message.type === 'STREAMING_DONE') {
           const elapsed = Date.now() - t0;
           const usage = message.payload.usage || {};
+          // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
+          // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
+          // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
+          // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
+          // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
+          // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
+          if (message.payload.hadMismatch) {
+            SK.sendLog('warn', 'translate', `batch 1/${jobs.length} stream DONE with hadMismatch, triggering retry`, { elapsed, totalSegments: message.payload.totalSegments });
+            browser.runtime.onMessage.removeListener(onMessage);
+            firstChunkResolve(true);
+            doneReject(new Error('streaming hadMismatch'));
+            return;
+          }
           pageUsage.inputTokens += usage.inputTokens || 0;
           pageUsage.outputTokens += usage.outputTokens || 0;
           pageUsage.cachedTokens += usage.cachedTokens || 0;
           pageUsage.billedInputTokens += usage.billedInputTokens || 0;
           pageUsage.billedCostUSD += usage.billedCostUSD || 0;
-          if (message.payload.hadMismatch) hadAnyMismatch = true;
-          SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream done`, { elapsed, totalSegments: message.payload.totalSegments, hadMismatch: !!message.payload.hadMismatch });
+          SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream done`, { elapsed, totalSegments: message.payload.totalSegments, hadMismatch: false });
           browser.runtime.onMessage.removeListener(onMessage);
           firstChunkResolve(true);  // 防 first_chunk 漏訊息卡死主流程
           doneResolve({ ok: true });

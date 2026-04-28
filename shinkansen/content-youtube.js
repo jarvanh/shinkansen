@@ -1240,7 +1240,8 @@
         _logWindowUsage(batchUnits.length, res.usage);
         for (let j = 0; j < batchUnits.length; j++) {
           const unit = batchUnits[j];
-          const trans = String(res.result[j] || unit.text).trim();
+          // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+          const trans = SK.sanitizeMarkers(String(res.result[j] || unit.text).trim());
           let normTrans = trans;
           if (unit.keys.length === 1) {
             YT.captionMap.set(unit.keys[0], trans);
@@ -1441,7 +1442,8 @@
         const _injectBatchResult = (batchUnits, results, b, elapsed) => {
           for (let j = 0; j < batchUnits.length; j++) {
             const unit     = batchUnits[j];
-            const rawTrans = results[j] || unit.text;
+            // v1.8.10 A:寫 captionMap 之前先 strip LLM 偷懶殘留的 SEP / «N» 標記
+            const rawTrans = SK.sanitizeMarkers(results[j] || unit.text);
             if (unit.keys.length === 1) {
               YT.captionMap.set(unit.keys[0], rawTrans);
             } else {
@@ -1503,6 +1505,19 @@
             } else if (message.type === 'STREAMING_DONE') {
               const elapsed = Date.now() - _t0;
               _batchApiMs[0] = elapsed;
+              // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
+              // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
+              // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
+              // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
+              // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
+              // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
+              if (message.payload.hadMismatch) {
+                SK.sendLog('warn', 'youtube', 'streaming DONE with hadMismatch, triggering retry', { elapsed, totalSegments: message.payload.totalSegments });
+                browser.runtime.onMessage.removeListener(onMessage);
+                firstChunkResolve(true);
+                doneReject(new Error('streaming hadMismatch'));
+                return;
+              }
               _logWindowUsage(batchUnits.length, message.payload.usage || {});
               browser.runtime.onMessage.removeListener(onMessage);
               firstChunkResolve(true);
@@ -1916,7 +1931,8 @@
 
       for (let i = 0; i < texts.length; i++) {
         const key = texts[i];
-        const trans = res.result[i] || texts[i];
+        // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
+        const trans = SK.sanitizeMarkers(res.result[i] || texts[i]);
         YT.captionMap.set(key, trans);
         for (const el of (queue.get(key) || [])) {
           if (document.contains(el) && normText(el.textContent) === key) {
