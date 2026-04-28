@@ -1147,16 +1147,20 @@ async function handleExtractGlossary(payload, sender) {
   }
 
   // 5. 累計使用量統計
+  // v1.7.2: glossary 用獨立 model(預設 Flash Lite)時,pricing 也要對應該 model,
+  // 不能再用 settings.pricing(那是主翻譯 model 的 pricing)。
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
     const billedInput = Math.max(
       0,
       Math.round(usage.inputTokens - (usage.cachedTokens || 0) * 0.75),
     );
+    const glossaryModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model;
+    const glossaryPricing = getPricingForModel(glossaryModel, settings) || settings.pricing;
     const billedCost = computeBilledCostUSD(
       usage.inputTokens,
       usage.cachedTokens || 0,
       usage.outputTokens,
-      settings.pricing,
+      glossaryPricing,
     );
     await addUsage(billedInput, usage.outputTokens, billedCost);
   }

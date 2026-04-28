@@ -145,12 +145,15 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
 export async function extractGlossary(compressedText, settings) {
   const { apiKey, geminiConfig, glossary: glossaryConfig } = settings;
   const {
-    model,
     serviceTier,
     topP,
     topK,
     maxOutputTokens,
   } = geminiConfig;
+
+  // v1.7.2: 術語表獨立模型優先(預設 Flash Lite,使用者可在 options 改);空字串
+  // / 不存在 / 找不到 model 時 fallback 到主翻譯 model。
+  const model = (glossaryConfig?.model || '').trim() || geminiConfig.model;
 
   const glossaryPrompt = glossaryConfig?.prompt || '';
   const glossaryTemperature = glossaryConfig?.temperature ?? 0.1;

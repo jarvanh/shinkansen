@@ -166,6 +166,11 @@ export const DEFAULT_SETTINGS = {
     blockingThreshold: 5,              // > 此批次數則阻塞等術語表回來再翻譯
     timeoutMs: 60000,                  // 術語表請求逾時（毫秒），超過則 fallback（v0.70: 60s）
     maxTerms: 200,                     // 術語表上限條目數
+    // v1.7.2: 術語表獨立模型。空字串表示「跟主翻譯同一個 model」(舊行為);
+    // 預設 'gemini-3.1-flash-lite-preview' — 術語抽取任務簡單,Flash Lite 比 Flash 快
+    // 1.5-3 倍且便宜 5 倍。實測啟用 glossary 時 EXTRACT_GLOSSARY 用 Flash 耗時
+    // 1.5-7.4 秒,改用 Flash Lite 預期可壓到 0.5-2.5 秒。
+    model: 'gemini-3.1-flash-lite-preview',
   },
   domainRules: { whitelist: [] },
   autoTranslate: false,

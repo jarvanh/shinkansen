@@ -128,6 +128,8 @@ async function load() {
   // v0.69: 術語表一致化設定
   const gl = { ...DEFAULTS.glossary, ...(s.glossary || {}) };
   $('glossaryEnabled').checked = gl.enabled !== false;
+  // v1.7.2: 術語擷取獨立模型(預設 Flash Lite),空字串表示「與主翻譯相同」
+  $('glossaryModel').value = gl.model ?? DEFAULTS.glossary.model;
   $('glossaryTemperature').value = gl.temperature;
   $('glossaryTimeout').value = gl.timeoutMs;
   $('glossaryPrompt').value = gl.prompt;
@@ -486,6 +488,8 @@ async function save() {
     // v0.69: 術語表一致化
     glossary: {
       enabled: $('glossaryEnabled').checked,
+      // v1.7.2: 術語擷取獨立模型;空字串 = 與主翻譯模型相同(舊行為)
+      model: $('glossaryModel').value,
       prompt: $('glossaryPrompt').value,
       temperature: Number($('glossaryTemperature').value) || 0.1,
       skipThreshold: DEFAULTS.glossary.skipThreshold,

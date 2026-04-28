@@ -185,6 +185,12 @@ if (window.__shinkansen_loaded) {
   SK.DEFAULT_CHARS_PER_BATCH = 3500;
   SK.DEFAULT_MAX_CONCURRENT = 10;
   SK.DEFAULT_MAX_TOTAL_UNITS = 1000;
+  // v1.7.2: batch 0 專用較小 limit。batch 0 序列等 Gemini API,token 越少回送越快。
+  // 實測在 OFF 模式(無 glossary)下 batch 0 chars 1500-3000 對應 Gemini 等待 3-7s,
+  // 把 batch 0 砍到 ~1500 chars 預期能把首字延遲從 3-7s 壓到 2-4s。
+  // batch 1+ 仍用 DEFAULT_*_PER_BATCH 維持並行吞吐。
+  SK.BATCH0_UNITS = 10;
+  SK.BATCH0_CHARS = 1500;
 
   // SPA 動態載入常數
   SK.SPA_OBSERVER_DEBOUNCE_MS = 1000;

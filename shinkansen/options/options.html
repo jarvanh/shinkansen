@@ -478,6 +478,16 @@
         <span>啟用自動術語擷取</span>
       </label>
       <label>
+        術語擷取模型
+        <select id="glossaryModel">
+          <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite（預設，快又便宜）</option>
+          <option value="gemini-3-flash-preview">Gemini 3 Flash（較慢但語意理解較強）</option>
+          <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro（最強，較貴）</option>
+          <option value="">與主翻譯模型相同</option>
+        </select>
+        <small class="muted">術語擷取是任務簡單的單次請求，Flash Lite 通常已夠用，且比 Flash 快 1.5-3 倍、便宜 5 倍</small>
+      </label>
+      <label>
         術語表 Temperature
         <input type="number" id="glossaryTemperature" step="0.1" min="0" max="2">
         <small class="muted">控制術語擷取的穩定度，越低越穩定。預設 0.1，一般不需調整</small>
