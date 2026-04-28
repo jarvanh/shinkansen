@@ -19,27 +19,9 @@
   if (!location.pathname.startsWith('/file/')) return;
   if (window.top !== window) return;
 
-  // ─── json3 解析 ──────────────────────────────────────
-  // event 格式跟 YouTube ASR 完全一致:
-  //   { tStartMs, dDurationMs, segs: [{ utf8, tOffsetMs, acAsrConf }] }
-  // commit 2 fork 一份簡化版(只取 startMs / text);commit 3 抽 helper 跟
-  // content-youtube.js 共用,並接合句邏輯。
-  function parseJson3(json) {
-    const segments = [];
-    for (const ev of (json?.events || [])) {
-      if (!ev.segs) continue;
-      const text = ev.segs.map(s => s.utf8 || '').join('').replace(/\n/g, ' ').trim();
-      if (!text) continue;
-      segments.push({
-        startMs: ev.tStartMs || 0,
-        durationMs: ev.dDurationMs || 0,
-        text,
-      });
-    }
-    return segments;
-  }
-
   // ─── DRIVE_ASR_CAPTIONS listener ─────────────────────
+  // commit 3 起改用 SK.ASR.{parseJson3, mergeAsr}(在 content-youtube.js 內 export),
+  // 跟 YouTube ASR 路徑共用同一份字幕格式與啟發式合句邏輯。
   browser.runtime.onMessage.addListener((message) => {
     if (message?.type !== 'DRIVE_ASR_CAPTIONS') return;
     const { json3 } = message.payload || {};
@@ -47,15 +29,28 @@
       SK.sendLog('warn', 'drive', 'DRIVE_ASR_CAPTIONS payload missing json3');
       return;
     }
-    const segments = parseJson3(json3);
+    if (!SK.ASR?.parseJson3 || !SK.ASR?.mergeAsr) {
+      SK.sendLog('warn', 'drive', 'SK.ASR helpers not available (load order issue?)');
+      return;
+    }
+    const rawSegments = SK.ASR.parseJson3(json3);
     SK.sendLog('info', 'drive', 'asr segments parsed', {
-      count: segments.length,
-      firstStartMs: segments[0]?.startMs,
-      lastStartMs: segments[segments.length - 1]?.startMs,
-      sample: segments.slice(0, 5).map(s => ({
+      count: rawSegments.length,
+      firstStartMs: rawSegments[0]?.startMs,
+      lastStartMs: rawSegments[rawSegments.length - 1]?.startMs,
+    });
+    const sentences = SK.ASR.mergeAsr(rawSegments);
+    SK.sendLog('info', 'drive', 'asr sentences merged', {
+      count: sentences.length,
+      compressionRatio: rawSegments.length > 0
+        ? (sentences.length / rawSegments.length).toFixed(2)
+        : null,
+      firstStartMs: sentences[0]?.startMs,
+      lastEndMs: sentences[sentences.length - 1]?.endMs,
+      sample: sentences.slice(0, 5).map(s => ({
         startMs: s.startMs,
-        durationMs: s.durationMs,
-        text: s.text.length > 60 ? s.text.slice(0, 60) + '…' : s.text,
+        endMs: s.endMs,
+        text: s.text.length > 100 ? s.text.slice(0, 100) + '…' : s.text,
       })),
     });
   });
