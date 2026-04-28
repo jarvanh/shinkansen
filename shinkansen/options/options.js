@@ -4,7 +4,7 @@
 import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
-import { formatTokens, formatUSD } from '../lib/format.js';
+import { formatTokens, formatUSD, parseUserNum } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
@@ -58,15 +58,6 @@ function applyTierToInputs(tier, model) {
 }
 
 const $ = (id) => document.getElementById(id);
-
-// v1.6.19: 解析 input value——空字串/非法字元走 default,合法有限數字(含 0、負數)保留。
-// 取代 `Number(v) || default`(會把 0 當 falsy 改回預設)的舊寫法。
-function parseUserNum(rawValue, defaultValue) {
-  const v = String(rawValue ?? '').trim();
-  if (v === '') return defaultValue;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : defaultValue;
-}
 
 async function load() {
   const saved = await browser.storage.sync.get(null);
