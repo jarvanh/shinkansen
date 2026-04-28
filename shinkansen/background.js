@@ -407,6 +407,51 @@ const messageHandlers = {
         false, false);
     },
   },
+  // Drive 影片 ASR 字幕 URL 偵測——iframe(youtube.googleapis.com/embed)的
+  // content-drive-iframe.js 用 PerformanceObserver 抓到 timedtext URL 後送來。
+  // 為什麼 background fetch 而不直接 iframe fetch:iframe 內 fetch 會被 PerformanceObserver
+  // 重新捕捉造成 loop;且 background 跟 iframe 不同 origin,但 authpayload 自含 auth(已驗
+  // credentials:'omit' 也 200),background 直接 refetch 即可。
+  // 拿到 json3 後 relay 到 top frame(drive.google.com)的 content-script(commit 2 接手處理)。
+  DRIVE_TIMEDTEXT_URL: {
+    async: true,
+    handler: async (payload, sender) => {
+      const url = payload?.url;
+      if (!url || !sender?.tab?.id) return { ok: false, error: 'invalid payload' };
+      debugLog('info', 'drive', 'timedtext url received from iframe', {
+        tabId: sender.tab.id,
+        frameId: sender.frameId,
+        url: url.slice(0, 200),
+      });
+      try {
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) {
+          debugLog('warn', 'drive', 'timedtext fetch failed', { status: res.status });
+          return { ok: false, error: `http ${res.status}` };
+        }
+        const json3 = await res.json();
+        debugLog('info', 'drive', 'timedtext fetched', {
+          eventCount: Array.isArray(json3?.events) ? json3.events.length : 0,
+        });
+        try {
+          await browser.tabs.sendMessage(
+            sender.tab.id,
+            { type: 'DRIVE_ASR_CAPTIONS', payload: { url, json3 } },
+            { frameId: 0 },
+          );
+        } catch (e) {
+          // top frame 可能還沒 listener(commit 2 才接),這層先記 log
+          debugLog('info', 'drive', 'top frame relay no listener (expected pre-commit-2)', {
+            error: e?.message || String(e),
+          });
+        }
+        return { ok: true };
+      } catch (e) {
+        debugLog('warn', 'drive', 'timedtext handler error', { error: e?.message || String(e) });
+        return { ok: false, error: e?.message || String(e) };
+      }
+    },
+  },
   // v1.4.0: Google Translate 網頁翻譯（不需 API Key，不走 rate limiter，快取 key 用 _gt 後綴）
   TRANSLATE_BATCH_GOOGLE: {
     async: true,

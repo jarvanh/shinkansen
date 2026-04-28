@@ -17,6 +17,12 @@
 
 ## 條目
 
+### Drive ASR 翻譯 commit 1 — URL 偵測 + background relay
+- **症狀**:N/A,純新增 pipeline 入口
+- **修在**:`shinkansen/manifest.json`(content_scripts 加 `https://youtube.googleapis.com/embed/*` entry)+ `shinkansen/content-drive-iframe.js`(新檔,iframe 內 PerformanceObserver 偵測 timedtext URL)+ `shinkansen/background.js`(新 handler `DRIVE_TIMEDTEXT_URL`,fetch json3 後 relay 到 top frame `DRIVE_ASR_CAPTIONS`)
+- **為什麼還沒寫 spec**:commit 1 是 Drive ASR 多階段 pipeline 第一段,單獨驗「iframe → background → top frame」訊息層 ROI 低,且需要 fake YouTube embed iframe + cross-origin fetch + PerformanceObserver 等多個整合元件;等 commit 2+ 完成 top frame 接收 + 解析,寫整條 e2e spec(從 fixture URL → 偵測 → fetch → relay → 解析)更有意義
+- **建議 spec 位置**:`test/regression/drive-asr-pipeline.spec.js`(commit 5 release 前必寫)
+
 ### v1.8.14 — streaming 期間 SW keep-alive
 - **症狀**:MV3 SW 預設 5 分鐘 idle 收回。長頁翻譯中切去其他 tab 5 分鐘,inFlightStreams Map(module-level state)消失 → 取消按鈕無響應 + abort 訊號到不了 fetch
 - **修在**:`shinkansen/background.js` 加 `_streamKeepAliveTimer`,在 inFlightStreams 第一個 stream start 時 setInterval 每 20 秒呼叫 chrome.runtime.getPlatformInfo(極輕量)重置 SW idle timer;最後一個 stream end 時 clearInterval
