@@ -11,6 +11,7 @@
 
 ### 翻譯引擎與模型
 
+- **v1.8.0** — **極速秒翻**:文章翻譯 batch 0 改走 Gemini streaming(SSE),按下翻譯 1 秒就看到頁面開始變中文(首字延遲 2.5-4.4 秒 → 1.0-1.2 秒);batch 0 size 從 10 unit 擴大到 25 unit,涵蓋整段內文前 25 段。僅限 Gemini 文章翻譯 batch 0,字幕 / 術語表 / Google MT / 自訂模型不動
 - **v1.6.19** — Code review 後修 5 條穩健性 bug:YouTube 字幕並行批次某批失敗不再拖累其他批字幕、跨 tab sticky 翻譯在 SW 喚醒當下連開多 tab 不再漏繼承、設定頁可正確輸入 0(不會被靜默改回預設)、fragment 注入遇到 DOM 重排不再 crash、batch timer 不再洩漏
 - **v1.6.18** — 自訂模型分頁加「思考強度」(自動 / 關閉 / 低 / 中 / 高)統一控制,涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking API 差異;另加「進階 JSON」逃生口給 power user 透傳 provider 專屬參數
 - **v1.6.12** — 修 Pro 模型(`gemini-3-pro-preview` / `gemini-2.5-pro` 等)翻譯失敗 bug,並升級到 Gemini 3 推薦的 `thinkingLevel` API
@@ -29,10 +30,16 @@
 
 ### 翻譯品質與術語管理
 
+- **v1.8.7** — 「**翻譯剩餘段落**」按鈕:partialMode 翻完開頭後 toast 顯示「已翻譯前 N 段(共 M 段)」+ 常駐按鈕,點按走完整翻譯,前段從本地快取 fast path 命中(0 token / 9ms),只後段打 API。「只翻文章開頭」UI 從「效能」section 獨立成「**節省模式**」section,搬到「配額」之前
+- **v1.8.3** — 新增「**只翻文章開頭(節省費用)**」選項。翻譯只跑前 N 段(範圍 5-50,預設 25),大幅減少 token 用量;適合先預覽再決定要不要看完整文章。預設關閉
+- **v1.7.1** — **翻譯優先級排序**:長網頁翻譯時最先看到的譯文從「導覽列 / cookie 同意書 / TOC」變成「文章標題 + 第一段內文」(`prioritizeUnits` 把 main / article 內段落排到 batch 0 + batch 0 序列化先跑)
 - **v1.5.6** — 新增中國用語黑名單分頁（預設 25 條禁用詞，可編輯）
 
 ### YouTube 字幕翻譯
 
+- **v1.8.9** — YouTube **人工字幕**(非 ASR)batch 0 也走 streaming(SSE),首字延遲從整批 resolve 砍成 SSE 首段;非 ASR 字幕長譯文也比照 ASR 走 `_wrapTargetText` 切點 + `<br>` 注入,中文長句不再沖出 video 寬
+- **v1.8.2** — ASR 字幕 overlay 黑底 padding 縮緊,左右各省 7px,視覺比例對齊原生 YouTube 字幕(原本黑底比原生大很多)
+- **v1.7.0** — YouTube **自動產生字幕**(ASR)生產級體驗:**AI 智慧分句**(整批送 Gemini 依語意重組,中文字幕從「破碎的詞」變「完整句子」)、**混合模式預設**(預設分句先秒出、AI 分句結果回來後替換)、**字幕 overlay 整句穩定顯示**(完全旁路 YouTube 原生 caption-segment 一字一字跳的問題);UI 簡化為單一「AI 分句模式」toggle
 - **v1.6.20** — YouTube 自動產生字幕整套重做:三種分句模式可切換(預設分句 / AI 分句 / 混合模式)、字幕完全旁路原生跳動 + 整句穩定顯示、譯文過長依標點動態斷行(2 行為主)、字體 / 顏色 / 透明度 / 字型動態對齊原生英文字幕;勾「自動翻譯字幕」+ CC 未開時自動開啟 CC
 - **v1.6.0** — 字幕分頁 tab 移到「一般設定」右邊；section 重組為「自動翻譯 → 翻譯引擎 → Gemini 設定 → 進階 → 視窗設定 → Prompt」
 - **v1.6.0** — 字幕引擎新增「自訂模型」選項（與文章翻譯共用設定，prompt 可獨立）
@@ -52,6 +59,12 @@
 
 ### 效能與穩定性
 
+- **v1.8.10** — 修 LLM 偷懶把多段譯文合併成 1 段時,使用者看到字幕 / 文章顯示「«1» 中文 <<<SHINKANSEN_SEP>>> «2» 中文」殘留協定標記(YouTube 字幕 streaming 上特別常見)
+- **v1.8.8** — 修「翻譯剩餘段落」按鈕後 toast 立刻顯示完成、實際大部分內容沒翻的 bug
+- **v1.8.6** — 修「只翻文章開頭」中英夾雜的 bug(partialMode 改走純 DOM 順序,不再被 prioritizeUnits 重新排序造成 tier 1 真內文段被 truncate 掉)
+- **v1.8.1** — 修 v1.8.0 streaming 路徑漏寫 cache,「翻譯 → 還原 → 重翻同一頁」回到 cache fast path(實測同頁 9 毫秒完成)
+- **v1.7.3** — Glossary 阻塞門檻動態調整(預設 5 → 10):中等長度頁面(6-10 批)從「先等術語表再翻」改為「術語表跟翻譯並行」,首字延遲省 1.5-7.4 秒(Verge -61% / GitHub -64%)
+- **v1.7.2** — 翻譯首字延遲再優化:batch 0 切小(10 unit / 1500 chars)、Readability tier 0 細分(GitHub repo / Wikipedia 等「main 包了 chrome」的網站 batch 0 排序更準)、glossary 抽取改用 Flash Lite。同組 10 個 URL 平均 -29%(NPR 11.7s → 5.1s 省 6.6 秒)
 - **v1.6.10** — 分頁切到背景時暫停 Content Guard 與 SPA URL 輪詢,降低背景分頁的 CPU 與電力消耗
 - **v1.6.9** — 段落偵測階段大幅優化,長頁（Wikipedia / 論壇 / 長 Medium）翻譯啟動明顯變快
 
@@ -65,6 +78,8 @@
 ---
 
 ## v1.8.x
+
+**v1.8.11** — 文案與文件大整理(無功能變更)。**(A)近期重大更新 6 條同步**:`shinkansen/lib/release-highlights.js` / `README.md` / `docs/index.html` 三處重排順序與用字統一(極速秒翻 / 雙語對照 / 自訂 AI 模型 / AI 分句 / 中國用語黑名單 / 只翻文章開頭);「AI 智慧分句」→「AI 分句」、「百種模型」→「所有模型」、「按下翻譯後 1 秒就看到」→「按下翻譯 1 秒看到」。**(B)options.html**:「只翻文章開頭」說明拿掉「實際翻譯段數可能因 token 上限略少」尾巴(避免使用者困惑)。**(C)docs/index.html 功能特色重排**:加入「極速秒翻」(第一順位)、「中國用語黑名單」、「只翻文章開頭」三張卡;「三翻譯引擎」搬到最後;原「三翻譯引擎」內的快速鍵說明獨立成「自訂快速鍵」卡。**(D)README.md 功能特色**:移除「漸進式翻譯」改為「極速秒翻」(第一順位);加「YouTube AI 分句」(在 YouTube 字幕翻譯下方);「自訂 AI 模型」從「三翻譯引擎」拆開;新增「只翻文章開頭」條目 + 下方詳細說明段落。**(E)CHANGELOG.md 使用者功能變更摘要**:補完 v1.7.0 → v1.8.10 共 12 條使用者可感知的變更(極速秒翻 / 翻譯剩餘段落按鈕 / 只翻文章開頭 / 翻譯優先級排序 / YouTube 人工字幕 streaming / ASR overlay padding / AI 智慧分句 / 修 LLM 合併段落殘留標記 等)。**(F)測試流程說明.md 對齊現狀**:測試總數 229 → ~356 條(86 regression + 23 unit + 7 jest-unit + 1 version-check);regression spec 數 73 → 86;速查表補 24 條 regression(streaming 系列 / partial-mode / dual / fragment / priority / youtube)+ 7 條 unit(auto-translate-slot / gemini-thinking-config / google-translate-batch / model-pricing-override / openai-compat-thinking-mapping / parse-user-num / streaming-batch-incremental)。**(G)清掉廢棄檔**:刪除 untracked 的 `ziSkBLbG`(176K 隨機檔名 zip,內容是 v1.4.x 時期 shinkansen 子目錄打包,無引用)。
 
 **v1.8.10** — 修 LLM 偷懶把 N 段譯文合併成 1 段時,使用者看到字幕 / 文章顯示「«1» 中文 <<<SHINKANSEN_SEP>>> «2» 中文」殘留協定標記的 bug(YouTube 字幕 streaming 上特別常見)。雙層防禦:(A)`SK.sanitizeMarkers` defensive helper 在寫 captionMap / inject DOM 之前 strip SEP / «N» 標記(content-ns.js 加 export,套到字幕 `_injectBatchResult` / ASR heuristic / `flushOnTheFly` + 文章 `runBatch` / `STREAMING_SEGMENT` 共 5 處注入點);(B)streaming `STREAMING_DONE` 帶 `hadMismatch=true` 時 `doneReject` 觸發既有 mid-failure catch,batch 0 整批 retry 走 non-streaming(等 LLM 整批 resolve 後一次 split,容錯較高),覆蓋 streaming 已注入的合併版本。SPEC.md §2.2 規劃中加上「Gemini structured output」條目,治本路徑(`responseSchema` + JSON 格式強制)排到下個 milestone(僅限 Gemini,1-2 天工程)。新 4 條 regression(sanitize-marker-leak × 2 + streaming-batch-0-mismatch-retry × 2)。
 

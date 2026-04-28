@@ -25,10 +25,10 @@
  * 註：本檔修改後 README.md 與 docs/index.html 的「近期重大更新」段落也要手動同步。
  */
 export const RELEASE_HIGHLIGHTS = [
-  '新增**極速秒翻**，按下翻譯後 1 秒就看到頁面開始變中文（限 Gemini）',
-  '新增**AI 智慧分句**，YouTube 自動產生字幕經 AI 重新分句，讓中文字幕更自然好讀',
+  '新增**極速秒翻**，按下翻譯 1 秒看到頁面開始變中文（限 Gemini）',
   '新增**雙語對照模式**，原文 + 譯文並列顯示',
-  '新增**自訂 AI 模型**功能，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等百種模型',
+  '新增**自訂 AI 模型**，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型',
+  '新增**AI 分句**，YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀',
   '新增**中國用語黑名單**，明確要求 LLM 不能用視頻 / 軟件 / 數據等中國用語',
   '新增**只翻文章開頭**選項，先翻前 N 段預覽，大幅節省 token',
 ];
