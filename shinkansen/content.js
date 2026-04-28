@@ -515,9 +515,18 @@
     // v1.4.13: options.label 由 preset 傳入，在 loading toast 顯示讓使用者知道目前哪個 preset 在跑。
     const labelPrefix = options.label ? `[${options.label}] ` : '';
 
-    if (STATE.translated) {
+    // v1.8.7: options.ignorePartialMode = true 從「翻譯剩餘段落」按鈕觸發,
+    // 不走 restorePage 早退,直接重翻整頁(前面已翻好的段落會從 cache fast path 命中)
+    if (STATE.translated && !options.ignorePartialMode) {
       restorePage();
       return;
+    }
+    // ignorePartialMode 路徑:STATE.translated=true 進來時,先靜默重置 translated state
+    // 讓後續流程能跑完整翻譯(否則 STATE.translated=true 會讓 translateUnits 內 inject 邏輯異常)
+    if (STATE.translated && options.ignorePartialMode) {
+      SK.sendLog('info', 'translate', 'ignorePartialMode: re-translate without restorePage', { previousPartialMode: STATE.partialModeActive });
+      // 不 clear DOM,只重置 translated flag — 已注入的譯文保留,後續 cache fast path 會原樣覆蓋(冪等)
+      STATE.translated = false;
     }
 
     if (isGoogleDocsEditorPage()) {
@@ -611,7 +620,10 @@
     // partialMode 會翻到導覽列(回到 v1.7.0 之前行為),但這類網站非 partialMode
     // 主要使用情境(使用者比較會在文章型部落格 / 新聞站開節省模式)。
     const pm = settings.partialMode;
-    const pmActive = !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
+    // v1.8.7: options.ignorePartialMode = true(從「翻譯剩餘段落」按鈕觸發)時忽略 toggle,
+    // 即使使用者 toggle 仍開啟也走完整翻譯。toggle 本身不被改寫,下次翻新頁面仍走節省模式。
+    const pmActive = !options.ignorePartialMode
+      && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     STATE.partialModeActive = pmActive;
 
     if (!pmActive) {
@@ -642,9 +654,10 @@
 
     // v1.8.5: partialMode 啟用時 truncate units 到 maxUnits,讓 toast 顯示實際翻譯段數
     // (25 / 25 而非 25 / 227),且 packBatches 自然只切 1 批。
+    let pmSkippedCount = 0;  // v1.8.7: 用於 success toast「翻譯剩餘段落」按鈕判斷
     if (pmActive && units.length > pm.maxUnits) {
-      const skipped = units.length - pm.maxUnits;
-      SK.sendLog('info', 'translate', 'partialMode: truncate units', { total: units.length, kept: pm.maxUnits, skipped });
+      pmSkippedCount = units.length - pm.maxUnits;
+      SK.sendLog('info', 'translate', 'partialMode: truncate units', { total: units.length, kept: pm.maxUnits, skipped: pmSkippedCount });
       units = units.slice(0, pm.maxUnits);
     }
 
@@ -810,9 +823,15 @@
 
       if (!failures.length) {
         const totalTokens = pageUsage.inputTokens + pageUsage.outputTokens;
-        const successMsg = truncatedCount > 0
-          ? `翻譯完成 （${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`
-          : `翻譯完成 （${total} 段）`;
+        // v1.8.7: partialMode + 有剩餘未翻段落 → 訊息對齊「節省模式」語意
+        let successMsg;
+        if (pmActive && pmSkippedCount > 0) {
+          successMsg = `已翻譯前 ${total} 段（共 ${total + pmSkippedCount} 段）`;
+        } else if (truncatedCount > 0) {
+          successMsg = `翻譯完成 （${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`;
+        } else {
+          successMsg = `翻譯完成 （${total} 段）`;
+        }
         let detail;
         if (totalTokens > 0) {
           const billedTotalTokens = pageUsage.billedInputTokens + pageUsage.outputTokens;
@@ -848,12 +867,25 @@
         // v1.6.5: 同時也帶 welcome notice（CWS 剛升級提示，每日節流）。
         const updateNotice = await SK.maybeBuildUpdateNotice();
         const welcomeNotice = await SK.maybeBuildWelcomeNotice();
+        // v1.8.7: partialMode 翻完後若有剩餘段落,toast 顯示「翻譯剩餘段落」按鈕。
+        // 點按 → 觸發 ignorePartialMode 路徑(忽略 toggle 一次,但不改 toggle 設定),
+        // 前面已翻好的 N 段從 cache fast path 命中,只後段打 API。toast 常駐直到使用者點按或關閉。
+        const action = (pmActive && pmSkippedCount > 0) ? {
+          label: '翻譯剩餘段落',
+          onClick: () => {
+            SK.translatePage({
+              ...options,
+              ignorePartialMode: true,
+            });
+          },
+        } : null;
         SK.showToast('success', successMsg, {
           progress: 1,
           stopTimer: true,
           detail,
           updateNotice,
           welcomeNotice,
+          action,
         });
       }
 
@@ -1030,9 +1062,13 @@
     // v1.4.13: gtOptions.label 顯示於 loading toast
     const labelPrefix = gtOptions.label ? `[${gtOptions.label}] ` : '';
     // 若同一引擎已翻譯 → 還原（toggle）
-    if (STATE.translated && STATE.translatedBy === 'google') {
+    // v1.8.7: ignorePartialMode 豁免,讓「翻譯剩餘段落」按鈕能在已翻譯狀態重觸發
+    if (STATE.translated && STATE.translatedBy === 'google' && !gtOptions.ignorePartialMode) {
       restorePage();
       return;
+    }
+    if (STATE.translated && gtOptions.ignorePartialMode) {
+      STATE.translated = false;
     }
 
     // 若正在翻譯中（任何引擎）→ 中止
@@ -1095,8 +1131,10 @@
     }
 
     // v1.8.6: partialMode 啟用時跳過 prioritizeUnits 走 DOM 順序(同 translatePage Gemini 路徑)
+    // v1.8.7: ignorePartialMode 豁免
     const pm = settings.partialMode;
-    const pmActive = !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
+    const pmActive = !gtOptions.ignorePartialMode
+      && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     STATE.partialModeActive = pmActive;
     if (!pmActive) {
       // v1.7.1: 與 translatePage 同樣的優先級排序(內文核心優先)

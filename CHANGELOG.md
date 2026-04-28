@@ -66,6 +66,13 @@
 
 ## v1.8.x
 
+**v1.8.7** — 「只翻文章開頭」翻完後的銜接體驗 + UI 重新定位:**(A)使用者順暢操作流程**——partialMode 翻完後,toast 訊息變成「已翻譯前 N 段(共 M 段)」並顯示「翻譯剩餘段落」按鈕(常駐直到使用者點按或關閉)。點按 → `translatePage({ ignorePartialMode: true })` 走完整翻譯,前 N 段從本地快取 fast path 命中(0 token + 9ms)、只後段打 API,**toggle 設定本身不被改寫**(下次翻新頁面仍走節省模式)。**(B)UI 重新定位**——「只翻文章開頭」從 Gemini 分頁的「效能」section 內(被視為微調)獨立成「**節省模式**」section,搬到「配額」之前更顯眼的位置,定位為一般使用者會用的功能而非進階參數。toggle label 也從「只翻文章開頭(節省費用)」精簡成「**只翻文章開頭**」(子說明保留費用解釋)。
+
+  - **`content-toast.js`**:`opts.action = { label, onClick }` 新增,toast 內加 `.toast-action` 按鈕(Shadow DOM 內 button + click listener);有 `action` 時 success toast 不 auto-hide;`hideToast` 清乾淨 action handler 避免 callback 殘留。
+  - **`content.js translatePage` / `translatePageGoogle`**:加 `options.ignorePartialMode` 參數,STATE.translated=true + ignorePartialMode 時不走 restorePage 早退,改靜默重置 `STATE.translated=false` 後跑完整翻譯;partialMode 判斷加豁免條件(toggle 啟用但 ignorePartialMode=true 時走完整流程)。`pmSkippedCount` 追蹤被截掉的段數,success toast 在 `pmActive && pmSkippedCount > 0` 時帶 `action: { label: '翻譯剩餘段落', onClick: () => SK.translatePage({ ...options, ignorePartialMode: true }) }`。
+  - **`options/options.html`**:刪除 Gemini 分頁「效能」section 內的 partialMode label;新建獨立「節省模式」section 插在「配額」之前。說明文字更新反映 v1.8.6 DOM 順序行為 + v1.8.7 「翻譯剩餘段落」按鈕。
+  - **新 regression**:`test/regression/translate-partial-mode-ignore.spec.js` 鎖「ignorePartialMode=true + STATE.translated=true 時不走 restorePage 早退」(SANITY 雙驗通過——測 A 不帶 flag 走 restorePage / 測 B 帶 flag 跑完整流程)。
+
 **v1.8.6** — 修「只翻文章開頭」中英夾雜的 bug。在 wheresyoured.at / Substack / Ghost 等部落格上,prioritizeUnits 把短內文段(score < 5,例如「I feel nothing when I see an LLM's output」這種 ~150 字 + 1 個逗號的純內文)排到 tier 1 後面,partialMode 取前 25 段全給 tier 0(score >= 5 的長段)→ tier 1 的真內文段被 truncate 掉 → 中間夾雜未翻段落,使用者看到「翻譯-原文-翻譯-原文」交錯。修法:partialMode 啟用時跳過 prioritizeUnits,改走純 DOM 順序——對使用者語意是「翻頁面 DOM 前 N 段」(視覺連續中文),不是「prioritize 認為最重要的 N 段」。Trade-off:Wikipedia / GitHub 等「DOM 前段是 nav / chrome」的網站開 partialMode 會翻到導覽列(回到 v1.7.0 之前行為),但這類網站非 partialMode 主要使用情境(使用者比較會在文章型部落格 / 新聞站開節省模式)。
 
 **v1.8.5** — 修 v1.8.3「只翻文章開頭」兩個沒做完的行為。Bug 1:toast 仍顯示整頁段數(例如 25 / 227),沒對應實際翻譯量。Bug 2:rescan(延遲掃新段落)+ SPA observer(捲動偵測新內容)兩條動態翻譯路徑沒檢查 partialMode,使用者捲到下半頁時 Shinkansen 仍會偵測新段落並開始翻譯——這違反「節省費用」的初衷。修法:`translatePage` 在 prioritizeUnits + maxTotalUnits truncate 後,partialMode 啟用再次 truncate units 到 partialMode.maxUnits(讓 toast 顯示 25 / 25),同時設 `STATE.partialModeActive` 旗標;`rescanTick` + `content-spa.js spaObserverRescan` 兩條路徑開頭加 `if (STATE.partialModeActive) return`,啟用時完全跳過動態翻譯。`restorePage` 重設旗標。對使用者的視覺效果:勾選 toggle 後翻譯該頁,只看到「翻譯中... 25 / 25」+「已翻譯 25 段」,捲到下半頁譯文不會繼續延伸,完全符合「我只想看開頭」的意圖。
