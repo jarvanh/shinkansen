@@ -17,21 +17,10 @@
 
 ## 條目
 
-### v1.8.0 — streaming abort / mid-failure / first_chunk timeout 三個 e2e edge case
-- **症狀**:不是 bug,是「核心行為已被 unit test 覆蓋,e2e 層級的 edge case 還未鎖」。
-  Streaming 路徑核心已有覆蓋:
-  - unit:`test/unit/streaming-batch-incremental.spec.js`(incremental emit / placeholder split / hadMismatch / abort throw)
-  - e2e:`test/regression/streaming-batch-0-first-chunk-triggers-parallel.spec.js`(first_chunk 觸發並行)
-  - e2e:`test/regression/translate-priority-sort.spec.js` test #2(streaming fail → fallback 走 v1.7.1 路徑)
-- **未鎖的 e2e edge case**:
-  1. **abort 跨批傳播**:streaming 進行中觸發 STATE.abortController.abort() → STREAMING_ABORT 訊息送 SW + 並行 batch 1+ 中斷
-  2. **mid-failure**:streaming 已 emit 部分 segment,中途 STREAMING_ERROR → batch 0 整批用 non-streaming retry
-  3. **first_chunk 1.5s timeout**:streaming sendMessage 回成功但 SW 從沒推 STREAMING_FIRST_CHUNK → 1.5s 後 fallback 走 non-streaming
-- **為什麼還不能寫測試**:三個情境都需要在 e2e 環境內精確控制「listener fire 訊息的時序 + abort signal 跨 message 傳播」,實作上要繼續擴充 priority-sort.spec.js 的 monkey-patch onMessage 機制。本身不困難,但這次 v1.8.0 工作量已大,優先把 production code + 核心覆蓋寫完;edge case 留到實際使用觀察到問題時再補。
-- **建議 spec 位置**:
-  - `test/regression/streaming-batch-0-abort.spec.js`
-  - `test/regression/streaming-batch-0-mid-failure.spec.js`
-  - `test/regression/streaming-batch-0-fallback-no-first-chunk.spec.js`
+### ~~v1.8.0 — streaming abort / mid-failure / first_chunk timeout 三個 e2e edge case~~ — 已補測試(2026-04-28)
+- abort 跨批傳播 → `test/regression/streaming-batch-0-abort.spec.js`(monkey-patch onMessage listener 收集器,先 fire FIRST_CHUNK 解放 batch 1+ 並行,maxConcurrentBatches=1 讓 abort 後 worker 下次迴圈 check signal.aborted 退出。SANITY:abortHandler 改 no-op → STREAMING_ABORT count=0 fail。)
+- mid-failure → `test/regression/streaming-batch-0-mid-failure.spec.js`(FIRST_CHUNK + 3 個 SEGMENT 後 STREAMING_ERROR,驗證 batch 0「整批 25 texts retry」+ batch 1 已並行不重送。SANITY:catch 區塊 no-op → batch 0 retry 不送、payloadSizes 變 1 fail。)
+- first_chunk 1.5s timeout → `test/regression/streaming-batch-0-first-chunk-timeout.spec.js`(TRANSLATE_BATCH_STREAM 回 started:true 但完全不 fire 任何 STREAMING_*,驗證 1.5s 後 STREAMING_ABORT 送 + fallback 走 non-streaming。SANITY:FIRST_CHUNK_TIMEOUT_MS 改 1_000_000 → 永不 timeout、abortCount=0 fail。)
 
 ### ~~v1.6.19 — `hydrateStickyTabs` 並行 race~~ — 已豁免(2026-04-28)
 觸發條件「SW 喚醒後 <50ms 內連開多 tab」極端窄窗,真實使用幾乎不可能踩到;Playwright 的 `context.newPage` timing 受 Chromium 內部排程影響無法穩定壓住該 race window,jsdom mock 又得大幅 rewrite `background.js` 的 module pattern。修法本身已 commit(`_stickyHydratingPromise` 取代 boolean flag),回歸風險評估遠低於測試 rewrite 成本,走豁免不寫 spec。

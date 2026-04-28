@@ -66,6 +66,8 @@
 
 ## v1.8.x
 
+**v1.8.9** — YouTube 人工字幕 batch 0 改走 streaming(SSE)。新訊息 `TRANSLATE_SUBTITLE_BATCH_STREAM`(SW 端 `handleTranslateStream` 加 opts 支援 `_yt` cacheTag + ytSubtitle.systemPrompt/temperature/model/pricing),content-youtube.js `translateWindowFrom` 非 ASR 分支加 `_runBatch0Streaming`:STREAMING_SEGMENT 抵達立刻寫 captionMap + replaceSegmentEl,首字延遲從整批 resolve 砍成 SSE 首段。fallback 觸發:first_chunk 1.5s timeout(送 STREAMING_ABORT)、streaming mid-failure(批次 0 整批 retry via 非 streaming);Google MT / OpenAI-compat engine 不啟用 streaming 維持原路徑。同輪補 v1.8.0 PENDING 三條 streaming e2e edge case spec(abort 跨批 / mid-failure retry / first_chunk timeout fallback,清空 PENDING queue),以及非 ASR 字幕長譯文比照 ASR overlay 走 `_wrapTargetText` 切點 + `<br>` 注入(`_setSegmentText` helper,改 `replaceSegmentEl` 與 `flushOnTheFly` 兩個寫入點),修 expandCaptionLine 強制 nowrap 導致中文長句沖出畫面。新 9 條 regression(streaming-batch-0-abort / mid-failure / first-chunk-timeout、youtube-non-asr-wrap × 3、youtube-non-asr-streaming × 5)。
+
 **v1.8.8** — 修「翻譯剩餘段落」按鈕後 toast 立刻顯示完成、實際大部分內容沒翻的 bug;順帶補 v1.8.7 release 後續修補(toast action button 配色 + 近期重大更新文案 6 條)。
 
   - **`content-toast.js`**:`.toast-action` 從半透明白底改成實心 `#0071e3` 品牌藍 + 白字(原配色在 toast 白底深字風格下幾乎隱形,使用者反映「沒看到有繼續翻譯的提示」),hover/active 用更深藍。
