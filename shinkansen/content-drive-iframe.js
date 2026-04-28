@@ -24,7 +24,9 @@
   } catch (_) {}
   if (!isDriveEmbed) return;
 
-  const TIMEDTEXT_RE = /^https:\/\/drive\.google\.com\/u\/\d+\/timedtext.*[?&]caps=asr/;
+  // 用 kind=asr(track 請求)而非 caps=asr——後者連 type=list 也會 match,但 list
+  // response 不是 JSON,background handler res.json() 會 throw。kind=asr 只在 track 請求出現。
+  const TIMEDTEXT_RE = /^https:\/\/drive\.google\.com\/u\/\d+\/timedtext.*[?&]kind=asr/;
   const reportedUrls = new Set();
 
   function reportTimedtextUrl(url) {
