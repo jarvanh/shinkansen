@@ -66,6 +66,15 @@
 
 ## v1.7.x
 
+**v1.7.2** — 翻譯優先級三件套延續優化:**(A)batch 0 切小**——首字 batch 限制 10 unit / 1500 chars(原 20/3500),序列等 Gemini 的時間從平均 5.4s → 3.4s;**(B)Readability tier 0 細分**——`prioritizeUnits` 從 3 tier 升級成 4 tier,用 readability content score(文字長度 + 逗號數 + heading tag + 含 P 子孫,刻意不用 class/id 名稱啟發式)切「真內文」與「main 內的工具列」,徹底解決 GitHub repo / Wikipedia 等「`<main>` 包了 chrome」造成的 batch 0 排序失敗;**(C)glossary 模型獨立 + 預設 Flash Lite**——術語抽取改用 `gemini-3.1-flash-lite-preview`(可在設定頁 4 選 1 切換),比 Flash 快 18% + 便宜 5 倍,terms 品質接近。同一組 10 個 URL 重測,OFF 模式首字延遲平均 -29%(中位數 -36%、最佳 -43%),ON 模式平均 -26%(NPR 從 11.7s → 5.1s 省 6.6 秒)。
+
+  - **batch 0 limit**:`content-ns.js SK.BATCH0_UNITS=10 / SK.BATCH0_CHARS=1500`,`packBatches` 加 `firstMaxUnits` / `firstMaxChars` 參數,jobs.length=0 時用第一批 limit,之後切回預設;`translateUnits` / `translateUnitsGoogle` 兩處呼叫傳 BATCH0_*。
+  - **tier 0 細分**:`content-detect.js` 加 `readabilityScore(el)` helper(只用結構訊號,不引整套 `@mozilla/readability` 60KB bundle),`prioritizeUnits` 在 main/article 內依 score >= 5 切 tier 0a / 0b。實測 GitHub batch 0 從「Notifications / Fork / Star / Code / Issues」UI tab 變成「anthropics/anthropic-sdk-typescript / Folders and files / Documentation」README 內容;Wikipedia "Tea" batch 0 從「Article / Talk / Read / View source」工具列變成「H1 Tea / 內文 P 674 字 / 536 字 / 285 字」真文章內容。
+  - **glossary 模型**:`storage.js DEFAULT_SETTINGS.glossary.model = 'gemini-3.1-flash-lite-preview'`,`lib/gemini.js extractGlossary` 優先讀 `glossaryConfig.model`(空字串 fallback 主翻譯 model),`background.js handleExtractGlossary` cost 計算用 `getPricingForModel(glossaryModel)` 不再硬綁主 settings.pricing;options 頁術語表分頁加 dropdown(Flash Lite / Flash / Pro / 與主翻譯相同 4 選 1)。
+  - **新 regression**:`test/regression/translate-priority-tier-0-readability.spec.js` 鎖 tier 0 細分行為(SANITY 雙驗通過)。既有 11 條相關 spec 全綠。
+  - **probe 工具改進**:`tools/probe-priority.js` 加 `SHINKANSEN_PROBE_PROFILE` env var——踩到 Chrome SW bytecode cache 的坑(同 PROFILE 路徑 + extension 程式碼變動時,SW 載入舊 cached 版),要求每次測試用全新時間戳路徑才能拿到真實新行為。
+  - **完整實測資料**:見 `reports/priority-sort-probe-2026-04-28.md` 的 v1.7.2 章節(§8-§10)。
+
 **v1.7.1** — 翻譯優先級排序 + batch 0 序列化。長網頁翻譯時使用者最先看到的譯文從「導覽列 / cookie 同意書 / TOC」變成「文章標題 + 第一段內文」。兩個改動互補:`SK.prioritizeUnits` 對 `collectParagraphs` 結果做 stable sort(tier 0 = `<main>` / `<article>` 後代;tier 1 = 長段落 + 連結密度 < 50%;tier 2 = 其他),把內文核心推到 array 前面;`translateUnits` / `translateUnitsGoogle` 改成「序列跑 batch 0,完成後才用 worker pool 並行 batch 1+」,確保最先注入 DOM 的批次必定是 array 開頭那批。
 
   - **`SK.prioritizeUnits`(新,`content-detect.js`)**:tier 函式只用語意訊號(HTML5 tag + ARIA role + 文字長度 + 連結密度),不綁站點 class / id,符合硬規則 §8 結構通則。stable sort(V8 Array.prototype.sort 自 2018 起為 stable)保留同 tier 內的 DOM 順序。注入用 element reference,不依賴 array index → 排序不影響注入位置。

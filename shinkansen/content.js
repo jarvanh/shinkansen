@@ -170,16 +170,22 @@
 
   // ─── Greedy 打包 ─────────────────────────────────────
 
-  function packBatches(texts, units, slotsList, maxUnits, maxChars) {
+  // v1.7.2: 加入 firstMaxUnits / firstMaxChars 讓 batch 0 用較小的 limit。
+  // batch 0 序列等 Gemini,token 少回送快;batch 1+ 並行不吃序列延遲,維持原 limit 衝吞吐。
+  // 兩個新參數預設 null = 走舊行為(全部 batch 用同 limit),向下相容 translateUnitsGoogle / 字幕路徑。
+  function packBatches(texts, units, slotsList, maxUnits, maxChars, firstMaxUnits = null, firstMaxChars = null) {
     const jobs = [];
     let cur = null;
     const flush = () => {
       if (cur && cur.texts.length > 0) jobs.push(cur);
       cur = null;
     };
+    // 「正在切第一批」= jobs 還沒 push 任何 batch + (firstMaxUnits / firstMaxChars 有值)
+    const limU = () => (jobs.length === 0 && firstMaxUnits != null) ? firstMaxUnits : maxUnits;
+    const limC = () => (jobs.length === 0 && firstMaxChars != null) ? firstMaxChars : maxChars;
     for (let i = 0; i < texts.length; i++) {
       const len = (texts[i] || '').length;
-      if (len > maxChars) {
+      if (len > limC()) {
         flush();
         jobs.push({
           start: i,
@@ -191,7 +197,7 @@
         });
         continue;
       }
-      if (cur && (cur.chars + len > maxChars || cur.texts.length >= maxUnits)) {
+      if (cur && (cur.chars + len > limC() || cur.texts.length >= limU())) {
         flush();
       }
       if (!cur) cur = { start: i, texts: [], units: [], slots: [], chars: 0 };
@@ -208,6 +214,7 @@
 
   SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine } = {}) {
     const total = units.length;
+    const tu_entry = Date.now();
     const serialized = units.map(unit => {
       if (unit.kind === 'fragment') {
         return SK.serializeFragmentWithPlaceholders(unit);
@@ -223,6 +230,7 @@
     });
     const texts = serialized.map(s => s.text);
     const slotsList = serialized.map(s => s.slots);
+    SK.sendLog('info', 'translate', 'milestone:tu_serialize_done', { t: Date.now() - tu_entry, units: total });
 
     // v1.1.9: 合併讀取設定（減少 browser.storage.sync.get 呼叫次數）
     let maxConcurrent = SK.DEFAULT_MAX_CONCURRENT;
@@ -240,6 +248,7 @@
         maxCharsPerBatch = batchCfg.maxCharsPerBatch;
       }
     } catch (_) { /* 保持 default */ }
+    SK.sendLog('info', 'translate', 'milestone:tu_storage_loaded', { t: Date.now() - tu_entry });
 
     let done = 0;
     const pageUsage = {
@@ -247,7 +256,8 @@
       billedInputTokens: 0, billedCostUSD: 0,
       cacheHits: 0,
     };
-    const jobs = packBatches(texts, units, slotsList, maxUnitsPerBatch, maxCharsPerBatch);
+    const jobs = packBatches(texts, units, slotsList, maxUnitsPerBatch, maxCharsPerBatch, SK.BATCH0_UNITS, SK.BATCH0_CHARS);
+    SK.sendLog('info', 'translate', 'milestone:tu_packed', { t: Date.now() - tu_entry, batches: jobs.length });
     const failures = [];
     let rpdWarning = false;
     let hadAnyMismatch = false;
@@ -370,11 +380,15 @@
       return;
     }
 
+    // v1.7.x instrumentation: 用 entryTime 量化 translatePage 各階段相對時間
+    const entryTime = Date.now();
+
     // v1.1.9: 合併所有設定讀取為單一 browser.storage.sync.get(null)
     let settings = {};
     try {
       settings = await browser.storage.sync.get(null);
     } catch (_) { /* 讀取失敗用 default */ }
+    SK.sendLog('info', 'translate', 'milestone:storage_loaded', { t: Date.now() - entryTime });
 
     // 頁面層級繁中偵測
     {
@@ -392,6 +406,7 @@
         }
       }
     }
+    SK.sendLog('info', 'translate', 'milestone:zh_check_done', { t: Date.now() - entryTime });
 
     // v1.5.0: 讀顯示模式設定，寫進 STATE.translatedMode 鎖定本次翻譯用的模式。
     // 同一頁中途切模式不會即時生效（避免半翻半改），需重新觸發翻譯。
@@ -411,6 +426,7 @@
     const translateStartTime = Date.now();
     const abortSignal = STATE.abortController.signal;
 
+    const t_collect_start = Date.now();
     let units = SK.collectParagraphs();
     if (units.length === 0) {
       SK.showToast('error', '找不到可翻譯的內容', { autoHideMs: 3000 });
@@ -418,12 +434,15 @@
       STATE.abortController = null;
       return;
     }
+    SK.sendLog('info', 'translate', 'milestone:collect_done', { t: Date.now() - entryTime, dt: Date.now() - t_collect_start, segments: units.length });
 
     // v1.7.1: 把內文核心(main/article 後代、長段落)推到 array 前面,
     // 配合下方 translateUnits 的「序列 batch 0 + 並行 rest」,
     // 讓使用者最快看到的譯文是文章開頭而不是 nav / 短連結。
     // 排序在 truncate 之前,使用者超量時優先丟棄低優先級段落(寧丟 nav 不丟內文)。
+    const t_priority_start = Date.now();
     units = SK.prioritizeUnits(units);
+    SK.sendLog('info', 'translate', 'milestone:prioritize_done', { t: Date.now() - entryTime, dt: Date.now() - t_priority_start });
 
     // 超大頁面防護
     let maxTotalUnits = SK.DEFAULT_MAX_TOTAL_UNITS;
@@ -455,11 +474,13 @@
       }
     }
 
+    const t_preser_start = Date.now();
     const preSerialized = units.map(unit => {
       if (unit.kind === 'fragment') return { text: (unit.parent?.innerText || '').trim() };
       return { text: (unit.el?.innerText || '').trim() };
     });
     const preTexts = preSerialized.map(s => s.text);
+    SK.sendLog('info', 'translate', 'milestone:preserialize_done', { t: Date.now() - entryTime, dt: Date.now() - t_preser_start });
 
     // 估算批次數
     let estUnitsPerBatch = SK.DEFAULT_UNITS_PER_BATCH;
@@ -486,6 +507,7 @@
     }
 
     let glossary = null;
+    SK.sendLog('info', 'translate', 'milestone:glossary_decision', { t: Date.now() - entryTime, glossaryEnabled, skip: !glossaryEnabled || batchCount <= skipThreshold, batchCount, skipThreshold, blockingThreshold });
 
     if (glossaryEnabled && batchCount > skipThreshold) {
       const compressedText = SK.extractGlossaryInput(units);
@@ -549,6 +571,7 @@
         STATE._glossaryPromise = null;
       }
 
+      SK.sendLog('info', 'translate', 'milestone:before_translate_units', { t: Date.now() - entryTime });
       const { done, failures, pageUsage, rpdWarning } = await SK.translateUnits(units, {
         glossary,
         signal: abortSignal,
@@ -761,7 +784,7 @@
     let totalChars = 0;
     const failures = [];
 
-    const jobs = packBatches(texts, units, slotsList, 20, 4000);
+    const jobs = packBatches(texts, units, slotsList, 20, 4000, SK.BATCH0_UNITS, SK.BATCH0_CHARS);
     const t0All = Date.now();
     SK.sendLog('info', 'translate', 'translateUnitsGoogle start', { batches: jobs.length, total });
 
