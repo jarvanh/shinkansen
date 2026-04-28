@@ -217,7 +217,7 @@
 
   // ─── translateUnits ──────────────────────────────────
 
-  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine } = {}) {
+  SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode } = {}) {
     const total = units.length;
     const tu_entry = Date.now();
     const serialized = units.map(unit => {
@@ -270,9 +270,18 @@
       cacheHits: 0,
     };
     // v1.8.3: partialMode 啟用時,第一批 limit 用使用者設定的 maxUnits;chars 仍用 BATCH0_CHARS 內部限制
-    const firstBatchUnits = partialMode.enabled ? partialMode.maxUnits : SK.BATCH0_UNITS;
+    // v1.8.8: ignorePartialMode 路徑(「翻譯剩餘段落」按鈕)走全頁翻譯,batch 0 用標準 BATCH0_UNITS
+    const partialModeActive = partialMode.enabled && !ignorePartialMode;
+    const firstBatchUnits = partialModeActive ? partialMode.maxUnits : SK.BATCH0_UNITS;
     const jobs = packBatches(texts, units, slotsList, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
     SK.sendLog('info', 'translate', 'milestone:tu_packed', { t: Date.now() - tu_entry, batches: jobs.length });
+    // v1.8.8 instrumentation: packBatches 詳情(每批 unit 數 / chars)
+    SK.sendLog('info', 'translate', 'packBatches detail', {
+      totalBatches: jobs.length,
+      batchSizes: jobs.map((j, i) => ({ idx: i, units: j.texts.length, chars: j.chars })),
+      partialMode,
+      firstBatchUnits,
+    });
     const failures = [];
     let rpdWarning = false;
     let hadAnyMismatch = false;
@@ -438,7 +447,11 @@
     if (jobs.length > 0) {
       let batch0NeedsFallback = false;
       // v1.8.3: partialMode 啟用時,只跑 batch 0,不 dispatch jobs.slice(1)
-      const skipBatch1Plus = partialMode.enabled;
+      // v1.8.8: ignorePartialMode 路徑(「翻譯剩餘段落」按鈕)要翻完所有 batch
+      const skipBatch1Plus = partialModeActive;
+      SK.sendLog('info', 'translate', 'main flow start', {
+        useStreaming, skipBatch1Plus, jobsCount: jobs.length, t: Date.now() - tu_entry,
+      });
       if (skipBatch1Plus && jobs.length > 1) {
         SK.sendLog('info', 'translate', 'partialMode: skip batch 1+', { totalBatches: jobs.length, skipped: jobs.length - 1, batch0Units: jobs[0].texts.length });
       }
@@ -446,19 +459,24 @@
       if (useStreaming) {
         const stream = runBatch0Streaming(jobs[0]);
         const r = await stream.firstChunkOrTimeout;
+        SK.sendLog('info', 'translate', 'stream firstChunkOrTimeout result', { kind: r.kind, t: Date.now() - tu_entry });
         if (r.kind === 'first_chunk') {
           // streaming 已開始流入 — 同步 dispatch batch 1+ 並行(partialMode 啟用時跳過)
-          const parallelP = (jobs.length > 1 && !signal?.aborted && !skipBatch1Plus)
+          const willParallel = jobs.length > 1 && !signal?.aborted && !skipBatch1Plus;
+          SK.sendLog('info', 'translate', 'parallel batches dispatch decision', { willParallel, count: willParallel ? jobs.length - 1 : 0 });
+          const parallelP = willParallel
             ? runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch)
             : Promise.resolve();
           try {
             await stream.donePromise;
+            SK.sendLog('info', 'translate', 'after await stream.donePromise', { t: Date.now() - tu_entry });
           } catch (streamErr) {
             // streaming 中途失敗 — fallback 對 batch 0 重送 non-streaming
             SK.sendLog('warn', 'translate', 'streaming mid-failure, retrying batch 0 non-streaming', { error: streamErr.message });
             await runBatch(jobs[0]);
           }
           await parallelP;
+          SK.sendLog('info', 'translate', 'after await parallelP', { t: Date.now() - tu_entry, doneSoFar: done });
         } else {
           // first_chunk 1.5s 沒到(timeout 或 STREAMING_ERROR 在 first_chunk 前發生)
           // → 中斷 streaming,fallback 走 v1.7.x 序列 batch 0 + 並行 batch 1+
@@ -515,6 +533,13 @@
     // v1.4.13: options.label 由 preset 傳入，在 loading toast 顯示讓使用者知道目前哪個 preset 在跑。
     const labelPrefix = options.label ? `[${options.label}] ` : '';
 
+    // v1.8.8 instrumentation: 入口 STATE 狀態
+    SK.sendLog('info', 'translate', 'translatePage entry', {
+      ignorePartialMode: !!options.ignorePartialMode,
+      stateTranslated: STATE.translated,
+      statePartialModeActive: STATE.partialModeActive,
+      alreadyMarkedCount: document.querySelectorAll('[data-shinkansen-translated]').length,
+    });
     // v1.8.7: options.ignorePartialMode = true 從「翻譯剩餘段落」按鈕觸發,
     // 不走 restorePage 早退,直接重翻整頁(前面已翻好的段落會從 cache fast path 命中)
     if (STATE.translated && !options.ignorePartialMode) {
@@ -782,6 +807,8 @@
         modelOverride: options.modelOverride || null,
         // v1.5.7: engine='openai-compat' 走自訂 Provider 的 chat.completions endpoint
         engine: options.engine || 'gemini',
+        // v1.8.8: 「翻譯剩餘段落」路徑要繞過 partialMode 的 skip batch 1+ 邏輯
+        ignorePartialMode: !!options.ignorePartialMode,
         onProgress: (d, t, mismatch) => SK.showToast('loading', `${labelPrefix}翻譯中… ${d} / ${t}`, {
           progress: d / t,
           mismatch: !!mismatch,
@@ -879,6 +906,12 @@
             });
           },
         } : null;
+        // v1.8.8 instrumentation: success toast fire 前的 state
+        SK.sendLog('info', 'translate', 'about to fire success toast', {
+          successMsg, total, pmActive, pmSkippedCount, hasAction: !!action,
+          ignorePartialMode: !!options.ignorePartialMode,
+          done, failures: failures.length,
+        });
         SK.showToast('success', successMsg, {
           progress: 1,
           stopTimer: true,
