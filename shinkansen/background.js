@@ -710,8 +710,57 @@ async function handleTranslateStream(payload, sender, streamId, tabId) {
       fixedGlossaryEntries = [...globalEntries, ...domainEntries];
     }
   }
-  const forbiddenTerms = (settings.forbiddenTerms && Array.isArray(settings.forbiddenTerms))
-    ? settings.forbiddenTerms : null;
+  const forbiddenTermsList = (settings.forbiddenTerms && Array.isArray(settings.forbiddenTerms))
+    ? settings.forbiddenTerms : [];
+
+  // v1.8.1: cache key suffix(跟 handleTranslate 一致)— 含 glossary + fixedGlossary +
+  // forbiddenTerms + model hash,確保同樣輸入有相同 cache key,「翻譯 → 還原 → 重翻」能命中。
+  let cacheKeySuffix = '';
+  const glossary = payload?.glossary || null;
+  const allGlossaryForHash = [
+    ...(glossary || []).map((e) => `${e.source}:${e.target}`),
+    ...(fixedGlossaryEntries || []).map((e) => `F:${e.source}:${e.target}`),
+  ];
+  if (allGlossaryForHash.length > 0) {
+    const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
+    cacheKeySuffix = '_g' + fullHash.slice(0, 12);
+  }
+  const forbiddenHash = await cache.hashForbiddenTerms(forbiddenTermsList);
+  if (forbiddenHash) cacheKeySuffix += '_b' + forbiddenHash;
+  const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
+  cacheKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
+
+  // v1.8.1: 先查 cache。若全部命中,走 fast path 直接 emit 假 first_chunk + 所有 segment + done,
+  // 不打 Gemini API。對應使用者「翻完還原重翻」的 case,batch 0 內容應該秒出。
+  const cached = await cache.getBatch(texts, cacheKeySuffix);
+  const allHit = cached.every((tr) => tr != null);
+  const cacheHits = cached.filter((tr) => tr != null).length;
+  debugLog('info', 'cache', 'streaming batch cache lookup', {
+    streamId, total: texts.length, hits: cacheHits, misses: texts.length - cacheHits, allHit,
+  });
+
+  if (allHit) {
+    // Fast path:跳過 streaming + Gemini call,立即推 FIRST_CHUNK + 各 SEGMENT + DONE
+    inFlightStreams.delete(streamId);  // 不需要 abort
+    browser.tabs.sendMessage(tabId, { type: 'STREAMING_FIRST_CHUNK', payload: { streamId } }).catch(() => {});
+    for (let i = 0; i < cached.length; i++) {
+      browser.tabs.sendMessage(tabId, {
+        type: 'STREAMING_SEGMENT',
+        payload: { streamId, segmentIdx: i, translation: cached[i] },
+      }).catch(() => {});
+    }
+    browser.tabs.sendMessage(tabId, {
+      type: 'STREAMING_DONE',
+      payload: {
+        streamId,
+        usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0, billedInputTokens: 0, billedCostUSD: 0, cacheHits: texts.length },
+        totalSegments: cached.length,
+        hadMismatch: false,
+        finishReason: 'STOP',
+      },
+    }).catch(() => {});
+    return;
+  }
 
   const ac = new AbortController();
   inFlightStreams.set(streamId, ac);
@@ -736,12 +785,31 @@ async function handleTranslateStream(payload, sender, streamId, tabId) {
     const result = await translateBatchStream(
       texts,
       effectiveSettings,
-      payload?.glossary || null,
+      glossary,
       fixedGlossaryEntries,
-      forbiddenTerms,
+      forbiddenTermsList.length > 0 ? forbiddenTermsList : null,
       { onFirstChunk, onSegment },
       ac.signal,
     );
+
+    // v1.8.1: 寫回 cache(使用跟 handleTranslate 一致的 keySuffix),下次重翻可命中 fast path
+    if (result.translations && result.translations.length > 0) {
+      // setBatch 內部會跳過 falsy translations,且 length 不對齊時也只寫對齊的那部分
+      const writableTexts = [];
+      const writableTranslations = [];
+      for (let i = 0; i < texts.length && i < result.translations.length; i++) {
+        if (result.translations[i]) {
+          writableTexts.push(texts[i]);
+          writableTranslations.push(result.translations[i]);
+        }
+      }
+      if (writableTexts.length > 0) {
+        await cache.setBatch(writableTexts, writableTranslations, cacheKeySuffix);
+        debugLog('info', 'cache', 'streaming batch cache write', {
+          streamId, written: writableTexts.length,
+        });
+      }
+    }
 
     // 計費(跟 handleTranslate 一致)
     const billedInputTokens = Math.max(

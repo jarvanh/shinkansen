@@ -66,6 +66,8 @@
 
 ## v1.8.x
 
+**v1.8.1** — 修 v1.8.0 streaming 路徑漏寫 cache 的 bug。原本「翻譯 → 還原 → 重翻同一頁」應該秒載入(cache fast path),但 v1.8.0 的 streaming `handleTranslateStream` 沒做 cache lookup + write,每次重翻都要重打 Gemini API。修法:streaming 開頭先 `cache.getBatch()` 查 cache,若全部命中走 fast path 立即推 `STREAMING_FIRST_CHUNK + STREAMING_SEGMENT × N + STREAMING_DONE`(不打 API,usage = 0);若有 miss 才走 streaming,結束後 `cache.setBatch()` 寫回 cache。cache key suffix 跟 `handleTranslate` 一致(含 glossary / fixedGlossary / forbidden hash + model),確保「翻完還原重翻」必命中 fast path。實測 TWZ 同頁 Run 1 batch 0 streaming 等 6.5 秒,Run 2 cache fast path **9 毫秒完成、首字延遲 4ms**——「一閃就載入」效果回來了。Probe 工具加 `SKIP_CLEAR_CACHE=1` env var 用來驗證 cache hit 行為(原本 probe 每次跑都 CLEAR_CACHE,沒辦法測 cache hit fast path)。
+
 **v1.8.0** — 文章翻譯 batch 0 改用 Gemini streaming + batch 1+ 在 first_chunk 抵達時同步並行 dispatch。**首字延遲從 v1.7.3 的 2.5-4.4 秒砍到 1.0-1.2 秒(平均 -66%)**——使用者按下翻譯後 1 秒內就看到頁面開頭變中文。同時 batch 0 size 從 10 unit / 1500 chars 擴大到 25 unit / 3700 chars(streaming 後 batch 0 size 不影響首字延遲),涵蓋的文章範圍從「開頭幾段」變成「整段內文前 25 段」。Scope 嚴格鎖在文章翻譯 batch 0 一個入口——字幕(`TRANSLATE_SUBTITLE_BATCH` / ASR)、術語表抽取(`EXTRACT_GLOSSARY`)、Google Translate、自訂模型路徑完全不動,維持既有 non-streaming 行為與容錯網。
 
   - **新增訊息協定**:`TRANSLATE_BATCH_STREAM`(content → SW)+ `STREAMING_FIRST_CHUNK` / `STREAMING_SEGMENT` / `STREAMING_DONE` / `STREAMING_ERROR` / `STREAMING_ABORTED`(SW → content)+ `STREAMING_ABORT`(content → SW)。每個 streaming 任務有獨立 `streamId`,SW 內 `inFlightStreams` Map 維護 streamId → AbortController 對映。
