@@ -150,19 +150,24 @@
         0%, 100% { opacity: 1; }
         50%      { opacity: .4; }
       }
-      /* v1.8.7: action button(節省模式翻完後「翻譯剩餘段落」按鈕用) */
+      /* v1.8.7 / v1.8.8: action button(節省模式翻完後「翻譯剩餘段落」按鈕用)
+         配色對齊 toast 白底深字風格 + 既有進度條品牌藍 #0071e3 */
       .toast-action {
-        margin-top: 6px;
-        background: rgba(255,255,255,0.15);
+        display: inline-block;
+        margin-top: 8px;
+        background: #0071e3;
         color: #fff;
-        border: 1px solid rgba(255,255,255,0.25);
-        border-radius: 4px;
-        padding: 4px 10px;
-        font-size: 12px;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        font-weight: 500;
         cursor: pointer;
         font-family: inherit;
+        transition: background 0.15s ease;
       }
-      .toast-action:hover { background: rgba(255,255,255,0.25); }
+      .toast-action:hover { background: #0058b8; }
+      .toast-action:active { background: #004a99; }
       .toast-action[hidden] { display: none; }
     </style>
     <div class="toast" id="toast">

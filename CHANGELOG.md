@@ -66,6 +66,12 @@
 
 ## v1.8.x
 
+**v1.8.8** — 修「翻譯剩餘段落」按鈕後 toast 立刻顯示完成、實際大部分內容沒翻的 bug;順帶補 v1.8.7 release 後續修補(toast action button 配色 + 近期重大更新文案 6 條)。
+
+  - **`content-toast.js`**:`.toast-action` 從半透明白底改成實心 `#0071e3` 品牌藍 + 白字(原配色在 toast 白底深字風格下幾乎隱形,使用者反映「沒看到有繼續翻譯的提示」),hover/active 用更深藍。
+  - **`lib/release-highlights.js`**:近期重大更新從 4 條擴成 6 條(按使用者敲定文案):極速秒翻 / AI 智慧分句 / 雙語對照 / 自訂 AI 模型 / 中國用語黑名單 / 只翻文章開頭。
+  - **`content.js translateUnits`**(主修): Root cause:`translateUnits` 讀 `storage.partialMode.enabled` 直接決定 `skipBatch1Plus`,完全沒檢查 `ignorePartialMode` flag。當使用者開節省模式 toggle 翻完開頭、點「翻譯剩餘段落」按鈕觸發 `translatePage({ ignorePartialMode: true })` 時,主流程的 `pmActive` 雖然正確處理豁免、不 truncate units(全 230 段都進來),但下游 `translateUnits` 仍把它當 partialMode 跑,22 批切完只翻 batch 0 的 8 段就 toast「翻譯完成」,然後 SPA observer rescan 機制每隔幾秒重觸發 → 又只翻 batch 0,一輪 8 / 17 / 12 段慢爬。修法:`translateUnits` 簽名加 `ignorePartialMode` option,內部新增 `partialModeActive = partialMode.enabled && !ignorePartialMode` 旗標,`firstBatchUnits`(line 273)與 `skipBatch1Plus`(line 448)兩處改用此旗標;callsite(`translatePage`)傳 `ignorePartialMode: !!options.ignorePartialMode`。新 regression `test/regression/translate-ignore-partial-mode-runs-all-batches.spec.js`(SANITY 反向驗證 fail-then-pass)。debug 過程在 `translateUnits` / `translatePage` 加 8 條 instrumentation log(translatePage entry / packBatches detail / main flow start / stream firstChunkOrTimeout / parallel dispatch decision / after stream donePromise / after parallelP / about to fire success toast)保留作為未來除錯材料(buffer-based,不會印 console)。
+
 **v1.8.7** — 「只翻文章開頭」翻完後的銜接體驗 + UI 重新定位:**(A)使用者順暢操作流程**——partialMode 翻完後,toast 訊息變成「已翻譯前 N 段(共 M 段)」並顯示「翻譯剩餘段落」按鈕(常駐直到使用者點按或關閉)。點按 → `translatePage({ ignorePartialMode: true })` 走完整翻譯,前 N 段從本地快取 fast path 命中(0 token + 9ms)、只後段打 API,**toggle 設定本身不被改寫**(下次翻新頁面仍走節省模式)。**(B)UI 重新定位**——「只翻文章開頭」從 Gemini 分頁的「效能」section 內(被視為微調)獨立成「**節省模式**」section,搬到「配額」之前更顯眼的位置,定位為一般使用者會用的功能而非進階參數。toggle label 也從「只翻文章開頭(節省費用)」精簡成「**只翻文章開頭**」(子說明保留費用解釋)。
 
   - **`content-toast.js`**:`opts.action = { label, onClick }` 新增,toast 內加 `.toast-action` 按鈕(Shadow DOM 內 button + click listener);有 `action` 時 success toast 不 auto-hide;`hideToast` 清乾淨 action handler 避免 callback 殘留。
