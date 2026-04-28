@@ -199,8 +199,11 @@ if (window.__shinkansen_loaded) {
   SK.SPA_NAV_SETTLE_MS = 800;
 
   // 術語表常數
+  // v1.7.3: blockingThreshold 從 5 提高到 10——中等長度頁面(6-10 批)走 fire-and-forget
+  // 不阻塞首字,省下 EXTRACT_GLOSSARY 1.5-7.4 秒等待。長頁(>10 批)仍 blocking。
+  // 必須跟 lib/storage.js DEFAULT_SETTINGS.glossary.blockingThreshold 同步。
   SK.GLOSSARY_SKIP_THRESHOLD_DEFAULT = 1;
-  SK.GLOSSARY_BLOCKING_THRESHOLD_DEFAULT = 5;
+  SK.GLOSSARY_BLOCKING_THRESHOLD_DEFAULT = 10;
   SK.GLOSSARY_TIMEOUT_DEFAULT = 60000;
 
   // Rescan 常數

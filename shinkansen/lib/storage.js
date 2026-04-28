@@ -163,7 +163,11 @@ export const DEFAULT_SETTINGS = {
     prompt: DEFAULT_GLOSSARY_PROMPT,
     temperature: 0.1,                  // 術語表要穩定，不要有創意
     skipThreshold: 1,                  // ≤ 此批次數完全不建術語表
-    blockingThreshold: 5,              // > 此批次數則阻塞等術語表回來再翻譯
+    // v1.7.3: 預設從 5 提高到 10 — 中等長度頁面(6-10 批)走 fire-and-forget 不阻塞,
+    // 省下 EXTRACT_GLOSSARY 1.5-7.4 秒 blocking 等待;短頁本就跳過、長頁(>10 批)
+    // 仍 blocking 確保跨批次術語一致。使用者可在設定頁 0(永遠 fire-and-forget)
+    // ~ 50(極長頁才 blocking)區間調整。
+    blockingThreshold: 10,             // > 此批次數則阻塞等術語表回來再翻譯
     timeoutMs: 60000,                  // 術語表請求逾時（毫秒），超過則 fallback（v0.70: 60s）
     maxTerms: 200,                     // 術語表上限條目數
     // v1.7.2: 術語表獨立模型。空字串表示「跟主翻譯同一個 model」(舊行為);

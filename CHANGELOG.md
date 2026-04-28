@@ -66,6 +66,12 @@
 
 ## v1.7.x
 
+**v1.7.3** — Glossary 阻塞門檻動態調整。`blockingThreshold` 預設從 5 提高到 10——中等長度頁面(6-10 批)從原本「先等術語表再翻」(blocking)改為「術語表跟翻譯並行」(fire-and-forget),省下 EXTRACT_GLOSSARY 1.5-7.4 秒的首字延遲;長頁(>10 批)仍 blocking 確保跨批次術語一致。新增使用者可調設定欄位「阻塞門檻(批次數)」於術語表分頁,範圍 0(永遠 fire-and-forget)~ 50(幾乎都 blocking,等同 v1.7.2 之前行為)。實測 5 個原本 blocking 的網站全部變 fire-and-forget,Verge 從 5.2s → 2.0s 省 3.2 秒(-61%),GitHub 從 4.2s → 1.5s 省 2.6 秒(-64%),NPR / CSS-Tricks / Smashing 各省 0.1-0.5 秒。Trade-off:fire-and-forget 路徑下 batch 0 翻的內容沒帶術語表,可能跟後段翻譯用詞略有不一致——對 H1 標題 / 文章開頭(prioritizeUnits 推前的內容)風險低,術語密度高的特殊情境使用者可調高門檻或設極大值關閉此優化。
+
+  - **常數同步**:`lib/storage.js DEFAULT_SETTINGS.glossary.blockingThreshold = 10` + `content-ns.js SK.GLOSSARY_BLOCKING_THRESHOLD_DEFAULT = 10`(content script 端鏡像常數,storage 沒提供時的 fallback,必須跟 storage default 同步)。
+  - **options 分頁新欄位**:術語表分頁加 `<input id="glossaryBlockingThreshold" type="number" min="0" max="50">`,load/save 用 `parseUserNum`(v1.6.19 helper,空字串 fallback 預設、合法數字含 0 保留)。
+  - **import sanitize 放寬**:`>= 1` 改為 `>= 0`,讓「永遠 fire-and-forget」變成合法選項。
+
 **v1.7.2** — 翻譯優先級三件套延續優化:**(A)batch 0 切小**——首字 batch 限制 10 unit / 1500 chars(原 20/3500),序列等 Gemini 的時間從平均 5.4s → 3.4s;**(B)Readability tier 0 細分**——`prioritizeUnits` 從 3 tier 升級成 4 tier,用 readability content score(文字長度 + 逗號數 + heading tag + 含 P 子孫,刻意不用 class/id 名稱啟發式)切「真內文」與「main 內的工具列」,徹底解決 GitHub repo / Wikipedia 等「`<main>` 包了 chrome」造成的 batch 0 排序失敗;**(C)glossary 模型獨立 + 預設 Flash Lite**——術語抽取改用 `gemini-3.1-flash-lite-preview`(可在設定頁 4 選 1 切換),比 Flash 快 18% + 便宜 5 倍,terms 品質接近。同一組 10 個 URL 重測,OFF 模式首字延遲平均 -29%(中位數 -36%、最佳 -43%),ON 模式平均 -26%(NPR 從 11.7s → 5.1s 省 6.6 秒)。
 
   - **batch 0 limit**:`content-ns.js SK.BATCH0_UNITS=10 / SK.BATCH0_CHARS=1500`,`packBatches` 加 `firstMaxUnits` / `firstMaxChars` 參數,jobs.length=0 時用第一批 limit,之後切回預設;`translateUnits` / `translateUnitsGoogle` 兩處呼叫傳 BATCH0_*。

@@ -130,6 +130,8 @@ async function load() {
   $('glossaryEnabled').checked = gl.enabled !== false;
   // v1.7.2: 術語擷取獨立模型(預設 Flash Lite),空字串表示「與主翻譯相同」
   $('glossaryModel').value = gl.model ?? DEFAULTS.glossary.model;
+  // v1.7.3: 阻塞門檻可調(預設 10,> 此值才 blocking,≤ 此值走 fire-and-forget)
+  $('glossaryBlockingThreshold').value = gl.blockingThreshold ?? DEFAULTS.glossary.blockingThreshold;
   $('glossaryTemperature').value = gl.temperature;
   $('glossaryTimeout').value = gl.timeoutMs;
   $('glossaryPrompt').value = gl.prompt;
@@ -493,7 +495,8 @@ async function save() {
       prompt: $('glossaryPrompt').value,
       temperature: Number($('glossaryTemperature').value) || 0.1,
       skipThreshold: DEFAULTS.glossary.skipThreshold,
-      blockingThreshold: DEFAULTS.glossary.blockingThreshold,
+      // v1.7.3: blockingThreshold 使用者可調(0 = 永遠 fire-and-forget,大值 = 幾乎都 blocking)
+      blockingThreshold: parseUserNum($('glossaryBlockingThreshold').value, DEFAULTS.glossary.blockingThreshold),
       timeoutMs: Number($('glossaryTimeout').value) || 60000,
       maxTerms: DEFAULTS.glossary.maxTerms,
     },
@@ -1001,7 +1004,7 @@ function sanitizeImport(raw) {
     if (typeof gl.temperature === 'number' && gl.temperature >= 0 && gl.temperature <= 2) glClean.temperature = gl.temperature;
     if (typeof gl.timeoutMs === 'number' && gl.timeoutMs >= 3000 && gl.timeoutMs <= 60000) glClean.timeoutMs = gl.timeoutMs;
     if (typeof gl.skipThreshold === 'number' && Number.isInteger(gl.skipThreshold) && gl.skipThreshold >= 0) glClean.skipThreshold = gl.skipThreshold;
-    if (typeof gl.blockingThreshold === 'number' && Number.isInteger(gl.blockingThreshold) && gl.blockingThreshold >= 1) glClean.blockingThreshold = gl.blockingThreshold;
+    if (typeof gl.blockingThreshold === 'number' && Number.isInteger(gl.blockingThreshold) && gl.blockingThreshold >= 0) glClean.blockingThreshold = gl.blockingThreshold;
     if (typeof gl.maxTerms === 'number' && Number.isInteger(gl.maxTerms) && gl.maxTerms >= 1 && gl.maxTerms <= 500) glClean.maxTerms = gl.maxTerms;
     if (Object.keys(glClean).length > 0) clean.glossary = glClean;
   }
