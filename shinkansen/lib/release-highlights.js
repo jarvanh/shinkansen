@@ -22,7 +22,7 @@
  * 註：本檔修改後 README.md 與 docs/index.html 的「近期重大更新」段落也要手動同步。
  */
 export const RELEASE_HIGHLIGHTS = [
-  '新增**AI 智慧分句**，YouTube 自動產生字幕經 AI 重新分句，讓中文字幕更自然好讀',
+  '**文章翻譯秒翻**，按下翻譯後 1 秒內就看到頁面開頭變中文(原本要等 3-5 秒)',
   '新增**雙語對照模式**，原文 + 譯文並列顯示',
   '新增**中國用語黑名單**，明確要求 LLM 不能用視頻 / 軟件 / 數據等中國用語',
   '新增**自訂 AI 模型**功能，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等百種模型',

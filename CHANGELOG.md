@@ -64,6 +64,19 @@
 
 ---
 
+## v1.8.x
+
+**v1.8.0** — 文章翻譯 batch 0 改用 Gemini streaming + batch 1+ 在 first_chunk 抵達時同步並行 dispatch。**首字延遲從 v1.7.3 的 2.5-4.4 秒砍到 1.0-1.2 秒(平均 -66%)**——使用者按下翻譯後 1 秒內就看到頁面開頭變中文。同時 batch 0 size 從 10 unit / 1500 chars 擴大到 25 unit / 3700 chars(streaming 後 batch 0 size 不影響首字延遲),涵蓋的文章範圍從「開頭幾段」變成「整段內文前 25 段」。Scope 嚴格鎖在文章翻譯 batch 0 一個入口——字幕(`TRANSLATE_SUBTITLE_BATCH` / ASR)、術語表抽取(`EXTRACT_GLOSSARY`)、Google Translate、自訂模型路徑完全不動,維持既有 non-streaming 行為與容錯網。
+
+  - **新增訊息協定**:`TRANSLATE_BATCH_STREAM`(content → SW)+ `STREAMING_FIRST_CHUNK` / `STREAMING_SEGMENT` / `STREAMING_DONE` / `STREAMING_ERROR` / `STREAMING_ABORTED`(SW → content)+ `STREAMING_ABORT`(content → SW)。每個 streaming 任務有獨立 `streamId`,SW 內 `inFlightStreams` Map 維護 streamId → AbortController 對映。
+  - **`lib/gemini.js translateBatchStream`**:streamGenerateContent endpoint(`?alt=sse`)+ ReadableStream + incremental SSE parser。每收到完整 SHINKANSEN_SEP 就 emit 該段譯文,占位符 `⟦/N⟧` 切在 chunk 邊界時 parser 等到下一個 SEP 才 emit(占位符在段落內部,不會被截)。
+  - **`background.js handleTranslateStream`**:fire-and-forget streaming task,結果透過 `tabs.sendMessage` 推回 sender tab。完整 usage accounting + addUsage(跟 non-streaming 一致)。
+  - **`content.js runBatch0Streaming`**:onMessage listener 收 SW 推來的 streaming 訊息,first_chunk 抵達時 resolve promise 讓主流程同步 dispatch batch 1+,segment 抵達時立即 SK.injectTranslation。1.5 秒沒收 first_chunk → fallback 走 v1.7.x 序列 batch 0 + 並行路徑。中段失敗 → batch 0 整批用 non-streaming retry。
+  - **abort 跨批傳播**:`signal.addEventListener('abort')` 在 streaming 進行中觸發 → 送 `STREAMING_ABORT` 給 SW + 解開 listener + 並行 batch 1+ 透過 runWithConcurrency signal 檢查中斷。
+  - **新 regression**:5 條 unit spec(`test/unit/streaming-batch-incremental.spec.js`,incremental emit / SSE chunk split / 占位符 chunk split / hadMismatch / abort)+ 1 條 e2e spec(`test/regression/streaming-batch-0-first-chunk-triggers-parallel.spec.js`,first_chunk 觸發並行)+ 既有 `translate-priority-sort.spec.js` test #2 改鎖 streaming fallback 路徑。SANITY 雙驗通過。
+  - **真實 5 URL 實測**(2026-04-28,Gemini 3 Flash):TWZ 4400ms → 1142ms(-74%)、Wikipedia Tea 4068ms → 1186ms(-71%)、GitHub 3125ms → 1071ms(-66%)、NPR 2561ms → 1052ms(-59%)、CSS-Tricks 2495ms → 1030ms(-59%)。完整實測資料見 `reports/streaming-implementation-2026-04-28.md`。
+  - **設計 probe 報告**:實作前先寫 `tools/probe-streaming.js` + `tools/probe-streaming-concurrent.js` 驗證 4 個關鍵假設(Gemini Flash first-token-latency / batch 0 size 不影響首字 / 並行 batch 不拖慢 streaming / 整頁完成時間不延長),實測完才動 production code,符合硬規則 §11「以真實資料為基石」。詳見 `reports/streaming-probe-2026-04-28.md`。
+
 ## v1.7.x
 
 **v1.7.3** — Glossary 阻塞門檻動態調整。`blockingThreshold` 預設從 5 提高到 10——中等長度頁面(6-10 批)從原本「先等術語表再翻」(blocking)改為「術語表跟翻譯並行」(fire-and-forget),省下 EXTRACT_GLOSSARY 1.5-7.4 秒的首字延遲;長頁(>10 批)仍 blocking 確保跨批次術語一致。新增使用者可調設定欄位「阻塞門檻(批次數)」於術語表分頁,範圍 0(永遠 fire-and-forget)~ 50(幾乎都 blocking,等同 v1.7.2 之前行為)。實測 5 個原本 blocking 的網站全部變 fire-and-forget,Verge 從 5.2s → 2.0s 省 3.2 秒(-61%),GitHub 從 4.2s → 1.5s 省 2.6 秒(-64%),NPR / CSS-Tricks / Smashing 各省 0.1-0.5 秒。Trade-off:fire-and-forget 路徑下 batch 0 翻的內容沒帶術語表,可能跟後段翻譯用詞略有不一致——對 H1 標題 / 文章開頭(prioritizeUnits 推前的內容)風險低,術語密度高的特殊情境使用者可調高門檻或設極大值關閉此優化。

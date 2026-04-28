@@ -2,7 +2,7 @@
 // 職責：接收翻譯請求、呼叫 Gemini API、處理快取、處理快捷鍵、統一除錯 Log。
 
 import { browser } from './lib/compat.js';
-import { translateBatch, extractGlossary } from './lib/gemini.js';
+import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
@@ -267,6 +267,42 @@ const messageHandlers = {
       // 其他欄位（prompt、temperature）沿用全域設定。沿用既有 geminiOverrides 機制。
       const overrides = payload?.modelOverride ? { model: payload.modelOverride } : {};
       return handleTranslate(payload, sender, overrides);
+    },
+  },
+  // v1.8.0: Streaming 版翻譯,只給 content.js translateUnits 內 batch 0 用。
+  // async: false——立刻回 ack,fire-and-forget streaming;結果透過 tabs.sendMessage
+  // 推回 sender tab(STREAMING_FIRST_CHUNK / STREAMING_SEGMENT / STREAMING_DONE / STREAMING_ERROR / STREAMING_ABORTED)
+  TRANSLATE_BATCH_STREAM: {
+    async: false,
+    handler: (payload, sender) => {
+      const tabId = sender?.tab?.id;
+      if (!tabId) return { ok: false, error: 'no tab' };
+      const streamId = payload?.streamId;
+      if (!streamId) return { ok: false, error: 'no streamId' };
+      // fire-and-forget — streaming 內部用 tabs.sendMessage 推結果
+      handleTranslateStream(payload, sender, streamId, tabId).catch((err) => {
+        debugLog('error', 'system', 'TRANSLATE_BATCH_STREAM uncaught', { streamId, error: err?.message || String(err) });
+        browser.tabs.sendMessage(tabId, {
+          type: 'STREAMING_ERROR',
+          payload: { streamId, error: err?.message || String(err), atSegment: 0 },
+        }).catch(() => {});
+      });
+      return { started: true };
+    },
+  },
+  // v1.8.0: 中斷 in-flight streaming(使用者取消翻譯時觸發)
+  STREAMING_ABORT: {
+    async: false,
+    handler: (payload) => {
+      const streamId = payload?.streamId;
+      if (!streamId) return { aborted: false };
+      const ac = inFlightStreams.get(streamId);
+      if (ac) {
+        try { ac.abort(); } catch (_) { /* swallow */ }
+        inFlightStreams.delete(streamId);
+        return { aborted: true };
+      }
+      return { aborted: false };
     },
   },
   // v1.2.10: 字幕翻譯專用——prompt / temperature / model 從 ytSubtitle 設定讀取（v1.2.11 改為動態載入）
@@ -621,6 +657,136 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 });
+
+// v1.8.0: streamId → AbortController 對映,支援使用者中途取消 streaming
+const inFlightStreams = new Map();
+
+// v1.8.0: Streaming 翻譯 handler。只給 TRANSLATE_BATCH_STREAM 訊息用。
+// 設計:async fire-and-forget,結果透過 tabs.sendMessage 推回 sender tab。
+// scope 限制(reports/streaming-probe-2026-04-28.md §6):只給文章翻譯 batch 0 使用,
+// 字幕 / glossary / Google MT / 自訂模型路徑都不走這條。
+async function handleTranslateStream(payload, sender, streamId, tabId) {
+  const settings = await getSettings();
+  if (!settings.apiKey) {
+    browser.tabs.sendMessage(tabId, {
+      type: 'STREAMING_ERROR',
+      payload: { streamId, error: '尚未設定 Gemini API Key,請至設定頁填入。', atSegment: 0 },
+    }).catch(() => {});
+    return;
+  }
+
+  const texts = payload?.texts || [];
+  if (!texts.length) {
+    browser.tabs.sendMessage(tabId, {
+      type: 'STREAMING_DONE',
+      payload: { streamId, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0, billedInputTokens: 0, billedCostUSD: 0 }, totalSegments: 0, hadMismatch: false, finishReason: 'STOP' },
+    }).catch(() => {});
+    return;
+  }
+
+  // 跟 handleTranslate 對齊:modelOverride 覆蓋 geminiConfig.model + 對應 pricing
+  const overrides = payload?.modelOverride ? { model: payload.modelOverride } : {};
+  const effectiveSettings = Object.keys(overrides).length > 0
+    ? { ...settings, geminiConfig: { ...settings.geminiConfig, ...overrides } }
+    : settings;
+  let effectivePricing = null;
+  if (overrides.model) effectivePricing = getPricingForModel(overrides.model, settings);
+  if (!effectivePricing) effectivePricing = settings.pricing;
+
+  // 固定術語表 / 禁用詞清單(跟 handleTranslate 一致;streaming 給文章翻譯用,
+  // 預設套用——對應 applyFixedGlossary=true / applyForbiddenTerms=true)
+  let fixedGlossaryEntries = null;
+  const fg = settings.fixedGlossary;
+  if (fg) {
+    const globalEntries = Array.isArray(fg.global) ? fg.global.filter((e) => e.source && e.target) : [];
+    let domainEntries = [];
+    if (fg.byDomain && sender?.tab?.url) {
+      try {
+        const hostname = new URL(sender.tab.url).hostname;
+        domainEntries = Array.isArray(fg.byDomain[hostname]) ? fg.byDomain[hostname].filter((e) => e.source && e.target) : [];
+      } catch { /* 無效 URL,略過 */ }
+    }
+    if (globalEntries.length || domainEntries.length) {
+      fixedGlossaryEntries = [...globalEntries, ...domainEntries];
+    }
+  }
+  const forbiddenTerms = (settings.forbiddenTerms && Array.isArray(settings.forbiddenTerms))
+    ? settings.forbiddenTerms : null;
+
+  const ac = new AbortController();
+  inFlightStreams.set(streamId, ac);
+
+  let firstChunkSent = false;
+  const onFirstChunk = () => {
+    if (firstChunkSent) return;
+    firstChunkSent = true;
+    browser.tabs.sendMessage(tabId, {
+      type: 'STREAMING_FIRST_CHUNK',
+      payload: { streamId },
+    }).catch(() => {});
+  };
+  const onSegment = (idx, translation, _hadMismatch) => {
+    browser.tabs.sendMessage(tabId, {
+      type: 'STREAMING_SEGMENT',
+      payload: { streamId, segmentIdx: idx, translation },
+    }).catch(() => {});
+  };
+
+  try {
+    const result = await translateBatchStream(
+      texts,
+      effectiveSettings,
+      payload?.glossary || null,
+      fixedGlossaryEntries,
+      forbiddenTerms,
+      { onFirstChunk, onSegment },
+      ac.signal,
+    );
+
+    // 計費(跟 handleTranslate 一致)
+    const billedInputTokens = Math.max(
+      0,
+      Math.round(result.usage.inputTokens - (result.usage.cachedTokens || 0) * 0.75),
+    );
+    const billedCostUSD = computeBilledCostUSD(
+      result.usage.inputTokens,
+      result.usage.cachedTokens || 0,
+      result.usage.outputTokens,
+      effectivePricing,
+    );
+    await addUsage(billedInputTokens, result.usage.outputTokens, billedCostUSD);
+
+    browser.tabs.sendMessage(tabId, {
+      type: 'STREAMING_DONE',
+      payload: {
+        streamId,
+        usage: {
+          ...result.usage,
+          billedInputTokens,
+          billedCostUSD,
+        },
+        totalSegments: result.translations.length,
+        hadMismatch: result.hadMismatch,
+        finishReason: result.finishReason,
+      },
+    }).catch(() => {});
+  } catch (err) {
+    if (ac.signal.aborted || /aborted/i.test(err?.message || '')) {
+      browser.tabs.sendMessage(tabId, {
+        type: 'STREAMING_ABORTED',
+        payload: { streamId },
+      }).catch(() => {});
+    } else {
+      debugLog('error', 'api', 'streaming translateBatch failed', { streamId, error: err?.message || String(err) });
+      browser.tabs.sendMessage(tabId, {
+        type: 'STREAMING_ERROR',
+        payload: { streamId, error: err?.message || String(err), atSegment: 0 },
+      }).catch(() => {});
+    }
+  } finally {
+    inFlightStreams.delete(streamId);
+  }
+}
 
 // pricingOverride：傳入時（如 YouTube 獨立計價）使用；null 則沿用 settings.pricing
 async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOverride = null, cacheTag = '', applyFixedGlossary = true, applyForbiddenTerms = true) {

@@ -86,7 +86,7 @@ test('translate-priority-sort: tier 0 (main 內) 必須排在 tier 1 / tier 2 �
   await page.close();
 });
 
-test('translate-priority-sort: translateUnits 必須序列跑 batch 0,完成後才並行 batch 1+', async ({
+test('translate-priority-sort: streaming 失敗 fallback 後,batch 0 序列 + batch 1+ 並行的 v1.7.1 行為仍成立', async ({
   context,
   localServer,
 }) => {
@@ -98,7 +98,10 @@ test('translate-priority-sort: translateUnits 必須序列跑 batch 0,完成後�
 
   // Mock storage.sync.get → 回傳固定 batch 設定(maxUnitsPerBatch=10、並行 10)
   // 配合 30 個假 unit 切成 3 批
-  // Mock chrome.runtime.sendMessage → 每個 TRANSLATE_BATCH 延遲 100ms 並記錄呼叫時間
+  // v1.8.0: TRANSLATE_BATCH_STREAM mock 回 { started: false } → 觸發 first_chunk failed
+  //         → content.js 走 streaming fallback 路徑(等同 v1.7.1 序列 batch 0 + 並行)
+  // Mock chrome.runtime.sendMessage:TRANSLATE_BATCH 延遲 100ms 記錄時間,
+  //                                   TRANSLATE_BATCH_STREAM 立即回失敗(讓 streaming 不啟動)
   await evaluate(`
     window.__callTimes = [];
     window.__startTime = 0;
@@ -110,6 +113,13 @@ test('translate-priority-sort: translateUnits 必須序列跑 batch 0,完成後�
       };
     };
     chrome.runtime.sendMessage = async function(msg) {
+      if (msg && msg.type === 'TRANSLATE_BATCH_STREAM') {
+        // v1.8.0: streaming 失敗 → fallback 走 v1.7.1 路徑
+        return { ok: false, error: 'streaming disabled in test' };
+      }
+      if (msg && msg.type === 'STREAMING_ABORT') {
+        return { ok: true, aborted: false };
+      }
       if (msg && msg.type === 'TRANSLATE_BATCH') {
         window.__callTimes.push(performance.now() - window.__startTime);
         await new Promise(r => setTimeout(r, 100));
@@ -128,13 +138,15 @@ test('translate-priority-sort: translateUnits 必須序列跑 batch 0,完成後�
     };
   `);
 
-  // 動態生成 30 個假 P element,構造 element-kind unit array
+  // 動態生成 45 個假 P element,構造 element-kind unit array
+  // v1.8.0: BATCH0_UNITS=25 + maxUnitsPerBatch=10 → 切 3 批(batch 0=25 / batch 1=10 / batch 2=10),
+  // 跟 v1.7.x 在 30 unit 時切 3 批的測試 invariant 維持「3 個 batch、batch 1+ 並行」一致。
   // 用 IIFE return null 避免 evaluate 的 awaitPromise: true 卡住等 translateUnits 跑完。
   await evaluate(`
     (() => {
       const root = document.createElement('div');
       root.id = '__fake-root';
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 45; i++) {
         const p = document.createElement('p');
         p.textContent = 'fake unit ' + i + ' here we have some text to translate';
         root.appendChild(p);
@@ -164,7 +176,8 @@ test('translate-priority-sort: translateUnits 必須序列跑 batch 0,完成後�
     total: window.__callTimes.length,
   })`);
 
-  expect(result.total, '應送出 3 筆 TRANSLATE_BATCH(30 unit / 10 = 3 批)').toBe(3);
+  // v1.8.0: 45 unit / BATCH0_UNITS=25 + maxUnitsPerBatch=10 → batch 0=25 / batch 1=10 / batch 2=10 = 3 批
+  expect(result.total, '應送出 3 筆 TRANSLATE_BATCH(45 unit / batch 0=25 + batch 1+2=10 各)').toBe(3);
 
   const [t0, t1, t2] = result.callTimes;
 

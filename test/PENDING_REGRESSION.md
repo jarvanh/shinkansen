@@ -17,6 +17,22 @@
 
 ## 條目
 
+### v1.8.0 — streaming abort / mid-failure / first_chunk timeout 三個 e2e edge case
+- **症狀**:不是 bug,是「核心行為已被 unit test 覆蓋,e2e 層級的 edge case 還未鎖」。
+  Streaming 路徑核心已有覆蓋:
+  - unit:`test/unit/streaming-batch-incremental.spec.js`(incremental emit / placeholder split / hadMismatch / abort throw)
+  - e2e:`test/regression/streaming-batch-0-first-chunk-triggers-parallel.spec.js`(first_chunk 觸發並行)
+  - e2e:`test/regression/translate-priority-sort.spec.js` test #2(streaming fail → fallback 走 v1.7.1 路徑)
+- **未鎖的 e2e edge case**:
+  1. **abort 跨批傳播**:streaming 進行中觸發 STATE.abortController.abort() → STREAMING_ABORT 訊息送 SW + 並行 batch 1+ 中斷
+  2. **mid-failure**:streaming 已 emit 部分 segment,中途 STREAMING_ERROR → batch 0 整批用 non-streaming retry
+  3. **first_chunk 1.5s timeout**:streaming sendMessage 回成功但 SW 從沒推 STREAMING_FIRST_CHUNK → 1.5s 後 fallback 走 non-streaming
+- **為什麼還不能寫測試**:三個情境都需要在 e2e 環境內精確控制「listener fire 訊息的時序 + abort signal 跨 message 傳播」,實作上要繼續擴充 priority-sort.spec.js 的 monkey-patch onMessage 機制。本身不困難,但這次 v1.8.0 工作量已大,優先把 production code + 核心覆蓋寫完;edge case 留到實際使用觀察到問題時再補。
+- **建議 spec 位置**:
+  - `test/regression/streaming-batch-0-abort.spec.js`
+  - `test/regression/streaming-batch-0-mid-failure.spec.js`
+  - `test/regression/streaming-batch-0-fallback-no-first-chunk.spec.js`
+
 ### v1.6.19 — `hydrateStickyTabs` 並行 race(promise lock 修法)
 - **症狀**:SW 喚醒後 `_stickyStorage.get` 完成前若連開多個新 tab,後續 onCreated listener 進來時 `_stickyHydrated=true` 已 set 直接 return,但 stickyTabs Map 還空 → `stickyTabs.get(openerId)` 回 undefined → 沒繼承 sticky slot
 - **修在**:`shinkansen/background.js:200-235`(`_stickyHydratingPromise` 取代 boolean flag,所有 caller `await` 同一 in-flight promise)

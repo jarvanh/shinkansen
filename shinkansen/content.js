@@ -307,13 +307,158 @@
       }
     };
 
-    // v1.7.1: 序列跑 batch 0,完成後才啟動 batch 1+ 並行池。
-    // 配合上游 prioritizeUnits 把內文核心推到前面,使用者最快看到的譯文
-    // 是文章開頭而不是中段;同時 batch 0 也是 LLM cache warming 的天然時機。
+    // v1.8.0: Streaming 版 batch 0。透過 STREAMING_* onMessage listener 收 SW 推來的
+    // first_chunk / segment / done / error / aborted 訊息。回傳兩個 promise 讓主流程協調:
+    //   firstChunkPromise:第一個 SSE chunk 抵達時 resolve(主流程在此時同步 dispatch batch 1+)
+    //   donePromise:streaming 完整結束(成功/失敗/abort)時 resolve/reject
+    // 1.5 秒沒收到 first_chunk 視為 streaming 失敗,呼叫端 fallback 走 non-streaming runBatch。
+    const FIRST_CHUNK_TIMEOUT_MS = 1500;
+    const runBatch0Streaming = (job) => {
+      const streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const t0 = Date.now();
+      SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream start`, { streamId, units: job.texts.length, chars: job.chars });
+
+      let firstChunkResolve, doneResolve, doneReject;
+      const firstChunkPromise = new Promise((r) => { firstChunkResolve = r; });
+      const donePromise = new Promise((res, rej) => { doneResolve = res; doneReject = rej; });
+
+      // v1.8.0 instrumentation:第一個 segment inject 時間(對應使用者首字延遲)
+      let firstSegmentInjectedT = null;
+
+      // v1.8.0: abort 傳播 — 使用者按 Option+S 取消 → 通知 SW 中斷 streaming + 清理 listener
+      const abortHandler = () => {
+        SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream abort triggered`, { streamId });
+        browser.runtime.sendMessage({ type: 'STREAMING_ABORT', payload: { streamId } }).catch(() => {});
+        // 解開 main 流程的 await(SW 端會回傳 STREAMING_ABORTED 但本地 listener 已移除,
+        // 為防卡死直接在這裡 resolve)
+        try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {}
+        firstChunkResolve(false);
+        doneResolve({ ok: false, aborted: true });
+      };
+      if (signal) {
+        if (signal.aborted) {
+          // 進入 streaming 之前就已 aborted,直接走 abort path
+          abortHandler();
+        } else {
+          signal.addEventListener('abort', abortHandler, { once: true });
+        }
+      }
+
+      const onMessage = (message) => {
+        if (!message || message.payload?.streamId !== streamId) return;
+        if (message.type === 'STREAMING_FIRST_CHUNK') {
+          firstChunkResolve(true);
+        } else if (message.type === 'STREAMING_SEGMENT') {
+          const idx = message.payload.segmentIdx;
+          const tr = message.payload.translation;
+          if (typeof idx === 'number' && idx >= 0 && idx < job.texts.length && tr) {
+            try {
+              SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
+              done += 1;
+              if (onProgress) onProgress(done, total, hadAnyMismatch);
+              if (firstSegmentInjectedT === null) {
+                firstSegmentInjectedT = Date.now() - t0;
+                SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream first segment injected`, { streamId, idx, t: firstSegmentInjectedT });
+              }
+            } catch (injectErr) {
+              SK.sendLog('warn', 'translate', 'streaming inject failed', { idx, error: injectErr.message });
+            }
+          }
+        } else if (message.type === 'STREAMING_DONE') {
+          const elapsed = Date.now() - t0;
+          const usage = message.payload.usage || {};
+          pageUsage.inputTokens += usage.inputTokens || 0;
+          pageUsage.outputTokens += usage.outputTokens || 0;
+          pageUsage.cachedTokens += usage.cachedTokens || 0;
+          pageUsage.billedInputTokens += usage.billedInputTokens || 0;
+          pageUsage.billedCostUSD += usage.billedCostUSD || 0;
+          if (message.payload.hadMismatch) hadAnyMismatch = true;
+          SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream done`, { elapsed, totalSegments: message.payload.totalSegments, hadMismatch: !!message.payload.hadMismatch });
+          browser.runtime.onMessage.removeListener(onMessage);
+          firstChunkResolve(true);  // 防 first_chunk 漏訊息卡死主流程
+          doneResolve({ ok: true });
+        } else if (message.type === 'STREAMING_ERROR') {
+          const elapsed = Date.now() - t0;
+          SK.sendLog('error', 'translate', `batch 1/${jobs.length} stream FAILED`, { elapsed, error: message.payload.error });
+          browser.runtime.onMessage.removeListener(onMessage);
+          firstChunkResolve(false);
+          doneReject(new Error(message.payload.error || 'streaming failed'));
+        } else if (message.type === 'STREAMING_ABORTED') {
+          SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream aborted`, { streamId });
+          browser.runtime.onMessage.removeListener(onMessage);
+          firstChunkResolve(false);
+          doneResolve({ ok: false, aborted: true });
+        }
+      };
+      browser.runtime.onMessage.addListener(onMessage);
+
+      // 觸發 streaming(SW 內 fire-and-forget,sendMessage 立刻 resolve)
+      browser.runtime.sendMessage({
+        type: 'TRANSLATE_BATCH_STREAM',
+        payload: { texts: job.texts, glossary: glossary || null, modelOverride: modelOverride || null, streamId },
+      }).then((resp) => {
+        if (!resp?.started) {
+          browser.runtime.onMessage.removeListener(onMessage);
+          firstChunkResolve(false);
+          doneReject(new Error(resp?.error || 'streaming failed to start'));
+        }
+      }).catch((err) => {
+        browser.runtime.onMessage.removeListener(onMessage);
+        firstChunkResolve(false);
+        doneReject(err);
+      });
+
+      // first_chunk 1.5 秒 timeout fallback
+      const firstChunkOrTimeout = Promise.race([
+        firstChunkPromise.then((v) => ({ kind: v ? 'first_chunk' : 'failed' })),
+        new Promise((r) => setTimeout(() => r({ kind: 'timeout' }), FIRST_CHUNK_TIMEOUT_MS)),
+      ]);
+
+      return { firstChunkOrTimeout, donePromise, streamId, cleanup: () => { try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {} } };
+    };
+
+    // v1.8.0: streaming 適用範圍——僅 Gemini 文章翻譯路徑。OpenAI-compat / 其他 engine 仍走 v1.7.x 序列 batch 0 路徑。
+    const useStreaming = engine !== 'openai-compat';
+
     if (jobs.length > 0) {
-      await runBatch(jobs[0]);
-      if (jobs.length > 1 && !signal?.aborted) {
-        await runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch);
+      let batch0NeedsFallback = false;
+
+      if (useStreaming) {
+        const stream = runBatch0Streaming(jobs[0]);
+        const r = await stream.firstChunkOrTimeout;
+        if (r.kind === 'first_chunk') {
+          // streaming 已開始流入 — 同步 dispatch batch 1+ 並行
+          const parallelP = (jobs.length > 1 && !signal?.aborted)
+            ? runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch)
+            : Promise.resolve();
+          try {
+            await stream.donePromise;
+          } catch (streamErr) {
+            // streaming 中途失敗 — fallback 對 batch 0 重送 non-streaming
+            SK.sendLog('warn', 'translate', 'streaming mid-failure, retrying batch 0 non-streaming', { error: streamErr.message });
+            await runBatch(jobs[0]);
+          }
+          await parallelP;
+        } else {
+          // first_chunk 1.5s 沒到(timeout 或 STREAMING_ERROR 在 first_chunk 前發生)
+          // → 中斷 streaming,fallback 走 v1.7.x 序列 batch 0 + 並行 batch 1+
+          stream.cleanup();
+          if (r.kind === 'timeout') {
+            SK.sendLog('warn', 'translate', 'streaming first_chunk timeout, falling back to non-streaming', { streamId: stream.streamId });
+            browser.runtime.sendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
+          }
+          batch0NeedsFallback = true;
+        }
+      } else {
+        batch0NeedsFallback = true;
+      }
+
+      if (batch0NeedsFallback) {
+        // v1.7.1 行為:序列跑 batch 0 → 並行 batch 1+
+        await runBatch(jobs[0]);
+        if (jobs.length > 1 && !signal?.aborted) {
+          await runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch);
+        }
       }
     }
 
