@@ -5,7 +5,7 @@ import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
-import { getSettings, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
+import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -17,6 +17,9 @@ import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/upda
 import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
+
+// v1.8.14: 一次性清掉 storage.sync 的 legacy keys(避免長期累積踩到 quota)
+cleanupLegacySyncKeys();
 
 // v1.2.11: SUBTITLE_SYSTEM_PROMPT 已移至 lib/storage.js（DEFAULT_SUBTITLE_SYSTEM_PROMPT）
 // TRANSLATE_SUBTITLE_BATCH handler 從 ytSubtitle 設定讀取，不再使用硬碼常數。
@@ -619,7 +622,9 @@ const messageHandlers = {
   LOG_USAGE: {
     async: true,
     handler: async (payload) => {
-      const settings = await getSettings();
+      // v1.8.14: 改用 getSettingsCached——YouTube 一支影片上百筆 LOG_USAGE,
+      // 每筆原本都重讀整份 settings 只為了取 model 名稱。
+      const settings = await getSettingsCached();
       // v1.5.7: 依 payload.engine 決定 model 該從哪裡取——這樣 Alt+A/S 切不同 preset
       // 寫入紀錄的 model 才會是該批 API 真實使用的模型。
       // - 'openai-compat'：自訂模型，model 從 settings.customProvider.model
@@ -698,6 +703,25 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // v1.8.0: streamId → AbortController 對映,支援使用者中途取消 streaming
 const inFlightStreams = new Map();
+
+// v1.8.14: streaming 期間 SW keep-alive。
+// MV3 service worker 預設 5 分鐘 idle 收回,但長頁翻譯可能跨多分鐘,
+// 收回後 inFlightStreams Map(module-level state)消失 → 取消按鈕無響應 + abort 訊號到不了 fetch。
+// 每 20 秒呼叫一次極輕量的 chrome API 重置 idle timer,直到所有 stream 結束。
+let _streamKeepAliveTimer = null;
+function _startStreamKeepAlive() {
+  if (_streamKeepAliveTimer) return;
+  _streamKeepAliveTimer = setInterval(() => {
+    // getPlatformInfo 是極輕量的 API call,目的純粹是讓 SW 保持活著
+    browser.runtime.getPlatformInfo().catch(() => {});
+  }, 20_000);
+}
+function _stopStreamKeepAliveIfIdle() {
+  if (inFlightStreams.size === 0 && _streamKeepAliveTimer) {
+    clearInterval(_streamKeepAliveTimer);
+    _streamKeepAliveTimer = null;
+  }
+}
 
 // v1.8.0: Streaming 翻譯 handler。
 // v1.8.9: 加 opts 參數,支援字幕路徑(TRANSLATE_SUBTITLE_BATCH_STREAM)復用同一條 streaming pipeline,
@@ -792,6 +816,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   if (allHit) {
     // Fast path:跳過 streaming + Gemini call,立即推 FIRST_CHUNK + 各 SEGMENT + DONE
     inFlightStreams.delete(streamId);  // 不需要 abort
+    _stopStreamKeepAliveIfIdle();
     browser.tabs.sendMessage(tabId, { type: 'STREAMING_FIRST_CHUNK', payload: { streamId } }).catch(() => {});
     for (let i = 0; i < cached.length; i++) {
       browser.tabs.sendMessage(tabId, {
@@ -814,6 +839,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
 
   const ac = new AbortController();
   inFlightStreams.set(streamId, ac);
+  _startStreamKeepAlive();
 
   let firstChunkSent = false;
   const onFirstChunk = () => {
@@ -903,6 +929,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     }
   } finally {
     inFlightStreams.delete(streamId);
+    _stopStreamKeepAliveIfIdle();
   }
 }
 

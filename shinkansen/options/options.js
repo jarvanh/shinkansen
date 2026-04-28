@@ -4,7 +4,7 @@
 import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
-import { formatTokens, formatUSD, parseUserNum } from '../lib/format.js';
+import { formatTokens, formatUSD, parseUserNum, buildUsageCsvFilename } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
@@ -444,7 +444,23 @@ async function refreshPresetKeyBindings() {
   } catch { /* Safari / 舊瀏覽器不支援 commands API，欄位維持 '—' */ }
 }
 
+// v1.8.14: 並發 save 防護
+// 之前 save() 是 read-modify-write(sync.get → 組整桶 → sync.set),沒任何 lock。
+// 兩個 Tab 的儲存按鈕共用同一個 save(),快速連按 / 跨 Tab 同時改 / 打字+按鈕同時觸發
+// → 後一筆 set 可能蓋掉前一筆 get 之間的 in-flight 變更。
+let _saveInFlight = false;
+
 async function save() {
+  if (_saveInFlight) return;
+  _saveInFlight = true;
+  try {
+    return await _saveImpl();
+  } finally {
+    _saveInFlight = false;
+  }
+}
+
+async function _saveImpl() {
   // v0.62 起：apiKey 單獨寫到 browser.storage.local，不進 sync
   const apiKeyValue = $('apiKey').value.trim();
   await browser.storage.local.set({ apiKey: apiKeyValue });
@@ -1728,7 +1744,12 @@ $('usage-to-now')?.addEventListener('click', () => {
   loadUsageData();
 });
 // v1.2.60: 搜尋框即時過濾
-$('usage-search')?.addEventListener('input', applyUsageSearch);
+// v1.8.14: 加 150ms debounce — 紀錄到 1-2K 筆時每打一字整表 re-render 會卡
+let _usageSearchTimer = null;
+$('usage-search')?.addEventListener('input', () => {
+  clearTimeout(_usageSearchTimer);
+  _usageSearchTimer = setTimeout(applyUsageSearch, 150);
+});
 $('usage-model-filter')?.addEventListener('change', applyUsageSearch);
 
 // 粒度切換
@@ -1757,10 +1778,8 @@ $('usage-export-csv').addEventListener('click', async () => {
   const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const fromStr = $('usage-from').value.replace(/-/g, '');
-  const toStr = $('usage-to').value.replace(/-/g, '');
   a.href = url;
-  a.download = `shinkansen-usage-${fromStr}-${toStr}.csv`;
+  a.download = buildUsageCsvFilename(from, to);
   a.click();
   URL.revokeObjectURL(url);
 });
@@ -1805,12 +1824,15 @@ async function fetchLogs() {
       payload: { afterSeq: logLatestSeq },
     });
     if (!res?.ok) return;
-    if (res.logs && res.logs.length > 0) {
-      allLogs = allLogs.concat(res.logs);
-      // 前端也限制 buffer 上限，避免記憶體無限成長
-      if (allLogs.length > 2000) {
-        allLogs = allLogs.slice(allLogs.length - 2000);
-      }
+    // v1.8.14: 沒新 log 直接 return,不重 render(原本即使空也整表 innerHTML 一遍)
+    if (!res.logs || res.logs.length === 0) {
+      if (res.latestSeq) logLatestSeq = res.latestSeq;
+      return;
+    }
+    allLogs = allLogs.concat(res.logs);
+    // 前端也限制 buffer 上限，避免記憶體無限成長
+    if (allLogs.length > 2000) {
+      allLogs = allLogs.slice(allLogs.length - 2000);
     }
     if (res.latestSeq) logLatestSeq = res.latestSeq;
     renderLogTable();

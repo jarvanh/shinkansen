@@ -79,6 +79,36 @@
 
 ## v1.8.x
 
+**v1.8.14** — 全專案技術債 review 後一輪整理:**2 個真實 bug** + **8 條性能/正確性修補** + **7 條維護性 refactor**(無功能變更)。
+
+Bug fix:
+- A1 `content-youtube.js:_runAsrSubBatch` 結尾 `domSegmentCount: domSegs.length` 在該 scope 未定義 → ASR 字幕每跑一個子批就拋 ReferenceError 被外層 try/catch 吞掉,`YT.lastApiMs` 沒同步、debug 計時失準、log 持續噴 "asr sub-batch N failed",但字幕本身 OK 所以沒被回報。修:刪該欄位 + 暴露 `SK._runAsrSubBatch` 給 spec。新 regression `test/regression/asr-sub-batch-no-reference-error.spec.js`(SANITY 加回該行 → fail)
+- A2 設定頁用量分頁「匯出 CSV」按鈕 `$('usage-from').value` / `$('usage-to').value` 讀已不存在的 element id(v1.5.7 拆成 `usage-from-date` / `usage-from-hour` / `usage-from-min`)→ TypeError、按鈕一按必炸。修:`lib/format.js` 新增 `formatYmd` + `buildUsageCsvFilename(fromMs, toMs)` helper 改用 timestamp 構檔名。新 unit spec `test/unit/usage-csv-filename.spec.js`(6 條,SANITY 驗過)
+
+性能/正確性:
+- B1 `cache.js getCacheUsageBytes` 改用 `storage.local.getBytesInUse(null)`(舊瀏覽器 fallback 走 get(null))→ 不再每次反覆把 9.5MB 翻譯快取 JSON 拉進記憶體;`evictOldest` 接 optional `preFetchedAll` 避免雙掃。新 unit spec `test/unit/cache-bytes-getbytesinuse.spec.js`
+- B2+B3 `lib/storage.js` 新增 `getSettingsCached()`(promise cache + `storage.onChanged` invalidate);`lib/logger.js debugLog` 與 `background.js LOG_USAGE` handler 改用 cached 版本 → YouTube 一支影片上百次 LOG_USAGE / 每筆 log 都重讀整份 settings 變單次。新 unit spec `test/unit/settings-cache.spec.js`(2 條含 invalidate 行為)
+- B4 `content-spa.js` Content Guard 加 `IntersectionObserver` + `guardVisibleSet`,sweep 改成只走 viewport 附近的 entry 而非整份 STATE.translatedHTML → 長文(Wikipedia 千段)從每秒 1000 次字串相等比對 + 部分 forced layout 降到通常 < 30 entry 子集
+- B5 `options.js` usage-search input 加 150ms debounce;fetchLogs 在 `res.logs.length===0` 時 short-circuit 不 render
+- C1 `background.js` streaming 期間用 `_streamKeepAliveTimer` 每 20 秒呼叫 `chrome.runtime.getPlatformInfo` 重置 SW idle timer → 長頁翻譯中切去 5 分鐘回來,取消按鈕仍能用(原本 SW unload 後 inFlightStreams Map 消失 → abort 訊號到不了 fetch)
+- C2 `options.save()` 加 `_saveInFlight` flag,並發按下兩次儲存 short-circuit
+- C3 `lib/storage.js` 新增 `cleanupLegacySyncKeys()`,SW 啟動時一次性把 `ytPreserveLineBreaks` / `preserveLineBreaks`(v1.2.38 移除)從 storage.sync 清除,避免長期累積踩到 8KB / item quota。新 unit spec `test/unit/legacy-key-cleanup.spec.js`(3 條含冪等)
+
+Refactor(行為等價,純維護性):
+- E1 `content-detect.js` 抽 `hasBlockAncestor(el)` + `blockAncestorMemo`,leaf anchor / leaf div span 兩條補抓共用,長頁面省千次祖先比對
+- E2 `content.js restorePage` dual / single 兩分支重複的 `originalHTML.forEach` 合併成單一迴圈
+- E3 `content.js` 抽 `restoreOriginalHTMLAndReset()`,Gemini abort + Google abort 兩處共用(SPA reset 語意不同不抽)
+- E4 `content.js packBatches` 寫入 `job.idx`,兩處 `jobs.indexOf(job)` 改 `job.idx`(O(N²) → O(1) log 計算)
+- E5 `content-youtube.js _findActiveCue` 確認 `_upsertDisplayCue` 已用 findIndex upsert + sort(同 startMs 不留多筆),內 loop 簡化為 `cues[i+1].startMs`(O(N²) → O(N))
+- E6 `lib/cache.js hashText` 加 LRU memo(上限 500),getBatch + setBatch 同段原文不重算 SHA-1
+- E8 `lib/rate-limiter.js` 維護 `_tokenSum` incremental(push += / shift -=),`currentTokenSum` 從 reduce 整陣列改 O(1) 直接讀。新 unit spec `test/unit/rate-limiter-token-sum.spec.js`(4 條含壓力測試)
+
+PENDING_REGRESSION 入庫(改動已套用,spec 抽不出乾淨):A3 GMT 字幕 IndexedDB source 分類錯誤(非真漏帳,費用幾乎 $0)、B4 IO subset、B5 debounce、C1 SW keep-alive、C2 save in-flight guard。
+
+未動(獨立評估):D1-D4 中-高風險重構(三條翻譯 handler / translatePage Gemini vs Google / content-youtube 三條 streaming pattern / options form binding)、E7 usage-db compound index(IndexedDB schema migration 等用量真的暴增再說)。
+
+Full suite 357/357 pass。
+
 **v1.8.13** — 修 Google MT 翻譯大量 inline 連結段落時譯文殘留「【1/Proad】 /Proad1】 /Proad1】 ...」這類 garbage 標記的 bug(典型觸發場景:Medium 作者 byline「socials: YouTube | TikTok | Substack | ...」這類大量短 `<a>` 列表)。根因:以實 fetch `translate.googleapis.com/translate_a/single` 驗證,Google Translate 非官方端點對同段內 `【N】xxx【/N】` 配對標記超過 5 對時會 hallucinate 把標記當 list 結構亂吐 garbage tokens(3-5 對 OK、6 對開始壞、8 對完全爛、Atomic `【*N】` 不受影響連 8 個都正常)。修法:`shinkansen/content-serialize.js` `serializeNodeIterableForGoogle` 加 `GT_MAX_PAIRED_SLOTS=5` 閾值 + `countPairedInlineForGT` helper,paired-eligible inline 元素數 > 5 時降級——同段內 `GT_INLINE_TAGS` 元素改走「不加 paired 標記、純取文字」路徑(slots 仍可含 atomic),該段失去 `<a>` 連結保留(anchor text 變純文字)但譯文不會壞。新 1 條 regression spec(`test/regression/google-translate-many-markers-degrade.spec.js`,2 test:8 個 `<a>` 應降級 + 5 個 `<a>` 維持原 v1.4.2 行為的回歸保護);SANITY 把 `degrade` 寫死成 `false` → test #1 fail(received=8 markers expected=0)test #2 仍 pass,還原後 5/5 含 v1.4.1/4.2/4.3 既有 3 條全綠。Full suite 339/339 pass。
 
 **v1.8.12** — popup「⚠ 尚未設定 API Key」警告 gate 在「translatePresets 中至少一組是 Gemini」之後。使用者反映他完全沒用 Gemini(三組 preset 都改成 Google MT / 自訂模型),但 popup 一直在提醒沒填 Gemini API Key。修法:`shinkansen/lib/storage.js` 加 `presetsRequireGemini(presets)` helper(any-slot some-match;空 / undefined / 非 array → 保守回 true 跟 DEFAULT_SETTINGS 對齊),`shinkansen/popup/popup.js` 把原本 `if (!apiKey)` 改成 `if (!apiKey && presetsRequireGemini(translatePresets))`。範圍外不動的:`background.js` 三處「尚未設定 Gemini API Key」error throw 維持原狀(只在使用者主動觸發 Gemini 翻譯時才跑出來,行為正確);options 設定頁 Gemini 分頁 API Key 欄位也維持(使用者主動點進去看不算嘮叨)。新 1 條 regression(`test/unit/presets-require-gemini.spec.js`,7 條斷言;SANITY 把 `some` 改 `every` → 預設組合 + 含 gemini mixed 兩條 fail,還原後 7/7 pass)。

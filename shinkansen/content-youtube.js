@@ -898,14 +898,12 @@
   // 內) 造成的 endMs 跟下一句重疊;若無下一句,沿用 cue.endMs。
   function _findActiveCue(currentMs) {
     const cues = SK.YT.displayCues;
+    // v1.8.14: _upsertDisplayCue 已用 findIndex upsert + sort,同 startMs 只留一筆,
+    // 所以 cues[i+1].startMs 必嚴格大於 cues[i].startMs(若 i+1 存在)。
+    // 從原本 O(N²) 內 loop 簡化為 O(N) 線性掃描。
     for (let i = 0; i < cues.length; i++) {
       const c = cues[i];
-      // 找出下一個 startMs 嚴格大於當前 cue 的 cue 當作 clamp 上限
-      // (排除 progressive 模式同 startMs 覆蓋的情況)
-      let nextStart = Infinity;
-      for (let j = i + 1; j < cues.length; j++) {
-        if (cues[j].startMs > c.startMs) { nextStart = cues[j].startMs; break; }
-      }
+      const nextStart = (i + 1 < cues.length) ? cues[i + 1].startMs : Infinity;
       const effectiveEnd = Math.min(c.endMs, nextStart);
       if (currentMs >= c.startMs && currentMs <= effectiveEnd) return c;
     }
@@ -1112,9 +1110,9 @@
       entriesWritten: writtenCount,
       entriesDropped: droppedCount,
       captionMapSize: YT.captionMap.size,
-      domSegmentCount: domSegs.length,
     });
   }
+  SK._runAsrSubBatch = _runAsrSubBatch;
 
   async function _runAsrWindow(windowSegs, windowStartMs, windowEndMs) {
     const YT = SK.YT;
