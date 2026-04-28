@@ -66,6 +66,14 @@
 
 ## v1.8.x
 
+**v1.8.3** — 新增「**只翻文章開頭(節省費用)**」選項。對 token 用量敏感、想先預覽再決定要不要看完整文章的使用者,可在 Gemini 分頁開啟 toggle:翻譯只跑 batch 0(經 prioritizeUnits 推前的內文核心 N 段),跳過 batch 1+,大幅減少 token 用量。預設關閉,可調段數範圍 5-50(預設 25)。**漸進式翻譯流程**:使用者開節省模式翻完開頭 → 想看完整翻譯時關閉 toggle 重新翻譯 → 前面已翻好的段落從本地快取自動命中(0 token 收費),只 batch 1+ 才打 API。技術上重用 v1.8.0 streaming + cache 路徑,但對使用者完全隱藏 streaming 概念。
+
+  - **`lib/storage.js`**:`DEFAULT_SETTINGS.partialMode = { enabled: false, maxUnits: 25 }`,getSettings deep merge。
+  - **`options/options.html` Gemini 分頁**:加 `partialModeEnabled` toggle + `partialModeMaxUnits` number input(min=5 max=50),說明文字明確標示「漸進式翻譯流程」與「重翻不會重複收費」。標點全形,結尾無句號(§13/§14)。
+  - **`options/options.js`**:load/save/reset/sanitizeImport 四處接 partialMode。
+  - **`content.js translateUnits`**:讀 partialMode → 啟用時 packBatches 第一批 limit 用 partialMode.maxUnits 取代 BATCH0_UNITS;主流程加 `skipBatch1Plus = partialMode.enabled` 旗標,streaming 路徑 + fallback 路徑都會在啟用時跳過 `runWithConcurrency(jobs.slice(1))`。BATCH0_CHARS=3700 仍用內部限制不暴露。
+  - **新 regression**:`test/regression/translate-partial-mode.spec.js` 鎖「partialMode.enabled=true 時 batch 1+ 不被 dispatch + batch 0 size = partialMode.maxUnits」。SANITY 雙驗通過。
+
 **v1.8.2** — YouTube ASR 字幕 overlay 黑底 padding 對齊原生。`.cue` padding 從 `0.15em 0.7em`(@ 18px font ≈ 上下 2.7px / 左右 12.6px)縮成 `0.05em 0.3em`(≈ 上下 0.9px / 左右 5.4px),左右黑底各省 7px。原本 ASR 字幕黑底比 YouTube 原生「一行字幕」黑底大很多(左右各多出近半字寬、上下也鬆),v1.8.2 後緊貼文字、視覺比例對齊原生字幕。純 CSS 微調,不影響翻譯邏輯或字幕分句行為。
 
 **v1.8.1** — 修 v1.8.0 streaming 路徑漏寫 cache 的 bug。原本「翻譯 → 還原 → 重翻同一頁」應該秒載入(cache fast path),但 v1.8.0 的 streaming `handleTranslateStream` 沒做 cache lookup + write,每次重翻都要重打 Gemini API。修法:streaming 開頭先 `cache.getBatch()` 查 cache,若全部命中走 fast path 立即推 `STREAMING_FIRST_CHUNK + STREAMING_SEGMENT × N + STREAMING_DONE`(不打 API,usage = 0);若有 miss 才走 streaming,結束後 `cache.setBatch()` 寫回 cache。cache key suffix 跟 `handleTranslate` 一致(含 glossary / fixedGlossary / forbidden hash + model),確保「翻完還原重翻」必命中 fast path。實測 TWZ 同頁 Run 1 batch 0 streaming 等 6.5 秒,Run 2 cache fast path **9 毫秒完成、首字延遲 4ms**——「一閃就載入」效果回來了。Probe 工具加 `SKIP_CLEAR_CACHE=1` env var 用來驗證 cache hit 行為(原本 probe 每次跑都 CLEAR_CACHE,沒辦法測 cache hit fast path)。
