@@ -236,8 +236,10 @@
     let maxConcurrent = SK.DEFAULT_MAX_CONCURRENT;
     let maxUnitsPerBatch = SK.DEFAULT_UNITS_PER_BATCH;
     let maxCharsPerBatch = SK.DEFAULT_CHARS_PER_BATCH;
+    // v1.8.3: partialMode(只翻文章開頭,節省費用)
+    let partialMode = { enabled: false, maxUnits: 25 };
     try {
-      const batchCfg = await browser.storage.sync.get(['maxConcurrentBatches', 'maxUnitsPerBatch', 'maxCharsPerBatch']);
+      const batchCfg = await browser.storage.sync.get(['maxConcurrentBatches', 'maxUnitsPerBatch', 'maxCharsPerBatch', 'partialMode']);
       if (Number.isFinite(batchCfg.maxConcurrentBatches) && batchCfg.maxConcurrentBatches > 0) {
         maxConcurrent = batchCfg.maxConcurrentBatches;
       }
@@ -247,8 +249,14 @@
       if (Number.isFinite(batchCfg.maxCharsPerBatch) && batchCfg.maxCharsPerBatch >= 500) {
         maxCharsPerBatch = batchCfg.maxCharsPerBatch;
       }
+      if (batchCfg.partialMode && typeof batchCfg.partialMode === 'object') {
+        if (typeof batchCfg.partialMode.enabled === 'boolean') partialMode.enabled = batchCfg.partialMode.enabled;
+        if (Number.isFinite(batchCfg.partialMode.maxUnits) && batchCfg.partialMode.maxUnits >= 5 && batchCfg.partialMode.maxUnits <= 50) {
+          partialMode.maxUnits = batchCfg.partialMode.maxUnits;
+        }
+      }
     } catch (_) { /* 保持 default */ }
-    SK.sendLog('info', 'translate', 'milestone:tu_storage_loaded', { t: Date.now() - tu_entry });
+    SK.sendLog('info', 'translate', 'milestone:tu_storage_loaded', { t: Date.now() - tu_entry, partialMode });
 
     let done = 0;
     const pageUsage = {
@@ -256,7 +264,9 @@
       billedInputTokens: 0, billedCostUSD: 0,
       cacheHits: 0,
     };
-    const jobs = packBatches(texts, units, slotsList, maxUnitsPerBatch, maxCharsPerBatch, SK.BATCH0_UNITS, SK.BATCH0_CHARS);
+    // v1.8.3: partialMode 啟用時,第一批 limit 用使用者設定的 maxUnits;chars 仍用 BATCH0_CHARS 內部限制
+    const firstBatchUnits = partialMode.enabled ? partialMode.maxUnits : SK.BATCH0_UNITS;
+    const jobs = packBatches(texts, units, slotsList, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
     SK.sendLog('info', 'translate', 'milestone:tu_packed', { t: Date.now() - tu_entry, batches: jobs.length });
     const failures = [];
     let rpdWarning = false;
@@ -422,13 +432,18 @@
 
     if (jobs.length > 0) {
       let batch0NeedsFallback = false;
+      // v1.8.3: partialMode 啟用時,只跑 batch 0,不 dispatch jobs.slice(1)
+      const skipBatch1Plus = partialMode.enabled;
+      if (skipBatch1Plus && jobs.length > 1) {
+        SK.sendLog('info', 'translate', 'partialMode: skip batch 1+', { totalBatches: jobs.length, skipped: jobs.length - 1, batch0Units: jobs[0].texts.length });
+      }
 
       if (useStreaming) {
         const stream = runBatch0Streaming(jobs[0]);
         const r = await stream.firstChunkOrTimeout;
         if (r.kind === 'first_chunk') {
-          // streaming 已開始流入 — 同步 dispatch batch 1+ 並行
-          const parallelP = (jobs.length > 1 && !signal?.aborted)
+          // streaming 已開始流入 — 同步 dispatch batch 1+ 並行(partialMode 啟用時跳過)
+          const parallelP = (jobs.length > 1 && !signal?.aborted && !skipBatch1Plus)
             ? runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch)
             : Promise.resolve();
           try {
@@ -454,9 +469,9 @@
       }
 
       if (batch0NeedsFallback) {
-        // v1.7.1 行為:序列跑 batch 0 → 並行 batch 1+
+        // v1.7.1 行為:序列跑 batch 0 → 並行 batch 1+(partialMode 啟用時跳過 batch 1+)
         await runBatch(jobs[0]);
-        if (jobs.length > 1 && !signal?.aborted) {
+        if (jobs.length > 1 && !signal?.aborted && !skipBatch1Plus) {
           await runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch);
         }
       }

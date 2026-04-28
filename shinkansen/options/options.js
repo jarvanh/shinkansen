@@ -123,6 +123,10 @@ async function load() {
   $('maxUnitsPerBatch').value = s.maxUnitsPerBatch ?? 20;
   $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? 3500;
   $('maxTranslateUnits').value = s.maxTranslateUnits ?? 1000;
+  // v1.8.3: partialMode toggle + size
+  const pm = { ...DEFAULTS.partialMode, ...(s.partialMode || {}) };
+  $('partialModeEnabled').checked = pm.enabled === true;
+  $('partialModeMaxUnits').value = pm.maxUnits;
   $('maxRetries').value = s.maxRetries ?? 3;
 
   // v0.69: 術語表一致化設定
@@ -483,6 +487,11 @@ async function save() {
     maxUnitsPerBatch: parseUserNum($('maxUnitsPerBatch').value, 20),
     maxCharsPerBatch: parseUserNum($('maxCharsPerBatch').value, 3500),
     maxTranslateUnits: parseUserNum($('maxTranslateUnits').value, 1000),
+    // v1.8.3: 只翻文章開頭(節省費用)
+    partialMode: {
+      enabled: $('partialModeEnabled').checked,
+      maxUnits: parseUserNum($('partialModeMaxUnits').value, 25),
+    },
     // 只有 custom tier 才寫入 override(其他 tier 的數字從對照表讀,不存)
     rpmOverride: $('tier').value === 'custom' ? (Number($('rpm').value) || null) : null,
     tpmOverride: $('tier').value === 'custom' ? (Number($('tpm').value) || null) : null,
@@ -719,6 +728,9 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('maxUnitsPerBatch').value     = D.maxUnitsPerBatch;
   $('maxCharsPerBatch').value     = D.maxCharsPerBatch;
   $('maxTranslateUnits').value    = D.maxTranslateUnits;
+  // v1.8.3: 只翻文章開頭重設
+  $('partialModeEnabled').checked = D.partialMode.enabled;
+  $('partialModeMaxUnits').value  = D.partialMode.maxUnits;
   markDirty();
   $('save-gemini-status').textContent = '欄位已重設，請按「儲存設定」生效';
   setTimeout(() => { $('save-gemini-status').textContent = ''; }, 4000);
@@ -1058,6 +1070,17 @@ function sanitizeImport(raw) {
       }
     }
     if (Object.keys(drClean).length > 0) clean.domainRules = drClean;
+  }
+
+  // v1.8.3: partialMode 子物件
+  if (raw.partialMode && typeof raw.partialMode === 'object') {
+    const pm = raw.partialMode;
+    const pmClean = {};
+    if (typeof pm.enabled === 'boolean') pmClean.enabled = pm.enabled;
+    if (typeof pm.maxUnits === 'number' && Number.isInteger(pm.maxUnits) && pm.maxUnits >= 5 && pm.maxUnits <= 50) {
+      pmClean.maxUnits = pm.maxUnits;
+    }
+    if (Object.keys(pmClean).length > 0) clean.partialMode = pmClean;
   }
 
   return { clean, warnings };
