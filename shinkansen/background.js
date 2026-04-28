@@ -290,6 +290,44 @@ const messageHandlers = {
       return { started: true };
     },
   },
+  // v1.8.9: Streaming 版人工字幕 batch 0 翻譯。
+  // 跟 TRANSLATE_BATCH_STREAM 共用同一條 streaming pipeline(handleTranslateStream),
+  // 但帶 ytSubtitle.systemPrompt / temperature / model / pricing,cacheTag '_yt',
+  // 預設不套用固定術語表 / 黑名單(跟 TRANSLATE_SUBTITLE_BATCH 對齊)。
+  TRANSLATE_SUBTITLE_BATCH_STREAM: {
+    async: false,
+    handler: (payload, sender) => {
+      const tabId = sender?.tab?.id;
+      if (!tabId) return { ok: false, error: 'no tab' };
+      const streamId = payload?.streamId;
+      if (!streamId) return { ok: false, error: 'no streamId' };
+      // fire-and-forget — getSettings 在 handleTranslateStream 內會再讀一次
+      (async () => {
+        const s = await getSettings();
+        const yt = s.ytSubtitle || {};
+        const geminiOverrides = {
+          systemInstruction: yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+          temperature: yt.temperature ?? 0.1,
+        };
+        if (yt.model) geminiOverrides.model = yt.model;
+        const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+        await handleTranslateStream(payload, sender, streamId, tabId, {
+          cacheTag: '_yt',
+          geminiOverrides,
+          pricingOverride,
+          applyFixedGlossary: yt.applyFixedGlossary === true,
+          applyForbiddenTerms: yt.applyForbiddenTerms === true,
+        });
+      })().catch((err) => {
+        debugLog('error', 'system', 'TRANSLATE_SUBTITLE_BATCH_STREAM uncaught', { streamId, error: err?.message || String(err) });
+        browser.tabs.sendMessage(tabId, {
+          type: 'STREAMING_ERROR',
+          payload: { streamId, error: err?.message || String(err), atSegment: 0 },
+        }).catch(() => {});
+      });
+      return { started: true };
+    },
+  },
   // v1.8.0: 中斷 in-flight streaming(使用者取消翻譯時觸發)
   STREAMING_ABORT: {
     async: false,
@@ -661,11 +699,20 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // v1.8.0: streamId → AbortController 對映,支援使用者中途取消 streaming
 const inFlightStreams = new Map();
 
-// v1.8.0: Streaming 翻譯 handler。只給 TRANSLATE_BATCH_STREAM 訊息用。
+// v1.8.0: Streaming 翻譯 handler。
+// v1.8.9: 加 opts 參數,支援字幕路徑(TRANSLATE_SUBTITLE_BATCH_STREAM)復用同一條 streaming pipeline,
+// 但用 ytSubtitle.systemPrompt / ytSubtitle.model / ytSubtitle.pricing / cacheTag '_yt'。
 // 設計:async fire-and-forget,結果透過 tabs.sendMessage 推回 sender tab。
-// scope 限制(reports/streaming-probe-2026-04-28.md §6):只給文章翻譯 batch 0 使用,
-// 字幕 / glossary / Google MT / 自訂模型路徑都不走這條。
-async function handleTranslateStream(payload, sender, streamId, tabId) {
+// scope 限制:只給文章翻譯 + 人工字幕 batch 0 用,ASR LLM 路徑下一輪再套。
+async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}) {
+  const {
+    cacheTag = '',
+    geminiOverrides = {},
+    pricingOverride = null,
+    applyFixedGlossary = true,
+    applyForbiddenTerms = true,
+  } = opts;
+
   const settings = await getSettings();
   if (!settings.apiKey) {
     browser.tabs.sendMessage(tabId, {
@@ -684,19 +731,22 @@ async function handleTranslateStream(payload, sender, streamId, tabId) {
     return;
   }
 
-  // 跟 handleTranslate 對齊:modelOverride 覆蓋 geminiConfig.model + 對應 pricing
-  const overrides = payload?.modelOverride ? { model: payload.modelOverride } : {};
+  // 合併 caller 傳入的 geminiOverrides(字幕路徑帶 systemPrompt / temperature / model)+
+  // payload.modelOverride(preset 快速鍵)。payload 層級 model 勝出。
+  const overrides = { ...geminiOverrides };
+  if (payload?.modelOverride) overrides.model = payload.modelOverride;
   const effectiveSettings = Object.keys(overrides).length > 0
     ? { ...settings, geminiConfig: { ...settings.geminiConfig, ...overrides } }
     : settings;
-  let effectivePricing = null;
-  if (overrides.model) effectivePricing = getPricingForModel(overrides.model, settings);
+  // pricing 優先順序:caller 傳入 pricingOverride(字幕獨立計價)> modelOverride 查表 > settings.pricing
+  let effectivePricing = pricingOverride;
+  if (!effectivePricing && overrides.model) effectivePricing = getPricingForModel(overrides.model, settings);
   if (!effectivePricing) effectivePricing = settings.pricing;
 
-  // 固定術語表 / 禁用詞清單(跟 handleTranslate 一致;streaming 給文章翻譯用,
-  // 預設套用——對應 applyFixedGlossary=true / applyForbiddenTerms=true)
+  // 固定術語表 / 禁用詞清單。字幕路徑預設不套用(applyFixedGlossary/applyForbiddenTerms=false),
+  // 跟 handleTranslate 對 ytSubtitle 的處理一致。
   let fixedGlossaryEntries = null;
-  const fg = settings.fixedGlossary;
+  const fg = applyFixedGlossary ? settings.fixedGlossary : null;
   if (fg) {
     const globalEntries = Array.isArray(fg.global) ? fg.global.filter((e) => e.source && e.target) : [];
     let domainEntries = [];
@@ -710,12 +760,12 @@ async function handleTranslateStream(payload, sender, streamId, tabId) {
       fixedGlossaryEntries = [...globalEntries, ...domainEntries];
     }
   }
-  const forbiddenTermsList = (settings.forbiddenTerms && Array.isArray(settings.forbiddenTerms))
+  const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
     ? settings.forbiddenTerms : [];
 
-  // v1.8.1: cache key suffix(跟 handleTranslate 一致)— 含 glossary + fixedGlossary +
-  // forbiddenTerms + model hash,確保同樣輸入有相同 cache key,「翻譯 → 還原 → 重翻」能命中。
-  let cacheKeySuffix = '';
+  // v1.8.1/v1.8.9: cache key suffix(跟 handleTranslate 對齊)— 起始 cacheTag('_yt' / '')
+  // glossary 存在時會被覆蓋成 '_g<hash>',維持跟非 streaming 路徑同 key 規則。
+  let cacheKeySuffix = cacheTag;
   const glossary = payload?.glossary || null;
   const allGlossaryForHash = [
     ...(glossary || []).map((e) => `${e.source}:${e.target}`),

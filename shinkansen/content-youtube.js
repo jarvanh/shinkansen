@@ -764,6 +764,30 @@
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // 寫譯文進原生 .ytp-caption-segment(非 ASR 路徑共用)。
+  // 譯文中文化後常比英文原文長 1.3-1.8 倍,YouTube 原生 caption-window 視覺寬度
+  // 不夠時 expandCaptionLine 會把外層 max-content 撐開但同時 segment 設 nowrap,
+  // 導致中文長句沖出畫面。比照 ASR overlay 改用 _wrapTargetText 計算切點 + <br> 注入。
+  function _setSegmentText(el, text) {
+    const str = text == null ? '' : String(text);
+    if (!str) {
+      if (el.textContent !== '') el.textContent = '';
+      return;
+    }
+    const wrapped = _wrapTargetText(str);
+    if (wrapped.indexOf('\n') >= 0) {
+      // 有切點:用 innerHTML + <br>(textContent 走不出 <br>,設 \n 也會被
+      // YouTube 既有 white-space: nowrap 吞掉)。先 escape 防 XSS。
+      const html = _escapeHtml(wrapped).replace(/\n/g, '<br>');
+      if (el.innerHTML !== html) el.innerHTML = html;
+    } else {
+      if (el.textContent !== wrapped) el.textContent = wrapped;
+    }
+  }
+
+  // 暴露給 spec 用
+  SK._setSegmentText = _setSegmentText;
+
   function _setOverlayContent(targetText, sourceText) {
     const host = _ensureOverlay();
     if (!host || !host.shadowRoot) return;
@@ -1414,6 +1438,31 @@
           config.engine === 'openai-compat' ? 'TRANSLATE_SUBTITLE_BATCH_CUSTOM' :
                                               'TRANSLATE_SUBTITLE_BATCH';
 
+        const _injectBatchResult = (batchUnits, results, b, elapsed) => {
+          for (let j = 0; j < batchUnits.length; j++) {
+            const unit     = batchUnits[j];
+            const rawTrans = results[j] || unit.text;
+            if (unit.keys.length === 1) {
+              YT.captionMap.set(unit.keys[0], rawTrans);
+            } else {
+              // 多行群組：合併為單行顯示
+              const merged = rawTrans.replace(/\\n/g, ' ').replace(/\n/g, ' ').trim();
+              YT.captionMap.set(unit.keys[0], merged);
+              for (let k = 1; k < unit.keys.length; k++) YT.captionMap.set(unit.keys[k], '');
+            }
+          }
+          const domSegs = document.querySelectorAll('.ytp-caption-segment');
+          domSegs.forEach(replaceSegmentEl);
+          SK.sendLog('info', 'youtube', `batch done`, {
+            batchIdx: b,
+            batchSize: batchUnits.length,
+            elapsedMs: elapsed,
+            sessionOffsetMs: Date.now() - YT.sessionStartTime,
+            domSegmentCount: domSegs.length,
+            captionMapSize: YT.captionMap.size,
+          });
+        };
+
         const _runBatch = (batchUnits, b) =>
           browser.runtime.sendMessage({
             type: _subtitleMsgType,
@@ -1423,56 +1472,153 @@
             _batchApiMs[b] = elapsed;
             if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
             _logWindowUsage(batchUnits.length, res.usage);
-            for (let j = 0; j < batchUnits.length; j++) {
-              const unit     = batchUnits[j];
-              const rawTrans = res.result[j] || unit.text;
-              if (unit.keys.length === 1) {
-                YT.captionMap.set(unit.keys[0], rawTrans);
-              } else {
-                // 多行群組：合併為單行顯示
-                const merged = rawTrans.replace(/\\n/g, ' ').replace(/\n/g, ' ').trim();
-                YT.captionMap.set(unit.keys[0], merged);
-                for (let k = 1; k < unit.keys.length; k++) YT.captionMap.set(unit.keys[k], '');
-              }
-            }
-            // 每批注入後立刻替換頁面上已顯示的字幕
-            const domSegs = document.querySelectorAll('.ytp-caption-segment');
-            domSegs.forEach(replaceSegmentEl);
-            SK.sendLog('info', 'youtube', `batch done`, {
-              batchIdx: b,
-              batchSize: batchUnits.length,
-              elapsedMs: elapsed,
-              sessionOffsetMs: Date.now() - YT.sessionStartTime,
-              domSegmentCount: domSegs.length,
-              captionMapSize: YT.captionMap.size,
-            });
+            _injectBatchResult(batchUnits, res.result || [], b, elapsed);
           });
+
+        // v1.8.9: Streaming batch 0(只人工字幕、只 Gemini engine)
+        // 收 STREAMING_SEGMENT 立刻寫 captionMap + replaceSegmentEl,首字延遲從整批 resolve 砍成 SSE 首段
+        // FIRST_CHUNK_TIMEOUT_MS=1500 跟文章翻譯路徑一致。Google MT / OpenAI-compat 維持原非 streaming。
+        const _streamSubtitleEnabled = !config.engine || config.engine === 'gemini';
+        const FIRST_CHUNK_TIMEOUT_MS = 1500;
+
+        const _runBatch0Streaming = (batchUnits) => {
+          const streamId = `yt_stream_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+          let firstChunkResolve, doneResolve, doneReject;
+          const firstChunkPromise = new Promise(r => { firstChunkResolve = r; });
+          const donePromise = new Promise((res, rej) => { doneResolve = res; doneReject = rej; });
+          // 確保「first_chunk failed → 主流程不 await donePromise」時 donePromise 的 reject 不會冒成 unhandled
+          donePromise.catch(() => {});
+
+          const onMessage = (message) => {
+            if (!message || message.payload?.streamId !== streamId) return;
+            if (message.type === 'STREAMING_FIRST_CHUNK') {
+              firstChunkResolve(true);
+            } else if (message.type === 'STREAMING_SEGMENT') {
+              if (!YT.active) return;
+              const idx = message.payload.segmentIdx;
+              const tr = message.payload.translation;
+              if (typeof idx === 'number' && idx >= 0 && idx < batchUnits.length && tr) {
+                _injectBatchResult([batchUnits[idx]], [tr], 0, Date.now() - _t0);
+              }
+            } else if (message.type === 'STREAMING_DONE') {
+              const elapsed = Date.now() - _t0;
+              _batchApiMs[0] = elapsed;
+              _logWindowUsage(batchUnits.length, message.payload.usage || {});
+              browser.runtime.onMessage.removeListener(onMessage);
+              firstChunkResolve(true);
+              doneResolve({ ok: true });
+            } else if (message.type === 'STREAMING_ERROR') {
+              browser.runtime.onMessage.removeListener(onMessage);
+              firstChunkResolve(false);
+              doneReject(new Error(message.payload.error || 'streaming failed'));
+            } else if (message.type === 'STREAMING_ABORTED') {
+              browser.runtime.onMessage.removeListener(onMessage);
+              firstChunkResolve(false);
+              doneResolve({ ok: false, aborted: true });
+            }
+          };
+          browser.runtime.onMessage.addListener(onMessage);
+
+          browser.runtime.sendMessage({
+            type: 'TRANSLATE_SUBTITLE_BATCH_STREAM',
+            payload: { texts: batchUnits.map(u => u.text), glossary: null, streamId },
+          }).then((resp) => {
+            if (!resp?.started) {
+              browser.runtime.onMessage.removeListener(onMessage);
+              firstChunkResolve(false);
+              doneReject(new Error(resp?.error || 'streaming failed to start'));
+            }
+          }).catch((err) => {
+            browser.runtime.onMessage.removeListener(onMessage);
+            firstChunkResolve(false);
+            doneReject(err);
+          });
+
+          const firstChunkOrTimeout = Promise.race([
+            firstChunkPromise.then(v => ({ kind: v ? 'first_chunk' : 'failed' })),
+            new Promise(r => setTimeout(() => r({ kind: 'timeout' }), FIRST_CHUNK_TIMEOUT_MS)),
+          ]);
+
+          return {
+            firstChunkOrTimeout,
+            donePromise,
+            streamId,
+            cleanup: () => { try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {} },
+          };
+        };
 
         // v1.2.56: batch 0 先 await（暖熱 cache），再並行送 batch 1+
         // v1.6.19: 後續批次改用 allSettled——任一批 reject 不再讓整批字幕沒寫回，
         // 成功的批次保留(captionMap.set 在 _runBatch 的 .then 內已自己寫過),失敗只 log。
+        // v1.8.9: Streaming batch 0(gemini)— first_chunk 抵達後同步 dispatch batch 1+,
+        // mid-failure / first_chunk timeout 走 _runBatch non-streaming fallback。
         if (batches.length > 0) {
-          try {
-            await _runBatch(batches[0], 0);
-            YT.lastApiMs = _batchApiMs[0]; // batch 0 是第一個完成的，記錄其耗時
-          } catch (err) {
-            SK.sendLog('error', 'youtube', 'batch 0 failed', { error: err.message });
-          }
-          if (!YT.active) {
-            YT.batchApiMs = _batchApiMs;  // v1.6.19: abort 也要同步,debug 面板才能反映 batch 0 耗時
-            return;  // v1.3.5: try-finally 會清理
-          }
-          if (batches.length > 1) {
-            const settled = await Promise.allSettled(
-              batches.slice(1).map((bu, i) => _runBatch(bu, i + 1))
-            );
-            settled.forEach((r, i) => {
-              if (r.status === 'rejected') {
-                SK.sendLog('error', 'youtube', `batch ${i + 1} failed`, {
-                  error: r.reason?.message || String(r.reason),
-                });
+          let batch0NeedsFallback = false;
+          if (_streamSubtitleEnabled) {
+            const stream = _runBatch0Streaming(batches[0]);
+            const r = await stream.firstChunkOrTimeout;
+            if (r.kind === 'first_chunk') {
+              const willParallel = batches.length > 1 && YT.active;
+              const parallelP = willParallel
+                ? Promise.allSettled(batches.slice(1).map((bu, i) => _runBatch(bu, i + 1)))
+                : Promise.resolve([]);
+              try {
+                await stream.donePromise;
+                YT.lastApiMs = _batchApiMs[0];
+              } catch (streamErr) {
+                SK.sendLog('warn', 'youtube', 'streaming mid-failure, retrying batch 0 non-streaming', { error: streamErr.message });
+                try {
+                  await _runBatch(batches[0], 0);
+                  YT.lastApiMs = _batchApiMs[0];
+                } catch (err) {
+                  SK.sendLog('error', 'youtube', 'batch 0 fallback failed', { error: err.message });
+                }
               }
-            });
+              const settled = await parallelP;
+              settled.forEach((rr, i) => {
+                if (rr.status === 'rejected') {
+                  SK.sendLog('error', 'youtube', `batch ${i + 1} failed`, {
+                    error: rr.reason?.message || String(rr.reason),
+                  });
+                }
+              });
+              YT.batchApiMs = _batchApiMs;
+              return;
+            } else {
+              stream.cleanup();
+              if (r.kind === 'timeout') {
+                SK.sendLog('warn', 'youtube', 'streaming first_chunk timeout, falling back to non-streaming', { streamId: stream.streamId });
+                browser.runtime.sendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
+              }
+              batch0NeedsFallback = true;
+            }
+          } else {
+            batch0NeedsFallback = true;
+          }
+
+          if (batch0NeedsFallback) {
+            try {
+              await _runBatch(batches[0], 0);
+              YT.lastApiMs = _batchApiMs[0]; // batch 0 是第一個完成的，記錄其耗時
+            } catch (err) {
+              SK.sendLog('error', 'youtube', 'batch 0 failed', { error: err.message });
+            }
+            if (!YT.active) {
+              YT.batchApiMs = _batchApiMs;  // v1.6.19: abort 也要同步,debug 面板才能反映 batch 0 耗時
+              return;  // v1.3.5: try-finally 會清理
+            }
+            if (batches.length > 1) {
+              const settled = await Promise.allSettled(
+                batches.slice(1).map((bu, i) => _runBatch(bu, i + 1))
+              );
+              settled.forEach((r, i) => {
+                if (r.status === 'rejected') {
+                  SK.sendLog('error', 'youtube', `batch ${i + 1} failed`, {
+                    error: r.reason?.message || String(r.reason),
+                  });
+                }
+              });
+            }
           }
         }
 
@@ -1703,7 +1849,8 @@
         // 修正：seek 後 _firstCacheHitLogged 已為 true，但 showCaptionStatus 可能已再次顯示，
         // 只靠 !_firstCacheHitLogged gate 會導致新顯示的提示永遠不被移除。
         if (cached) hideCaptionStatus();
-        el.textContent = cached;
+        // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
+        _setSegmentText(el, cached);
         // 同步展開字幕框（不用 rAF——新版 expandCaptionLine 純設 style，不需量測 layout；
         // 若用 rAF，瀏覽器會先 paint 出「中文 + 舊 315px 容器」再展開，造成一幀閃爍）
         if (cached) expandCaptionLine(el);
@@ -1739,6 +1886,9 @@
     SK.YT.batchTimer = setTimeout(flushOnTheFly, 300);
   }
 
+  // 暴露給 spec 用(直接驗 cache-hit 路徑,不必走 translateYouTubeSubtitles 全流程)
+  SK._replaceSegmentEl = replaceSegmentEl;
+
   async function flushOnTheFly() {
     const YT = SK.YT;
     if (YT.pendingQueue.size === 0 || YT.flushing) return;
@@ -1770,7 +1920,8 @@
         YT.captionMap.set(key, trans);
         for (const el of (queue.get(key) || [])) {
           if (document.contains(el) && normText(el.textContent) === key) {
-            el.textContent = trans;
+            // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>
+            _setSegmentText(el, trans);
           }
         }
       }
