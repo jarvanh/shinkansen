@@ -109,6 +109,11 @@
   async function rescanTick() {
     rescanTimer = null;
     if (!STATE.translated) return;
+    // v1.8.5: 「只翻文章開頭」啟用時,延遲 rescan 不掃新段落 — 使用者明確只想要文章開頭。
+    if (STATE.partialModeActive) {
+      SK.sendLog('info', 'translate', 'partialMode: skip rescan');
+      return;
+    }
     const newUnits = SK.collectParagraphs();
     if (newUnits.length > 0) {
       try {
@@ -617,6 +622,20 @@
       SK.sendLog('warn', 'translate', 'page truncated', { total: units.length, limit: maxTotalUnits, skipped: truncatedCount });
       units = units.slice(0, maxTotalUnits);
     }
+
+    // v1.8.5: 「只翻文章開頭」啟用時,在 prioritize 後直接 truncate units 到 maxUnits。
+    // 這讓 toast 顯示的 total 是實際翻譯段數(25 / 25)而非整頁段數(25 / 227),
+    // 並且自然讓 packBatches 只切 1 批(不必依賴 translateUnits 內 skipBatch1Plus 邏輯)。
+    // 同時設 STATE.partialModeActive 給 rescan / SPA observer 路徑檢查 — 啟用時跳過動態翻譯。
+    const pm = settings.partialMode;
+    const pmActive = !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
+    STATE.partialModeActive = pmActive;
+    if (pmActive && units.length > pm.maxUnits) {
+      const skipped = units.length - pm.maxUnits;
+      SK.sendLog('info', 'translate', 'partialMode: truncate units', { total: units.length, kept: pm.maxUnits, skipped });
+      units = units.slice(0, pm.maxUnits);
+    }
+
     const total = units.length;
 
     // ─── 術語表前置流程 ────────────────────────────
@@ -910,6 +929,7 @@
     STATE.translatedMode = null;  // v1.5.0
     STATE.stickyTranslate = false;
     STATE.stickySlot = null;    // v1.4.12
+    STATE.partialModeActive = false;  // v1.8.5
     browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     // v1.4.11: 清除跨 tab sticky（只影響當前 tab，不影響樹中其他 tab）
     browser.runtime.sendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
