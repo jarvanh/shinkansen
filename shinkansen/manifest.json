@@ -42,7 +42,7 @@
     },
     {
       "matches": [
-        "https://youtube.googleapis.com/embed/*"
+        "https://youtube.googleapis.com/*"
       ],
       "js": [
         "content-drive-iframe.js"
