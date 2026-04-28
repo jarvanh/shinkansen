@@ -66,6 +66,8 @@
 
 ## v1.8.x
 
+**v1.8.6** — 修「只翻文章開頭」中英夾雜的 bug。在 wheresyoured.at / Substack / Ghost 等部落格上,prioritizeUnits 把短內文段(score < 5,例如「I feel nothing when I see an LLM's output」這種 ~150 字 + 1 個逗號的純內文)排到 tier 1 後面,partialMode 取前 25 段全給 tier 0(score >= 5 的長段)→ tier 1 的真內文段被 truncate 掉 → 中間夾雜未翻段落,使用者看到「翻譯-原文-翻譯-原文」交錯。修法:partialMode 啟用時跳過 prioritizeUnits,改走純 DOM 順序——對使用者語意是「翻頁面 DOM 前 N 段」(視覺連續中文),不是「prioritize 認為最重要的 N 段」。Trade-off:Wikipedia / GitHub 等「DOM 前段是 nav / chrome」的網站開 partialMode 會翻到導覽列(回到 v1.7.0 之前行為),但這類網站非 partialMode 主要使用情境(使用者比較會在文章型部落格 / 新聞站開節省模式)。
+
 **v1.8.5** — 修 v1.8.3「只翻文章開頭」兩個沒做完的行為。Bug 1:toast 仍顯示整頁段數(例如 25 / 227),沒對應實際翻譯量。Bug 2:rescan(延遲掃新段落)+ SPA observer(捲動偵測新內容)兩條動態翻譯路徑沒檢查 partialMode,使用者捲到下半頁時 Shinkansen 仍會偵測新段落並開始翻譯——這違反「節省費用」的初衷。修法:`translatePage` 在 prioritizeUnits + maxTotalUnits truncate 後,partialMode 啟用再次 truncate units 到 partialMode.maxUnits(讓 toast 顯示 25 / 25),同時設 `STATE.partialModeActive` 旗標;`rescanTick` + `content-spa.js spaObserverRescan` 兩條路徑開頭加 `if (STATE.partialModeActive) return`,啟用時完全跳過動態翻譯。`restorePage` 重設旗標。對使用者的視覺效果:勾選 toggle 後翻譯該頁,只看到「翻譯中... 25 / 25」+「已翻譯 25 段」,捲到下半頁譯文不會繼續延伸,完全符合「我只想看開頭」的意圖。
 
 **v1.8.4** — 修 v1.8.3 設定頁整份 HTML 被重複黏接的 bug。`shinkansen/options/options.html` 從 991 行膨脹到 1980 行,在 line 991 出現畸形接縫 `</html>html lang="zh-Hant">`(第一份結尾的 `</html>` 直接拼上第二份開頭的 `html lang="zh-Hant">`,中間少了 `<`)→ 第二份完整 UI 跑出來變成「設定頁授權資訊段下方再出現一份完整的 Shinkansen 標題、Tab 列與所有分頁」,使用者誤以為打開兩份設定頁。猜想根因:v1.8.3 partialMode UI 改動時用 Python 腳本做兩次全形標點轉換,第二次跑時 anchor 字串已是全形版本,`s.find()` 回 -1,導致 `s = s[:-1] + new_block + s[j:]` 範圍計算錯誤。修法:用 head 前 990 行 + 補 `</html>` 重組正確 file。

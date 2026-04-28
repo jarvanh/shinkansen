@@ -601,13 +601,30 @@
     }
     SK.sendLog('info', 'translate', 'milestone:collect_done', { t: Date.now() - entryTime, dt: Date.now() - t_collect_start, segments: units.length });
 
-    // v1.7.1: 把內文核心(main/article 後代、長段落)推到 array 前面,
-    // 配合下方 translateUnits 的「序列 batch 0 + 並行 rest」,
-    // 讓使用者最快看到的譯文是文章開頭而不是 nav / 短連結。
-    // 排序在 truncate 之前,使用者超量時優先丟棄低優先級段落(寧丟 nav 不丟內文)。
-    const t_priority_start = Date.now();
-    units = SK.prioritizeUnits(units);
-    SK.sendLog('info', 'translate', 'milestone:prioritize_done', { t: Date.now() - entryTime, dt: Date.now() - t_priority_start });
+    // v1.8.6: partialMode 啟用時跳過 prioritizeUnits,走純 DOM 順序。
+    // 為什麼:partialMode 對使用者語意是「翻頁面 DOM 前 N 段」(視覺上連續中文,
+    // 不夾雜),不是「prioritize 認為最重要的 N 段散落各處」。在 Ghost / Substack
+    // 等部落格,prioritizeUnits 會把短內文段(score < 5,例如「I feel nothing
+    // when I see an LLM's output」這種 ~150 字 + 1 個逗號)排到 tier 1 後面,
+    // partialMode truncate 25 段全給 tier 0 → 中間夾雜未翻段落。
+    // Trade-off: Wikipedia / GitHub 等「DOM 前段是 nav / chrome」的網站開
+    // partialMode 會翻到導覽列(回到 v1.7.0 之前行為),但這類網站非 partialMode
+    // 主要使用情境(使用者比較會在文章型部落格 / 新聞站開節省模式)。
+    const pm = settings.partialMode;
+    const pmActive = !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
+    STATE.partialModeActive = pmActive;
+
+    if (!pmActive) {
+      // v1.7.1: 把內文核心(main/article 後代、長段落)推到 array 前面,
+      // 配合下方 translateUnits 的「序列 batch 0 + 並行 rest」,
+      // 讓使用者最快看到的譯文是文章開頭而不是 nav / 短連結。
+      // 排序在 truncate 之前,使用者超量時優先丟棄低優先級段落(寧丟 nav 不丟內文)。
+      const t_priority_start = Date.now();
+      units = SK.prioritizeUnits(units);
+      SK.sendLog('info', 'translate', 'milestone:prioritize_done', { t: Date.now() - entryTime, dt: Date.now() - t_priority_start });
+    } else {
+      SK.sendLog('info', 'translate', 'partialMode: skip prioritizeUnits, use DOM order', { totalUnits: units.length });
+    }
 
     // 超大頁面防護
     let maxTotalUnits = SK.DEFAULT_MAX_TOTAL_UNITS;
@@ -623,13 +640,8 @@
       units = units.slice(0, maxTotalUnits);
     }
 
-    // v1.8.5: 「只翻文章開頭」啟用時,在 prioritize 後直接 truncate units 到 maxUnits。
-    // 這讓 toast 顯示的 total 是實際翻譯段數(25 / 25)而非整頁段數(25 / 227),
-    // 並且自然讓 packBatches 只切 1 批(不必依賴 translateUnits 內 skipBatch1Plus 邏輯)。
-    // 同時設 STATE.partialModeActive 給 rescan / SPA observer 路徑檢查 — 啟用時跳過動態翻譯。
-    const pm = settings.partialMode;
-    const pmActive = !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
-    STATE.partialModeActive = pmActive;
+    // v1.8.5: partialMode 啟用時 truncate units 到 maxUnits,讓 toast 顯示實際翻譯段數
+    // (25 / 25 而非 25 / 227),且 packBatches 自然只切 1 批。
     if (pmActive && units.length > pm.maxUnits) {
       const skipped = units.length - pm.maxUnits;
       SK.sendLog('info', 'translate', 'partialMode: truncate units', { total: units.length, kept: pm.maxUnits, skipped });
@@ -1082,8 +1094,14 @@
       return;
     }
 
-    // v1.7.1: 與 translatePage 同樣的優先級排序(內文核心優先)
-    units = SK.prioritizeUnits(units);
+    // v1.8.6: partialMode 啟用時跳過 prioritizeUnits 走 DOM 順序(同 translatePage Gemini 路徑)
+    const pm = settings.partialMode;
+    const pmActive = !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
+    STATE.partialModeActive = pmActive;
+    if (!pmActive) {
+      // v1.7.1: 與 translatePage 同樣的優先級排序(內文核心優先)
+      units = SK.prioritizeUnits(units);
+    }
 
     // 超大頁面防護（沿用相同上限設定）
     let maxTotalUnits = SK.DEFAULT_MAX_TOTAL_UNITS;
@@ -1093,6 +1111,10 @@
     if (maxTotalUnits > 0 && units.length > maxTotalUnits) {
       truncatedCount = units.length - maxTotalUnits;
       units = units.slice(0, maxTotalUnits);
+    }
+    // v1.8.5/8.6: partialMode 啟用時 truncate(同 Gemini 路徑)
+    if (pmActive && units.length > pm.maxUnits) {
+      units = units.slice(0, pm.maxUnits);
     }
     const total = units.length;
 
