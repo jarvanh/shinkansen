@@ -280,8 +280,10 @@
 
   // ─── 字幕解析：JSON3（含時間戳）────────────────────────────
 
-  function parseJson3(text) {
-    const json = JSON.parse(text);
+  // input 可為 JSON 字串(YouTube 路徑,XHR responseText)或已 parse 的 object
+  // (Drive 路徑,background fetch 後已 res.json() 過)。
+  function parseJson3(input) {
+    const json = typeof input === 'string' ? JSON.parse(input) : input;
     const segments = [];
     const seen = new Set();
     let groupCounter = 0;
@@ -2195,5 +2197,15 @@
       SK.sendLog('warn', 'youtube', 'SPA nav autoTranslate check failed', { error: err.message });
     }
   });
+
+  // ─── 對外 export:給 content-drive.js(Drive ASR commit 3+)共用 ─────
+  // parseJson3:json3 → raw segments [{text, normText, startMs, groupId}]
+  // mergeAsr:啟發式合句(kle/Ile/Lle 三段)→ [{startMs, endMs, text, sourceSegs}]
+  // Drive ASR 路徑跟 YouTube ASR 路徑共用同一份字幕格式與合句啟發式,
+  // 只差注入路徑(player same-frame DOM vs cross-origin iframe 浮層)。
+  SK.ASR = {
+    parseJson3,
+    mergeAsr: _heuristicMergeAsr,
+  };
 
 })(window.__SK);
