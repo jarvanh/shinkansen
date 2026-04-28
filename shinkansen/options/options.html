@@ -488,6 +488,11 @@
         <small class="muted">術語擷取是任務簡單的單次請求，Flash Lite 通常已夠用，且比 Flash 快 1.5-3 倍、便宜 5 倍</small>
       </label>
       <label>
+        阻塞門檻（批次數）
+        <input type="number" id="glossaryBlockingThreshold" step="1" min="0" max="50">
+        <small class="muted">頁面切批 > 此值才「先等術語表再翻譯」（blocking），≤ 此值則術語表跟翻譯並行（fire-and-forget，不阻塞首字）。預設 10——中等長度頁面省 1.5-7 秒首字延遲，但 batch 0 翻的部分可能跟後段術語不一致。設 0 = 全部走 fire-and-forget（永不阻塞）；設極大值（如 50）= 幾乎都阻塞（舊行為）</small>
+      </label>
+      <label>
         術語表 Temperature
         <input type="number" id="glossaryTemperature" step="0.1" min="0" max="2">
         <small class="muted">控制術語擷取的穩定度，越低越穩定。預設 0.1，一般不需調整</small>
