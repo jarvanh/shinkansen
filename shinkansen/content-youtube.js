@@ -676,11 +676,13 @@
             padding: 0 24px;
             box-sizing: border-box;
           }
-          /* cue rows:用 span + display:inline-block,寬度 shrink-to-fit 內容 */
+          /* cue rows:用 span + display:inline-block,寬度 shrink-to-fit 內容
+             v1.8.2: padding 從 0.15em 0.7em 縮成 0.05em 0.3em — 對齊 YouTube 原生
+             字幕緊貼文字的視覺比例(原本左右各多出近半字寬,上下也鬆) */
           .cue {
             display: inline-block;
             max-width: 100%;
-            padding: 0.15em 0.7em;
+            padding: 0.05em 0.3em;
             background: rgba(0, 0, 0, 0.75);   /* 對齊 YouTube 原生 */
             color: #fff;
             line-height: 1.45;
