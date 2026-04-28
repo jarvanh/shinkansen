@@ -66,6 +66,13 @@
 
 ## v1.7.x
 
+**v1.7.1** — 翻譯優先級排序 + batch 0 序列化。長網頁翻譯時使用者最先看到的譯文從「導覽列 / cookie 同意書 / TOC」變成「文章標題 + 第一段內文」。兩個改動互補:`SK.prioritizeUnits` 對 `collectParagraphs` 結果做 stable sort(tier 0 = `<main>` / `<article>` 後代;tier 1 = 長段落 + 連結密度 < 50%;tier 2 = 其他),把內文核心推到 array 前面;`translateUnits` / `translateUnitsGoogle` 改成「序列跑 batch 0,完成後才用 worker pool 並行 batch 1+」,確保最先注入 DOM 的批次必定是 array 開頭那批。
+
+  - **`SK.prioritizeUnits`(新,`content-detect.js`)**:tier 函式只用語意訊號(HTML5 tag + ARIA role + 文字長度 + 連結密度),不綁站點 class / id,符合硬規則 §8 結構通則。stable sort(V8 Array.prototype.sort 自 2018 起為 stable)保留同 tier 內的 DOM 順序。注入用 element reference,不依賴 array index → 排序不影響注入位置。
+  - **batch 0 序列(`content.js`)**:`runBatch` helper 抽出後,主流程改為 `await runBatch(jobs[0]); runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch)`。延遲代價約 batch 0 的 API 耗時(Gemini Flash 冷啟動約 4-7 秒;暖 cache 後 2-4 秒);換來的好處是使用者最早看到的譯文是文章開頭,且 Gemini implicit cache 可在 batch 0 暖完後讓 batch 1+ 並行批吃 cache。
+  - **新 regression**:`test/regression/translate-priority-sort.spec.js` 鎖兩件事——tier 0 排序到 array 前 + batch 0 序列 / batch 1+ 並行的時序行為。SANITY 雙驗(破壞排序 fail / 破壞序列 fail)。
+  - **真實站點實測**(2026-04-28,10 個網頁,Gemini 3 Flash):排序機制 8/10 顯著改善(TWZ / Wikipedia / Cloudflare / Verge / Ars / NPR / Smashing / CSS-Tricks 都把 H1 / H2 / 文章內文推到 batch 0);2/10 無變化(HN 用 `<table>` 沒 `<main>`、GitHub 把 UI tab 也塞在 `<main>` 內,tier 0 太粗——這個 framework 限制留待未來細分);時序設計 10/10 全部驗證 batch 1-N 並行 dispatch(Δ < 2ms)。詳細實測資料見 `reports/priority-sort-probe-2026-04-28.md`。
+
 **v1.7.0** — YouTube 自動產生字幕(ASR)整套生產級體驗 + 設定簡化。Highlights:**AI 智慧分句**——把整批 ASR 片段送 Gemini 依語意重新分句後翻譯,中文字幕從「破碎的詞」變「完整句子」;**混合模式預設**——預設分句先秒出,AI 分句結果回來後替換成更精緻版本;**字幕 overlay 整句穩定顯示**——完全旁路 YouTube 原生 caption-segment 一字一字跳的問題,控制列出現時自動上移避開進度條;**設定 UI 簡化**——三選一 radio → 單一「AI 分句模式」toggle(開啟=混合 / 關閉=原始分句);**popup 紅點 CSS bug 修**——`.update-dot[hidden]` 規則漏寫導致殘留紅點永遠顯示。
 
   - **AI 智慧分句**:`TRANSLATE_ASR_SUBTITLE_BATCH` 用 timestamp mode JSON,LLM 自由合句 + 時間戳對齊驗證。輸入 `[{s,e,t}]` → 輸出 `[{s,e,t}]`,合句後逐句翻譯,token 用量略高於原始分句但中文閱讀體驗大幅提升。

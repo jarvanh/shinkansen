@@ -255,7 +255,7 @@
     const t0All = Date.now();
     SK.sendLog('info', 'translate', 'translateUnits start', { batches: jobs.length, total, maxConcurrent });
 
-    await runWithConcurrency(jobs, maxConcurrent, async (job) => {
+    const runBatch = async (job) => {
       if (signal?.aborted) return;
       const batchIdx = jobs.indexOf(job);
       const t0 = Date.now();
@@ -295,7 +295,17 @@
         SK.sendLog('error', 'translate', `batch ${batchIdx + 1}/${jobs.length} FAILED`, { elapsed, start: job.start, error: err.message });
         failures.push({ start: job.start, count: job.texts.length, error: err.message });
       }
-    });
+    };
+
+    // v1.7.1: 序列跑 batch 0,完成後才啟動 batch 1+ 並行池。
+    // 配合上游 prioritizeUnits 把內文核心推到前面,使用者最快看到的譯文
+    // 是文章開頭而不是中段;同時 batch 0 也是 LLM cache warming 的天然時機。
+    if (jobs.length > 0) {
+      await runBatch(jobs[0]);
+      if (jobs.length > 1 && !signal?.aborted) {
+        await runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch);
+      }
+    }
 
     SK.sendLog('info', 'translate', 'translateUnits complete', { elapsed: Date.now() - t0All, done, total, failures: failures.length });
 
@@ -408,6 +418,12 @@
       STATE.abortController = null;
       return;
     }
+
+    // v1.7.1: 把內文核心(main/article 後代、長段落)推到 array 前面,
+    // 配合下方 translateUnits 的「序列 batch 0 + 並行 rest」,
+    // 讓使用者最快看到的譯文是文章開頭而不是 nav / 短連結。
+    // 排序在 truncate 之前,使用者超量時優先丟棄低優先級段落(寧丟 nav 不丟內文)。
+    units = SK.prioritizeUnits(units);
 
     // 超大頁面防護
     let maxTotalUnits = SK.DEFAULT_MAX_TOTAL_UNITS;
@@ -749,7 +765,7 @@
     const t0All = Date.now();
     SK.sendLog('info', 'translate', 'translateUnitsGoogle start', { batches: jobs.length, total });
 
-    await runWithConcurrency(jobs, 5, async (job) => {
+    const runBatch = async (job) => {
       if (signal?.aborted) return;
       const batchIdx = jobs.indexOf(job);
       try {
@@ -776,7 +792,15 @@
         SK.sendLog('error', 'translate', `google batch ${batchIdx + 1} FAILED`, { error: err.message });
         failures.push({ start: job.start, count: job.texts.length, error: err.message });
       }
-    });
+    };
+
+    // v1.7.1: 與 translateUnits 同樣的「序列 batch 0 + 並行 rest」策略
+    if (jobs.length > 0) {
+      await runBatch(jobs[0]);
+      if (jobs.length > 1 && !signal?.aborted) {
+        await runWithConcurrency(jobs.slice(1), 5, runBatch);
+      }
+    }
 
     SK.sendLog('info', 'translate', 'translateUnitsGoogle complete', {
       elapsed: Date.now() - t0All, done, total, failures: failures.length, chars: totalChars,
@@ -854,6 +878,9 @@
       STATE.abortController = null;
       return;
     }
+
+    // v1.7.1: 與 translatePage 同樣的優先級排序(內文核心優先)
+    units = SK.prioritizeUnits(units);
 
     // 超大頁面防護（沿用相同上限設定）
     let maxTotalUnits = SK.DEFAULT_MAX_TOTAL_UNITS;

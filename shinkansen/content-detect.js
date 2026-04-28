@@ -508,4 +508,49 @@
     return parts.join('\n');
   };
 
+  // ─── v1.7.1: 翻譯優先級排序 ────────────────────────────
+  // 把「使用者最想看的內容」推到 array 前面,讓 batch 0 翻譯完成時視覺上是
+  // 「文章開頭變中文」而不是「導覽列變中文」。本函式只重排 array 順序,
+  // 不過濾任何單元——所有 unit 都還是會翻,只是時序不同。
+  //
+  // tier 0:祖先含 <main> / <article> / role=main / role=article → 內文核心
+  // tier 1:文字長度 ≥ 80 + 連結密度 < 0.5 → 一般內文段落
+  // tier 2:其他 → 短連結 / nav / 補抓出來的零碎元素
+  //
+  // V8 的 Array.prototype.sort 自 2018 起為 stable sort(Chrome 70+),
+  // 同 tier 內維持原 DOM 順序——TreeWalker 走過的次序保留,只是把高 tier 推前。
+  // 注入用 element reference,不依賴 array index → 排序不影響注入位置。
+  SK.prioritizeUnits = function prioritizeUnits(units) {
+    const tierCache = new Map();
+
+    function computeTier(unit) {
+      // fragment 用 unit.el(parent block,符合 extractInlineFragments push 結構);
+      // element 用 unit.el。兩者統一。
+      const el = unit.el;
+      if (!el || !el.parentElement) return 2;
+
+      // 祖先檢查:HTML5 語意 tag 或 ARIA role
+      let cur = el.parentElement;
+      while (cur && cur !== document.body) {
+        const tag = cur.tagName;
+        if (tag === 'MAIN' || tag === 'ARTICLE') return 0;
+        const role = cur.getAttribute && cur.getAttribute('role');
+        if (role === 'main' || role === 'article') return 0;
+        cur = cur.parentElement;
+      }
+
+      // 文字長度 + 連結密度(純結構訊號,不依賴站點 class/id)
+      const text = (el.textContent || '').trim();
+      if (text.length < 80) return 2;
+      let linkChars = 0;
+      const anchors = el.querySelectorAll ? el.querySelectorAll('a') : [];
+      for (const a of anchors) linkChars += (a.textContent || '').length;
+      if (text.length > 0 && linkChars / text.length >= 0.5) return 2;
+      return 1;
+    }
+
+    for (const u of units) tierCache.set(u, computeTier(u));
+    return units.slice().sort((a, b) => tierCache.get(a) - tierCache.get(b));
+  };
+
 })(window.__SK);
