@@ -308,6 +308,19 @@
     </section>
 
     <section>
+      <h2>節省模式</h2>
+      <label class="switch">
+        <input type="checkbox" id="partialModeEnabled">
+        <span>只翻文章開頭</span>
+      </label>
+      <label>
+        翻譯段落數上限
+        <input type="number" id="partialModeMaxUnits" step="1" min="5" max="50">
+        <small class="muted">啟用後只翻譯頁面前 N 段（按 DOM 順序，不排序）。適合先快速預覽再決定是否繼續讀完整文章，可大幅減少 token 用量。翻譯完成後右下角提示會出現「翻譯剩餘段落」按鈕，點按即可繼續翻完整篇——前面已翻好的段落會從本地快取載入，不重複收費。預設 25 段，範圍 5-50；實際翻譯段數可能因 token 上限略少</small>
+      </label>
+    </section>
+
+    <section>
       <h2>配額（API 用量限制）</h2>
       <p class="muted">根據你的 Gemini API 付費層級，自動控制請求頻率，避免超出 Google 的使用量限制。你的目前層級與配額可至 <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">Gemini API Rate Limit</a> 查詢</p>
       <label>
@@ -406,15 +419,6 @@
         單頁翻譯段落上限
         <input type="number" id="maxTranslateUnits" step="100" min="0" max="10000">
         <small class="muted">單次翻譯最多處理幾段。超大頁面（如維基百科長條目）超過此上限時，多餘段落會被略過。設為 0 表示不限制，預設 1000</small>
-      </label>
-      <label class="switch">
-        <input type="checkbox" id="partialModeEnabled">
-        <span>只翻文章開頭（節省費用）</span>
-      </label>
-      <label>
-        翻譯段落數上限
-        <input type="number" id="partialModeMaxUnits" step="1" min="5" max="50">
-        <small class="muted">啟用「只翻文章開頭」後，只翻譯文章前 N 段（經內文優先排序後的開頭區塊）。適合先快速預覽再決定是否繼續讀完整文章。之後想看完整翻譯時關閉此選項並重新翻譯，前面已翻好的段落會從本地快取載入（不會重複收費）。預設 25 段，範圍 5-50；實際翻譯段數可能因 token 上限略少</small>
       </label>
     </section>
 
