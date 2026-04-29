@@ -855,6 +855,15 @@
           .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG} {
             --sk-cue-bottom: calc(60px + var(--sk-cue-size, 22px));
           }
+          /* commit 5c.6:雙語模式(host[bilingual] attr)overlay 從預設 30px 推到 90px
+             避開原生英文 CC(原生 30-40px from bottom)。chrome 顯示時再多推一段
+             避開控制列 + 已上抬的原生 CC(YouTube 自己把原生 CC 推到約 82px)。 */
+          ${_OVERLAY_TAG}[bilingual] {
+            --sk-cue-bottom: 90px;
+          }
+          .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG}[bilingual] {
+            --sk-cue-bottom: calc(140px + var(--sk-cue-size, 22px));
+          }
         `;
         document.head.appendChild(style);
       }
@@ -870,13 +879,18 @@
   // overlay 回預設 30px 佔據原生 CC 的視覺位置。
   function _applyBilingualMode(bilingual) {
     _setAsrHidingMode(!bilingual);
+    // commit 5c.6:用 host attribute + CSS rule(_setAsrHidingMode 內注入的 stylesheet)
+    // 控制 overlay 位置,讓 chrome 顯示時的 :not(.ytp-autohide) selector 可以再上抬,
+    // 避免 inline style override 卡住自動上抬邏輯。
     const host = document.querySelector(_OVERLAY_TAG);
     if (host) {
       if (bilingual) {
-        host.style.setProperty('--sk-cue-bottom', '90px');
+        host.setAttribute('bilingual', 'true');
       } else {
-        host.style.removeProperty('--sk-cue-bottom');
+        host.removeAttribute('bilingual');
       }
+      // 清除 commit 5c.1 之前可能殘留的 inline style override(避免擋住 attr CSS rule)
+      host.style.removeProperty('--sk-cue-bottom');
     }
     // commit 5c.3:即時切到雙語時把已顯示的「翻譯中…」清掉(雙語下這 status 不該存在)
     if (bilingual) hideCaptionStatus();
