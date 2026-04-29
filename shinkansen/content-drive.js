@@ -38,24 +38,26 @@
   const BATCH_SIZE = 30;
   const MAX_CONCURRENT = 3;
 
-  // ─── driveSubtitle.autoTranslate 設定追蹤 ──────────────
-  // popup toggle 寫 storage(全域設定),content-drive.js listen onChanged 即時反應。
-  // 預設 true(沿用 DEFAULT_SETTINGS.driveSubtitle.autoTranslate)。
+  // ─── ytSubtitle.autoTranslate 設定追蹤 ─────────────────
+  // commit 5a':共用 YouTube 字幕設定塊,user 不需要為 Drive 額外設定。
+  // 預設 true(沿用 DEFAULT_SETTINGS.ytSubtitle.autoTranslate)。
   let _autoTranslateEnabled = true;
   (async () => {
     try {
-      const { driveSubtitle = {} } = await browser.storage.sync.get('driveSubtitle');
-      _autoTranslateEnabled = driveSubtitle.autoTranslate !== false;
-      SK.sendLog('info', 'drive', 'autoTranslate setting loaded', { enabled: _autoTranslateEnabled });
+      const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+      _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
+      SK.sendLog('info', 'drive', 'autoTranslate setting loaded (from ytSubtitle)', {
+        enabled: _autoTranslateEnabled,
+      });
     } catch { /* 維持預設 true */ }
   })();
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes.driveSubtitle) return;
-    const newVal = changes.driveSubtitle.newValue || {};
+    if (area !== 'sync' || !changes.ytSubtitle) return;
+    const newVal = changes.ytSubtitle.newValue || {};
     const next = newVal.autoTranslate !== false;
     if (next === _autoTranslateEnabled) return;
     _autoTranslateEnabled = next;
-    SK.sendLog('info', 'drive', 'autoTranslate setting changed', { enabled: next });
+    SK.sendLog('info', 'drive', 'autoTranslate setting changed (via ytSubtitle)', { enabled: next });
   });
 
   // ─── overlay UI ──────────────────────────────────────

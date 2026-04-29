@@ -208,11 +208,12 @@ async function init() {
       // 沒設定過視為 true（與 DEFAULT_SETTINGS.ytSubtitle.autoTranslate 對齊）
       $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
     }
-    // commit 5a:Drive 影片 viewer toggle(drive.google.com/file/)
+    // commit 5a':Drive 影片 viewer toggle 共用 ytSubtitle.autoTranslate
+    // (user 不需要為 Drive 多做設定,跟 YouTube 字幕用同一個開關)
     if (/^https:\/\/drive\.google\.com\/file\//.test(url)) {
       $('drive-subtitle-row').hidden = false;
-      const { driveSubtitle = {} } = await browser.storage.sync.get('driveSubtitle');
-      $('drive-subtitle-toggle').checked = driveSubtitle.autoTranslate !== false;
+      const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+      $('drive-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
     }
   } catch { /* 非影片頁面,保持 hidden */ }
 
@@ -306,18 +307,18 @@ $('yt-subtitle-toggle').addEventListener('change', async (e) => {
   }
 });
 
-// commit 5a:Drive 字幕 toggle 採「全域設定」設計(寫 storage,跟 YouTube 不同;
-// 因 Drive 沒 SPA 切影片,單純 storage 即時 sync 即可。content-drive.js
-// listen onChanged 即時生效)。
+// commit 5a':Drive toggle 共用 ytSubtitle.autoTranslate(寫 storage,跟 YouTube popup
+// 的 SET_SUBTITLE message 設計不同——因 Drive 沒 SPA 切影片,單純 storage 即時 sync 即可。
+// content-drive.js listen onChanged 即時生效)。
 $('drive-subtitle-toggle').addEventListener('change', async (e) => {
   const enabled = e.target.checked;
   try {
-    const { driveSubtitle = {} } = await browser.storage.sync.get('driveSubtitle');
+    const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
     await browser.storage.sync.set({
-      driveSubtitle: { ...driveSubtitle, autoTranslate: enabled },
+      ytSubtitle: { ...ytSubtitle, autoTranslate: enabled },
     });
   } catch (err) {
-    statusEl.textContent = '狀態:無法切換 Drive 字幕,請重新整理頁面';
+    statusEl.textContent = '狀態:無法切換字幕翻譯,請重新整理頁面';
     statusEl.style.color = '#ff3b30';
   }
 });
@@ -329,16 +330,12 @@ $('options-btn').addEventListener('click', () => {
 // v1.6.23:popup 開著時 reactive sync ytSubtitle.autoTranslate(設定頁同步寫 storage 後立即反映)
 // popup 通常 click 外面就關閉,但 detached popup window 或極短時間視窗下這條 listener 確保一致
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync') return;
-  if (changes.ytSubtitle) {
-    const newVal = changes.ytSubtitle.newValue || {};
-    // ytSubtitle.autoTranslate 預設視為 true(對齊 init 邏輯)
-    $('yt-subtitle-toggle').checked = newVal.autoTranslate !== false;
-  }
-  if (changes.driveSubtitle) {
-    const newVal = changes.driveSubtitle.newValue || {};
-    $('drive-subtitle-toggle').checked = newVal.autoTranslate !== false;
-  }
+  if (area !== 'sync' || !changes.ytSubtitle) return;
+  const newVal = changes.ytSubtitle.newValue || {};
+  // 同一個 ytSubtitle.autoTranslate 設定同步兩個 popup toggle(YouTube + Drive 共用)
+  const enabled = newVal.autoTranslate !== false;
+  $('yt-subtitle-toggle').checked = enabled;
+  $('drive-subtitle-toggle').checked = enabled;
 });
 
 // v1.0.3: 編輯譯文按鈕
