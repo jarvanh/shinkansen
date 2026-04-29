@@ -1863,10 +1863,11 @@
 
   function replaceSegmentEl(el) {
     if (!SK.YT.active) return;
-    // commit 5c.2:雙語模式不替換原生 caption-segment(保留英文,中文由 overlay 顯示)
-    // — 否則 _setAsrHidingMode(false) 不隱藏 caption-window 時,被 captionMap 寫過的中文
-    // 會跟 overlay 中文同框出現,看起來像「中文兩層 + 英文片段」的三層字幕。
-    if (SK.YT.config?.bilingualMode === true) return;
+    // commit 5c.2:ASR 路徑雙語模式下保留英文 segment(中文由 overlay 顯示),否則
+    // overlay 中文 + segment 中文 = 三層觀感(image 20)
+    // commit 5c.4:非 ASR 路徑(人工字幕)沒有 G overlay,雙語應走「英文 + 譯文兩行」
+    // 寫進 segment 的設計;單純 return 會只剩英文(image 22 bug)。所以只 gate ASR。
+    if (SK.YT.config?.bilingualMode === true && SK.YT.isAsr === true) return;
     const original = el.textContent.trim();
     if (!original) return;
     // 已含中日韓字元 → 這是我們設置的譯文被 characterData mutation 觸發回呼，直接跳過
@@ -1892,8 +1893,12 @@
         // 修正：seek 後 _firstCacheHitLogged 已為 true，但 showCaptionStatus 可能已再次顯示，
         // 只靠 !_firstCacheHitLogged gate 會導致新顯示的提示永遠不被移除。
         if (cached) hideCaptionStatus();
+        // commit 5c.4:雙語模式(非 ASR 路徑)寫「原文 + 譯文兩行」(透過 \n,_setSegmentText
+        // 會自動 escape + <br>);ASR 路徑已被 line 1869 gate 擋住不會走到這。
+        // cached 為空字串(merged seg 副 segment)直接清空,讓主 seg 顯示合併後譯文。
+        const isBilingual = SK.YT.config?.bilingualMode === true;
         // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
-        _setSegmentText(el, cached);
+        _setSegmentText(el, isBilingual && cached ? `${original}\n${cached}` : cached);
         // 同步展開字幕框（不用 rAF——新版 expandCaptionLine 純設 style，不需量測 layout；
         // 若用 rAF，瀏覽器會先 paint 出「中文 + 舊 315px 容器」再展開，造成一幀閃爍）
         if (cached) expandCaptionLine(el);
@@ -1965,7 +1970,10 @@
         for (const el of (queue.get(key) || [])) {
           if (document.contains(el) && normText(el.textContent) === key) {
             // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>
-            _setSegmentText(el, trans);
+            // commit 5c.4:雙語模式(非 ASR)寫「原文 + 譯文兩行」
+            const isBilingual = YT.config?.bilingualMode === true;
+            const original = el.textContent.trim();
+            _setSegmentText(el, isBilingual && trans ? `${original}\n${trans}` : trans);
           }
         }
       }
