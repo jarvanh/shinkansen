@@ -467,6 +467,12 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt'),
   },
+  // commit 5b:Drive 影片字幕走 Google Translate 路徑(獨立 cache key '_gt_drive' 避免跟
+  // 一般網頁 GT 翻譯('_gt')互打)。input texts = raw segments 的 text array,逐段翻。
+  TRANSLATE_DRIVE_BATCH_GOOGLE: {
+    async: true,
+    handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt_drive'),
+  },
   // v1.5.7: OpenAI-compatible 自訂 Provider 翻譯（chat.completions endpoint）
   // 不走 rate limiter，cache key 加 baseUrl hash + model 分區。
   TRANSLATE_BATCH_CUSTOM: {

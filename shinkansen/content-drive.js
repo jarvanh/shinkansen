@@ -38,26 +38,35 @@
   const BATCH_SIZE = 30;
   const MAX_CONCURRENT = 3;
 
-  // ─── ytSubtitle.autoTranslate 設定追蹤 ─────────────────
+  // ─── ytSubtitle 設定追蹤(autoTranslate + engine)──────
   // commit 5a':共用 YouTube 字幕設定塊,user 不需要為 Drive 額外設定。
-  // 預設 true(沿用 DEFAULT_SETTINGS.ytSubtitle.autoTranslate)。
+  // commit 5b:engine 分流(預設 'gemini' 走 D' LLM 合句,'google' 走 GT 逐段翻免費)。
   let _autoTranslateEnabled = true;
+  let _engine = 'gemini';
   (async () => {
     try {
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
       _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
-      SK.sendLog('info', 'drive', 'autoTranslate setting loaded (from ytSubtitle)', {
-        enabled: _autoTranslateEnabled,
+      _engine = ytSubtitle.engine === 'google' ? 'google' : 'gemini';
+      SK.sendLog('info', 'drive', 'settings loaded (from ytSubtitle)', {
+        autoTranslate: _autoTranslateEnabled,
+        engine: _engine,
       });
-    } catch { /* 維持預設 true */ }
+    } catch { /* 維持預設 */ }
   })();
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync' || !changes.ytSubtitle) return;
     const newVal = changes.ytSubtitle.newValue || {};
-    const next = newVal.autoTranslate !== false;
-    if (next === _autoTranslateEnabled) return;
-    _autoTranslateEnabled = next;
-    SK.sendLog('info', 'drive', 'autoTranslate setting changed (via ytSubtitle)', { enabled: next });
+    const nextEnabled = newVal.autoTranslate !== false;
+    if (nextEnabled !== _autoTranslateEnabled) {
+      _autoTranslateEnabled = nextEnabled;
+      SK.sendLog('info', 'drive', 'autoTranslate setting changed', { enabled: nextEnabled });
+    }
+    const nextEngine = newVal.engine === 'google' ? 'google' : 'gemini';
+    if (nextEngine !== _engine) {
+      _engine = nextEngine;
+      SK.sendLog('info', 'drive', 'engine setting changed', { engine: nextEngine });
+    }
   });
 
   // ─── overlay UI ──────────────────────────────────────
@@ -219,8 +228,8 @@
     requestAnimationFrame(loop);
   }
 
-  // ─── 單批翻譯(commit 5a 抽出 helper,給 throttled 並行用) ────
-  async function _runOneBatch(batch, batchIdx, totalBatches) {
+  // ─── 單批翻譯:Gemini D' 模式(LLM 自由合句 + 時間戳對齊) ────
+  async function _runOneBatchGemini(batch, batchIdx, totalBatches) {
     if (batch.length === 0) return;
 
     const inputArr = batch.map((seg, i) => {
@@ -237,14 +246,14 @@
         payload: { texts: [inputJson], glossary: null },
       });
     } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} sendMessage failed`, {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} gemini sendMessage failed`, {
         error: e?.message || String(e),
       });
       return;
     }
 
     if (!res?.ok) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} LLM failed`, {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} gemini failed`, {
         error: res?.error || 'unknown',
       });
       return;
@@ -273,8 +282,57 @@
     }
     DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
 
-    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done`, {
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (gemini)`, {
       llmEntryCount: entries.length,
+      pushedToOverlay: pushedCount,
+      totalOverlayEntries: DRIVE.entries.length,
+      usage: res.usage,
+    });
+  }
+
+  // ─── 單批翻譯:Google Translate 模式(逐段翻、不合句、免費) ──
+  // input/output 都是 N 條 1:1 對應(ASR 不合句),時間戳沿用 raw segment 的 startMs。
+  async function _runOneBatchGoogle(batch, batchIdx, totalBatches) {
+    if (batch.length === 0) return;
+
+    const texts = batch.map(seg => seg.text);
+
+    let res;
+    try {
+      res = await browser.runtime.sendMessage({
+        type: 'TRANSLATE_DRIVE_BATCH_GOOGLE',
+        payload: { texts, glossary: null },
+      });
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google sendMessage failed`, {
+        error: e?.message || String(e),
+      });
+      return;
+    }
+
+    if (!res?.ok) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google failed`, {
+        error: res?.error || 'unknown',
+      });
+      return;
+    }
+
+    const translations = Array.isArray(res.result) ? res.result : [];
+    let pushedCount = 0;
+    for (let i = 0; i < batch.length; i++) {
+      const seg = batch[i];
+      const text = String(translations[i] || '').trim();
+      if (!text) continue;
+      const next = batch[i + 1];
+      const endMs = next ? next.startMs : seg.startMs + 1500;
+      DRIVE.entries.push({ startMs: seg.startMs, endMs, text });
+      pushedCount++;
+    }
+    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (google)`, {
+      inputCount: batch.length,
+      translatedCount: translations.length,
       pushedToOverlay: pushedCount,
       totalOverlayEntries: DRIVE.entries.length,
       usage: res.usage,
@@ -316,6 +374,7 @@
       totalSegments: rawSegments.length,
       totalBatches,
       maxConcurrent: MAX_CONCURRENT,
+      engine: _engine,
     });
 
     let nextBatchIdx = 0;
@@ -328,7 +387,12 @@
           SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
           return;
         }
-        await _runOneBatch(batches[idx], idx, totalBatches);
+        // engine 切換在 worker 開始前 latch(避免一輪內混用 google/gemini 結果)
+        if (_engine === 'google') {
+          await _runOneBatchGoogle(batches[idx], idx, totalBatches);
+        } else {
+          await _runOneBatchGemini(batches[idx], idx, totalBatches);
+        }
       }
     }
 
