@@ -236,9 +236,14 @@ async function init() {
 }
 
 $('translate-btn').addEventListener('click', async () => {
+  // v1.8.20: 雙擊防護——點擊期間 disable 按鈕,避免快速連按兩次導致第二次被
+  // content.js 解讀為 abort/restore(toggle 行為)
+  const btn = $('translate-btn');
+  if (btn.disabled) return;
+  btn.disabled = true;
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return;
-  const mode = $('translate-btn').dataset.mode;
+  if (!tab?.id) { btn.disabled = false; return; }
+  const mode = btn.dataset.mode;
   statusEl.textContent = mode === 'restore' ? '狀態：正在還原原文…' : '狀態：正在翻譯…';
   try {
     // v1.6.6: 讀 settings.popupButtonSlot 決定按鈕對應的 preset slot（預設 2 = Flash）
@@ -250,6 +255,7 @@ $('translate-btn').addEventListener('click', async () => {
   } catch (err) {
     statusEl.textContent = '狀態：無法在此頁面執行，請重新整理後再試';
     statusEl.style.color = '#ff3b30';
+    btn.disabled = false;
   }
 });
 

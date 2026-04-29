@@ -121,13 +121,22 @@ async function getUsageStats() {
   };
 }
 
+// v1.8.20: 序列化 addUsage 寫入。原版 read-modify-write 沒鎖,跨 tab 並行翻譯時兩個
+// await getUsageStats() 各拿舊值 → 後寫覆蓋前寫 → 累計用量永久遺失一筆。
+// 改 promise chain 排隊:每次 addUsage 接在 _usageWriteQueue 之後跑,保證序列化。
+let _usageWriteQueue = Promise.resolve();
 async function addUsage(inputTokens, outputTokens, costUSD) {
-  const s = await getUsageStats();
-  s.totalInputTokens += inputTokens;
-  s.totalOutputTokens += outputTokens;
-  s.totalCostUSD += costUSD;
-  await browser.storage.local.set({ [USAGE_KEY]: s });
-  return s;
+  const next = _usageWriteQueue.then(async () => {
+    const s = await getUsageStats();
+    s.totalInputTokens += inputTokens;
+    s.totalOutputTokens += outputTokens;
+    s.totalCostUSD += costUSD;
+    await browser.storage.local.set({ [USAGE_KEY]: s });
+    return s;
+  });
+  // 防止單次 reject 卡住整條 queue:catch 後 swallow,但仍把 result/error return 給 caller
+  _usageWriteQueue = next.catch(() => {});
+  return next;
 }
 
 async function resetUsageStats() {
@@ -148,14 +157,41 @@ function computeCostUSD(inputTokens, outputTokens, pricing) {
 }
 
 /**
- * v0.48: 計算套用 Gemini implicit context cache 折扣後的實付費用。
- * Gemini 對 cache 命中部分只收原價 25%（省 75%），未命中部分與 output 全價。
- * 公式：effectiveInput = (inputTokens - cachedTokens) + cachedTokens × 0.25
+ * v0.48: 計算套用 implicit / explicit context cache 折扣後的實付費用。
+ * v1.8.20: 改成可注入折扣比例(cachedRate = cache 命中部分相對全價的比例)。
+ * 各家公告:
+ *   - Gemini implicit cache: 命中收 25% (省 75%)
+ *   - OpenAI prompt cache:    命中收 50% (省 50%)
+ *   - Anthropic Claude read:  命中收 10% (省 90%);write 是 +25% 的另一條,本擴充功能
+ *                             不主動建 cache,只看 read,所以僅處理命中折扣。
+ *   - 不確定的 provider:      預設用 0.5 的中間值,低估比高估保守。
+ *
+ * 公式:effectiveInput = (inputTokens - cachedTokens) + cachedTokens × cachedRate
  */
-function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing) {
+function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing, cachedRate) {
+  const rate = (typeof cachedRate === 'number' && cachedRate >= 0 && cachedRate <= 1)
+    ? cachedRate
+    : 0.25; // 預設 Gemini 75% 折扣(向下相容既有 caller)
   const uncached = Math.max(0, inputTokens - cachedTokens);
-  const effectiveInput = uncached + cachedTokens * 0.25;
+  const effectiveInput = uncached + cachedTokens * rate;
   return computeCostUSD(effectiveInput, outputTokens, pricing);
+}
+
+/**
+ * v1.8.20: 依自訂 Provider baseUrl 推斷 cache 命中折扣比例。
+ * 真值比例不應該硬編碼成 0.25 套到所有 provider —— OpenAI cache 折扣 50%、
+ * Claude 高達 90%,套 0.25 對 OpenAI 會低估費用約 50%、對 Claude 會高估 70%。
+ * 由 baseUrl 簡單字串判斷,使用者用 OpenRouter 等 aggregator 時走預設 0.5 中間值。
+ *
+ * @param {string} baseUrl
+ * @returns {number} cache 命中部分相對全價的比例(0-1)
+ */
+function getCustomCacheHitRate(baseUrl) {
+  const url = String(baseUrl || '').toLowerCase();
+  if (url.includes('anthropic.com')) return 0.10;        // Claude read 90% off
+  if (url.includes('openai.com')) return 0.50;            // OpenAI prompt cache 50% off
+  if (url.includes('deepseek.com')) return 0.10;          // DeepSeek context cache hit 90% off
+  return 0.50;                                            // 未知 provider 中間值
 }
 
 // ─── Extension icon badge(已翻譯紅點提示） ─────────────────
@@ -645,9 +681,13 @@ const messageHandlers = {
       // 等待新分頁載入完成後自動觸發翻譯
       // 透過 onUpdated 監聽 tab 的 complete 狀態，再送 TOGGLE_TRANSLATE 訊息
       return new Promise((resolve) => {
+        // v1.8.20: 把 30s 安全閥 timer 拉出來,onUpdated 路徑 resolve 時 clearTimeout
+        // 避免 SW 多活 30s 跑無作用 code(原本 onUpdated 路徑沒清,timeout setTimeout 仍然 fire)
+        let safetyTimer = null;
         const onUpdated = (tabId, changeInfo) => {
           if (tabId === tab.id && changeInfo.status === 'complete') {
             browser.tabs.onUpdated.removeListener(onUpdated);
+            if (safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
             // 小延遲確保 content script 已完成初始化
             setTimeout(() => {
               browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_TRANSLATE' }).catch(() => {});
@@ -658,7 +698,7 @@ const messageHandlers = {
         browser.tabs.onUpdated.addListener(onUpdated);
 
         // 安全閥：30 秒後若尚未 complete，移除 listener 避免洩漏
-        setTimeout(() => {
+        safetyTimer = setTimeout(() => {
           browser.tabs.onUpdated.removeListener(onUpdated);
           resolve({ tabId: tab.id, timeout: true });
         }, 30000);
@@ -766,23 +806,35 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 const inFlightStreams = new Map();
 
 // v1.8.14: streaming 期間 SW keep-alive。
-// MV3 service worker 預設 5 分鐘 idle 收回,但長頁翻譯可能跨多分鐘,
-// 收回後 inFlightStreams Map(module-level state)消失 → 取消按鈕無響應 + abort 訊號到不了 fetch。
-// 每 20 秒呼叫一次極輕量的 chrome API 重置 idle timer,直到所有 stream 結束。
-let _streamKeepAliveTimer = null;
+// v1.8.20: 改用 chrome.alarms — setInterval 在 SW 真被收回時整個被銷毀,等於 keep-alive 本身死亡;
+// alarms 是持久排程,SW 收回後到觸發點仍會被喚醒繼續續命。
+// 設計:0.4 分鐘(24 秒)觸發一次,由 onAlarm 排程下一次,直到 inFlightStreams 清空才停。
+const _STREAM_KEEPALIVE_ALARM = 'shinkansen-stream-keepalive';
+const _STREAM_KEEPALIVE_PERIOD_MIN = 0.5; // Chrome alarms 最低 0.5 分鐘 = 30 秒
 function _startStreamKeepAlive() {
-  if (_streamKeepAliveTimer) return;
-  _streamKeepAliveTimer = setInterval(() => {
-    // getPlatformInfo 是極輕量的 API call,目的純粹是讓 SW 保持活著
-    browser.runtime.getPlatformInfo().catch(() => {});
-  }, 20_000);
+  // 重複呼叫 alarms.create 同名會覆蓋(無重複註冊風險)
+  try {
+    browser.alarms.create(_STREAM_KEEPALIVE_ALARM, {
+      delayInMinutes: _STREAM_KEEPALIVE_PERIOD_MIN,
+      periodInMinutes: _STREAM_KEEPALIVE_PERIOD_MIN,
+    });
+  } catch (_) { /* alarms 權限缺失或測試環境 */ }
 }
 function _stopStreamKeepAliveIfIdle() {
-  if (inFlightStreams.size === 0 && _streamKeepAliveTimer) {
-    clearInterval(_streamKeepAliveTimer);
-    _streamKeepAliveTimer = null;
+  if (inFlightStreams.size === 0) {
+    try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
   }
 }
+// alarm 觸發即「SW 被喚醒到」這個事實本身就是 keep-alive。listener body 不必做事;
+// 但 alarm 觸發時若 inFlightStreams 已空(stream 完成同時 alarm fire 的 race),順手清理。
+try {
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm?.name !== _STREAM_KEEPALIVE_ALARM) return;
+    if (inFlightStreams.size === 0) {
+      try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
+    }
+  });
+} catch (_) { /* alarms 不可用環境 */ }
 
 // v1.8.0: Streaming 翻譯 handler。
 // v1.8.9: 加 opts 參數,支援字幕路徑(TRANSLATE_SUBTITLE_BATCH_STREAM)復用同一條 streaming pipeline,
@@ -1373,15 +1425,20 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
     // 4. 寫回快取
     await cache.setBatch(missingTexts, fresh, suffix);
 
-    // 5. 累計用量（cachedTokens 走 25% 折扣與 Gemini 同邏輯——OpenAI cache 命中折扣率類似）
+    // 5. 累計用量
+    // v1.8.20: 折扣比例依 provider 推斷——OpenAI/Claude/DeepSeek 各家 cache 命中折扣率不同,
+    // 原本硬編碼 0.25 套所有 provider 對 OpenAI 系統性低估 50% 成本。
+    const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+    const cachedSavedRatio = 1 - cachedRate;
     const billedInput = Math.max(
-      0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * 0.75),
+      0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * cachedSavedRatio),
     );
     const billedCost = computeBilledCostUSD(
       batchUsage.inputTokens,
       batchUsage.cachedTokens || 0,
       batchUsage.outputTokens,
       { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 },
+      cachedRate,
     );
     await addUsage(billedInput, batchUsage.outputTokens, billedCost);
   }
@@ -1390,6 +1447,8 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   const result = cached.slice();
   missingIdxs.forEach((idx, k) => { result[idx] = fresh[k]; });
 
+  const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+  const cachedSavedRatio = 1 - cachedRate;
   return {
     result,
     usage: {
@@ -1398,13 +1457,14 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
       cachedTokens: batchUsage.cachedTokens || 0,
       costUSD: batchCostUSD,
       billedInputTokens: Math.max(
-        0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * 0.75),
+        0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * cachedSavedRatio),
       ),
       billedCostUSD: computeBilledCostUSD(
         batchUsage.inputTokens,
         batchUsage.cachedTokens || 0,
         batchUsage.outputTokens,
         { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 },
+        cachedRate,
       ),
       cacheHits,
     },

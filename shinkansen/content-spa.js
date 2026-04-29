@@ -117,9 +117,17 @@
       _origPushState(...args);
       handleSpaNavigation();
     };
+    // v1.8.20: replaceState 在 pathname 變動時也視為 SPA navigation。
+    // React Router shallow routing、Notion、Twitter/X 部分路徑用 replaceState 換內容,
+    // 原版只更新 spaLastUrl 不 reset → 新內容用舊 STATE 跑,新段落不會被翻。
+    // 純 query string / hash 變動(pathname 不變)維持只更 lastUrl 不 reset 的行為。
     history.replaceState = function (...args) {
+      const oldPath = location.pathname;
       _origReplaceState(...args);
       spaLastUrl = location.href;
+      if (location.pathname !== oldPath) {
+        handleSpaNavigation();
+      }
     };
     history.pushState.__sk_patched = true;
   }
@@ -209,6 +217,17 @@
     }
     guardVisibleSet = null;
   }
+
+  // v1.8.20: injection 路徑寫入 STATE 後呼叫此 hook,把新元素加進 IO 訂閱。
+  // 修 v1.8.14 IO subset 設計缺口:`initGuardIntersectionObserver` 只 observe 啟動快照,
+  // 後續 SPA rescan 翻新一批的譯段從未進 `guardVisibleSet` → guard sweep(走 IO subset)
+  // 對它們完全失效。
+  SK._guardObserveEl = function _guardObserveEl(el) {
+    if (!el) return;
+    if (!guardIntersectionObserver) return; // observer 未啟動(尚未進 SPA 觀察狀態)
+    if (!el.isConnected) return;
+    try { guardIntersectionObserver.observe(el); } catch (_) { /* el 可能不是 Element */ }
+  };
 
 
   function stopSpaObserver() {

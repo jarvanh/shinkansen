@@ -988,11 +988,18 @@
   // 舊頁 innerHTML),不抽進這條 helper。
   function restoreOriginalHTMLAndReset() {
     if (STATE.originalHTML.size > 0) {
+      // v1.8.20: SPA framework rerender 後 el 可能已 detached,直接寫 innerHTML 不會報錯
+      // 但對使用者頁面零作用。記下 detached 數量讓 Jimmy 從 Debug 分頁能看出原因。
+      let detached = 0;
       STATE.originalHTML.forEach((originalHTML, el) => {
+        if (!el.isConnected) { detached++; return; }
         el.innerHTML = originalHTML;
         el.removeAttribute('data-shinkansen-translated');
       });
       STATE.originalHTML.clear();
+      if (detached > 0) {
+        SK.sendLog?.('warn', 'system', 'restoreOriginalHTMLAndReset: skipped detached elements', { detached });
+      }
     }
     STATE.translated = false;
   }
@@ -1017,10 +1024,17 @@
     if (STATE.translatedMode === 'dual') {
       SK.removeDualWrappers?.();
     }
+    // v1.8.20: 跳過已 detached 的元素(SPA framework 重建 DOM tree 後對舊 ref 寫入無效),
+    // 並 log 出來讓使用者知道原文未必能完整還原(這在 SPA 上是不可逆的)
+    let restoreDetached = 0;
     STATE.originalHTML.forEach((originalHTML, el) => {
+      if (!el.isConnected) { restoreDetached++; return; }
       el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
     });
+    if (restoreDetached > 0) {
+      SK.sendLog?.('warn', 'system', 'restorePage: skipped detached elements (page may not fully restore)', { detached: restoreDetached });
+    }
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
     STATE.translationCache?.clear?.();  // v1.5.0
