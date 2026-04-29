@@ -989,6 +989,10 @@
     }
     const currentMs = YT.videoEl.currentTime * 1000;
     const cue = _findActiveCue(currentMs);
+    // v1.8.20: ASR + 純中文模式下,replaceSegmentEl L1909 會 early return 跳過
+    // L1934 的 hideCaptionStatus → 「翻譯中…」永遠殘留。改在 overlay 寫入時若有
+    // 中文 cue 命中,就主動 hide(冪等,沒 status indicator 時直接 return)。
+    if (cue && cue.targetText) hideCaptionStatus();
     _setOverlayContent(cue ? cue.targetText : '');
   }
 
@@ -1985,6 +1989,7 @@
   async function flushOnTheFly() {
     const YT = SK.YT;
     if (YT.pendingQueue.size === 0 || YT.flushing) return;
+    if (!YT.active) return; // v1.8.20: 進場 guard,session 已 stop 直接放棄
     YT.flushing = true;
 
     const queue = new Map(YT.pendingQueue);
@@ -2004,6 +2009,12 @@
         payload: { texts, glossary: null },
       });
       if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
+      // v1.8.20: await 後再次檢查 active——stop 在 await 期間發生時放棄寫入,
+      // 否則寫進已被 stopYouTubeTranslation 重置的新 captionMap 污染下個 session。
+      if (!SK.YT.active) {
+        YT.flushing = false;
+        return;
+      }
       // v1.2.39: 累積並記錄 on-the-fly 批次用量
       _logWindowUsage(texts.length, res.usage);
 
@@ -2137,6 +2148,7 @@
     YT.rawSegments        = [];         // v1.3.5: 補齊（原僅在 yt-navigate-finish 重置）
     YT.captionMap         = new Map();
     YT.pendingQueue       = new Map();
+    YT.flushing           = false;       // v1.8.20: 確保下個 session 重啟後 flushOnTheFly 不被舊 flag 卡住
     YT.isAsr              = false;
     YT.displayCues        = [];         // G 路徑:清 overlay 顯示單位
     _setAsrHidingMode(false);

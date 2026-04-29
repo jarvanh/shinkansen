@@ -118,14 +118,22 @@ export async function checkForUpdate() {
   }
   const currentVersion = browser.runtime.getManifest().version;
   let resp;
+  // v1.8.20: AbortController 15s timeout——MV3 SW 30s idle 上限,網路差時若不主動 abort
+  // 會被強制終止,fire-and-forget 訊息可能被吞;15s 留 buffer 給後續 JSON parse + storage 寫入
+  const ac = new AbortController();
+  const timeoutId = setTimeout(() => ac.abort(), 15_000);
   try {
     resp = await fetch(GITHUB_RELEASES_URL, {
       headers: { 'Accept': 'application/vnd.github+json' },
+      signal: ac.signal,
     });
   } catch (err) {
-    debugLog('warn', 'update-check', 'fetch failed', { error: err.message });
-    return { checked: false, hasUpdate: false, error: err.message };
+    clearTimeout(timeoutId);
+    const isAbort = err?.name === 'AbortError';
+    debugLog('warn', 'update-check', isAbort ? 'fetch timeout' : 'fetch failed', { error: err.message });
+    return { checked: false, hasUpdate: false, error: isAbort ? 'timeout' : err.message };
   }
+  clearTimeout(timeoutId);
   if (!resp.ok) {
     debugLog('warn', 'update-check', `GitHub API ${resp.status}`, { status: resp.status });
     return { checked: false, hasUpdate: false, error: `HTTP ${resp.status}` };

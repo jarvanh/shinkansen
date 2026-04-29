@@ -482,10 +482,11 @@ async function _saveImpl() {
     geminiConfig: {
       model: existingModel,
       serviceTier: $('serviceTier').value,
-      temperature: Number($('temperature').value),
-      topP: Number($('topP').value),
-      topK: Number($('topK').value),
-      maxOutputTokens: Number($('maxOutputTokens').value),
+      // v1.8.20: 改用 parseUserNum——空字串/非法字元走 default,避免 NaN 寫進 storage 後送 API 拒絕。
+      temperature: parseUserNum($('temperature').value, DEFAULTS.geminiConfig.temperature),
+      topP: parseUserNum($('topP').value, DEFAULTS.geminiConfig.topP),
+      topK: parseUserNum($('topK').value, DEFAULTS.geminiConfig.topK),
+      maxOutputTokens: parseUserNum($('maxOutputTokens').value, DEFAULTS.geminiConfig.maxOutputTokens),
       systemInstruction: $('systemInstruction').value,
     },
     // v1.6.16: 後備路徑單價 UI 已移除,從 storage 拉現存值寫回(沿用 v1.6.15 對 geminiConfig.model 的同 pattern)
@@ -518,15 +519,17 @@ async function _saveImpl() {
       // v1.7.2: 術語擷取獨立模型;空字串 = 與主翻譯模型相同(舊行為)
       model: $('glossaryModel').value,
       prompt: $('glossaryPrompt').value,
-      temperature: Number($('glossaryTemperature').value) || 0.1,
+      // v1.8.20: 改 parseUserNum,避免使用者打 0 (合法 temperature) 被 falsy 改回 0.1
+      temperature: parseUserNum($('glossaryTemperature').value, DEFAULTS.glossary.temperature ?? 0.1),
       skipThreshold: DEFAULTS.glossary.skipThreshold,
       // v1.7.3: blockingThreshold 使用者可調(0 = 永遠 fire-and-forget,大值 = 幾乎都 blocking)
       blockingThreshold: parseUserNum($('glossaryBlockingThreshold').value, DEFAULTS.glossary.blockingThreshold),
-      timeoutMs: Number($('glossaryTimeout').value) || 60000,
+      timeoutMs: parseUserNum($('glossaryTimeout').value, 60000),
       maxTerms: DEFAULTS.glossary.maxTerms,
     },
     // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
-    toastOpacity: Number($('toastOpacity').value) / 100,
+    // v1.8.20: 空字串 → 0/100 = 0 → toast 完全透明,改 parseUserNum 走預設
+    toastOpacity: parseUserNum($('toastOpacity').value, (DEFAULTS.toastOpacity ?? 0.95) * 100) / 100,
     toastPosition: $('toastPosition').value,
     // v1.1.3: Toast 自動關閉
     toastAutoHide: $('toastAutoHide').checked,
@@ -548,9 +551,10 @@ async function _saveImpl() {
       debugToast:         $('ytDebugToast').checked,
       onTheFly:           $('ytOnTheFly').checked,          // v1.2.49
       // preserveLineBreaks: 已移除 toggle，永遠 true（content-youtube.js 硬編碼）
-      windowSizeS:  Number($('ytWindowSizeS').value)  || 30,
-      lookaheadS:   Number($('ytLookaheadS').value)   || 10,
-      temperature:  Number($('ytTemperature').value)  ?? 1,
+      // v1.8.20: 改 parseUserNum——避免空字串走預設 + temperature 0 不被當 falsy + NaN ?? 1 = NaN 的陷阱
+      windowSizeS:  parseUserNum($('ytWindowSizeS').value, DEFAULTS.ytSubtitle.windowSizeS ?? 30),
+      lookaheadS:   parseUserNum($('ytLookaheadS').value, DEFAULTS.ytSubtitle.lookaheadS ?? 10),
+      temperature:  parseUserNum($('ytTemperature').value, DEFAULTS.ytSubtitle.temperature ?? 1),
       systemPrompt: $('ytSystemPrompt').value || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
       // v1.2.39: 獨立模型 + 計價
       model: $('ytModel').value || '',
@@ -635,9 +639,10 @@ async function _saveImpl() {
       baseUrl: ($('cp-baseUrl').value || '').trim(),
       model: ($('cp-model').value || '').trim(),
       systemPrompt: $('cp-systemPrompt').value || '',
-      temperature: Number($('cp-temperature').value) || 0.7,
-      inputPerMTok: Number($('cp-inputPerMTok').value) || 0,
-      outputPerMTok: Number($('cp-outputPerMTok').value) || 0,
+      // v1.8.20: temperature 改 parseUserNum 避免 0 被當 falsy;單價 0 是合法值改 parseUserNum 0
+      temperature: parseUserNum($('cp-temperature').value, DEFAULTS.customProvider?.temperature ?? 0.7),
+      inputPerMTok: parseUserNum($('cp-inputPerMTok').value, 0),
+      outputPerMTok: parseUserNum($('cp-outputPerMTok').value, 0),
       thinkingLevel: (() => {
         const v = $('cp-thinking-level')?.value;
         return ['auto', 'off', 'low', 'medium', 'high'].includes(v) ? v : 'auto';
@@ -1478,9 +1483,14 @@ function fmtTime(ts) {
   return `${mm}/${dd} ${hh}:${mi}`;
 }
 
+// v1.8.20: in-flight request token,只渲染最新一筆。日期/粒度切換頻繁時三條
+// Promise.all 後發但先回的會覆蓋先發但後回的,圖表 stale-data race。
+let _loadUsageDataReqId = 0;
+
 // ─── 載入用量資料 ────────────────────────────────────────
 async function loadUsageData() {
   const { from, to } = getUsageDateRange();
+  const reqId = ++_loadUsageDataReqId;
 
   // 同時載入彙總、圖表、明細
   const [statsRes, chartRes, recordsRes] = await Promise.all([
@@ -1488,6 +1498,9 @@ async function loadUsageData() {
     browser.runtime.sendMessage({ type: 'QUERY_USAGE_CHART', payload: { from, to, groupBy: currentGranularity } }),
     browser.runtime.sendMessage({ type: 'QUERY_USAGE', payload: { from, to } }),
   ]);
+
+  // v1.8.20: 期間有更新的 request 已發出 → 放棄這次 stale 結果
+  if (reqId !== _loadUsageDataReqId) return;
 
   // 彙總卡片
   if (statsRes?.ok) {
@@ -1831,7 +1844,12 @@ function stopLogPolling() {
   }
 }
 
+// v1.8.20: in-flight guard——SW 喚醒慢時 setInterval 不等上一輪,兩個 in-flight call
+// 共用同一 logLatestSeq 各自拿回相同 log → concat 兩次 → 表格出現重複行。
+let _fetchLogsInFlight = false;
 async function fetchLogs() {
+  if (_fetchLogsInFlight) return;
+  _fetchLogsInFlight = true;
   try {
     const res = await browser.runtime.sendMessage({
       type: 'GET_LOGS',
@@ -1852,6 +1870,8 @@ async function fetchLogs() {
     renderLogTable();
   } catch {
     // extension context invalidated 等情況，靜默
+  } finally {
+    _fetchLogsInFlight = false;
   }
 }
 
