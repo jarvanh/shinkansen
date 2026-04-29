@@ -2206,6 +2206,7 @@
   SK.ASR = {
     parseJson3,
     mergeAsr: _heuristicMergeAsr,
+    parseAsrResponse: _parseAsrResponse,
   };
 
 })(window.__SK);
