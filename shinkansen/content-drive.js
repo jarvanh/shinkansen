@@ -79,6 +79,14 @@
       } else {
         _disablePlayerCaptions();
       }
+      // commit 5c.7:同步 overlay attr 給 CSS rule 即時切位置(chrome-visible 條件不變)
+      if (DRIVE.overlayHost) {
+        if (nextBilingual) {
+          DRIVE.overlayHost.setAttribute('bilingual', 'true');
+        } else {
+          DRIVE.overlayHost.removeAttribute('bilingual');
+        }
+      }
       SK.sendLog('info', 'drive', 'bilingualMode toggled live', { bilingual: nextBilingual });
     }
   });
@@ -101,6 +109,9 @@
     }
   }
   // commit 5c:雙語模式下重新載入 player captions(對應 toggle 從 single-language 切到 bilingual)
+  // commit 5c.7:onReady 時自動 call(不論 bilingualMode),讓 Drive 影片**自動開 CC** 不需
+  // 使用者按按鈕。loadModule 載入字幕模組,200ms 後 setOption 強制選 'en' track 觸發
+  // timedtext 請求(這條請求才會被 PerformanceObserver 攔截 → 整條翻譯 pipeline 啟動)。
   function _enablePlayerCaptions() {
     if (!DRIVE.iframeEl?.contentWindow) return;
     try {
@@ -108,9 +119,23 @@
         JSON.stringify({ event: 'command', func: 'loadModule', args: ['captions'] }),
         'https://youtube.googleapis.com'
       );
-      SK.sendLog('info', 'drive', 'sent loadModule captions (bilingual mode)');
+      // 等 loadModule 完成再 setOption(YouTube embed 內部需要時間掛 captions module)
+      setTimeout(() => {
+        if (!DRIVE.iframeEl?.contentWindow) return;
+        try {
+          DRIVE.iframeEl.contentWindow.postMessage(
+            JSON.stringify({
+              event: 'command',
+              func: 'setOption',
+              args: ['captions', 'track', { languageCode: 'en' }],
+            }),
+            'https://youtube.googleapis.com'
+          );
+        } catch (_) {}
+      }, 200);
+      SK.sendLog('info', 'drive', 'sent loadModule + setOption captions');
     } catch (e) {
-      SK.sendLog('warn', 'drive', 'loadModule captions failed', { error: e?.message || String(e) });
+      SK.sendLog('warn', 'drive', 'enable captions failed', { error: e?.message || String(e) });
     }
   }
 
@@ -143,12 +168,26 @@
         .container {
           position: absolute;
           left: 0; right: 0;
-          bottom: 22%;          /* iframe 高度 22%:在原生英文 ASR(約 8-12%)上方,
-                                   形成雙語對照不重疊。commit 5 才加「關閉原生 CC」toggle */
+          bottom: 12%;          /* 預設(chrome 隱藏)player 底部 12% — 對齊原生 CC 位置 */
+          transition: bottom 0.2s ease;
           display: flex;
           justify-content: center;
           padding: 0 24px;
           box-sizing: border-box;
+        }
+        /* commit 5c.7:控制列(chrome)顯示時上抬避開進度條 + 已上抬的原生 CC。
+           cross-origin iframe 看不到 .ytp-autohide,改用 host[chrome-visible] attr,
+           外部 mouseenter/mouseleave 對 iframe element 切換。 */
+        :host([chrome-visible]) .container {
+          bottom: 22%;
+        }
+        /* 雙語模式中文位置 — 預設(chrome 隱藏)+ chrome 顯示分開設,確保兩種狀態
+           都在原生英文 CC 上方不重疊 */
+        :host([bilingual]) .container {
+          bottom: 22%;
+        }
+        :host([bilingual][chrome-visible]) .container {
+          bottom: 32%;
         }
         .cue {
           display: inline-block;
@@ -233,6 +272,12 @@
           SK.sendLog('info', 'drive', 'sent listening register');
         } catch (err) {
           SK.sendLog('warn', 'drive', 'listening register failed', { error: err?.message });
+        }
+        // commit 5c.7:onReady 時自動啟動字幕(不需 user 按 CC)。即使純中文模式也要先開,
+        // 不然字幕請求不會發 → iframe PerformanceObserver 攔不到 timedtext URL → 翻譯 pipeline 不啟動。
+        // 純中文模式下,等 timedtext 抓到後 _handleCaptionsMessage 會送 unloadModule 關 player CC。
+        if (_autoTranslateEnabled) {
+          _enablePlayerCaptions();
         }
       }
 
@@ -481,6 +526,21 @@
     _ensureOverlay();
     _listenPlayerMessages();
     _startRenderLoop();
+    // commit 5c.7:cross-origin iframe 看不到 player .ytp-autohide class,用滑鼠進出
+    // iframe element 的 boundary event 當作 chrome show/hide 近似(YouTube embed 滑鼠
+    // hover 時 chrome 顯示,離開後 fade)。準確度近似但能涵蓋 95% 互動場景。
+    iframe.addEventListener('mouseenter', () => {
+      DRIVE.overlayHost?.setAttribute('chrome-visible', 'true');
+    });
+    iframe.addEventListener('mouseleave', () => {
+      // 跟著 YouTube chrome fade timing(~3 秒)— 但 mouseleave 一觸發就移除避免延遲過長
+      DRIVE.overlayHost?.removeAttribute('chrome-visible');
+    });
+
+    // commit 5c.7:把 _bilingualMode flag 同步到 overlay attr(rendering loop 之外即時生效)
+    if (_bilingualMode) {
+      DRIVE.overlayHost?.setAttribute('bilingual', 'true');
+    }
     SK.sendLog('info', 'drive', 'overlay & message listener attached', {
       iframeRect: { width: iframe.offsetWidth, height: iframe.offsetHeight },
       retriesUntilFound: retries,
