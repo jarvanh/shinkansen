@@ -157,6 +157,10 @@
   }
 
   function showCaptionStatus(text) {
+    // commit 5c.3:雙語模式不顯示「翻譯中…」status — 原生英文 CC 已經給 user
+    // feedback,中文 overlay 也會在 LLM 回後顯示,status indicator 多餘且會夾在
+    // overlay 跟原生 CC 中間造成三層觀感(image 21 bug)。
+    if (SK.YT.config?.bilingualMode === true) return;
     // 注入目標：.ytp-caption-window-container > 我們的 div
     // 退而求其次用 #movie_player，仍在播放器範圍內
     const container =
@@ -874,6 +878,8 @@
         host.style.removeProperty('--sk-cue-bottom');
       }
     }
+    // commit 5c.3:即時切到雙語時把已顯示的「翻譯中…」清掉(雙語下這 status 不該存在)
+    if (bilingual) hideCaptionStatus();
   }
 
   // 讀 YouTube 原生字幕字體大小(已套用使用者字幕設定 + player size 自適應比例)。
