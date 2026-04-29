@@ -66,7 +66,8 @@
         .container {
           position: absolute;
           left: 0; right: 0;
-          bottom: 12%;          /* iframe 高度 12%(避開原生 caption 區與控制列) */
+          bottom: 22%;          /* iframe 高度 22%:在原生英文 ASR(約 8-12%)上方,
+                                   形成雙語對照不重疊。commit 5 才加「關閉原生 CC」toggle */
           display: flex;
           justify-content: center;
           padding: 0 24px;
