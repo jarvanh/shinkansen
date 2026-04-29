@@ -34,8 +34,29 @@
     registeredListening: false,
   };
 
-  // commit 4b 仍只翻前 SAMPLE_BATCH_SIZE 段(commit 5 才接整支切批 lazy-load)
-  const SAMPLE_BATCH_SIZE = 30;
+  // commit 5a:整支切批,30 段一批,throttled max 3 並行
+  const BATCH_SIZE = 30;
+  const MAX_CONCURRENT = 3;
+
+  // ─── driveSubtitle.autoTranslate 設定追蹤 ──────────────
+  // popup toggle 寫 storage(全域設定),content-drive.js listen onChanged 即時反應。
+  // 預設 true(沿用 DEFAULT_SETTINGS.driveSubtitle.autoTranslate)。
+  let _autoTranslateEnabled = true;
+  (async () => {
+    try {
+      const { driveSubtitle = {} } = await browser.storage.sync.get('driveSubtitle');
+      _autoTranslateEnabled = driveSubtitle.autoTranslate !== false;
+      SK.sendLog('info', 'drive', 'autoTranslate setting loaded', { enabled: _autoTranslateEnabled });
+    } catch { /* 維持預設 true */ }
+  })();
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' || !changes.driveSubtitle) return;
+    const newVal = changes.driveSubtitle.newValue || {};
+    const next = newVal.autoTranslate !== false;
+    if (next === _autoTranslateEnabled) return;
+    _autoTranslateEnabled = next;
+    SK.sendLog('info', 'drive', 'autoTranslate setting changed', { enabled: next });
+  });
 
   // ─── overlay UI ──────────────────────────────────────
   // <shinkansen-drive-overlay>:position:fixed,動態追蹤 youtube embed iframe rect 對齊。
@@ -196,8 +217,74 @@
     requestAnimationFrame(loop);
   }
 
-  // ─── DRIVE_ASR_CAPTIONS handler(commit 1-4a) ────────
+  // ─── 單批翻譯(commit 5a 抽出 helper,給 throttled 並行用) ────
+  async function _runOneBatch(batch, batchIdx, totalBatches) {
+    if (batch.length === 0) return;
+
+    const inputArr = batch.map((seg, i) => {
+      const next = batch[i + 1];
+      const endMs = next ? next.startMs : seg.startMs + 1500;
+      return { s: seg.startMs, e: endMs, t: seg.text };
+    });
+    const inputJson = JSON.stringify(inputArr);
+
+    let res;
+    try {
+      res = await browser.runtime.sendMessage({
+        type: 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH',
+        payload: { texts: [inputJson], glossary: null },
+      });
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} sendMessage failed`, {
+        error: e?.message || String(e),
+      });
+      return;
+    }
+
+    if (!res?.ok) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} LLM failed`, {
+        error: res?.error || 'unknown',
+      });
+      return;
+    }
+
+    const rawText = res.result?.[0] || '';
+    let entries;
+    try {
+      entries = SK.ASR.parseAsrResponse(rawText);
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed`, {
+        error: e?.message || String(e),
+        rawHead: rawText.slice(0, 200),
+      });
+      return;
+    }
+
+    let pushedCount = 0;
+    for (const entry of entries) {
+      const sStart = Number(entry.s);
+      const sEnd = Number(entry.e);
+      const text = String(entry.t || '').trim();
+      if (!Number.isFinite(sStart) || !Number.isFinite(sEnd) || sEnd < sStart || !text) continue;
+      DRIVE.entries.push({ startMs: sStart, endMs: sEnd, text });
+      pushedCount++;
+    }
+    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done`, {
+      llmEntryCount: entries.length,
+      pushedToOverlay: pushedCount,
+      totalOverlayEntries: DRIVE.entries.length,
+      usage: res.usage,
+    });
+  }
+
+  // ─── DRIVE_ASR_CAPTIONS handler ───────────────────────
   async function _handleCaptionsMessage(message) {
+    if (!_autoTranslateEnabled) {
+      SK.sendLog('info', 'drive', 'autoTranslate off — skipping captions');
+      return;
+    }
     const { json3 } = message.payload || {};
     if (!json3) {
       SK.sendLog('warn', 'drive', 'DRIVE_ASR_CAPTIONS payload missing json3');
@@ -214,75 +301,41 @@
       lastStartMs: rawSegments[rawSegments.length - 1]?.startMs,
     });
 
-    const batch = rawSegments.slice(0, SAMPLE_BATCH_SIZE);
-    if (batch.length === 0) return;
+    if (rawSegments.length === 0) return;
 
-    const inputArr = batch.map((seg, i) => {
-      const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + 1500;
-      return { s: seg.startMs, e: endMs, t: seg.text };
+    // commit 5a:整支切批 throttled 並行
+    const batches = [];
+    for (let i = 0; i < rawSegments.length; i += BATCH_SIZE) {
+      batches.push(rawSegments.slice(i, i + BATCH_SIZE));
+    }
+    const totalBatches = batches.length;
+
+    SK.sendLog('info', 'drive', 'starting full transcript translation', {
+      totalSegments: rawSegments.length,
+      totalBatches,
+      maxConcurrent: MAX_CONCURRENT,
     });
-    const inputJson = JSON.stringify(inputArr);
 
-    SK.sendLog('info', 'drive', 'sending sample batch to LLM', {
-      batchSize: batch.length,
-      inputBytes: inputJson.length,
-    });
-
-    let res;
-    try {
-      res = await browser.runtime.sendMessage({
-        type: 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH',
-        payload: { texts: [inputJson], glossary: null },
-      });
-    } catch (e) {
-      SK.sendLog('warn', 'drive', 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH sendMessage failed', {
-        error: e?.message || String(e),
-      });
-      return;
+    let nextBatchIdx = 0;
+    async function _worker() {
+      while (true) {
+        const idx = nextBatchIdx++;
+        if (idx >= totalBatches) return;
+        // 設定途中被關閉就停止後續批次(已送的 in-flight 仍會完成)
+        if (!_autoTranslateEnabled) {
+          SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
+          return;
+        }
+        await _runOneBatch(batches[idx], idx, totalBatches);
+      }
     }
 
-    if (!res?.ok) {
-      SK.sendLog('warn', 'drive', 'LLM batch failed', { error: res?.error || 'unknown' });
-      return;
-    }
-
-    const rawText = res.result?.[0] || '';
-    let entries;
-    try {
-      entries = SK.ASR.parseAsrResponse(rawText);
-    } catch (e) {
-      SK.sendLog('warn', 'drive', 'parseAsrResponse failed', {
-        error: e?.message || String(e),
-        rawHead: rawText.slice(0, 200),
-      });
-      return;
-    }
-
-    // commit 4b:譯文 push 到 SK.DRIVE.entries 給 overlay 用
-    let pushedCount = 0;
-    for (const entry of entries) {
-      const sStart = Number(entry.s);
-      const sEnd = Number(entry.e);
-      const text = String(entry.t || '').trim();
-      if (!Number.isFinite(sStart) || !Number.isFinite(sEnd) || sEnd < sStart || !text) continue;
-      DRIVE.entries.push({ startMs: sStart, endMs: sEnd, text });
-      pushedCount++;
-    }
-    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
-
-    SK.sendLog('info', 'drive', 'asr translated + pushed for overlay', {
-      llmEntryCount: entries.length,
-      pushedToOverlay: pushedCount,
-      totalOverlayEntries: DRIVE.entries.length,
-      compressionRatio: batch.length > 0
-        ? (entries.length / batch.length).toFixed(2)
-        : null,
-      sample: entries.slice(0, 3).map(e => ({
-        s: e.s, e: e.e,
-        t: typeof e.t === 'string' && e.t.length > 100 ? e.t.slice(0, 100) + '…' : e.t,
-      })),
-      usage: res.usage,
+    const tStart = Date.now();
+    await Promise.all(Array(MAX_CONCURRENT).fill(0).map(_worker));
+    SK.sendLog('info', 'drive', 'full transcript translation completed', {
+      totalBatches,
+      totalEntries: DRIVE.entries.length,
+      elapsedMs: Date.now() - tStart,
     });
   }
 

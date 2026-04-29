@@ -207,6 +207,11 @@ export const DEFAULT_SETTINGS = {
     //   'llm'         = 純 LLM 自由分句(內部保留,UI 不再可選)。
     asrMode: 'progressive',
   },
+  // commit 5a:Drive 影片(youtube.googleapis.com/embed)字幕翻譯設定
+  // 走獨立設定塊,沿用 ytSubtitle 的 model / pricing / temperature(commit 5b 才考慮共用設定)
+  driveSubtitle: {
+    autoTranslate: true,         // 偵測到 Drive viewer + youtube embed 時自動翻字幕
+  },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限
   // override 欄位若為 null 則使用 tier 對照表的值,非 null 時覆寫

@@ -208,7 +208,13 @@ async function init() {
       // 沒設定過視為 true（與 DEFAULT_SETTINGS.ytSubtitle.autoTranslate 對齊）
       $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
     }
-  } catch { /* 非 YouTube 頁面，保持 hidden */ }
+    // commit 5a:Drive 影片 viewer toggle(drive.google.com/file/)
+    if (/^https:\/\/drive\.google\.com\/file\//.test(url)) {
+      $('drive-subtitle-row').hidden = false;
+      const { driveSubtitle = {} } = await browser.storage.sync.get('driveSubtitle');
+      $('drive-subtitle-toggle').checked = driveSubtitle.autoTranslate !== false;
+    }
+  } catch { /* 非影片頁面,保持 hidden */ }
 
   // v1.8.12: 只有當 translatePresets 中有任一 slot 用 Gemini engine 時,才提醒未設 API Key。
   // 使用者若三組 preset 都改成 Google MT / 自訂模型,popup 不再嘮叨他沒填 Gemini Key。
@@ -300,6 +306,22 @@ $('yt-subtitle-toggle').addEventListener('change', async (e) => {
   }
 });
 
+// commit 5a:Drive 字幕 toggle 採「全域設定」設計(寫 storage,跟 YouTube 不同;
+// 因 Drive 沒 SPA 切影片,單純 storage 即時 sync 即可。content-drive.js
+// listen onChanged 即時生效)。
+$('drive-subtitle-toggle').addEventListener('change', async (e) => {
+  const enabled = e.target.checked;
+  try {
+    const { driveSubtitle = {} } = await browser.storage.sync.get('driveSubtitle');
+    await browser.storage.sync.set({
+      driveSubtitle: { ...driveSubtitle, autoTranslate: enabled },
+    });
+  } catch (err) {
+    statusEl.textContent = '狀態:無法切換 Drive 字幕,請重新整理頁面';
+    statusEl.style.color = '#ff3b30';
+  }
+});
+
 $('options-btn').addEventListener('click', () => {
   browser.runtime.openOptionsPage();
 });
@@ -308,10 +330,15 @@ $('options-btn').addEventListener('click', () => {
 // popup 通常 click 外面就關閉,但 detached popup window 或極短時間視窗下這條 listener 確保一致
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;
-  if (!changes.ytSubtitle) return;
-  const newVal = changes.ytSubtitle.newValue || {};
-  // ytSubtitle.autoTranslate 預設視為 true(對齊 init 邏輯)
-  $('yt-subtitle-toggle').checked = newVal.autoTranslate !== false;
+  if (changes.ytSubtitle) {
+    const newVal = changes.ytSubtitle.newValue || {};
+    // ytSubtitle.autoTranslate 預設視為 true(對齊 init 邏輯)
+    $('yt-subtitle-toggle').checked = newVal.autoTranslate !== false;
+  }
+  if (changes.driveSubtitle) {
+    const newVal = changes.driveSubtitle.newValue || {};
+    $('drive-subtitle-toggle').checked = newVal.autoTranslate !== false;
+  }
 });
 
 // v1.0.3: 編輯譯文按鈕
