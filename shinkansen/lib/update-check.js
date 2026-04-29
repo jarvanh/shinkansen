@@ -79,18 +79,24 @@ function isWorthNotifying(latest, current) {
 
 /**
  * 是否為「需要手動更新」的安裝來源（非 Chrome Web Store）。
- * @returns {Promise<boolean>}
+ *
+ * 判斷依據:`chrome.runtime.getManifest().update_url`。CWS 安裝時 Chrome
+ * 會自動 inject 一個 update_url 欄位(指向 CWS 自動更新端點),自家
+ * manifest.json 不寫此欄位 → 有 update_url = CWS,沒有 = unpacked / sideload。
+ *
+ * 為什麼不用 `chrome.management.getSelf()`:那需要 'management' permission,
+ * CWS 審查會把它當敏感權限額外 review(它能列舉/disable 其他 extension)。
+ * 我們只需要判斷「是不是 CWS 安裝」,不需要那個權限的所有能力。
+ *
+ * @returns {boolean}
  */
-async function isManualInstall() {
+function isManualInstall() {
   try {
-    const info = await browser.management.getSelf();
-    // 'development' = unpacked / 開發者模式載入
-    // 'sideload' = 第三方安裝（罕見）
-    // 'normal' = CWS / 'admin' = 企業政策
-    return info.installType === 'development' || info.installType === 'sideload';
+    const updateUrl = browser.runtime.getManifest().update_url;
+    return !updateUrl;
   } catch (err) {
-    // 沒有 management permission 或其他錯誤——保守估計算手動安裝
-    debugLog('warn', 'update-check', 'management.getSelf failed', { error: err.message });
+    // 理論上不會發生(getManifest 是同步且永遠可用)。保守估計算手動安裝。
+    debugLog('warn', 'update-check', 'getManifest failed', { error: err.message });
     return true;
   }
 }
@@ -107,7 +113,7 @@ async function isManualInstall() {
  * @returns {Promise<{ checked: boolean, hasUpdate: boolean, version?: string, releaseUrl?: string, error?: string }>}
  */
 export async function checkForUpdate() {
-  if (!(await isManualInstall())) {
+  if (!isManualInstall()) {
     return { checked: false, hasUpdate: false, error: 'CWS install — skipped' };
   }
   const currentVersion = browser.runtime.getManifest().version;

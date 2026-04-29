@@ -79,6 +79,16 @@
 
 ## v1.8.x
 
+**v1.8.18** — 移除 `chrome.management` API 的依賴(原本用來判斷 CWS vs 手動安裝),改用 `chrome.runtime.getManifest().update_url` 判斷,完全消除「需要 management permission」這個歷史包袱;同步更新 README + landing page 補充「字幕雙語對照」說明。
+
+**Code 變更:**
+- `shinkansen/lib/update-check.js`:`isManualInstall()` 改用 `chrome.runtime.getManifest().update_url` 同步判斷(CWS 安裝時 Chrome 會自動 inject `update_url`,自家 manifest 不寫 → 有 = CWS,沒有 = 手動)。原本的 `chrome.management.getSelf()` 需要 `management` permission(屬 CWS 敏感權限,能列舉/disable 其他 extension),雖然 manifest 沒宣告所以原 code 走 try/catch fallback,但邏輯不夠乾淨。修法後完全消除對 `management` API 的依賴,manifest 只保留實際用到的 `storage / activeTab / alarms` 三個 permission
+- `test/unit/update-check.spec.js`:mock 從 `management.getSelf` 改成 `runtime.getManifest` 注入 `update_url`(installType='normal' → 注入,模擬 CWS 安裝),15 條既有 spec 全綠
+
+**文件:**
+- `README.md`:功能特色清單新增「字幕雙語對照」(v1.8.15 起)條目;「YouTube 字幕翻譯」section 新增「### 字幕雙語對照」子段(適合場景 + 實作要點:YouTube + Google Drive 影片共用同一個設定、即時切換、AI 分句模式相容)
+- `docs/index.html`:landing page「YouTube 字幕翻譯」 feature card 文案補充「並可選擇雙語對照」
+
 **v1.8.17** — 修設定頁「翻譯快速鍵」preset 標籤改變時,「工具列翻譯本頁按鈕」與「自動翻譯網站」兩個下拉選單沒有即時跟著更新顯示文字的小 bug。
 
 **Bug 修正:**
