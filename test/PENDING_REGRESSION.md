@@ -17,6 +17,19 @@
 
 ## 條目
 
+### v1.8.15+ — YouTube 人工字幕翻譯 race condition(等不到字幕 / reload 多次才 work)
+- **症狀**(Jimmy 2026-04-29 回報):YouTube 內建人工字幕影片開啟時,字幕常常等不到出現,reload 3-4 次才會在「不知道做什麼事情後突然」開始翻。Image 24 log 顯示最後兩條 `activated` 緊接 `stopped`(同一秒 11:01:57),強烈指向 SPA navigation auto-restart race
+- **未驗 hypothesis**(別當證據):
+  - yt-navigate-finish event YouTube 內部 double fire(content-youtube.js:2217 listener 觸發兩次,中間插一次 setTimeout 500ms 重啟)
+  - content-spa.js URL polling 誤判 navigation,反向 call stopYouTubeTranslation(透過某個我還沒找到的 hook)
+  - video element `seeking` event 在某情境誤觸 stop
+- **建議下一步(dedicated debug 一輪)**:
+  1. content-youtube.js:2097 `stopYouTubeTranslation()` 加 caller-stack instrumentation log(`new Error().stack` slice 前幾行),每次 stop 都記 reason / 觸發路徑
+  2. 用 `tools/debug-harness.js` 對真實 YouTube 影片 reload 多次,分析 stop call sequence
+  3. 找出哪個 caller / event 在「reload 後馬上」誤觸 stop
+- **建議 spec 位置**:`test/regression/youtube-spa-no-double-stop.spec.js`(yt-navigate-finish 模擬 double fire,驗 stop 只發生一次 / 自動重啟成功 1 次)
+- **影響範圍**:v1.8.14 之前可能就有此 race,Drive ASR 上線後 Jimmy 用 YouTube 字幕更頻繁才注意到。屬 v1.8.16 dedicated 修
+
 ### v1.8.15 — Drive 影片 ASR 字幕翻譯整段 e2e spec
 - **症狀**:N/A,新功能整段 pipeline 沒 regression spec 涵蓋
 - **修在**:`shinkansen/content-drive.js`(新檔,top frame entry)+ `shinkansen/content-drive-iframe.js`(新檔,iframe entry)+ `shinkansen/background.js`(新 handlers DRIVE_TIMEDTEXT_URL / TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH / TRANSLATE_DRIVE_BATCH_GOOGLE)+ `shinkansen/content-youtube.js`(SK.ASR helper export + bilingualMode replaceSegmentEl gate)+ `shinkansen/popup/*`(Drive toggle + bilingual toggle)
