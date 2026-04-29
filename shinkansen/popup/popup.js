@@ -215,6 +215,12 @@ async function init() {
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
       $('drive-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
     }
+    // commit 5c:雙語對照 toggle(YouTube + Drive 影片頁都顯示,共用 ytSubtitle.bilingualMode)
+    if (url.includes('youtube.com/watch') || /^https:\/\/drive\.google\.com\/file\//.test(url)) {
+      $('bilingual-row').hidden = false;
+      const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+      $('bilingual-toggle').checked = ytSubtitle.bilingualMode === true;
+    }
   } catch { /* 非影片頁面,保持 hidden */ }
 
   // v1.8.12: 只有當 translatePresets 中有任一 slot 用 Gemini engine 時,才提醒未設 API Key。
@@ -323,6 +329,21 @@ $('drive-subtitle-toggle').addEventListener('change', async (e) => {
   }
 });
 
+// commit 5c:雙語 toggle change handler(寫 ytSubtitle.bilingualMode 到 storage,YouTube
+// 跟 Drive 兩條路徑各自的 onChanged listener 自動反應;切換生效需 reload 影片頁)
+$('bilingual-toggle').addEventListener('change', async (e) => {
+  const bilingual = e.target.checked;
+  try {
+    const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+    await browser.storage.sync.set({
+      ytSubtitle: { ...ytSubtitle, bilingualMode: bilingual },
+    });
+  } catch (err) {
+    statusEl.textContent = '狀態:無法切換雙語對照';
+    statusEl.style.color = '#ff3b30';
+  }
+});
+
 $('options-btn').addEventListener('click', () => {
   browser.runtime.openOptionsPage();
 });
@@ -336,6 +357,8 @@ browser.storage.onChanged.addListener((changes, area) => {
   const enabled = newVal.autoTranslate !== false;
   $('yt-subtitle-toggle').checked = enabled;
   $('drive-subtitle-toggle').checked = enabled;
+  // commit 5c:bilingualMode 同步
+  $('bilingual-toggle').checked = newVal.bilingualMode === true;
 });
 
 // v1.0.3: 編輯譯文按鈕

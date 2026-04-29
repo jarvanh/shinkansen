@@ -206,6 +206,9 @@ export const DEFAULT_SETTINGS = {
     //                   兼顧速度與品質。toggle 開啟時用(預設)。
     //   'llm'         = 純 LLM 自由分句(內部保留,UI 不再可選)。
     asrMode: 'progressive',
+    // commit 5c:雙語對照模式。預設 false=純中文(YouTube 既有行為:CSS 隱藏原生 CC;
+    // Drive 透過 postMessage unloadModule 關 player CC)。true=中英對照(原生 CC + 中文 overlay)
+    bilingualMode: false,
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級(free / tier1 / tier2),決定 RPM/TPM/RPD 上限

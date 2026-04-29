@@ -359,8 +359,10 @@
     }
     // G 路徑:ASR 字幕一進來就 enable hiding mode + 預建 overlay 容器,
     //         避免使用者啟動翻譯瞬間還看到原生英文字幕跳動。
+    // commit 5c:bilingualMode=true → 不隱藏原生 CC(中英對照);false=純中文(既有行為)
     if (YT.isAsr) {
-      _setAsrHidingMode(true);
+      const cfg = YT.config || await getYtConfig();
+      _setAsrHidingMode(cfg.bilingualMode !== true);
       _ensureOverlay();
     }
     const lastMs = segments[segments.length - 1]?.startMs ?? 0;

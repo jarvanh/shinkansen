@@ -43,14 +43,17 @@
   // commit 5b:engine 分流(預設 'gemini' 走 D' LLM 合句,'google' 走 GT 逐段翻免費)。
   let _autoTranslateEnabled = true;
   let _engine = 'gemini';
+  let _bilingualMode = false; // commit 5c:false=純中文(關 player CC)/ true=中英對照
   (async () => {
     try {
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
       _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
       _engine = ytSubtitle.engine === 'google' ? 'google' : 'gemini';
+      _bilingualMode = ytSubtitle.bilingualMode === true;
       SK.sendLog('info', 'drive', 'settings loaded (from ytSubtitle)', {
         autoTranslate: _autoTranslateEnabled,
         engine: _engine,
+        bilingual: _bilingualMode,
       });
     } catch { /* 維持預設 */ }
   })();
@@ -67,7 +70,32 @@
       _engine = nextEngine;
       SK.sendLog('info', 'drive', 'engine setting changed', { engine: nextEngine });
     }
+    const nextBilingual = newVal.bilingualMode === true;
+    if (nextBilingual !== _bilingualMode) {
+      _bilingualMode = nextBilingual;
+      SK.sendLog('info', 'drive', 'bilingualMode setting changed (reload page to apply player CC)', {
+        bilingual: nextBilingual,
+      });
+    }
   });
+
+  // ─── 單語模式:關掉 YouTube embed player 的原生 CC ─────
+  // 透過 IFrame Player API postMessage 'command' func='unloadModule' arg='captions'。
+  // 必須在 player onReady 之後送(timing 由 onMessage listener 控制)。
+  // 注意:必須等 timedtext 已被 PerformanceObserver 捕捉**之後**才 unload,否則 player
+  // 不再 fetch timedtext = iframe 偵測不到 URL = 字幕翻譯 pipeline 直接斷。
+  function _disablePlayerCaptions() {
+    if (!DRIVE.iframeEl?.contentWindow) return;
+    try {
+      DRIVE.iframeEl.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'unloadModule', args: ['captions'] }),
+        'https://youtube.googleapis.com'
+      );
+      SK.sendLog('info', 'drive', 'sent unloadModule captions (single-language mode)');
+    } catch (e) {
+      SK.sendLog('warn', 'drive', 'unloadModule captions failed', { error: e?.message || String(e) });
+    }
+  }
 
   // ─── overlay UI ──────────────────────────────────────
   // <shinkansen-drive-overlay>:position:fixed,動態追蹤 youtube embed iframe rect 對齊。
@@ -362,6 +390,12 @@
     });
 
     if (rawSegments.length === 0) return;
+
+    // commit 5c:單語模式下,timedtext 已被 PerformanceObserver 捕捉(ASR_CAPTIONS 都送進來了),
+    // 這時關 player CC 安全 — 不會影響字幕翻譯 pipeline。
+    if (!_bilingualMode) {
+      _disablePlayerCaptions();
+    }
 
     // commit 5a:整支切批 throttled 並行
     const batches = [];
