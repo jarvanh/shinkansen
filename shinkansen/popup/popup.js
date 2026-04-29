@@ -78,13 +78,13 @@ async function refreshTranslateButton() {
 
 async function refreshShortcutHint() {
   // v1.4.13: popup 按鈕觸發 TOGGLE_TRANSLATE 訊息，content.js 將其映射為 preset slot 2（Flash）。
-  // 所以這裡讀 translate-preset-2 的當前鍵位顯示。
-  // （v1.4.12 前舊名 toggle-translate 已移除，改讀新名稱避免永遠顯示「未設定」）
+  // 所以這裡讀「主要預設」的當前鍵位顯示。
+  // v1.8.19: 主要預設 command id 改為 translate-preset-0(字典序保證 chrome://extensions/shortcuts 顯示在最上)
   const el = $('shortcut-hint');
   if (!el) return;
   try {
     const cmds = await browser.commands.getAll();
-    const cmd = cmds.find((c) => c.name === 'translate-preset-2');
+    const cmd = cmds.find((c) => c.name === 'translate-preset-0');
     const shortcut = cmd?.shortcut?.trim();
     if (shortcut) {
       el.textContent = `${shortcut} 快速切換`;

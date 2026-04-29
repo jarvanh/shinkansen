@@ -36,7 +36,7 @@
     STATE.cache.clear();
     STATE.translated = false;
     STATE._glossaryPromise = null;
-    browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+    SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     SK.hideToast();
     SK.sendLog('info', 'spa', 'SPA navigation detected, state reset', { url: location.href, stickyTranslate: STATE.stickyTranslate });
   }

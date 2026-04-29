@@ -79,6 +79,20 @@
 
 ## v1.8.x
 
+**v1.8.19** — 大型 UI 簡化 + 結構性修補一輪:options 多個 section 收進「進階設定」摺疊區、preset label 上限放寬、content scripts 全面導入安全 sendMessage helper(消除 Extension reload 後 orphan content script 噴 uncaught error)、配額管理文案從技術導向改價值導向、preset 順序改為「主要 → 預設 2 → 預設 3」、icon 換成 PNG 取代 emoji、option HTML 全形括號 audit。
+
+**Bug 修正:**
+- **Extension context invalidated 不再洩漏 uncaught error**:Extension reload / 更新時,已載入頁面的 orphan content script 失去 extension 連線通道, 此後任何 `browser.runtime.sendMessage` 呼叫會 SYNC throw "Extension context invalidated" — 不是 promise reject!既有 caller 的 `.catch()` 接不到, 會洩漏 uncaught error 到 `chrome://extensions/` 錯誤面板, 污染真實 bug 的能見度。修法:`shinkansen/content-ns.js` 加 `SK.safeSendMessage(msg)` helper(三層防護: `chrome.runtime.id` fast path + sync try/catch + async `.catch` 過濾, 只吞 invalidated / Receiving end 兩類錯誤, 真實業務錯誤照丟); content scripts 31 處 caller 全替換(content.js × 18、content-youtube.js × 7、content-toast.js × 2、content-drive.js × 2、content-spa.js × 1、content-drive-iframe.js × 1 inline 防護因不在 SK 命名空間內)。Regression 補進 `test/regression/safe-send-message-context-invalidated.spec.js`(3 條 spec: sync throw 不洩漏 / async reject 訊息匹配也吞 / 真實業務錯誤仍會 reject)
+
+**UI 大型簡化:**
+- **配額管理改價值導向 + 整段收進進階摺疊**:原「配額(API 用量限制)」section 改名「API 配額管理(進階)」, 整個 section 包進 `<details class="advanced-details">` 摺疊區(預設收起)。文案從技術導向「自動控制請求頻率, 避免超出 Google 的使用量限制」改成價值導向「Shinkansen 會在背景幫你管理 Gemini API 用量。大頁面翻譯時會把請求平均攤開避免 burst 觸發 Google 限速; 快超過每日上限時提早警告, 不會等到失敗才知道。多數情況維持預設即可」。**安全邊際 slider 從 UI 移除**(99% 使用者不知道為什麼要設、設多少也看不出差別 — 純 over-engineering); 程式碼內部寫死 0.1(透過 `lib/storage.js` default + `lib/tier-limits.js` fallback)。設定 import schema 仍容忍 `safetyMargin` key, 舊匯出檔可正常匯入
+- **多個 section 整體進階化**:LLM 參數微調(Service Tier、Top P、Top K、Max Output Tokens 收進進階, Temperature 留外面作主要欄位)、效能(翻譯效率調校)整段收進進階、翻譯視窗設定整段收進進階、術語表三進階欄位 + 術語擷取 Prompt 收進同一個 details
+- **preset label 字元上限 12→30**:對齊輸入框視覺寬度(原 12 字元只佔輸入框 1/3 寬度, 使用者反映無法塞入「OpenRouter Claude 3.5」這類完整模型描述)。下游 3 處顯示加 truncate: `usage-table .col-model` 加 `max-width: 220px + ellipsis + title attr` 提供 hover tooltip; `popup-button-slot` / `auto-translate-slot` 兩個 select 加 `max-width: 360px`。Regression 補進 `test/regression/options-preset-label-live-update.spec.js`(本來其實是 v1.8.17 加的, 順便鎖死下游聯動)
+- **preset UI 順序改為「主要預設 → 預設 2 → 預設 3」**:options preset card 順序 + popup-button-slot / auto-translate-slot 下拉順序 + manifest commands 順序(`chrome://extensions/shortcuts` 顯示)三處同步調整。內部 slot 1/2/3 編號**完全不變**, 所有依賴 slot 編號的 storage / cache / 跨 tab sticky 全部正常
+- **manifest commands description 重整 + command id rename 控制顯示順序**:舊「翻譯預設 2(預設 Gemini Flash Lite)」/「翻譯主要預設(預設 Gemini Flash)」/「翻譯預設 3(預設 Google Translate, 維持原 slot 3 編號)」格式不對稱、寫死模型名會誤導(使用者改 preset 後 description 仍寫舊模型)、含開發者註記「維持原 slot 3 編號」使用者看不懂。改成「翻譯本頁 - 主要預設」「翻譯本頁 - 預設 2」「翻譯本頁 - 預設 3」三條對稱簡潔, 不寫死模型。Chrome `chrome://extensions/shortcuts` 顯示順序由 command id 字典序決定(實測), 為了讓「主要預設」排第一, 把 `translate-preset-2` 改名為 `translate-preset-0`(字典序「0」最前), background.js listener 加 `COMMAND_ID_TO_SLOT = { 0: 2, 1: 1, 3: 3 }` mapping 維持 slot 1/2/3 storage 對應。**升級影響**:沒手動改過快捷鍵的使用者完全無感(Chrome 自動套 `suggested_key: Alt+S`);手動改過 Alt+S 為其他鍵的使用者, Chrome 會把舊 command id 視為移除、新 id 視為新加, 自訂綁定丟失需重綁(進 chrome://extensions/shortcuts 即可)
+- **option / popup 標題 emoji 改 PNG icon**:從 `🚄 Shinkansen` 改用 `<img src="../icons/icon-128.png" class="page-title-icon">` + 「Shinkansen」, options 用 32px / popup 用 22px, flex + gap 對齊
+- **options.html 全形括號 audit**:Python 腳本批次轉 18 處 CJK 上下文的半形括號為全形, 純英文縮寫(`(ELv2)` / `Twitter (X)`)按 §13 例外維持半形
+
 **v1.8.18** — 移除 `chrome.management` API 的依賴(原本用來判斷 CWS vs 手動安裝),改用 `chrome.runtime.getManifest().update_url` 判斷,完全消除「需要 management permission」這個歷史包袱;同步更新 README + landing page 補充「字幕雙語對照」說明。
 
 **Code 變更:**

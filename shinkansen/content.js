@@ -21,7 +21,7 @@
     // Chrome 端兩種寫法走同一條 native code path，效能 0 影響。
     const forwardToBackground = (type, extraPayload) => {
       const msg = extraPayload === undefined ? { type } : { type, payload: extraPayload };
-      browser.runtime.sendMessage(msg)
+      SK.safeSendMessage(msg)
         .then((res) => respond(res || { ok: true }))
         .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
     };
@@ -150,7 +150,7 @@
         timeoutMs,
       );
     });
-    return Promise.race([browser.runtime.sendMessage(message), timeoutPromise])
+    return Promise.race([SK.safeSendMessage(message), timeoutPromise])
       .finally(() => clearTimeout(timer));
   }
 
@@ -358,7 +358,7 @@
       // v1.8.0: abort 傳播 — 使用者按 Option+S 取消 → 通知 SW 中斷 streaming + 清理 listener
       const abortHandler = () => {
         SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream abort triggered`, { streamId });
-        browser.runtime.sendMessage({ type: 'STREAMING_ABORT', payload: { streamId } }).catch(() => {});
+        SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId } }).catch(() => {});
         // 解開 main 流程的 await(SW 端會回傳 STREAMING_ABORTED 但本地 listener 已移除,
         // 為防卡死直接在這裡 resolve)
         try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {}
@@ -436,7 +436,7 @@
       browser.runtime.onMessage.addListener(onMessage);
 
       // 觸發 streaming(SW 內 fire-and-forget,sendMessage 立刻 resolve)
-      browser.runtime.sendMessage({
+      SK.safeSendMessage({
         type: 'TRANSLATE_BATCH_STREAM',
         payload: { texts: job.texts, glossary: glossary || null, modelOverride: modelOverride || null, streamId },
       }).then((resp) => {
@@ -502,7 +502,7 @@
           stream.cleanup();
           if (r.kind === 'timeout') {
             SK.sendLog('warn', 'translate', 'streaming first_chunk timeout, falling back to non-streaming', { streamId: stream.streamId });
-            browser.runtime.sendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
+            SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
           }
           batch0NeedsFallback = true;
         }
@@ -578,7 +578,7 @@
       if (mobileUrl) {
         SK.sendLog('info', 'translate', 'Google Docs detected, redirecting to mobilebasic', { mobileUrl });
         SK.showToast('loading', '偵測到 Google Docs，正在開啟可翻譯的閱讀版⋯');
-        browser.runtime.sendMessage({
+        SK.safeSendMessage({
           type: 'OPEN_GDOC_MOBILE',
           payload: { url: mobileUrl },
         }).catch(() => {});
@@ -766,7 +766,7 @@
         SK.showToast('loading', '建立術語表⋯', { progress: 0, startTimer: true });
         try {
           const glossaryResult = await Promise.race([
-            browser.runtime.sendMessage({
+            SK.safeSendMessage({
               type: 'EXTRACT_GLOSSARY',
               payload: { compressedText, inputHash },
             }),
@@ -786,7 +786,7 @@
           SK.sendLog('warn', 'glossary', 'glossary failed/timeout, proceeding without', { error: err.message });
         }
       } else {
-        const glossaryPromise = browser.runtime.sendMessage({
+        const glossaryPromise = SK.safeSendMessage({
           type: 'EXTRACT_GLOSSARY',
           payload: { compressedText, inputHash },
         }).then(res => {
@@ -854,10 +854,10 @@
       STATE.translatedBy = 'gemini';  // v1.4.0
       STATE.stickyTranslate = true;
       STATE.stickySlot = options.slot ?? null;  // v1.4.12: 記錄 preset slot 供 SPA 續翻 + 跨 tab 繼承
-      browser.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
+      SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
       // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
       if (options.slot != null) {
-        browser.runtime.sendMessage({ type: 'STICKY_SET', payload: { slot: options.slot } }).catch(() => {});
+        SK.safeSendMessage({ type: 'STICKY_SET', payload: { slot: options.slot } }).catch(() => {});
       }
 
       if (!failures.length) {
@@ -936,7 +936,7 @@
 
       // 記錄用量到 IndexedDB
       if (done > 0) {
-        browser.runtime.sendMessage({
+        SK.safeSendMessage({
           type: 'LOG_USAGE',
           payload: {
             url: location.href,
@@ -1030,9 +1030,9 @@
     STATE.stickyTranslate = false;
     STATE.stickySlot = null;    // v1.4.12
     STATE.partialModeActive = false;  // v1.8.5
-    browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+    SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     // v1.4.11: 清除跨 tab sticky（只影響當前 tab，不影響樹中其他 tab）
-    browser.runtime.sendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
+    SK.safeSendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
     SK.showToast('success', '已還原原文', { progress: 1, autoHideMs: 2000 });
   }
 
@@ -1240,10 +1240,10 @@
       STATE.translatedBy = 'google';  // v1.4.0
       STATE.stickyTranslate = true;
       STATE.stickySlot = gtOptions.slot ?? null;  // v1.4.12
-      browser.runtime.sendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
+      SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
       // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
       if (gtOptions.slot != null) {
-        browser.runtime.sendMessage({ type: 'STICKY_SET', payload: { slot: gtOptions.slot } }).catch(() => {});
+        SK.safeSendMessage({ type: 'STICKY_SET', payload: { slot: gtOptions.slot } }).catch(() => {});
       }
 
       if (!failures.length) {
@@ -1580,7 +1580,7 @@
 
   // ─── 初始化 ──────────────────────────────────────────
 
-  browser.runtime.sendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+  SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
 
   SK.sendLog('info', 'system', 'content script ready', { version: browser.runtime.getManifest().version, url: location.href });
 
@@ -1617,11 +1617,11 @@
         navType = performance.getEntriesByType('navigation')?.[0]?.type || null;
       } catch { /* 舊環境不支援，視為 navigate */ }
       if (navType === 'reload') {
-        await browser.runtime.sendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
+        await SK.safeSendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
         SK.sendLog('info', 'system', 'page reload, sticky cleared', { navType, url: location.href });
       } else {
         // v1.4.11 跨 tab sticky（v1.4.12 改傳 preset slot）：opener tab 的 preset 延用到此 tab
-        const stickyResp = await browser.runtime.sendMessage({ type: 'STICKY_QUERY' }).catch(() => null);
+        const stickyResp = await SK.safeSendMessage({ type: 'STICKY_QUERY' }).catch(() => null);
         if (stickyResp?.shouldTranslate && stickyResp.slot != null) {
           SK.sendLog('info', 'system', 'sticky translate inherited from opener tab, triggering preset', { slot: stickyResp.slot, url: location.href });
           handleTranslatePreset(Number(stickyResp.slot));
