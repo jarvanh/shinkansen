@@ -1,28 +1,201 @@
 // content-drive.js — Shinkansen Drive 影片 ASR 字幕翻譯(top frame 入口)
-// commit 2/5 — 路徑 A(top frame 浮層)
+// commit 4b/5 — 路徑 A(top frame 浮層)
 //
 // 執行環境:isolated world,run_at: document_idle,<all_urls> + all_frames: true。
 // gate 只在 Drive viewer 的 top frame(drive.google.com/file/...)啟動實際邏輯;
 // iframe 內的偵測由獨立的 content-drive-iframe.js 處理。
 //
-// 職責(commit 2):接收 background relay 的 DRIVE_ASR_CAPTIONS 訊息(原始 timedtext
-// json3),解析成 raw segments,目前只 log dump 驗結構正確。
-// 不做的事:合句、翻譯、overlay 容器、時間軸同步——留 commit 3+。
+// 進度:
+//   commit 1:iframe 內 PerformanceObserver + background fetch + relay top frame ✅
+//   commit 2:top frame listener + parseJson3 raw dump ✅
+//   commit 3:抽 SK.ASR helper(parseJson3 / mergeAsr / parseAsrResponse)✅
+//   commit 4a:接 LLM(TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH)+ 譯文 dump(前 30 段)✅
+//   commit 4b(本檔):overlay UI(<shinkansen-drive-overlay> + Shadow DOM)+
+//                    YouTube IFrame Player API postMessage 時間軸 + 譯文 entries
+//                    push 給 overlay + rAF render loop ✅
+//   commit 5(待):整支切批 lazy-load + popup toggle + integration
 
 (function (SK) {
   if (!SK || SK.disabled) return;
 
-  // 只在 Drive viewer top frame 啟動。
-  // 其他頁面(YouTube / Wikipedia / Drive folder 列表 / Google Docs 等)load
-  // 此 script 但 gate fail 直接 return,不掛 listener、無副作用。
   if (location.hostname !== 'drive.google.com') return;
   if (!location.pathname.startsWith('/file/')) return;
   if (window.top !== window) return;
 
-  // commit 4a:取前 SAMPLE_BATCH_SIZE 段送 LLM 驗整條 D' pipeline,後續 commit 4b
-  // 接時間軸 + 視窗切批 + overlay 顯示。
+  // ─── SK.DRIVE 全域 state ──────────────────────────────
+  // entries: LLM 譯文,按 startMs 排序;rAF loop 內依 currentTimeMs 找 active entry
+  const DRIVE = SK.DRIVE = SK.DRIVE || {
+    entries: [],
+    currentTimeMs: 0,
+    currentEntryIdx: -1,
+    overlayHost: null,
+    overlayCueEl: null,
+    iframeEl: null,
+    registeredListening: false,
+  };
+
+  // commit 4b 仍只翻前 SAMPLE_BATCH_SIZE 段(commit 5 才接整支切批 lazy-load)
   const SAMPLE_BATCH_SIZE = 30;
 
+  // ─── overlay UI ──────────────────────────────────────
+  // <shinkansen-drive-overlay>:position:fixed,動態追蹤 youtube embed iframe rect 對齊。
+  // Shadow DOM 隔離 Drive 既有 CSS。pointer-events:none 不擋互動。
+  const _OVERLAY_TAG = 'shinkansen-drive-overlay';
+
+  function _findPlayerIframe() {
+    return document.querySelector('iframe[src*="youtube.googleapis.com/embed"]');
+  }
+
+  function _ensureOverlay() {
+    if (DRIVE.overlayHost && document.body.contains(DRIVE.overlayHost)) return DRIVE.overlayHost;
+    const host = document.createElement(_OVERLAY_TAG);
+    Object.assign(host.style, {
+      position: 'fixed',
+      pointerEvents: 'none',
+      zIndex: '99999',
+      display: 'none',
+      left: '0px', top: '0px', width: '0px', height: '0px',
+    });
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `
+      <style>
+        :host {
+          font-family: "PingFang TC", "Microsoft JhengHei", "微軟正黑體",
+                       "Heiti TC", "Noto Sans CJK TC", sans-serif;
+        }
+        .container {
+          position: absolute;
+          left: 0; right: 0;
+          bottom: 12%;          /* iframe 高度 12%(避開原生 caption 區與控制列) */
+          display: flex;
+          justify-content: center;
+          padding: 0 24px;
+          box-sizing: border-box;
+        }
+        .cue {
+          display: inline-block;
+          max-width: 100%;
+          padding: 0.15em 0.5em;
+          background: rgba(0, 0, 0, 0.78);
+          color: #fff;
+          font-size: 22px;
+          line-height: 1.5;
+          border-radius: 4px;
+          white-space: pre-wrap;
+          text-align: center;
+          box-sizing: border-box;
+          letter-spacing: 0.02em;
+        }
+        .cue:empty { display: none; }
+      </style>
+      <div class="container"><span class="cue"></span></div>
+    `;
+    document.body.appendChild(host);
+    DRIVE.overlayHost = host;
+    DRIVE.overlayCueEl = shadow.querySelector('.cue');
+    return host;
+  }
+
+  // ─── iframe rect 追蹤 ────────────────────────────────
+  // Drive viewer 通常不 scroll,但 sidebar 開合會 resize iframe。rAF loop 持續校正,
+  // 比 ResizeObserver 簡單(且 rAF loop 本來就要跑來 render cue)。
+  function _updateOverlayPosition() {
+    const iframe = DRIVE.iframeEl;
+    const host = DRIVE.overlayHost;
+    if (!iframe || !host) return;
+    const rect = iframe.getBoundingClientRect();
+    if (rect.width < 100 || rect.height < 100) {
+      host.style.display = 'none';
+      return;
+    }
+    host.style.left = `${rect.left}px`;
+    host.style.top = `${rect.top}px`;
+    host.style.width = `${rect.width}px`;
+    host.style.height = `${rect.height}px`;
+    host.style.display = 'block';
+  }
+
+  // ─── postMessage 時間軸 ───────────────────────────────
+  // YouTube IFrame Player API protocol:
+  //   iframe → parent: {event:'onReady', ...}(player ready 通知)
+  //   parent → iframe: {event:'listening', id:..., channel:'widget'}(parent 註冊)
+  //   iframe → parent: {event:'infoDelivery', info:{currentTime, duration, ...}}(註冊後持續推送)
+  // Drive 的 embed iframe URL 已 enablejsapi=1,player 啟動後會 fire onReady,
+  // 我們收到後送 listening 註冊;之後 infoDelivery 每 250ms 左右推一次 currentTime。
+  let _initialMessagesLogged = 0;
+  const _MAX_INITIAL_LOGS = 5;
+
+  function _listenPlayerMessages() {
+    window.addEventListener('message', (e) => {
+      if (e.origin !== 'https://youtube.googleapis.com') return;
+      let data = e.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch { return; }
+      }
+      if (!data || typeof data !== 'object') return;
+
+      // 前幾個 message dump 出來方便驗 protocol(iframe 跑哪種版本可能有差異)
+      if (_initialMessagesLogged < _MAX_INITIAL_LOGS) {
+        _initialMessagesLogged++;
+        SK.sendLog('info', 'drive', 'player message received', {
+          event: data.event,
+          hasInfo: !!data.info,
+          hasCurrentTime: typeof data.info?.currentTime === 'number',
+          dataKeys: Object.keys(data).slice(0, 8),
+        });
+      }
+
+      if (data.event === 'onReady' && !DRIVE.registeredListening) {
+        DRIVE.registeredListening = true;
+        try {
+          DRIVE.iframeEl?.contentWindow?.postMessage(
+            JSON.stringify({ event: 'listening', id: 'shinkansen-drive', channel: 'widget' }),
+            'https://youtube.googleapis.com'
+          );
+          SK.sendLog('info', 'drive', 'sent listening register');
+        } catch (err) {
+          SK.sendLog('warn', 'drive', 'listening register failed', { error: err?.message });
+        }
+      }
+
+      if (data.event === 'infoDelivery' && typeof data.info?.currentTime === 'number') {
+        DRIVE.currentTimeMs = Math.floor(data.info.currentTime * 1000);
+      }
+    });
+  }
+
+  // ─── active entry finder + render ───────────────────
+  // commit 4b entries 數量小(11 句),linear search 即可。commit 5 整支翻完
+  // (~250 句)再考慮 binary search。
+  function _findActiveEntryIdx() {
+    const t = DRIVE.currentTimeMs;
+    const entries = DRIVE.entries;
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (t >= e.startMs && t < e.endMs) return i;
+    }
+    return -1;
+  }
+
+  function _renderActiveCue() {
+    if (!DRIVE.overlayCueEl) return;
+    const idx = _findActiveEntryIdx();
+    if (idx === DRIVE.currentEntryIdx) return;
+    DRIVE.currentEntryIdx = idx;
+    DRIVE.overlayCueEl.textContent = idx === -1 ? '' : DRIVE.entries[idx].text;
+  }
+
+  // ─── 主 rAF loop:rect 追蹤 + render cue ─────────────
+  function _startRenderLoop() {
+    function loop() {
+      _updateOverlayPosition();
+      _renderActiveCue();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ─── DRIVE_ASR_CAPTIONS handler(commit 1-4a) ────────
   async function _handleCaptionsMessage(message) {
     const { json3 } = message.payload || {};
     if (!json3) {
@@ -43,9 +216,6 @@
     const batch = rawSegments.slice(0, SAMPLE_BATCH_SIZE);
     if (batch.length === 0) return;
 
-    // D' JSON 格式 [{s, e, t}]:s/e 毫秒時間戳、t 原文。LLM 自由合句後回相同格式
-    // (entry 數可能少於 input,因為合多段成一句)。e 用下一段 startMs(子批內不重疊),
-    // 最後一段 fallback +1500ms。
     const inputArr = batch.map((seg, i) => {
       const next = batch[i + 1];
       const endMs = next ? next.startMs : seg.startMs + 1500;
@@ -56,8 +226,6 @@
     SK.sendLog('info', 'drive', 'sending sample batch to LLM', {
       batchSize: batch.length,
       inputBytes: inputJson.length,
-      firstS: inputArr[0]?.s,
-      lastE: inputArr[inputArr.length - 1]?.e,
     });
 
     let res;
@@ -90,25 +258,33 @@
       return;
     }
 
-    SK.sendLog('info', 'drive', 'asr translated', {
-      entryCount: entries.length,
-      inputCount: batch.length,
+    // commit 4b:譯文 push 到 SK.DRIVE.entries 給 overlay 用
+    let pushedCount = 0;
+    for (const entry of entries) {
+      const sStart = Number(entry.s);
+      const sEnd = Number(entry.e);
+      const text = String(entry.t || '').trim();
+      if (!Number.isFinite(sStart) || !Number.isFinite(sEnd) || sEnd < sStart || !text) continue;
+      DRIVE.entries.push({ startMs: sStart, endMs: sEnd, text });
+      pushedCount++;
+    }
+    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+
+    SK.sendLog('info', 'drive', 'asr translated + pushed for overlay', {
+      llmEntryCount: entries.length,
+      pushedToOverlay: pushedCount,
+      totalOverlayEntries: DRIVE.entries.length,
       compressionRatio: batch.length > 0
         ? (entries.length / batch.length).toFixed(2)
         : null,
-      firstS: entries[0]?.s,
-      lastE: entries[entries.length - 1]?.e,
-      sample: entries.slice(0, 5).map(e => ({
-        s: e.s,
-        e: e.e,
+      sample: entries.slice(0, 3).map(e => ({
+        s: e.s, e: e.e,
         t: typeof e.t === 'string' && e.t.length > 100 ? e.t.slice(0, 100) + '…' : e.t,
       })),
       usage: res.usage,
     });
   }
 
-  // ─── DRIVE_ASR_CAPTIONS listener ─────────────────────
-  // listener 同步 return,async 邏輯走 fire-and-forget(避免被 Chrome 視為 sendResponse promise)
   browser.runtime.onMessage.addListener((message) => {
     if (message?.type !== 'DRIVE_ASR_CAPTIONS') return;
     _handleCaptionsMessage(message).catch(err => {
@@ -117,6 +293,30 @@
       });
     });
   });
+
+  // ─── 初始化:等 iframe 載入 → 掛 overlay + listener + render loop ──
+  function _init(retries = 0) {
+    const iframe = _findPlayerIframe();
+    if (!iframe) {
+      if (retries < 20) {
+        // iframe 可能晚於 document_idle 才插入(Drive 動態載入 player)
+        setTimeout(() => _init(retries + 1), 500);
+      } else {
+        SK.sendLog('warn', 'drive', 'player iframe not found after retries', { retries });
+      }
+      return;
+    }
+    DRIVE.iframeEl = iframe;
+    _ensureOverlay();
+    _listenPlayerMessages();
+    _startRenderLoop();
+    SK.sendLog('info', 'drive', 'overlay & message listener attached', {
+      iframeRect: { width: iframe.offsetWidth, height: iframe.offsetHeight },
+      retriesUntilFound: retries,
+    });
+  }
+
+  setTimeout(() => _init(), 500);
 
   SK.sendLog('info', 'drive', 'content-drive.js top frame ready', {
     href: location.href.slice(0, 200),
