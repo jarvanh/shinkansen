@@ -236,30 +236,18 @@ async function load() {
   refreshPresetKeyBindings();
 
   // v1.6.6: 工具列「翻譯本頁」按鈕的 preset slot dropdown
-  // v1.6.14: slot 2 顯示「主要預設」、slot 1/3 顯示「預設 2/3」(順延編號:原預設 1 → 預設 2,原預設 2 → 主要預設,原預設 3 維持)
-  const slotTitle = (slot) => slot === 2 ? '主要預設' : `預設 ${slot === 1 ? 2 : 3}`;
+  // v1.6.13: 自動翻譯網站使用的 preset slot
+  // v1.6.14: slot 2 顯示「主要預設」、slot 1/3 顯示「預設 2/3」
+  // 兩個下拉選單的 option text 由 refreshSlotDropdownLabels() 統一處理,
+  // 此處只負責設 value
+  refreshSlotDropdownLabels();
   const popupSlotSel = $('popup-button-slot');
   if (popupSlotSel) {
-    for (const slot of [1, 2, 3]) {
-      const p = presets.find(x => x.slot === slot) || DEFAULTS.translatePresets.find(x => x.slot === slot);
-      const label = (p.label && p.label.trim()) || slotTitle(slot);
-      const opt = popupSlotSel.querySelector(`option[value="${slot}"]`);
-      if (opt) opt.textContent = `${slotTitle(slot)}：${label}`;
-    }
     const slotVal = Number(s.popupButtonSlot);
     popupSlotSel.value = ([1, 2, 3].includes(slotVal) ? slotVal : 2).toString();
   }
-
-  // v1.6.13: 自動翻譯網站使用的 preset slot
   const autoSlotSel = $('auto-translate-slot');
   if (autoSlotSel) {
-    for (const p of presets) {
-      const slot = Number(p.slot);
-      if (!slot) continue;
-      const label = (p.label && p.label.trim()) || slotTitle(slot);
-      const opt = autoSlotSel.querySelector(`option[value="${slot}"]`);
-      if (opt) opt.textContent = `${slotTitle(slot)}：${label}`;
-    }
     const autoSlotVal = Number(s.autoTranslateSlot);
     autoSlotSel.value = ([1, 2, 3].includes(autoSlotVal) ? autoSlotVal : 2).toString();
   }
@@ -339,6 +327,26 @@ function updatePresetModelVisibility(slot) {
   const engine = $(`preset-engine-${slot}`).value;
   const row = $(`preset-model-row-${slot}`);
   if (row) row.hidden = (engine === 'google' || engine === 'openai-compat');
+}
+
+// 「工具列翻譯本頁按鈕」「自動翻譯網站」兩個下拉選單的 option text
+// 跟著「翻譯快速鍵」preset 標籤即時聯動。直接從 DOM input 讀目前值,
+// 不需重新讀 storage,使用者打字當下就能看到變化。
+function _slotTitle(slot) {
+  return slot === 2 ? '主要預設' : `預設 ${slot === 1 ? 2 : 3}`;
+}
+function refreshSlotDropdownLabels() {
+  const popupSlotSel = $('popup-button-slot');
+  const autoSlotSel = $('auto-translate-slot');
+  for (const slot of [1, 2, 3]) {
+    const labelInput = $(`preset-label-${slot}`);
+    const label = (labelInput?.value || '').trim() || _slotTitle(slot);
+    const text = `${_slotTitle(slot)}：${label}`;
+    const popupOpt = popupSlotSel?.querySelector(`option[value="${slot}"]`);
+    if (popupOpt) popupOpt.textContent = text;
+    const autoOpt = autoSlotSel?.querySelector(`option[value="${slot}"]`);
+    if (autoOpt) autoOpt.textContent = text;
+  }
 }
 
 // v1.5.8: YouTube 字幕分頁 — 依引擎切換 section 可見性。
@@ -746,6 +754,11 @@ $('gemini-reset-all')?.addEventListener('click', () => {
 // v1.4.13: preset engine 下拉切換時隱藏/顯示 model row
 for (const slot of [1, 2, 3]) {
   $(`preset-engine-${slot}`).addEventListener('change', () => updatePresetModelVisibility(slot));
+}
+
+// preset 標籤輸入時即時刷新「工具列翻譯本頁按鈕」「自動翻譯網站」兩個下拉選單的顯示文字
+for (const slot of [1, 2, 3]) {
+  $(`preset-label-${slot}`)?.addEventListener('input', refreshSlotDropdownLabels);
 }
 
 // v1.5.8: 字幕引擎下拉切換時更新 section 可見性 + 重算 cost hint

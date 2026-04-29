@@ -79,6 +79,11 @@
 
 ## v1.8.x
 
+**v1.8.17** — 修設定頁「翻譯快速鍵」preset 標籤改變時,「工具列翻譯本頁按鈕」與「自動翻譯網站」兩個下拉選單沒有即時跟著更新顯示文字的小 bug。
+
+**Bug 修正:**
+- `shinkansen/options/options.js`:原本兩個下拉選單的 option text 只在 `init()` 載入時組一次,使用者在「翻譯快速鍵」section 改 preset 標籤輸入框時,下游兩個 select 要重整頁面才會更新。修法:抽出 `refreshSlotDropdownLabels()` helper 統一從 DOM input 讀目前值組「{slotTitle}:{label}」,在 init() 載入時呼叫一次,並在三個 `preset-label-{slot}` input 上掛 `input` event listener,使用者打字當下就刷新兩個下拉選單顯示。Regression 補進 `test/regression/options-preset-label-live-update.spec.js`(三 slot 即時聯動 + 空標籤 fallback 到 slotTitle)。
+
 **v1.8.16** — 修 YouTube 字幕「reload 後字幕等不到 / 多次 reload 才 work」race condition + 「翻譯中…」提示打擾優化。
 
 **Bug 修正:**
