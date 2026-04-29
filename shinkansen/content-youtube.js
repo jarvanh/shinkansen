@@ -362,8 +362,8 @@
     // commit 5c:bilingualMode=true → 不隱藏原生 CC(中英對照);false=純中文(既有行為)
     if (YT.isAsr) {
       const cfg = YT.config || await getYtConfig();
-      _setAsrHidingMode(cfg.bilingualMode !== true);
       _ensureOverlay();
+      _applyBilingualMode(cfg.bilingualMode === true);
     }
     const lastMs = segments[segments.length - 1]?.startMs ?? 0;
     SK.sendLog('info', 'youtube', 'XHR captions captured', {
@@ -857,6 +857,22 @@
       root.classList.add(_ASR_PLAYER_CLASS);
     } else {
       root.classList.remove(_ASR_PLAYER_CLASS);
+    }
+  }
+
+  // commit 5c:統一切 bilingualMode 的副作用 — 字幕隱藏/顯示 + overlay 位置調整。
+  // 雙語模式中文 overlay 要避開原生英文 CC(原生位置約 30-40px from bottom),把
+  // overlay --sk-cue-bottom 推到 90px 在英文上方。純中文模式(原生 CC 已隱藏)
+  // overlay 回預設 30px 佔據原生 CC 的視覺位置。
+  function _applyBilingualMode(bilingual) {
+    _setAsrHidingMode(!bilingual);
+    const host = document.querySelector(_OVERLAY_TAG);
+    if (host) {
+      if (bilingual) {
+        host.style.setProperty('--sk-cue-bottom', '90px');
+      } else {
+        host.style.removeProperty('--sk-cue-bottom');
+      }
     }
   }
 
@@ -2197,6 +2213,19 @@
       }
     } catch (err) {
       SK.sendLog('warn', 'youtube', 'SPA nav autoTranslate check failed', { error: err.message });
+    }
+  });
+
+  // commit 5c:bilingualMode 即時切換(toggle 不需要 reload 影片頁)
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' || !changes.ytSubtitle) return;
+    const newVal = changes.ytSubtitle.newValue || {};
+    const newBilingual = newVal.bilingualMode === true;
+    if (SK.YT.config) SK.YT.config.bilingualMode = newBilingual;
+    // 只在 ASR 字幕已啟用時即時 reapply(避免 ASR 還沒啟動就動 player class)
+    if (SK.YT.isAsr && SK.YT.active) {
+      _applyBilingualMode(newBilingual);
+      SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual });
     }
   });
 

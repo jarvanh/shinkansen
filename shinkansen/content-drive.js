@@ -73,9 +73,13 @@
     const nextBilingual = newVal.bilingualMode === true;
     if (nextBilingual !== _bilingualMode) {
       _bilingualMode = nextBilingual;
-      SK.sendLog('info', 'drive', 'bilingualMode setting changed (reload page to apply player CC)', {
-        bilingual: nextBilingual,
-      });
+      // commit 5c:即時切 player CC(loadModule / unloadModule),不用 reload
+      if (nextBilingual) {
+        _enablePlayerCaptions();
+      } else {
+        _disablePlayerCaptions();
+      }
+      SK.sendLog('info', 'drive', 'bilingualMode toggled live', { bilingual: nextBilingual });
     }
   });
 
@@ -94,6 +98,19 @@
       SK.sendLog('info', 'drive', 'sent unloadModule captions (single-language mode)');
     } catch (e) {
       SK.sendLog('warn', 'drive', 'unloadModule captions failed', { error: e?.message || String(e) });
+    }
+  }
+  // commit 5c:雙語模式下重新載入 player captions(對應 toggle 從 single-language 切到 bilingual)
+  function _enablePlayerCaptions() {
+    if (!DRIVE.iframeEl?.contentWindow) return;
+    try {
+      DRIVE.iframeEl.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'loadModule', args: ['captions'] }),
+        'https://youtube.googleapis.com'
+      );
+      SK.sendLog('info', 'drive', 'sent loadModule captions (bilingual mode)');
+    } catch (e) {
+      SK.sendLog('warn', 'drive', 'loadModule captions failed', { error: e?.message || String(e) });
     }
   }
 
