@@ -1893,12 +1893,18 @@
         // 修正：seek 後 _firstCacheHitLogged 已為 true，但 showCaptionStatus 可能已再次顯示，
         // 只靠 !_firstCacheHitLogged gate 會導致新顯示的提示永遠不被移除。
         if (cached) hideCaptionStatus();
-        // commit 5c.4:雙語模式(非 ASR 路徑)寫「原文 + 譯文兩行」(透過 \n,_setSegmentText
-        // 會自動 escape + <br>);ASR 路徑已被 line 1869 gate 擋住不會走到這。
-        // cached 為空字串(merged seg 副 segment)直接清空,讓主 seg 顯示合併後譯文。
+        // commit 5c.4:雙語模式(非 ASR 路徑)寫「原文 + 譯文兩行」<br> 串接。
+        // commit 5c.5:跳過 _wrapTargetText 自動切點 — 它依字數限制(中文 15-35 字)切,
+        // 對英文寬鬆但對中文常硬切兩行(image 22:中文長句被切,英文沒切)。直接寫
+        // innerHTML + <br>,讓 caption-window 的 CSS word-wrap 依實際容器寬度自然處理。
         const isBilingual = SK.YT.config?.bilingualMode === true;
-        // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
-        _setSegmentText(el, isBilingual && cached ? `${original}\n${cached}` : cached);
+        if (isBilingual && cached) {
+          const html = `${_escapeHtml(original)}<br>${_escapeHtml(cached)}`;
+          if (el.innerHTML !== html) el.innerHTML = html;
+        } else {
+          // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
+          _setSegmentText(el, cached);
+        }
         // 同步展開字幕框（不用 rAF——新版 expandCaptionLine 純設 style，不需量測 layout；
         // 若用 rAF，瀏覽器會先 paint 出「中文 + 舊 315px 容器」再展開，造成一幀閃爍）
         if (cached) expandCaptionLine(el);
@@ -1969,11 +1975,17 @@
         YT.captionMap.set(key, trans);
         for (const el of (queue.get(key) || [])) {
           if (document.contains(el) && normText(el.textContent) === key) {
-            // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>
             // commit 5c.4:雙語模式(非 ASR)寫「原文 + 譯文兩行」
+            // commit 5c.5:雙語跳過 _wrapTargetText,讓 CSS word-wrap 自然處理
             const isBilingual = YT.config?.bilingualMode === true;
-            const original = el.textContent.trim();
-            _setSegmentText(el, isBilingual && trans ? `${original}\n${trans}` : trans);
+            if (isBilingual && trans) {
+              const original = el.textContent.trim();
+              const html = `${_escapeHtml(original)}<br>${_escapeHtml(trans)}`;
+              if (el.innerHTML !== html) el.innerHTML = html;
+            } else {
+              // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>
+              _setSegmentText(el, trans);
+            }
           }
         }
       }
