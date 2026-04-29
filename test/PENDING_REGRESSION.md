@@ -17,18 +17,15 @@
 
 ## 條目
 
-### v1.8.15+ — YouTube 人工字幕翻譯 race condition(等不到字幕 / reload 多次才 work)
-- **症狀**(Jimmy 2026-04-29 回報):YouTube 內建人工字幕影片開啟時,字幕常常等不到出現,reload 3-4 次才會在「不知道做什麼事情後突然」開始翻。Image 24 log 顯示最後兩條 `activated` 緊接 `stopped`(同一秒 11:01:57),強烈指向 SPA navigation auto-restart race
-- **未驗 hypothesis**(別當證據):
-  - yt-navigate-finish event YouTube 內部 double fire(content-youtube.js:2217 listener 觸發兩次,中間插一次 setTimeout 500ms 重啟)
-  - content-spa.js URL polling 誤判 navigation,反向 call stopYouTubeTranslation(透過某個我還沒找到的 hook)
-  - video element `seeking` event 在某情境誤觸 stop
-- **建議下一步(dedicated debug 一輪)**:
-  1. content-youtube.js:2097 `stopYouTubeTranslation()` 加 caller-stack instrumentation log(`new Error().stack` slice 前幾行),每次 stop 都記 reason / 觸發路徑
-  2. 用 `tools/debug-harness.js` 對真實 YouTube 影片 reload 多次,分析 stop call sequence
-  3. 找出哪個 caller / event 在「reload 後馬上」誤觸 stop
-- **建議 spec 位置**:`test/regression/youtube-spa-no-double-stop.spec.js`(yt-navigate-finish 模擬 double fire,驗 stop 只發生一次 / 自動重啟成功 1 次)
-- **影響範圍**:v1.8.14 之前可能就有此 race,Drive ASR 上線後 Jimmy 用 YouTube 字幕更頻繁才注意到。屬 v1.8.16 dedicated 修
+### ~~v1.8.15+ — YouTube 人工字幕翻譯 race condition~~ — 已補測試(v1.8.16)→ `test/regression/youtube-auto-activate-no-toggle-stop.spec.js`
+根因不是 yt-navigate-finish double-fire,而是兩條獨立自動鬧鐘(content.js:1599 auto-subtitle on load setTimeout 800ms + content-youtube.js:2334 yt-navigate-finish SPA restart setTimeout 500ms)在 reload 後都會 fire,後到那條進 translateYouTubeSubtitles 看 active=true 走「再按一次還原」分支誤觸 toggle stop。修法:translateYouTubeSubtitles 加 `{ source: 'manual' | 'auto' }` 參數,auto 路徑遇 active 直接 no-op,manual 維持 toggle 還原語義。Caller stack 在 dedicated debug 從 image 5 的 `stop:caller` log 直指 content.js:1599 → translateYouTubeSubtitles → stopYouTubeTranslation。SANITY 通過:註解掉 source='auto' 分支 → test #1 fail / #2 pass;還原 → 兩條 pass。
+
+### v1.8.16 — 「翻譯中…」status 與螢幕中文字幕共存 guard
+- **症狀**:無 user 回報 bug,屬一併修進來的打擾優化:reload 後字幕翻譯啟動瞬間或 seek 到未翻視窗時,player 上方原本就有中文字幕,還會疊一個「翻譯中…」黑底文字 indicator 蓋住內容
+- **修在**:`shinkansen/content-youtube.js` 加 `_hasVisibleChineseCaption()` helper(ASR 路徑查 `_findActiveCue` 命中且含 CJK / 非 ASR 路徑查 `.ytp-caption-segment` 含 CJK),3 處 `showCaptionStatus('翻譯中…')` 各包 `if (!_hasVisibleChineseCaption())` guard
+- **為什麼還沒寫 spec**:guard 邏輯極簡(三處同樣的 inline if),要寫 spec 須暴露 helper 給 SK 命名空間動 production code,或寫整合測 onVideoSeeked / shinkansen-yt-captions handler 等較重的 caller path,測試 ROI 低於修法本身的可讀性。caller side 三處對稱可由 grep 直接 review。
+- **建議 spec 位置**:`test/regression/youtube-translating-status-skip-if-chinese.spec.js`
+- **建議 fixture 結構**:塞 `<span class="ytp-caption-segment">你好</span>` 進 .ytp-caption-window-container → 觸發任一 caller path(seek 到未翻視窗最直接)→ 驗 `#__sk-yt-caption-status` 不存在;清掉中文 segment 走同 path → 驗 indicator 出現
 
 ### v1.8.15 — Drive 影片 ASR 字幕翻譯整段 e2e spec
 - **症狀**:N/A,新功能整段 pipeline 沒 regression spec 涵蓋

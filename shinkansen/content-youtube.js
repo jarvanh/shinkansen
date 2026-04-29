@@ -156,6 +156,23 @@
     }
   }
 
+  // v1.8.16: 螢幕上若已有中文字幕(ASR overlay 命中當前 cue / 非 ASR DOM segment
+  // 已替換成中文),不顯示「翻譯中…」避免覆蓋實質內容打擾使用者。
+  function _hasVisibleChineseCaption() {
+    const YT = SK.YT;
+    if (YT.isAsr) {
+      const video = document.querySelector('video');
+      const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
+      const cue = _findActiveCue(currentMs);
+      return !!(cue && cue.text && /[一-鿿]/.test(cue.text));
+    }
+    const segs = document.querySelectorAll('.ytp-caption-segment');
+    for (const s of segs) {
+      if (/[一-鿿]/.test(s.textContent || '')) return true;
+    }
+    return false;
+  }
+
   function showCaptionStatus(text) {
     // commit 5c.3:雙語模式不顯示「翻譯中…」status — 原生英文 CC 已經給 user
     // feedback,中文 overlay 也會在 LLM 回後顯示,status indicator 多餘且會夾在
@@ -386,7 +403,7 @@
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
       const windowStartMs = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
       _debugUpdate(`XHR 攔截 ${segments.length} 條字幕（至 ${Math.round(lastMs / 1000)}s），開始翻譯`);
-      showCaptionStatus('翻譯中…');
+      if (!_hasVisibleChineseCaption()) showCaptionStatus('翻譯中…');
       translateWindowFrom(windowStartMs);
     }
   });
@@ -830,43 +847,50 @@
   // 用 class + 全域 style 而非 inline style:避免每個 caption-window 個別處理 mutation 競爭。
   const _ASR_PLAYER_CLASS = 'shinkansen-asr-active';
   const _ASR_HIDE_CSS_ID  = 'shinkansen-asr-hide-css';
+  // v1.8.16:stylesheet 注入從 _setAsrHidingMode 抽出獨立 helper,
+  // bilingual=true 也走「不隱藏原生 CC + overlay 上抬 90px」的 CSS rule(host[bilingual]),
+  // 這條 rule 必須跟 .ytp-autohide 規則同份 stylesheet 一起注入,reload 後直接進雙語
+  // (從沒走過 active=true 分支)否則拿不到 90px 上抬,中英 CC 重疊在原生 30px 高度。
+  function _ensureAsrStylesheet() {
+    if (document.getElementById(_ASR_HIDE_CSS_ID)) return;
+    const style = document.createElement('style');
+    style.id = _ASR_HIDE_CSS_ID;
+    // 用 visibility/opacity 隱藏(而非 display:none),保留 layout —— 我們需要讀
+    // .ytp-caption-segment 的 computed font-size 當作 overlay 字體基準。
+    // pointer-events:none 避免使用者誤點(雖然 absolute positioned 沒互動性)。
+    style.textContent = `
+      .${_ASR_PLAYER_CLASS} .caption-window,
+      .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
+      .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      /* 控制列(chrome)顯示時讓 overlay 上移避開進度條:
+         YouTube 在 chrome 隱藏時加 .ytp-autohide 到 .html5-video-player,顯示時移除。
+         :not(.ytp-autohide) 命中代表 chrome 顯示中,把 CSS variable 推給 host element,
+         shadow DOM 內 .window 透過 var() 自動繼承 → bottom 從預設 30px 改為 60px。 */
+      .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG} {
+        --sk-cue-bottom: calc(60px + var(--sk-cue-size, 22px));
+      }
+      /* commit 5c.6:雙語模式(host[bilingual] attr)overlay 從預設 30px 推到 90px
+         避開原生英文 CC(原生 30-40px from bottom)。chrome 顯示時再多推一段
+         避開控制列 + 已上抬的原生 CC(YouTube 自己把原生 CC 推到約 82px)。 */
+      ${_OVERLAY_TAG}[bilingual] {
+        --sk-cue-bottom: 90px;
+      }
+      .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG}[bilingual] {
+        --sk-cue-bottom: calc(140px + var(--sk-cue-size, 22px));
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function _setAsrHidingMode(active) {
     const root = _getPlayerRoot();
     if (!root) return;
+    _ensureAsrStylesheet();
     if (active) {
-      if (!document.getElementById(_ASR_HIDE_CSS_ID)) {
-        const style = document.createElement('style');
-        style.id = _ASR_HIDE_CSS_ID;
-        // 用 visibility/opacity 隱藏(而非 display:none),保留 layout —— 我們需要讀
-        // .ytp-caption-segment 的 computed font-size 當作 overlay 字體基準。
-        // pointer-events:none 避免使用者誤點(雖然 absolute positioned 沒互動性)。
-        style.textContent = `
-          .${_ASR_PLAYER_CLASS} .caption-window,
-          .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
-          .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
-            visibility: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-          }
-          /* 控制列(chrome)顯示時讓 overlay 上移避開進度條:
-             YouTube 在 chrome 隱藏時加 .ytp-autohide 到 .html5-video-player,顯示時移除。
-             :not(.ytp-autohide) 命中代表 chrome 顯示中,把 CSS variable 推給 host element,
-             shadow DOM 內 .window 透過 var() 自動繼承 → bottom 從預設 30px 改為 60px。 */
-          .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG} {
-            --sk-cue-bottom: calc(60px + var(--sk-cue-size, 22px));
-          }
-          /* commit 5c.6:雙語模式(host[bilingual] attr)overlay 從預設 30px 推到 90px
-             避開原生英文 CC(原生 30-40px from bottom)。chrome 顯示時再多推一段
-             避開控制列 + 已上抬的原生 CC(YouTube 自己把原生 CC 推到約 82px)。 */
-          ${_OVERLAY_TAG}[bilingual] {
-            --sk-cue-bottom: 90px;
-          }
-          .html5-video-player:not(.ytp-autohide) ${_OVERLAY_TAG}[bilingual] {
-            --sk-cue-bottom: calc(140px + var(--sk-cue-size, 22px));
-          }
-        `;
-        document.head.appendChild(style);
-      }
       root.classList.add(_ASR_PLAYER_CLASS);
     } else {
       root.classList.remove(_ASR_PLAYER_CLASS);
@@ -1814,7 +1838,8 @@
     _debugUpdate(`seeked → 重設翻譯起點 ${Math.round(newWindowStart/1000)}s`);
     // v1.2.57: 若跳到尚未翻譯的視窗，立刻顯示「翻譯中…」提示
     // （translateWindowFrom 內部有防重入，已翻視窗會直接 return，不需要提示）
-    if (!YT.translatedWindows.has(newWindowStart)) {
+    // v1.8.16: 若當前畫面已有中文字幕,跳過提示避免打擾
+    if (!YT.translatedWindows.has(newWindowStart) && !_hasVisibleChineseCaption()) {
       showCaptionStatus('翻譯中…');
     }
     // v1.2.54: translateWindowFrom 內部用 translatingWindows Set 防重入，無需外部 guard
@@ -2125,11 +2150,19 @@
 
   // ─── 主入口：Alt+S ─────────────────────────────────────────
 
-  SK.translateYouTubeSubtitles = async function translateYouTubeSubtitles() {
+  // v1.8.16: source 區分使用者明示 toggle vs 自動啟動。
+  //   'manual'(預設,Alt+S / popup):active 時 toggle 還原(再按一次語義)
+  //   'auto'(content-script init / SPA nav restart):active 時 no-op,
+  //     避免兩條自動鬧鐘在 reload 後 race 互相關掉對方。
+  SK.translateYouTubeSubtitles = async function translateYouTubeSubtitles({ source = 'manual' } = {}) {
     const YT = SK.YT;
 
-    // 切換：再按一次還原
     if (YT.active) {
+      if (source === 'auto') {
+        SK.sendLog('info', 'youtube', 'auto-activate skipped (already active)', { rawSegments: YT.rawSegments.length });
+        return;
+      }
+      // manual:再按一次還原
       stopYouTubeTranslation();
       SK.showToast('success', '已還原原文字幕');
       setTimeout(() => SK.hideToast(), 2000);
@@ -2170,7 +2203,7 @@
     if (YT.rawSegments.length > 0) {
       // 已有快取（interceptor 在 activate 之前就攔截到了）→ 直接開始翻譯
       _debugUpdate(`已有 ${YT.rawSegments.length} 條字幕，開始翻譯`);
-      showCaptionStatus('翻譯中…');
+      if (!_hasVisibleChineseCaption()) showCaptionStatus('翻譯中…');
       const video = document.querySelector('video');
       const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
@@ -2247,9 +2280,11 @@
           wasActive, autoTranslate: saved.ytSubtitle?.autoTranslate,
         });
         setTimeout(() => {
-          // 若使用者在等待期間已手動操作（active 變 true），不重複啟動
-          if (!SK.YT.active && SK.isYouTubePage?.()) {
-            SK.translateYouTubeSubtitles?.().catch(err => {
+          // v1.8.16: 改傳 source: 'auto',若 active 走 no-op 而非 toggle stop。
+          //   原本就有 !SK.YT.active 前置 guard,但兩條保險(前置 guard + source='auto')
+          //   覆蓋 setTimeout 排隊期間 active 才被另一條 caller 拉起的 race。
+          if (SK.isYouTubePage?.()) {
+            SK.translateYouTubeSubtitles?.({ source: 'auto' }).catch(err => {
               SK.sendLog('warn', 'youtube', 'SPA nav auto-subtitle restart failed', { error: err.message });
             });
           }

@@ -1595,8 +1595,10 @@
         if (ytAutoOn) {
           SK.sendLog('info', 'system', 'YouTube auto-subtitle enabled, activating on load');
           // 稍微延遲，等 content script 完成初始化、XHR 攔截器就位
+          // v1.8.16: source: 'auto' 防 reload 後跟 yt-navigate-finish 路徑 race
+          //          (兩條鬧鐘都 fire,後到那條看 active 別誤觸 toggle stop)
           setTimeout(() => {
-            SK.translateYouTubeSubtitles?.().catch(err => {
+            SK.translateYouTubeSubtitles?.({ source: 'auto' }).catch(err => {
               SK.sendLog('warn', 'system', 'YouTube auto-subtitle failed', { error: err.message });
             });
           }, 800);

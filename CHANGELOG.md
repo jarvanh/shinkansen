@@ -79,6 +79,16 @@
 
 ## v1.8.x
 
+**v1.8.16** — 修 YouTube 字幕「reload 後字幕等不到 / 多次 reload 才 work」race condition + 「翻譯中…」提示打擾優化。
+
+**Bug 修正:**
+- YouTube 字幕翻譯 reload 後常等不到字幕、reload 多次才會突然開始翻的 race condition。根因:`content.js:1599` 的 auto-subtitle on load(setTimeout 800ms)與 `content-youtube.js:2334` 的 yt-navigate-finish SPA restart(setTimeout 500ms)兩條獨立自動鬧鐘在 reload 後都會 fire,後到那條進 `translateYouTubeSubtitles` 看 `YT.active=true` 走「再按一次還原」分支誤觸 `stopYouTubeTranslation`,把第一條鬧鐘已啟動的字幕 pipeline 整個砍掉。修法:`translateYouTubeSubtitles` 加 `{ source: 'manual' | 'auto' }` 參數,auto 路徑遇 active 直接 no-op log + return,manual 維持 toggle 還原語義。Caller 改造:content.js:1599 與 content-youtube.js:2334 兩條自動路徑改傳 `source: 'auto'`,popup `SET_SUBTITLE` 維持預設 manual(使用者操作 = manual)。Regression 補進 `test/regression/youtube-auto-activate-no-toggle-stop.spec.js`(2 條 test 涵蓋 auto no-op + manual toggle)
+- 雙語字幕模式 reload 後中英 CC 重疊在原生 30px 高度(toggle 雙語 off→on 後就錯開)。根因:`_setAsrHidingMode` 原本只在 `active=true`(純中文模式)分支注入 stylesheet,雙語直接啟動走 `active=false` 分支只 removeClass 不注入,`shinkansen-yt-overlay[bilingual] { --sk-cue-bottom: 90px }` 這條讓 overlay 上抬避開原生英文 CC 的 rule 從來沒進 DOM。修法:stylesheet 注入抽 `_ensureAsrStylesheet()` helper,`_setAsrHidingMode` 入口無條件 ensure,active true/false 兩條分支都拿到 CSS rule。Regression 補進 `test/regression/youtube-bilingual-reload-stylesheet.spec.js`(SANITY 通過)
+
+**UX 優化:**
+- 螢幕上已有中文字幕時不顯示「翻譯中…」黑底文字 indicator,避免覆蓋實質內容。新增 `_hasVisibleChineseCaption()` helper(ASR 路徑查 `_findActiveCue` 命中當前 cue 含 CJK / 非 ASR 路徑查 `.ytp-caption-segment` 含 CJK),3 處 `showCaptionStatus('翻譯中…')` 各包 guard。「等待字幕資料…」提示**不**加 guard——該分支進得去代表 rawSegments=0 不可能有中文字幕,出現 = 系統 invariant 異常,留作日後 debug 訊號
+- 設定頁 Debug 分頁「分類」filter dropdown 補上 4 個既有 sendLog / debugLog 在用但 dropdown 漏列的 channel:`YouTube 字幕`(youtube)、`Drive 字幕`(drive)、`Content Guard`(guard)、`YouTube 除錯`(youtube-debug)。先前使用者要篩 YouTube log 只能看 row 端標籤手動找,無法用 filter。row 端 LOG_CAT_LABELS map 不動,raw key 顯示維持現狀
+
 **v1.8.15** — Drive 影片 ASR 字幕翻譯 + 字幕雙語對照 toggle 大功能版本。
 
 **功能新增:**
