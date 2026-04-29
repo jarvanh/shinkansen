@@ -261,6 +261,30 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
   await persistStickyTabs();
 });
 
+// commit 4a 抽出:YouTube 跟 Drive 影片 ASR 都走 D' 模式(LLM 自由合句 + 時間戳對齊),
+// 邏輯一致只差 cacheTag(避免 YouTube / Drive cache 互打)與 log namespace。
+async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
+  const _tReceived = Date.now();
+  const s = await getSettings();
+  const _settingsMs = Date.now() - _tReceived;
+  debugLog('info', namespace, 'asr subtitle batch received', {
+    inputBytes: payload?.texts?.[0]?.length || 0,
+    settingsMs: _settingsMs,
+  });
+  const yt = s.ytSubtitle || {};
+  const geminiOverrides = {
+    // ASR 模式不沿用使用者自訂的 ytSubtitle.systemPrompt(那是逐條翻譯版本,規則不適用 ASR JSON 模式)
+    systemInstruction: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
+    // ASR 合句需要一點推理,但翻譯仍應穩定;沿用 ytSubtitle.temperature
+    temperature: yt.temperature ?? 0.1,
+  };
+  if (yt.model) geminiOverrides.model = yt.model;
+  const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
+  // ASR 路徑不套用固定術語表 / 黑名單(ASR prompt 已內含禁用詞規則,且 JSON 包裝增加術語注入難度)
+  return handleTranslate(payload, sender, geminiOverrides, pricingOverride, cacheTag,
+    false, false);
+}
+
 // ─── 訊息路由（handler map 取代 if-else 鏈） ──────────────────
 const messageHandlers = {
   TRANSLATE_BATCH: {
@@ -385,27 +409,13 @@ const messageHandlers = {
   //   - 字幕 settings 沿用 ytSubtitle(model / temperature / pricing),只覆寫 systemInstruction
   TRANSLATE_ASR_SUBTITLE_BATCH: {
     async: true,
-    handler: async (payload, sender) => {
-      const _tReceived = Date.now();
-      const s = await getSettings();
-      const _settingsMs = Date.now() - _tReceived;
-      debugLog('info', 'youtube', 'asr subtitle batch received', {
-        inputBytes: payload?.texts?.[0]?.length || 0,
-        settingsMs: _settingsMs,
-      });
-      const yt = s.ytSubtitle || {};
-      const geminiOverrides = {
-        // ASR 模式不沿用使用者自訂的 ytSubtitle.systemPrompt(那是逐條翻譯版本,規則不適用 ASR JSON 模式)
-        systemInstruction: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
-        // ASR 合句需要一點推理,但翻譯仍應穩定;沿用 ytSubtitle.temperature
-        temperature: yt.temperature ?? 0.1,
-      };
-      if (yt.model) geminiOverrides.model = yt.model;
-      const pricingOverride = (yt.pricing && yt.pricing.inputPerMTok != null) ? yt.pricing : null;
-      // ASR 路徑不套用固定術語表 / 黑名單(ASR prompt 已內含禁用詞規則,且 JSON 包裝增加術語注入難度)
-      return handleTranslate(payload, sender, geminiOverrides, pricingOverride, '_yt_asr',
-        false, false);
-    },
+    handler: (payload, sender) => _handleAsrSubtitleBatch(payload, sender, '_yt_asr', 'youtube'),
+  },
+  // commit 4a:Drive 影片 ASR 字幕走獨立 cache key('_drive_yt_asr')避免污染 YouTube
+  // 既有 cache。LLM prompt / pricing / 設定全部沿用 ytSubtitle(D' 模式跟 YouTube 一致)。
+  TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH: {
+    async: true,
+    handler: (payload, sender) => _handleAsrSubtitleBatch(payload, sender, '_drive_yt_asr', 'drive'),
   },
   // Drive 影片 ASR 字幕 URL 偵測——iframe(youtube.googleapis.com/embed)的
   // content-drive-iframe.js 用 PerformanceObserver 抓到 timedtext URL 後送來。
