@@ -1549,10 +1549,16 @@ async function handleExtractGlossary(payload, sender) {
 // ─── 快捷鍵 ────────────────────────────────────────────────
 // v1.4.12: 三個 preset 快捷鍵（Alt+A/S/D 預設，可在 chrome://extensions/shortcuts 改）。
 // 每個對應 translatePresets[slot-1]，由 content.js 依 preset.engine/model 派送。
+// v1.8.19: chrome://extensions/shortcuts 顯示順序由 command id 字典序決定,
+//   要讓「主要預設」排最前必須改 id 從「translate-preset-2」→「translate-preset-0」,
+//   storage 內仍維持 slot 1/2/3 編號,故 command id 0 → slot 2 mapping 寫死。
+const COMMAND_ID_TO_SLOT = { 0: 2, 1: 1, 3: 3 };
 browser.commands.onCommand.addListener(async (command) => {
   const match = command.match(/^translate-preset-(\d+)$/);
   if (!match) return;
-  const slot = Number(match[1]);
+  const cmdNum = Number(match[1]);
+  const slot = COMMAND_ID_TO_SLOT[cmdNum];
+  if (!slot) return;
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
   // 在 chrome://、Chrome Web Store、新分頁等頁面按快捷鍵時,該 tab 沒有

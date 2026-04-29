@@ -1128,7 +1128,7 @@
     });
     const inputJson = JSON.stringify(inputArr);
 
-    const res = await browser.runtime.sendMessage({
+    const res = await SK.safeSendMessage({
       type: 'TRANSLATE_ASR_SUBTITLE_BATCH',
       payload: { texts: [inputJson], glossary: null },
     });
@@ -1292,7 +1292,7 @@
     const _batchApiMs = new Array(batches.length).fill(0);
 
     const _runBatch = (batchUnits, b) =>
-      browser.runtime.sendMessage({
+      SK.safeSendMessage({
         type: 'TRANSLATE_SUBTITLE_BATCH',
         payload: { texts: batchUnits.map(u => u.text), glossary: null },
       }).then(res => {
@@ -1528,7 +1528,7 @@
         };
 
         const _runBatch = (batchUnits, b) =>
-          browser.runtime.sendMessage({
+          SK.safeSendMessage({
             type: _subtitleMsgType,
             payload: { texts: batchUnits.map(u => u.text), glossary: null },
           }).then(res => {
@@ -1596,7 +1596,7 @@
           };
           browser.runtime.onMessage.addListener(onMessage);
 
-          browser.runtime.sendMessage({
+          SK.safeSendMessage({
             type: 'TRANSLATE_SUBTITLE_BATCH_STREAM',
             payload: { texts: batchUnits.map(u => u.text), glossary: null, streamId },
           }).then((resp) => {
@@ -1665,7 +1665,7 @@
               stream.cleanup();
               if (r.kind === 'timeout') {
                 SK.sendLog('warn', 'youtube', 'streaming first_chunk timeout, falling back to non-streaming', { streamId: stream.streamId });
-                browser.runtime.sendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
+                SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId: stream.streamId } }).catch(() => {});
               }
               batch0NeedsFallback = true;
             }
@@ -1999,7 +1999,7 @@
     }
 
     try {
-      const res = await browser.runtime.sendMessage({
+      const res = await SK.safeSendMessage({
         type: 'TRANSLATE_SUBTITLE_BATCH',
         payload: { texts, glossary: null },
       });
@@ -2096,7 +2096,7 @@
     // 取得本次使用的模型名稱（from config，若設定了 ytModel 就帶入）
     const model = (YT.config?.model) || undefined;
 
-    browser.runtime.sendMessage({
+    SK.safeSendMessage({
       type: 'LOG_USAGE',
       payload: {
         url:   location.href,

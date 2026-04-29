@@ -105,11 +105,9 @@ async function load() {
   if (s.rpmOverride) $('rpm').value = s.rpmOverride;
   if (s.tpmOverride) $('tpm').value = s.tpmOverride;
   if (s.rpdOverride) $('rpd').value = s.rpdOverride;
-  // v1.6.19: 統一用 ?? 不用 || ——使用者輸入 0(safety margin / batch size)是合法
+  // v1.6.19: 統一用 ?? 不用 || ——使用者輸入 0(batch size 等)是合法
   // 設定意圖,|| 會把 0 當 falsy 默默改回預設值,造成 UI 「我設了 0 卻看到 10%」。
-  const marginPct = Math.round((s.safetyMargin ?? 0.1) * 100);
-  $('safetyMargin').value = marginPct;
-  $('safetyMarginLabel').textContent = marginPct;
+  // v1.8.19: 安全邊際從 UI 移除,程式碼內部維持 storage default 0.1 即可
   $('maxConcurrentBatches').value = s.maxConcurrentBatches ?? 10;
   $('maxUnitsPerBatch').value = s.maxUnitsPerBatch ?? 20;
   $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? 3500;
@@ -434,11 +432,14 @@ function updateYtPromptCostHint() {
 }
 
 // v1.4.13: 從 chrome.commands.getAll() 讀取實際綁定鍵位顯示在每張 card 右上角
+// v1.8.19: command id 主要預設(slot 2)從 translate-preset-2 改為 translate-preset-0
+//          (字典序保證 chrome://extensions/shortcuts 顯示順序「主要 → 預設 2 → 預設 3」)
 async function refreshPresetKeyBindings() {
+  const SLOT_TO_COMMAND_ID = { 1: 'translate-preset-1', 2: 'translate-preset-0', 3: 'translate-preset-3' };
   try {
     const cmds = await browser.commands.getAll();
     for (const slot of [1, 2, 3]) {
-      const cmd = cmds.find(c => c.name === `translate-preset-${slot}`);
+      const cmd = cmds.find(c => c.name === SLOT_TO_COMMAND_ID[slot]);
       const keyEl = $(`preset-key-${slot}`);
       if (!keyEl) continue;
       if (cmd?.shortcut) {
@@ -496,7 +497,7 @@ async function _saveImpl() {
     tier: $('tier').value,
     // v1.6.19: 改用 parseUserNum——空字串/非法字元走 default,合法數字(含 0)保留。
     // 沿用 `|| default` 會把使用者明確打的 0 一律當 falsy 改回預設,造成 UI 不一致。
-    safetyMargin: Number($('safetyMargin').value) / 100,
+    // v1.8.19: safetyMargin 從 UI 移除,save() 不再寫,維持 storage 既有值(0.1)
     maxRetries: parseUserNum($('maxRetries').value, 3),
     maxConcurrentBatches: parseUserNum($('maxConcurrentBatches').value, 10),
     maxUnitsPerBatch: parseUserNum($('maxUnitsPerBatch').value, 20),
@@ -735,8 +736,7 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   // 配額（先填 tier 觸發 RPM/TPM/RPD readonly 帶值，再清掉 override）
   $('tier').value = D.tier;
   applyTierToInputs(D.tier, D.geminiConfig.model);
-  $('safetyMargin').value = Math.round((D.safetyMargin ?? 0.1) * 100);
-  $('safetyMarginLabel').textContent = $('safetyMargin').value;
+  // v1.8.19: safetyMargin UI 已移除,reset 不再 touch
   $('maxRetries').value = D.maxRetries;
   // 效能
   $('maxConcurrentBatches').value = D.maxConcurrentBatches;
@@ -896,9 +896,7 @@ $('test-api-key').addEventListener('click', async () => {
 $('tier').addEventListener('change', () => {
   applyTierToInputs($('tier').value, getSelectedModel());
 });
-$('safetyMargin').addEventListener('input', () => {
-  $('safetyMarginLabel').textContent = $('safetyMargin').value;
-});
+// v1.8.19: safetyMargin slider UI 已移除,程式碼內部維持 storage default 0.1
 $('toastOpacity').addEventListener('input', () => {
   $('toastOpacityLabel').textContent = $('toastOpacity').value;
 });
@@ -1645,7 +1643,10 @@ function renderTable(records) {
     // v0.99: 思考 token 以 output 費率計費，加入明細計算
     const billedTokens = (r.billedInputTokens || 0) + (r.outputTokens || 0);
     // v1.5.7: 模型欄顯示 preset label；查不到才回退 model id 短名
+    // v1.8.19: label 放寬到 30 字後 col-model 加 max-width + ellipsis,
+    //          完整 label 由 title attr 補(hover tooltip)
     const shortModel = modelToLabel(r.model);
+    const shortModelEsc = escapeHtml(shortModel);
     const title = escapeHtml(r.title || '(無標題)');
     const urlDisplay = escapeHtml(shortenUrl(r.url || ''));
     const urlFull = escapeHtml(r.url || '');
@@ -1668,7 +1669,7 @@ function renderTable(records) {
     return `<tr>
       <td>${fmtTime(r.timestamp)}</td>
       <td>${title}${urlHtml}</td>
-      <td class="col-model">${shortModel}</td>
+      <td class="col-model" title="${shortModelEsc}">${shortModelEsc}</td>
       <td class="num">${tokenCell}</td>
       <td class="num">${costCell}</td>
     </tr>`;
