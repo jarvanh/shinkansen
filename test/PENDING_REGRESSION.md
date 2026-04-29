@@ -17,11 +17,23 @@
 
 ## 條目
 
-### Drive ASR 翻譯 commit 1 — URL 偵測 + background relay
-- **症狀**:N/A,純新增 pipeline 入口
-- **修在**:`shinkansen/manifest.json`(content_scripts 加 `https://youtube.googleapis.com/embed/*` entry)+ `shinkansen/content-drive-iframe.js`(新檔,iframe 內 PerformanceObserver 偵測 timedtext URL)+ `shinkansen/background.js`(新 handler `DRIVE_TIMEDTEXT_URL`,fetch json3 後 relay 到 top frame `DRIVE_ASR_CAPTIONS`)
-- **為什麼還沒寫 spec**:commit 1 是 Drive ASR 多階段 pipeline 第一段,單獨驗「iframe → background → top frame」訊息層 ROI 低,且需要 fake YouTube embed iframe + cross-origin fetch + PerformanceObserver 等多個整合元件;等 commit 2+ 完成 top frame 接收 + 解析,寫整條 e2e spec(從 fixture URL → 偵測 → fetch → relay → 解析)更有意義
-- **建議 spec 位置**:`test/regression/drive-asr-pipeline.spec.js`(commit 5 release 前必寫)
+### v1.8.15 — Drive 影片 ASR 字幕翻譯整段 e2e spec
+- **症狀**:N/A,新功能整段 pipeline 沒 regression spec 涵蓋
+- **修在**:`shinkansen/content-drive.js`(新檔,top frame entry)+ `shinkansen/content-drive-iframe.js`(新檔,iframe entry)+ `shinkansen/background.js`(新 handlers DRIVE_TIMEDTEXT_URL / TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH / TRANSLATE_DRIVE_BATCH_GOOGLE)+ `shinkansen/content-youtube.js`(SK.ASR helper export + bilingualMode replaceSegmentEl gate)+ `shinkansen/popup/*`(Drive toggle + bilingual toggle)
+- **為什麼還沒寫 spec**:整段 pipeline 涉及多個 cross-origin 元件(youtube.googleapis.com/embed iframe + drive.google.com timedtext + YouTube IFrame Player API postMessage),fixture 要模擬 cross-origin embed 不直觀;單元層的 SK.ASR helper / popup toggle 行為已被 YouTube ASR 13 + non-ASR 8 既有 spec 涵蓋(因為共用同一份 helper / 同一個 storage key);Drive 專屬路徑(content-drive.js / content-drive-iframe.js)的 e2e 留下次 dedicated 一輪寫
+- **建議 spec 位置**:`test/regression/drive-asr-pipeline.spec.js`(整條 timedtext URL → background fetch → relay → parseJson3 → throttled batch → entries push → overlay render)+ `test/regression/drive-bilingual-toggle.spec.js`(toggle 切換 storage onChanged → loadModule/unloadModule postMessage)+ `test/regression/youtube-bilingual-segment-write.spec.js`(replaceSegmentEl 雙語 + 非 ASR 寫「英文+譯文兩行」innerHTML)
+
+### v1.8.15 — Drive 影片自動開 CC 不 work(留 v1.8.16 修)
+- **症狀**:Drive 影片載入後字幕沒自動載入,使用者必須手動按 player CC 按鈕一次才會觸發 timedtext fetch,字幕翻譯 pipeline 才啟動
+- **修在 commit 5c.7 嘗試但失敗**(commit 5c.8 已 revert):onReady postMessage `setOption('captions', 'track', {languageCode:'en'})` 對 cross-origin embed timing 不可靠
+- **建議重做方向**:listen onApiChange event(captions module ready 時 fire)再送 setOption;或 multiple setTimeout 嘗試 + listen 是否 fire timedtext request 確認生效
+
+### v1.8.15 — Drive overlay 控制列顯示時不動態上抬(留 v1.8.16 修)
+- **症狀**:player 控制列顯示時,iframe 內原生英文 CC 從 bottom 30px 上抬到 ~82px,但我們的 Drive overlay 維持固定 bottom 22%,可能跟原生 CC 重疊或被進度條疊到
+- **修在 commit 5c.7 嘗試但失敗**(commit 5c.8 已 revert):iframe.mouseenter/mouseleave 對 cross-origin iframe 不可靠 fire,當 chrome show/hide 信號失準
+- **建議重做方向**:用 IFrame Player API postMessage `addEventListener('onPlaybackQualityChange')` 之類間接信號;或 listen YT player 的 onStateChange + 外部 hover state 組合判斷;或乾脆放棄動態上抬,固定 bottom 22% 接受邊界 case 略有重疊
+
+
 
 ### v1.8.14 — streaming 期間 SW keep-alive
 - **症狀**:MV3 SW 預設 5 分鐘 idle 收回。長頁翻譯中切去其他 tab 5 分鐘,inFlightStreams Map(module-level state)消失 → 取消按鈕無響應 + abort 訊號到不了 fetch

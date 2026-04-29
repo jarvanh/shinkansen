@@ -79,6 +79,29 @@
 
 ## v1.8.x
 
+**v1.8.15** — Drive 影片 ASR 字幕翻譯 + 字幕雙語對照 toggle 大功能版本。
+
+**功能新增:**
+- **Drive 影片字幕翻譯**:支援 Google Drive 影片 viewer(drive.google.com/file/...)的 ASR 自動字幕翻譯。架構上 youtube.googleapis.com/embed iframe 內 PerformanceObserver 攔截 timedtext URL,background 用 authpayload-self-contained URL 直接 refetch json3,relay 給 top frame 的 content-drive.js。譯文走 D'(LLM 自由合句)寫進 SK.DRIVE.entries,top frame 自繪 `<shinkansen-drive-overlay>` Shadow DOM 浮層 + 跨 origin postMessage(YouTube IFrame Player API)同步 currentTime 顯示對應中文。整支 26 分鐘影片 throttled 並行 3 batch,~1 分鐘翻完,$0.05 token cost(Gemini)/ $0(Google Translate)
+- **字幕雙語對照 toggle**(`ytSubtitle.bilingualMode`,popup 加切換):YouTube + Drive 共用一個開關。打開 = 中英對照(YouTube ASR 中文 overlay 在原生英文 CC 上方 / Drive 中文浮層 + iframe 內原生英文 CC / YouTube 人工字幕「英文 + 譯文兩行」寫進原生 segment);關閉 = 純中文(預設,沿用 v1.8.14 既有行為)。即時切換不需 reload(YouTube 路徑 storage onChanged listener 即時 reapply,Drive 透過 postMessage loadModule/unloadModule captions)
+- **Drive 字幕設定共用 ytSubtitle**:user 不需為 Drive 額外設定。`ytSubtitle.engine='gemini'` Drive 走 D' LLM 合句,`'google'` 走 GT 逐段翻免費。autoTranslate / model / pricing 全部沿用
+- **popup 加 Drive 字幕翻譯 toggle**(類似 YouTube 既有 toggle,共用 ytSubtitle.autoTranslate 設定)
+
+**架構新增:**
+- 新檔 `shinkansen/content-drive.js`(top frame entry,gate hostname=drive.google.com & pathname /file/ & top frame)
+- 新檔 `shinkansen/content-drive-iframe.js`(youtube.googleapis.com/embed iframe entry,PerformanceObserver 攔 timedtext URL → background relay)
+- `manifest.json` content_scripts 加 `https://youtube.googleapis.com/*` entry(只裝 content-drive-iframe.js)+ all_urls 既有那組加 content-drive.js
+- `background.js` 加 `DRIVE_TIMEDTEXT_URL` / `TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH` / `TRANSLATE_DRIVE_BATCH_GOOGLE` 三個訊息 handler;抽 `_handleAsrSubtitleBatch` helper 給 YouTube 跟 Drive 共用 D' 邏輯
+- `content-youtube.js` IIFE 末尾 export `SK.ASR = { parseJson3, mergeAsr, parseAsrResponse }` 給 content-drive.js 共用
+
+**已知限制(留 v1.8.16 dedicated 修):**
+- Drive 影片需手動按 CC 一次觸發字幕載入(自動 setOption track protocol 對 cross-origin postMessage timing 不可靠,留 v1.8.16 debug)
+- Drive overlay 控制列顯示時不動態上抬避開進度條(cross-origin iframe 監測 chrome show/hide 的 mouseenter/mouseleave event 不可靠,留 v1.8.16 改 design);目前 overlay 固定 22% 高度,實際 player 高度大時不會被進度條疊到
+
+無 regression spec(commit 1-5d 整段 Drive ASR pipeline 走 PENDING_REGRESSION 路徑 B,e2e spec 留 v1.8.16);YouTube 既有 ASR 13 + non-ASR 8 + version-check 5 + GT preserve / unit 等相關 spec 全綠驗 YouTube 路徑零踩。
+
+---
+
 **v1.8.14** — 全專案技術債 review 後一輪整理:**2 個真實 bug** + **8 條性能/正確性修補** + **7 條維護性 refactor**(無功能變更)。
 
 Bug fix:
