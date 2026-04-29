@@ -1857,6 +1857,10 @@
 
   function replaceSegmentEl(el) {
     if (!SK.YT.active) return;
+    // commit 5c.2:雙語模式不替換原生 caption-segment(保留英文,中文由 overlay 顯示)
+    // — 否則 _setAsrHidingMode(false) 不隱藏 caption-window 時,被 captionMap 寫過的中文
+    // 會跟 overlay 中文同框出現,看起來像「中文兩層 + 英文片段」的三層字幕。
+    if (SK.YT.config?.bilingualMode === true) return;
     const original = el.textContent.trim();
     if (!original) return;
     // 已含中日韓字元 → 這是我們設置的譯文被 characterData mutation 觸發回呼，直接跳過
