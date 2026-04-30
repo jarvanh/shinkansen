@@ -272,6 +272,7 @@
         replaceNodeInPlace(el, frag);
         el.setAttribute('data-shinkansen-translated', '1');
         STATE.translatedHTML.set(el, el.innerHTML);
+        SK.refreshAncestorSavedHTML?.(el);
         SK._guardObserveEl?.(el); // v1.8.20: 把新譯段註冊進 IO subset
         return;
       }
@@ -282,12 +283,14 @@
         replaceNodeInPlace(el, recovered);
         el.setAttribute('data-shinkansen-translated', '1');
         STATE.translatedHTML.set(el, el.innerHTML);
+        SK.refreshAncestorSavedHTML?.(el);
         SK._guardObserveEl?.(el);
         return;
       }
       plainTextFallback(el, cleaned);
       el.setAttribute('data-shinkansen-translated', '1');
       STATE.translatedHTML.set(el, el.innerHTML);
+      SK.refreshAncestorSavedHTML?.(el);
       SK._guardObserveEl?.(el);
       return;
     }
@@ -295,6 +298,7 @@
     replaceTextInPlace(el, translation);
     el.setAttribute('data-shinkansen-translated', '1');
     STATE.translatedHTML.set(el, el.innerHTML);
+    SK.refreshAncestorSavedHTML?.(el);
     SK._guardObserveEl?.(el);
   };
 
@@ -343,6 +347,7 @@
     // 否則 dual 模式下 fragment 段落 Content Guard 保護不到、SPA observer 重複偵測 → 重複翻譯。
     el.setAttribute('data-shinkansen-translated', '1');
     STATE.translatedHTML.set(el, el.innerHTML);
+    SK.refreshAncestorSavedHTML?.(el);
     SK._guardObserveEl?.(el);
   }
 

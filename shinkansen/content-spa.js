@@ -542,6 +542,41 @@
   SK._restoreOnInnerMutation = restoreOnInnerMutation;
 
   /**
+   * 子層 element 寫進 STATE.translatedHTML 後,把所有「contains(el)」的 ancestor 的
+   * savedHTML 同步更新成當下最新 innerHTML。
+   *
+   * Why:Content Guard sweep 會比對每個 STATE.translatedHTML key 的 innerHTML 跟
+   * savedHTML,不同就強制 `el.innerHTML = savedHTML` 還原。但 fragment inject 完成
+   * 時凍結的 savedHTML 含「子段落還沒被 inject 的英文原文」,後續子段落 inject 把
+   * 子層改成中文後 ancestor 的 savedHTML 沒同步 → sweep 強制覆寫整個 ancestor,
+   * 子層中文被打回 stale 英文,原子層 element 連同 sk attribute 一起被 detach 變孤兒。
+   *
+   * 真實案例:forum.miata.net showpost 的 postbitcontrol2 (DIV) 同時含主貼文 inline
+   * 文字 + BR + 子層 DIV.bbcodestyle > TABLE > TR > TD > DIV (引用區塊)。主貼文走
+   * fragment unit、引用區塊走 element unit,fragment 先 inject 凍結 savedHTML 含舊
+   * 引文英文,引文 inject 後 sweep 把譯文打回去。
+   *
+   * 結構性通則(§8):描述「父子層 inject 時序差」的結構特徵,不綁站點 / class。
+   * 任何 block-like ancestor 同時被 collectParagraphs 抓成段落 + 子樹中含其他
+   * 獨立段落的場景都會踩到(XenForo bbWrapper / Wikipedia 含子標題 / Substack
+   * 含內嵌引文 etc)。
+   */
+  SK.refreshAncestorSavedHTML = function refreshAncestorSavedHTML(el) {
+    if (!STATE.translatedHTML || STATE.translatedHTML.size === 0) return;
+    if (!el || !el.parentNode) return;
+    const ancestors = [];
+    for (const ancestor of STATE.translatedHTML.keys()) {
+      if (ancestor === el) continue;
+      if (ancestor.contains && ancestor.contains(el)) {
+        ancestors.push(ancestor);
+      }
+    }
+    for (const ancestor of ancestors) {
+      STATE.translatedHTML.set(ancestor, ancestor.innerHTML);
+    }
+  };
+
+  /**
    * 決定 SPA rescan 完成後該顯示哪種 toast(或不顯示)。
    *
    * Why:framework re-render 同一段譯後內容(典型 YouTube hover description)觸發
