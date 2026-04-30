@@ -28,16 +28,25 @@ jobs:
           # Firefox 128+ beta:Chrome 與 Firefox 對 background 鍵的接受度不同——
           # Chrome MV3 拒絕 `background.scripts`（warning「requires manifest version 2 or lower」），
           # Firefox 不支援 `background.service_worker`。所以兩邊不能共用同一份 manifest。
-          # 解法:Chrome ZIP 用 repo 裡的純淨 manifest（只有 service_worker）;Firefox ZIP
-          # 在 build 時用 jq 程式化改寫:把 service_worker 拔掉、加上 scripts 與 gecko.strict_min_version。
-          # 這讓 repo 維持單一 source of truth(`shinkansen/manifest.json` 永遠是 Chrome 看的版本)。
-          mkdir -p firefox-build
-          cp -r shinkansen/* firefox-build/
-          jq '.background = {"scripts": ["background.js"], "type": "module"} |
-              .browser_specific_settings.gecko.strict_min_version = "128.0"' \
-              shinkansen/manifest.json > firefox-build/manifest.json
-          cd firefox-build
-          zip -r ../shinkansen-firefox-${{ steps.version.outputs.VERSION }}-beta.zip .
+          # 解法:repo 內 `shinkansen/manifest.json` 永遠是 Chrome 純淨版;此處用 firefox-build.sh
+          # 程式化改寫產生 Firefox 版 ZIP。AMO source.zip 也包這支 script + BUILD.md,
+          # reviewer 重建會用同一條路徑,確保產物一致。
+          ./firefox-build.sh
+
+      - name: Build Firefox source ZIP (for AMO submission)
+        run: |
+          # AMO 對「需要 build step 的 add-on」要求附 source ZIP + 重建說明。
+          # 我們的 build step 是 jq 改 5 行 JSON,屬於 trivial transform,但保險起見附上,
+          # 讓 reviewer 跑 firefox-build.sh 就能驗證重建結果與提交的 ZIP 一致。
+          # 內容只含 build 必要檔:shinkansen/ + firefox-build.sh + BUILD.md + LICENSE。
+          # 不含 test/ / .github/ / node_modules / docs/(這些是開發 / CI / landing,跟 build 無關)。
+          mkdir -p source-pkg
+          cp -r shinkansen source-pkg/
+          cp firefox-build.sh source-pkg/
+          cp BUILD.md source-pkg/
+          cp LICENSE source-pkg/ 2>/dev/null || true
+          cd source-pkg
+          zip -r ../shinkansen-firefox-${{ steps.version.outputs.VERSION }}-source.zip .
           cd ..
 
       - name: Create GitHub Release
@@ -48,6 +57,7 @@ jobs:
             shinkansen-${{ steps.version.outputs.VERSION }}.zip
             shinkansen.zip
             shinkansen-firefox-${{ steps.version.outputs.VERSION }}-beta.zip
+            shinkansen-firefox-${{ steps.version.outputs.VERSION }}-source.zip
           generate_release_notes: true
           # GitHub 預設「建立時間最新 = Latest」會被補建舊 tag 偷走 Latest 標籤。
           # legacy 改用 semver：highest version 才是 Latest，與補建順序無關。
