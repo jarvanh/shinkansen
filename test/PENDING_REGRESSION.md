@@ -17,20 +17,7 @@
 
 ## 條目
 
-### v1.8.31 — 2026-04-30 — Dual mode 「跨組距離」(marginBottom 撐空間)的譯文塊空白未解
-- **症狀**:Daring Fireball `<p>By John Gruber</p>` 跟下一個 `<ul>` 之間是用 `<p>` 的 `margin-bottom: 60px` 拉開(paddingBottom=0)。dual mode 下譯文塊插在 `<p>` afterend → 原文跟譯文塊之間多出 60px 空白,看起來不協調
-- **來源 URL**:https://daringfireball.net/2020/03/super_wednesday(sidebar 的 byline)
-- **為什麼還沒修**:v1.8.31 試過抵消 `(pb+mb)` 整體,sidebar `<ul><li><a>Archive</a></li></ul>` 結構踩雷——`<a>` 走 afterend-block-ancestor 插到 `<li>` 後面,`<li>` 自己也是 marginBottom: 12px(兄弟距離),抵消會讓譯文塊跟下一個 li 重疊。CSS 屬性層級無法區分「兄弟距離」vs「跨組距離」,需要動原段落 inline style 把 marginBottom 搬到 wrapper(風險:SPA 框架重 render 抹掉 inline style),先暫不做
-- **建議解法**:`injectDual` 內 `original.style.marginBottom = '0'`(把原段落 marginBottom 暫時設 0)+ `wrapper.style.marginBottom = '${pb+mb}px'` mirror 過來;`removeDualWrappers` 內還原原段落 marginBottom。需驗證:
-    1. SPA 站點(BBC / Substack)框架重 render 是否會洗掉 inline style;若會,評估 MutationObserver 重補 / 用 `!important` 等強化方案
-    2. 原段落本身就有 inline `marginBottom` 的情況(用 `data-shinkansen-orig-margin-bottom` attribute 記原值)
-- **建議 spec 位置**:`test/regression/inject-dual-byline-grouping.spec.js`
-- **建議 fixture 結構**:
-    ```html
-    <p id="byline" style="margin-bottom: 60px;">By <strong>John Gruber</strong></p>
-    <ul><li>Archive</li></ul>
-    ```
-    驗:wrapper 注入後 `<p>` 跟 wrapper 之間 gap = 0(緊貼),wrapper 跟 `<ul>` 之間 gap = 60px,`<li>` 跟下一個 `<li>` 不重疊
+(目前沒有 pending 條目)
 
 <!--
 條目格式範例(實際加入時把上面那行 placeholder 刪掉):
