@@ -143,6 +143,31 @@
     return total;
   }
 
+  // Case D 用:el 是否有直接 element 子(BR 不算)。
+  // 跟 hasBrChild 對稱:Case B 抓「BR + 純文字」,Case D 抓「inline element + 文字」。
+  function hasDirectNonBrElement(el) {
+    for (const child of el.childNodes) {
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      if (child.tagName === 'BR') continue;
+      return true;
+    }
+    return false;
+  }
+
+  // Case D 用:祖先鏈是否已被某條路徑抽過 fragment。SPAN 嵌套(host > inner-span > a)
+  // 在 YouTube / 通用 web 都很常見,父抽完後子的 walker visit 仍會發生(NodeFilter.FILTER_SKIP
+  // 不阻擋 walker 訪問子節點),不擋祖先會把同一段文字重複抽兩次,deserialize 時佔位符 slot
+  // 對不上譯文。Case A/B/C 因為 CONTAINER_TAGS 限定 DIV/SECTION 等少嵌套 tag 沒踩到,
+  // Case D 把 SPAN 納入後必須補上。
+  function hasAncestorExtracted(el, fragmentExtracted) {
+    let cur = el.parentElement;
+    while (cur && cur !== document.body) {
+      if (fragmentExtracted.has(cur)) return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
   // ─── Fragment 抽取 ────────────────────────────────────
 
   function extractInlineFragments(el) {
@@ -303,6 +328,31 @@
                 results.push(f);
                 seen.add(f.startNode);
                 if (stats) stats.inlineMixedFragment = (stats.inlineMixedFragment || 0) + 1;
+              }
+            } else if (
+              // Case D:inline-style 容器(SPAN)直接含 text + 至少一個非 BR element 子。
+              // 典型案例:YouTube yt-attributed-string 的 ytAttributedStringHost span,直接子混合
+              //   "7:00" <span><a>...</a></span> "now we can see..." <span><img></span>
+              // Case A 因 !containsBlockDescendant 失敗;Case B 因 !hasBrChild 失敗;
+              // Case C 因 SPAN 不在 CONTAINER_TAGS 失敗 → 過去整段都被 SKIP。
+              // 結構特徵(描述 DOM 不綁站點/class):tag 是 SPAN、有直接 text node、有直接非 BR
+              // element 子、文字長度 >= 20、無 block 子孫、isCandidateText 通過。
+              // hasAncestorExtracted 防 SPAN > SPAN 巢狀重複抽(BLOCK 補抓的 Case A/B/C 用
+              // CONTAINER_TAGS 限定 DIV/SECTION 等不嵌套 tag 沒踩到 dedup;Case D 必須補上)。
+              el.tagName === 'SPAN' &&
+              !seen.has(el) &&
+              !hasAncestorExtracted(el, fragmentExtracted) &&
+              hasDirectText &&
+              hasDirectNonBrElement(el) &&
+              directTextLength(el) >= 20 &&
+              isCandidateText(el)
+            ) {
+              fragmentExtracted.add(el);
+              const frags = extractInlineFragments(el);
+              for (const f of frags) {
+                results.push(f);
+                seen.add(f.startNode);
+                if (stats) stats.inlineMixedSpan = (stats.inlineMixedSpan || 0) + 1;
               }
             }
           }

@@ -1610,6 +1610,16 @@ function renderChart(data) {
             font: { size: 10 },
             maxTicksLimit: 12,
             maxRotation: 0,
+            // 日粒度時 X 軸只顯示「日」,避免 2026-04-30 這種長字串擠成一團;
+            // 月 / 年粒度仍顯示原 period 字串。tooltip title 不受影響(走 default
+            // formatter,顯示完整 period)
+            callback: function(value) {
+              const label = this.getLabelForValue(value);
+              if (currentGranularity === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+                return label.slice(-2); // YYYY-MM-DD → DD
+              }
+              return label;
+            },
           },
           grid: { display: false },
         },

@@ -351,6 +351,12 @@
       let firstChunkResolve, doneResolve, doneReject;
       const firstChunkPromise = new Promise((r) => { firstChunkResolve = r; });
       const donePromise = new Promise((res, rej) => { doneResolve = res; doneReject = rej; });
+      // 防 unhandled rejection:某些 fallback 路徑(first_chunk timeout / safeSendMessage 回
+      // !resp.started / SW 端 STREAMING_ERROR 在 first_chunk 前)會略過 `await donePromise`
+      // 但 reject 仍會到達 → 「Uncaught (in promise) Error: streaming failed to start」這類
+      // 誤訊息洩漏到 chrome://extensions/ 錯誤面板。掛 noop catch 是新建 chain,
+      // 不影響真正在某處 await + try/catch 接到 reject 的路徑。
+      donePromise.catch(() => {});
 
       // v1.8.0 instrumentation:第一個 segment inject 時間(對應使用者首字延遲)
       let firstSegmentInjectedT = null;
@@ -416,6 +422,10 @@
           pageUsage.cachedTokens += usage.cachedTokens || 0;
           pageUsage.billedInputTokens += usage.billedInputTokens || 0;
           pageUsage.billedCostUSD += usage.billedCostUSD || 0;
+          // streaming fast path(background.js allHit 走 cache 不打 API)會帶 usage.cacheHits=texts.length,
+          // 沒帶 cacheHits 的真送 API streaming 視為 0 hit。漏接此欄位會讓 pickRescanToast 判定不到
+          // 純 cache hit,SPA rescan toast 一律跳「已翻 N 段新內容」誤導使用者以為又花了 token。
+          pageUsage.cacheHits += usage.cacheHits || 0;
           SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream done`, { elapsed, totalSegments: message.payload.totalSegments, hadMismatch: false });
           browser.runtime.onMessage.removeListener(onMessage);
           firstChunkResolve(true);  // 防 first_chunk 漏訊息卡死主流程
@@ -1001,6 +1011,7 @@
         SK.sendLog?.('warn', 'system', 'restoreOriginalHTMLAndReset: skipped detached elements', { detached });
       }
     }
+    STATE.originalText?.clear?.();
     STATE.translated = false;
   }
 
@@ -1037,6 +1048,7 @@
     }
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
+    STATE.originalText?.clear?.();
     STATE.translationCache?.clear?.();  // v1.5.0
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0

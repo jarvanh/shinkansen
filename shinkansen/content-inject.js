@@ -9,10 +9,16 @@
 
   /**
    * 保證同一個 element 只快照一次原始 innerHTML。
+   * 同時 snapshot textContent 給 SPA observer 的「detect-replacement」路徑用——
+   * 當框架(YouTube yt-attributed-string)整個 detach 譯後 element 再 add 一個英文
+   * 新 element 時,mutation callback 用 originalText 比對 addedNodes 找回對應段落。
    */
   SK.snapshotOnce = function snapshotOnce(el) {
     if (!STATE.originalHTML.has(el)) {
       STATE.originalHTML.set(el, el.innerHTML);
+    }
+    if (!STATE.originalText.has(el)) {
+      STATE.originalText.set(el, (el.textContent || '').trim());
     }
   };
 

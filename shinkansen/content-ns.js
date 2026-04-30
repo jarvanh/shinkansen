@@ -61,6 +61,13 @@ if (window.__shinkansen_loaded) {
     originalHTML: new Map(), // el → originalHTML
     // v1.0.14: 儲存翻譯後的 innerHTML，用於偵測框架覆寫並重新套用。
     translatedHTML: new Map(), // el → translatedHTML
+    // 儲存 inject 前 element 的 textContent。當 SPA framework 把
+    // 整個被翻譯的 element detach 換成新 element(例如 YouTube 的 yt-attributed-string
+    // 在 model 更新時整個 host span 被替換)時,onSpaObserverMutations 用 originalText
+    // 比對 mutation 的 addedNodes 找出對應的新 element,從 translatedHTML 拿譯文 re-apply。
+    // 沒這條 fallback 的話,新 element 不在 translatedHTML 也不在 originalHTML,
+    // Content Guard 完全認不出它,使用者捲動觸發 re-render 後譯文就永久消失。
+    originalText: new Map(), // el → snapshot 的 textContent.trim()
     // v1.0.23: 續翻模式
     stickyTranslate: false,
     // v1.4.12: 記錄本次翻譯使用的 preset slot（1/2/3），供 SPA 導航續翻 + 跨 tab sticky 用。
