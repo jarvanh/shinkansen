@@ -491,9 +491,21 @@
    * mutation events)反應太慢,期間譯文已恢復成原文使用者看見。在 mutation
    * callback 內 inline 處理即時回寫。
    *
-   * 只在「target 是 STATE 的 key + childList 變動」時動,避免對自己回寫又觸發 callback
-   * 的迴圈(回寫後 innerHTML === savedHTML 的後續 mutation 不滿足條件,跳過)。
+   * v1.8.26:加 per-element 200ms cooldown(`_justRestoredAt`)防自我餵食迴圈。
+   * 原版只靠 `target.innerHTML === savedHTML` 比字串擋迴圈,但 Firefox 對 innerHTML
+   * setter/getter round-trip 在某些 edge case 不嚴格相等(例如 `&nbsp;` 與 ` `、
+   * attribute 順序、self-closing tag、whitespace normalize 差異),guard 失效後
+   * 「寫回 → mutation → 讀回 ≠ savedHTML → 又寫回」每秒上萬次,記憶體每秒 +1GB
+   * (Wikipedia + Firefox 實機驗證,seq 跑到 250 萬+,GET_LOGS 全是 `mutation-driven
+   * restore: 1 segments`)。Chrome 序列化穩定不踩雷,加 cooldown 對 Chrome 行為零影響
+   * (正常 framework re-render 同 element 200ms 內不應該需要重複寫)。
+   *
+   * 結構性通則(§8):cooldown 描述「同一 element 在極短時間窗內不重複寫回」這個
+   * 結構特徵,不綁瀏覽器 / 站點 / class。Firefox 上把暴量 cap 在 5次/秒/element,
+   * 把無限迴圈轉成「最差也是 1 秒幾次」可控頻率。
    */
+  const RESTORE_COOLDOWN_MS = 200;
+  const _justRestoredAt = new WeakMap();
   function restoreOnInnerMutation(mutations) {
     if (!STATE.translatedHTML || STATE.translatedHTML.size === 0) return;
     const targets = new Set();
@@ -505,13 +517,17 @@
       targets.add(t);
     }
     if (targets.size === 0) return;
+    const now = Date.now();
     let restored = 0;
     for (const target of targets) {
+      const lastTs = _justRestoredAt.get(target);
+      if (lastTs != null && now - lastTs < RESTORE_COOLDOWN_MS) continue;
       const savedHTML = STATE.translatedHTML.get(target);
       if (savedHTML == null) continue;
       if (!target.isConnected) continue;
       if (target.innerHTML === savedHTML) continue;
       target.innerHTML = savedHTML;
+      _justRestoredAt.set(target, now);
       restored++;
     }
     if (restored > 0) {
