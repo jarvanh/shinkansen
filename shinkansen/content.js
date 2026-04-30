@@ -1333,6 +1333,7 @@
         // 否則下一次 Content Guard sweep 會把編輯蓋回原譯文。
         if (STATE.translatedHTML.has(el)) {
           STATE.translatedHTML.set(el, el.innerHTML);
+          SK.refreshAncestorSavedHTML?.(el);
         }
       }
     }
