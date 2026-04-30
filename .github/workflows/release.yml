@@ -22,6 +22,10 @@ jobs:
         run: |
           zip -r shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen/
           cp shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen.zip
+          # Firefox 128+ beta：內容與 Chrome ZIP 完全相同（manifest 同時宣告
+          # background.service_worker 與 background.scripts，Chrome / Firefox 各取所需），
+          # 只是檔名標 firefox + beta 方便使用者識別、debug 用。
+          cp shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen-firefox-${{ steps.version.outputs.VERSION }}-beta.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -30,6 +34,7 @@ jobs:
           files: |
             shinkansen-${{ steps.version.outputs.VERSION }}.zip
             shinkansen.zip
+            shinkansen-firefox-${{ steps.version.outputs.VERSION }}-beta.zip
           generate_release_notes: true
           # GitHub 預設「建立時間最新 = Latest」會被補建舊 tag 偷走 Latest 標籤。
           # legacy 改用 semver：highest version 才是 Latest，與補建順序無關。
