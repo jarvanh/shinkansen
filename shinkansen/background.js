@@ -229,13 +229,22 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
-// ─── v1.4.11 跨 tab sticky 翻譯（v1.4.12 改存 preset slot） ──────────
+// ─── v1.4.11 跨 tab sticky 翻譯（v1.4.12 改存 preset slot；v1.8.24 改用 webNavigation） ──────────
 // 使用者在 tab A 按任一 preset 快速鍵翻譯後，從 A 點連結開到 tab B 會自動翻譯，
-// 跟著 openerTabId 樹傳遞。跳到無 opener 的新 tab（手動打網址 / bookmark）不繼承。
+// 跟著「實際的連結點擊」傳遞。Cmd+T 後手動打網址 / bookmark / 外部 app 開啟不繼承。
 // 每個 tab 記錄自己當時用的 preset slot（1/2/3），新 tab 繼承相同 slot——
 // 尊重使用者當時按的引擎+模型（Flash / Flash Lite / Google MT 各自繼承）。
 // 按任意 preset 快速鍵在已翻譯狀態 → restorePage → STICKY_CLEAR 只清當前 tab。
 // 持久化於 chrome.storage.session，service worker 休眠重啟後仍保留。
+//
+// v1.8.24: 從 `tabs.onCreated.openerTabId` 改用 `webNavigation.onCreatedNavigationTarget`。
+// 原本的 onCreated 路徑誤以為 Cmd+T 開的新 tab 會有 openerTabId == null，但現代
+// Chrome 對 Cmd+T 也會把 openerTabId 設為當下 active tab（受 tab grouping / new-tab
+// placement 影響），加上 `chrome.tabs.create({})` 從 extension API 開的也會帶 opener，
+// 結果任何被 Chrome 設了 openerTabId 的新 tab 都會誤繼承 sticky slot。
+// onCreatedNavigationTarget 是 Chrome 專為「使用者點連結造成新 tab」設計的精準事件——
+// 只 fire 在 target=_blank / middle-click / Cmd+click / window.open，不 fire 在
+// Cmd+T → 打網址 / bookmark / 外部 app / 程式化 tabs.create，剛好對應 v1.4.11 的設計意圖。
 
 const stickyTabs = new Map(); // tabId → slot (number)
 let _stickyHydratingPromise = null;
@@ -278,18 +287,25 @@ async function persistStickyTabs() {
   }
 }
 
-browser.tabs.onCreated.addListener(async (tab) => {
-  await hydrateStickyTabs();
-  const openerId = tab.openerTabId;
-  if (openerId == null) return;
-  const slot = stickyTabs.get(openerId);
-  if (slot == null) return;
-  stickyTabs.set(tab.id, slot);
-  await persistStickyTabs();
-  debugLog('info', 'system', 'sticky inherited from opener', {
-    newTabId: tab.id, openerTabId: openerId, slot,
+// v1.8.24: 用 webNavigation.onCreatedNavigationTarget 取代 tabs.onCreated。
+// Firefox 同樣支援這個 API（webNavigation polyfill 在 lib/compat.js 有 fallback 處理）。
+if (browser.webNavigation && browser.webNavigation.onCreatedNavigationTarget) {
+  browser.webNavigation.onCreatedNavigationTarget.addListener(async (details) => {
+    await hydrateStickyTabs();
+    const sourceTabId = details.sourceTabId;
+    const newTabId = details.tabId;
+    if (sourceTabId == null || newTabId == null) return;
+    const slot = stickyTabs.get(sourceTabId);
+    if (slot == null) return;
+    stickyTabs.set(newTabId, slot);
+    await persistStickyTabs();
+    debugLog('info', 'system', 'sticky inherited from link-opened new tab', {
+      newTabId, sourceTabId, slot, url: details.url,
+    });
   });
-});
+} else {
+  debugLog('warn', 'system', 'webNavigation.onCreatedNavigationTarget unavailable, cross-tab sticky disabled', {});
+}
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
   if (!stickyTabs.has(tabId)) return;
