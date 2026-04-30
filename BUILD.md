@@ -71,7 +71,8 @@ The build performs exactly one transformation, applied via `jq`:
 
 ```bash
 jq '.background = {"scripts": ["background.js"], "type": "module"} |
-    .browser_specific_settings.gecko.strict_min_version = "128.0"' \
+    .browser_specific_settings.gecko.strict_min_version = "128.0" |
+    .browser_specific_settings.gecko.data_collection_permissions = {"required": ["none"]}' \
     shinkansen/manifest.json > firefox-build/manifest.json
 ```
 
@@ -82,6 +83,33 @@ This:
 2. Adds `browser_specific_settings.gecko.strict_min_version: "128.0"`
    (the extension uses `content_scripts.world: "MAIN"`, supported in
    Firefox 128+ only).
+3. Adds `browser_specific_settings.gecko.data_collection_permissions: {"required": ["none"]}`
+   (Mozilla's 2025 built-in data-consent rule. Shinkansen does NOT collect
+   any user data — translation calls go directly from the user's browser to
+   the Gemini API with the user-supplied API key; no Shinkansen-controlled
+   server is involved.)
+
+### Note on `strict_min_version: 128.0` vs `data_collection_permissions: 140+`
+
+`web-ext lint` will produce two warnings:
+
+```
+KEY_FIREFOX_UNSUPPORTED_BY_MIN_VERSION:
+  "strict_min_version" requires Firefox 128, which was released before
+  version 140 introduced support for "data_collection_permissions".
+KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION:
+  Same, for Android (140 desktop / 142 Android).
+```
+
+**This is intentional.** The extension genuinely requires Firefox 128 for
+`content_scripts.world: "MAIN"` (used by `content-youtube-main.js` to
+intercept YouTube's player XHR for caption translation). On Firefox
+128–139 the `data_collection_permissions` key is silently ignored,
+which is harmless because the extension does not collect any data
+anyway. On Firefox 140+ the consent UI will display "no data collected"
+correctly. Lowering `strict_min_version` to 140 would lock out two
+years of Firefox users from a feature that works fine for them; raising
+it would be unnecessarily restrictive.
 
 All other files (`background.js`, `content-*.js`, `lib/**/*`, `popup/**/*`,
 `options/**/*`, `_locales/**/*`, icons, CSS) are copied unchanged.
@@ -108,11 +136,37 @@ Expected output:
   "browser_specific_settings": {
     "gecko": {
       "id": "shinkansen@jimmy.zm.su",
-      "strict_min_version": "128.0"
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }
 ```
+
+---
+
+## innerHTML Usage Rationale (for AMO reviewer)
+
+`web-ext lint` flags 21 `UNSAFE_VAR_ASSIGNMENT` warnings on `innerHTML`
+assignments. **None of these accept untrusted user input.** Each
+assignment is annotated with `// AMO source review: ...` in the source,
+explaining the source of the assigned string. The categories are:
+
+| Category | Locations | Source |
+|---|---|---|
+| **Restore self-saved DOM (translation guard)** | `content-spa.js` × 4, `content.js` × 2 | The string was previously read from the same element via `el.innerHTML` and saved to `STATE.translatedHTML` / `STATE.originalHTML`. We are restoring it back to the same element. |
+| **Sanitized via `_escapeHtml`** | `content-youtube.js` × 4 | The string is `_escapeHtml(text) + '<br>' + _escapeHtml(text)`. The `<br>` is a developer-controlled literal; user input is escaped. |
+| **Static template + numeric data** | `content-toast.js` × 1, `popup.js` × 1, `options.js` × 9 | All variables interpolated into the template are either: (a) developer-hardcoded strings (`RELEASE_HIGHLIGHTS` literal), (b) numeric values from internal calculation, or (c) escaped via `escapeHtml` / `escapeAttr` helpers. |
+
+User input (translation source text, glossary entries, model names,
+domain whitelist entries) is always escaped via `escapeHtml` /
+`escapeAttr` before being interpolated. We use `innerHTML` rather than
+DOM API construction because the strings being assigned are large
+HTML fragments (entire translated paragraphs, table rows with multiple
+cells, etc.) and DOM API construction would significantly inflate code
+size and cost without a security benefit.
 
 ---
 

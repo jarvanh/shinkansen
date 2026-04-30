@@ -61,9 +61,12 @@ cp -r shinkansen/* firefox-build/
 # 2. 用 jq 程式化改寫 manifest:
 #    - background:刪掉 service_worker,改用 scripts + type: module
 #    - browser_specific_settings.gecko:加上 strict_min_version: "128.0"
+#    - browser_specific_settings.gecko:加上 data_collection_permissions: { required: ["none"] }
+#      (Mozilla 2025 起的隱私 consent UI 規則,Shinkansen 不收集任何使用者資料,僅本地呼叫 Gemini API)
 #    這是唯一的 build transformation。沒有 minify、bundle、transpile。
 jq '.background = {"scripts": ["background.js"], "type": "module"} |
-    .browser_specific_settings.gecko.strict_min_version = "128.0"' \
+    .browser_specific_settings.gecko.strict_min_version = "128.0" |
+    .browser_specific_settings.gecko.data_collection_permissions = {"required": ["none"]}' \
     shinkansen/manifest.json > firefox-build/manifest.json
 
 # 3. 打包成 ZIP(內容物在 ZIP 根目錄,沒包 firefox-build/ 那層)

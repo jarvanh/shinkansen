@@ -154,6 +154,8 @@ async function init() {
       $('update-dot').hidden = false;
       $('welcome-banner').hidden = false;
       $('welcome-banner-title').textContent = `🎉 已升級至 v${welcomeNotice.version}`;
+      // AMO source review: RELEASE_HIGHLIGHTS 是 dev hardcoded 字串陣列(見 lib/release-highlights.js),
+      // highlightToHtml 是同檔案內的安全 markdown-to-html 轉換(只處理 **bold** → <strong>),無 user input。
       $('welcome-bullets').innerHTML = RELEASE_HIGHLIGHTS
         .map(h => `<li>${highlightToHtml(h)}</li>`)
         .join('');
