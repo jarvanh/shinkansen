@@ -18,14 +18,27 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Zip shinkansen folder
+      - name: Zip shinkansen folder (Chrome)
         run: |
           zip -r shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen/
           cp shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen.zip
-          # Firefox 128+ beta：內容與 Chrome ZIP 完全相同（manifest 同時宣告
-          # background.service_worker 與 background.scripts，Chrome / Firefox 各取所需），
-          # 只是檔名標 firefox + beta 方便使用者識別、debug 用。
-          cp shinkansen-${{ steps.version.outputs.VERSION }}.zip shinkansen-firefox-${{ steps.version.outputs.VERSION }}-beta.zip
+
+      - name: Build Firefox ZIP (transformed manifest)
+        run: |
+          # Firefox 128+ beta:Chrome 與 Firefox 對 background 鍵的接受度不同——
+          # Chrome MV3 拒絕 `background.scripts`（warning「requires manifest version 2 or lower」），
+          # Firefox 不支援 `background.service_worker`。所以兩邊不能共用同一份 manifest。
+          # 解法:Chrome ZIP 用 repo 裡的純淨 manifest（只有 service_worker）;Firefox ZIP
+          # 在 build 時用 jq 程式化改寫:把 service_worker 拔掉、加上 scripts 與 gecko.strict_min_version。
+          # 這讓 repo 維持單一 source of truth(`shinkansen/manifest.json` 永遠是 Chrome 看的版本)。
+          mkdir -p firefox-build
+          cp -r shinkansen/* firefox-build/
+          jq '.background = {"scripts": ["background.js"], "type": "module"} |
+              .browser_specific_settings.gecko.strict_min_version = "128.0"' \
+              shinkansen/manifest.json > firefox-build/manifest.json
+          cd firefox-build
+          zip -r ../shinkansen-firefox-${{ steps.version.outputs.VERSION }}-beta.zip .
+          cd ..
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
