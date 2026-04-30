@@ -420,10 +420,12 @@ function updateYtPromptCostHint() {
     return;
   }
   if (!inputPrice) {
+    // AMO source review: 純 dev hardcoded 字串,無外部變數。
     hintEl.innerHTML = '<strong>無法估算費用</strong>：請在對應的計價欄位設定 input 單價（USD / 1M tokens）。';
     return;
   }
 
+  // AMO source review: 模型名稱經 escapeHtml(line ~2050 helper),其他 ${...} 是純數字計算結果,無 user input。
   hintEl.innerHTML =
     `<strong>token 開銷估算</strong>（以目前模型 <code>${escapeHtml(modelDisplay)}</code> 計，input $${inputPrice}/1M tokens、30 分鐘影片約 60 批）：<br>` +
     `<span style="display:inline-block; margin-left: 12px;">• 套用「固定術語表」（${fgCount} 條）→ 每批 prompt +${fgTok} token，全片約 ${fmtUSD(fgTok)}（cache 命中後 ~${fmtUSD(fgTok, 0.25)}）</span><br>` +
@@ -1174,6 +1176,8 @@ let fixedGlossary = { global: [], byDomain: {} };
 let currentDomain = ''; // 目前選中的網域
 
 function renderGlossaryTable(tbody, entries) {
+  // AMO source review: 所有使用者可變欄位(e.source / e.target / e.note)都經 escapeAttr / escapeHtml,
+  // 數字 i 是 array index(integer),無 user input 流入未 escape 的 innerHTML 位置。
   tbody.innerHTML = entries.map((e, i) =>
     `<tr data-idx="${i}">` +
     `<td><input type="text" class="fg-source" value="${escapeAttr(e.source)}" placeholder="英文原文"></td>` +
@@ -1232,6 +1236,8 @@ $('fixed-global-tbody').addEventListener('focusout', () => {
 function updateDomainSelect() {
   const sel = $('fixed-domain-select');
   const domains = Object.keys(fixedGlossary.byDomain).sort();
+  // AMO source review: domain 字串(使用者輸入)經 escapeAttr / escapeHtml 雙重處理,
+  // 第一段是 dev hardcoded 字串。
   sel.innerHTML = '<option value="">選擇網域…</option>' +
     domains.map(d => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join('');
   if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
@@ -1319,6 +1325,7 @@ function renderForbiddenTermsTable() {
   const tbody = $('forbidden-terms-tbody');
   // v1.5.8: 備註 input 加 title attribute（hover 顯示原生 tooltip 看完整內容），
   // 編輯時靠 CSS focus 規則浮起放寬看完整文字。
+  // AMO source review: 所有使用者欄位經 escapeAttr / escapeHtml,無未 escape user input。
   tbody.innerHTML = forbiddenTerms.map((t, i) => {
     const noteVal = escapeAttr(t.note || '');
     return `<tr data-idx="${i}">` +
@@ -1443,6 +1450,7 @@ let _timeSelectsBuilt = false;
 function buildTimeSelectOptions() {
   if (_timeSelectsBuilt) return;
   _timeSelectsBuilt = true;
+  // AMO source review: hourOptions / minOptions 是純 dev 生成的時間下拉(_pad2 把 0..59 整數補零成 2 位字串),完全無 user input。
   const hourOptions = Array.from({ length: 24 }, (_, h) => `<option value="${_pad2(h)}">${_pad2(h)}</option>`).join('');
   const minOptions  = Array.from({ length: 60 }, (_, m) => `<option value="${_pad2(m)}">${_pad2(m)}</option>`).join('');
   for (const id of ['usage-from-hour', 'usage-to-hour']) $(id).innerHTML = hourOptions;
@@ -1667,6 +1675,8 @@ function renderTable(records) {
   }
   emptyMsg.hidden = true;
 
+  // AMO source review: usage records 來自本 extension 自己寫進 IndexedDB(usage-db.js)的計費紀錄,
+  // 所有 string 欄位渲染前都經 escapeHtml/escapeAttr,數字欄位是計算結果。無外部 user input 流入。
   tbody.innerHTML = records.map(r => {
     const isGoogle = r.engine === 'google';  // v1.4.0
     // v0.99: 思考 token 以 output 費率計費，加入明細計算
@@ -1734,6 +1744,7 @@ function populateModelFilter() {
   const models = [...new Set(allUsageRecords.map(r => r.model || '').filter(Boolean))].sort();
   // 重建選項（保留「全部模型」作為第一個選項）
   // v1.5.7: option text 用 preset label 顯示；option value 仍是 model id 維持 filter 行為
+  // AMO source review: model id 跟 label 都經 escapeHtml/escapeAttr,第一段是 dev hardcoded。
   sel.innerHTML = '<option value="">全部模型</option>' +
     models.map(m => {
       const label = escapeHtml(modelToLabel(m));
@@ -1983,6 +1994,8 @@ function renderLogTable() {
   // v1.5.7: search 命中 data 時自動展開該行 data，並把命中字串包 <mark> 高亮
   const searchLower = ($('log-search').value || '').trim().toLowerCase();
 
+  // AMO source review: log entries 來自本 extension 自己 sendLog 寫進 buffer 的紀錄,所有 string
+  // 欄位渲染前都經 escapeHtml/escapeAttr,搜尋字串(user input)也經 escape 才插入 <mark>。
   tbody.innerHTML = visible.map(entry => {
     const time = formatLogTime(entry.t);
     const catClass = `log-cat log-cat-${entry.category || 'system'}`;

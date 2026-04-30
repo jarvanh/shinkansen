@@ -964,6 +964,8 @@
       // 有切點:用 innerHTML + <br>(textContent 走不出 <br>,設 \n 也會被
       // YouTube 既有 white-space: nowrap 吞掉)。先 escape 防 XSS。
       const html = _escapeHtml(wrapped).replace(/\n/g, '<br>');
+      // AMO source review: html = _escapeHtml(text) + 自家加入的 <br>。原文已 escape,
+      // <br> 是 dev 自己控的 literal,無 user input 流入。
       if (el.innerHTML !== html) el.innerHTML = html;
     } else {
       if (el.textContent !== wrapped) el.textContent = wrapped;
@@ -987,6 +989,7 @@
     // 用 innerHTML + <br> 寫入(比 textContent + \n + white-space:pre-wrap 更穩定,
     // 不受 inline-block 的 wrap 行為差異影響)。先 escape HTML 字元防注入。
     const html = _escapeHtml(wrapped).replace(/\n/g, '<br>');
+    // AMO source review: html = _escapeHtml(text) + 自家 <br>,user input 已 escape。
     if (tgtEl.innerHTML !== html) tgtEl.innerHTML = html;
     // source 暫不顯示(避免跟原生 ASR caption 三層字幕重疊;之後可加 toggle)
     if (sourceText !== undefined && srcEl) srcEl.hidden = true;
@@ -2103,6 +2106,8 @@
         const isBilingual = SK.YT.config?.bilingualMode === true;
         if (isBilingual && cached) {
           const html = `${_escapeHtml(original)}<br>${_escapeHtml(cached)}`;
+          // AMO source review: html = _escapeHtml(原文) + <br> + _escapeHtml(譯文),雙重 escape,
+          // <br> 是 dev literal。user input(YouTube 字幕原文)與 LLM 譯文都已 escape。
           if (el.innerHTML !== html) el.innerHTML = html;
         } else {
           // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
@@ -2191,6 +2196,7 @@
             if (isBilingual && trans) {
               const original = el.textContent.trim();
               const html = `${_escapeHtml(original)}<br>${_escapeHtml(trans)}`;
+              // AMO source review: html = _escapeHtml(原文) + <br> + _escapeHtml(譯文),雙重 escape。
               if (el.innerHTML !== html) el.innerHTML = html;
             } else {
               // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>

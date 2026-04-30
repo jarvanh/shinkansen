@@ -1003,6 +1003,8 @@
       let detached = 0;
       STATE.originalHTML.forEach((originalHTML, el) => {
         if (!el.isConnected) { detached++; return; }
+        // AMO source review: originalHTML 來自 STATE.originalHTML(本 extension 翻譯前用
+        // el.innerHTML 讀出來自存的原始 DOM 字串),純還原用,無 user input 流入。
         el.innerHTML = originalHTML;
         el.removeAttribute('data-shinkansen-translated');
       });
@@ -1040,6 +1042,7 @@
     let restoreDetached = 0;
     STATE.originalHTML.forEach((originalHTML, el) => {
       if (!el.isConnected) { restoreDetached++; return; }
+      // AMO source review: originalHTML 來自 STATE.originalHTML(本 extension 自存的原文 DOM),純還原用。
       el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
     });

@@ -360,6 +360,8 @@
 
     // v1.6.5: welcome notice（CWS 剛升級提示，每日節流由呼叫端判斷）
     if (opts.welcomeNotice && opts.welcomeNotice.version) {
+      // AMO source review: 靜態 template,內嵌的 version 來自 manifest 自己的 version 欄位
+      // (本 extension 寫進 storage 後再讀回),格式為 semver 字串(已被 manifest 驗證),無 user input。
       welcomeNoticeMsg.innerHTML = `<strong>已升級至 v${opts.welcomeNotice.version}</strong> — 點工具列圖示看新功能`;
       welcomeNoticeEl.hidden = false;
     } else {

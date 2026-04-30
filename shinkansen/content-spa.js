@@ -303,6 +303,8 @@
         const rect = el.getBoundingClientRect();
         if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
       }
+      // AMO source review: savedHTML 來自 STATE.translatedHTML(本 extension 自己用
+      // el.innerHTML 讀出來再存的譯後 DOM 字串),沒有 user input 流入。see BUILD.md §innerHTML
       el.innerHTML = savedHTML;
       restored++;
     }
@@ -367,6 +369,7 @@
       if (el.innerHTML === savedHTML) continue;
       // v1.5.5: 與 runContentGuard 對齊——編輯模式 contenteditable 元素不修復
       if (el.getAttribute('contenteditable') === 'true') continue;
+      // AMO source review: savedHTML 來自 STATE.translatedHTML(本 extension 自存),無 user input。
       el.innerHTML = savedHTML;
       restored++;
     }
@@ -460,6 +463,7 @@
         const addedText = (added.textContent || '').trim();
         if (addedText !== r.originalText) continue;
         try {
+          // AMO source review: r.savedHTML 來自 STATE.translatedHTML(本 extension 自存),無 user input。
           added.innerHTML = r.savedHTML;
         } catch (_) { continue; }
         added.setAttribute('data-shinkansen-translated', '1');
@@ -526,6 +530,7 @@
       if (savedHTML == null) continue;
       if (!target.isConnected) continue;
       if (target.innerHTML === savedHTML) continue;
+      // AMO source review: savedHTML 來自 STATE.translatedHTML(本 extension 自存),無 user input。
       target.innerHTML = savedHTML;
       _justRestoredAt.set(target, now);
       restored++;
