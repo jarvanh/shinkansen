@@ -1143,20 +1143,26 @@ $('import-input').addEventListener('change', async (e) => {
 //   moz-extension://       → Firefox       → about:addons（Firefox 沒有深連到 shortcut UI）
 //   safari-web-extension:// → Safari       → 隱藏連結（Safari 不支援 about:* / chrome://*）
 const _extUrl = browser.runtime.getURL('');
-const _shortcutsLink = $('open-shortcuts');
+// v1.8.22: 改 querySelectorAll(class) 支援多個 chrome://extensions/shortcuts 連結
+// (例:翻譯快速鍵段落 + YouTube 無邊模式段落各放一個)。
+const _shortcutsLinks = document.querySelectorAll('.open-shortcuts-link');
 if (_extUrl.startsWith('moz-extension://')) {
-  _shortcutsLink?.addEventListener('click', (e) => {
-    e.preventDefault();
-    browser.tabs.create({ url: 'about:addons' });
+  _shortcutsLinks.forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      browser.tabs.create({ url: 'about:addons' });
+    });
   });
 } else if (_extUrl.startsWith('chrome-extension://')) {
-  _shortcutsLink?.addEventListener('click', (e) => {
-    e.preventDefault();
-    browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  _shortcutsLinks.forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
+    });
   });
 } else {
   // Safari 或其他：隱藏連結（無法 tabs.create 到內建設定 URL）
-  if (_shortcutsLink) _shortcutsLink.style.display = 'none';
+  _shortcutsLinks.forEach((link) => { link.style.display = 'none'; });
 }
 
 // ═══════════════════════════════════════════════════════════

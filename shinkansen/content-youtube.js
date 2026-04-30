@@ -268,6 +268,166 @@
     displayCues:              [],
   };
 
+  // ─── 無邊模式（隱藏功能,經 chrome.commands 快速鍵 toggle）───────
+  // 隱藏 YouTube UI、強制 theatre、撐滿視窗,並透過 background 把視窗高度
+  // resize 成匹配 video aspect ratio。無預設快速鍵,使用者於
+  // chrome://extensions/shortcuts 自行綁定。
+  SK.YT.Borderless = (() => {
+    const STYLE_ID = 'sk-yt-borderless';
+    const CSS_TEXT = `
+      #masthead-container,ytd-masthead,#secondary,#secondary-inner,
+      ytd-watch-metadata,#below,#comments,#related,#chat,
+      ytd-merch-shelf-renderer,ytd-engagement-panel-section-list-renderer{display:none!important}
+      html,body{margin:0!important;padding:0!important;background:#000!important;overflow:hidden!important;height:100%!important;width:100%!important}
+      ytd-app,#content,ytd-page-manager,ytd-watch-flexy,#primary,#primary-inner,#columns{
+        height:100%!important;width:100%!important;margin:0!important;padding:0!important;max-width:none!important
+      }
+      ytd-watch-flexy[theater] #full-bleed-container,
+      #full-bleed-container,#player-theater-container,#player-full-bleed-container,
+      #player-container-outer,#player-container,#player-container-inner,
+      #movie_player,#ytd-player,ytd-player,.html5-video-player,
+      .html5-video-container{
+        width:100vw!important;max-width:none!important;
+        height:100vh!important;max-height:none!important;
+        min-height:100vh!important;
+        position:relative!important;top:0!important;left:0!important
+      }
+      video.html5-main-video,video.video-stream{
+        width:100vw!important;height:100vh!important;
+        max-width:none!important;max-height:none!important;
+        object-fit:contain!important;
+        top:0!important;left:0!important
+      }
+    `;
+
+    let active = false;
+    // null = 尚未 snapshot;true/false = 啟用前 ytd-watch-flexy 是否已有 theater attribute。
+    // 只有「原本沒有 theater」才在 toggle off 時 removeAttribute,避免使用者本來就在
+    // 劇院模式時被誤關。
+    let prevTheaterValue = null;
+    let pendingLoadedHandler = null;
+
+    function injectStyle() {
+      if (document.getElementById(STYLE_ID)) return;
+      const s = document.createElement('style');
+      s.id = STYLE_ID;
+      s.textContent = CSS_TEXT;
+      (document.head || document.documentElement).appendChild(s);
+    }
+
+    function removeStyle() {
+      document.getElementById(STYLE_ID)?.remove();
+    }
+
+    function snapshotAndSetTheater() {
+      const wf = document.querySelector('ytd-watch-flexy');
+      if (!wf) return;
+      if (prevTheaterValue === null) prevTheaterValue = wf.hasAttribute('theater');
+      if (!wf.hasAttribute('theater')) wf.setAttribute('theater', '');
+    }
+
+    function restoreTheater() {
+      const wf = document.querySelector('ytd-watch-flexy');
+      if (wf && prevTheaterValue === false) wf.removeAttribute('theater');
+      prevTheaterValue = null;
+    }
+
+    function applyVideoInline() {
+      const v = document.querySelector('video.html5-main-video');
+      if (!v) return;
+      v.style.setProperty('width', '100vw', 'important');
+      v.style.setProperty('height', '100vh', 'important');
+      v.style.setProperty('top', '0', 'important');
+      v.style.setProperty('left', '0', 'important');
+      v.style.setProperty('object-fit', 'contain', 'important');
+    }
+
+    function clearVideoInline() {
+      const v = document.querySelector('video.html5-main-video');
+      if (!v) return;
+      ['width', 'height', 'top', 'left', 'object-fit'].forEach(p => v.style.removeProperty(p));
+    }
+
+    function calcTargetWindowHeight(videoW, videoH, innerW, outerH, innerH) {
+      const ratio = videoW / videoH;
+      const targetInner = Math.round(innerW / ratio);
+      const chromeH = Math.max(0, outerH - innerH);
+      const minOuter = 200;
+      const maxOuter = Math.round((screen.availHeight || 1080) * 0.8);
+      return Math.max(minOuter, Math.min(maxOuter, targetInner + chromeH));
+    }
+
+    function requestResize() {
+      const v = document.querySelector('video.html5-main-video');
+      if (!v) return;
+      if (!v.videoWidth || !v.videoHeight) {
+        if (pendingLoadedHandler) v.removeEventListener('loadedmetadata', pendingLoadedHandler);
+        pendingLoadedHandler = () => {
+          pendingLoadedHandler = null;
+          if (active) requestResize();
+        };
+        v.addEventListener('loadedmetadata', pendingLoadedHandler, { once: true });
+        return;
+      }
+      const target = calcTargetWindowHeight(
+        v.videoWidth, v.videoHeight,
+        window.innerWidth, window.outerHeight, window.innerHeight,
+      );
+      try {
+        browser.runtime.sendMessage({ type: 'RESIZE_OWN_WINDOW', payload: { height: target } })
+          .catch(() => {});
+      } catch (_) {}
+    }
+
+    function apply() {
+      injectStyle();
+      snapshotAndSetTheater();
+      applyVideoInline();
+      // YouTube player JS 監聽 resize 重算 video inline width/height,給三個時機確保 settle
+      window.dispatchEvent(new Event('resize'));
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 200);
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 600);
+      setTimeout(() => requestResize(), 300);
+    }
+
+    function unapply() {
+      removeStyle();
+      restoreTheater();
+      clearVideoInline();
+      if (pendingLoadedHandler) {
+        const v = document.querySelector('video.html5-main-video');
+        v?.removeEventListener('loadedmetadata', pendingLoadedHandler);
+        pendingLoadedHandler = null;
+      }
+      window.dispatchEvent(new Event('resize'));
+    }
+
+    function toggle() {
+      if (!SK.isYouTubePage?.()) return; // 非 watch 頁 → 沉默 no-op
+      active = !active;
+      if (active) apply();
+      else unapply();
+    }
+
+    function reapplyOnNavigation() {
+      if (!active) return;
+      if (SK.isYouTubePage?.()) {
+        setTimeout(() => { if (active) apply(); }, 500);
+      } else {
+        // SPA 切到非 watch 頁(例如首頁)→ 撤掉 CSS 但保留 active flag,
+        // 切回 watch 頁時自動重套
+        removeStyle();
+        clearVideoInline();
+        prevTheaterValue = null;
+      }
+    }
+
+    function isActive() { return active; }
+
+    // _calcTargetWindowHeight 暴露給 spec 驗 aspect 計算純函式
+    return { toggle, reapplyOnNavigation, isActive, _calcTargetWindowHeight: calcTargetWindowHeight };
+  })();
+
   // ─── 工具 ──────────────────────────────────────────────────
 
   SK.isYouTubePage = function isYouTubePage() {
@@ -2278,6 +2438,8 @@
     YT.config             = null;
     YT.videoId            = getVideoIdFromUrl();
     SK.sendLog('info', 'youtube', 'SPA navigation reset', { wasActive, newVideoId: YT.videoId });
+
+    SK.YT.Borderless?.reapplyOnNavigation();
 
     // v1.3.1: SPA 導航後自動重啟字幕翻譯
     // 條件：之前字幕翻譯已啟動（wasActive），或 ytSubtitle.autoTranslate 設定開啟

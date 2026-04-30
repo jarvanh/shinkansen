@@ -779,6 +779,22 @@ const messageHandlers = {
   // v1.3.12: FETCH_YT_CAPTIONS 已移除。
   // YouTube 字幕資料由 content-youtube-main.js 的 XHR monkey-patch 攔截取得，
   // 不再透過 background 主動 fetch（YouTube timedtext URL 即使 same-origin 也因 exp=xpv 需要 POT）。
+
+  // YouTube 無邊模式:content side 計算目標視窗高度後請 SW 呼 chrome.windows.update。
+  // 失敗(install-as-app PWA 限制 / windowId 不在 / 權限缺失)沉默吞掉,
+  // CSS 仍套上,影片以 object-fit:contain 顯示(會有黑邊但功能堪用)。
+  RESIZE_OWN_WINDOW: {
+    async: false,
+    handler: (payload, sender) => {
+      const wid = sender?.tab?.windowId;
+      const height = payload?.height;
+      if (typeof wid !== 'number' || typeof height !== 'number') return { ok: false };
+      try {
+        browser.windows.update(wid, { height }).catch(() => {});
+      } catch (_) {}
+      return { ok: true };
+    },
+  },
 };
 
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1614,6 +1630,13 @@ async function handleExtractGlossary(payload, sender) {
 //   storage 內仍維持 slot 1/2/3 編號,故 command id 0 → slot 2 mapping 寫死。
 const COMMAND_ID_TO_SLOT = { 0: 2, 1: 1, 3: 3 };
 browser.commands.onCommand.addListener(async (command) => {
+  // YouTube 無邊模式 toggle(隱藏功能,使用者於 chrome://extensions/shortcuts 自行綁定)
+  if (command === 'youtube-borderless') {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+    browser.tabs.sendMessage(tab.id, { type: 'TOGGLE_YT_BORDERLESS' }).catch(() => {});
+    return;
+  }
   const match = command.match(/^translate-preset-(\d+)$/);
   if (!match) return;
   const cmdNum = Number(match[1]);

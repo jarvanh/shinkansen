@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Shinkansen",
-  "version": "1.8.21",
+  "version": "1.8.22",
   "description": "快速、流暢的網頁翻譯擴充功能，使用 Google Gemini 將外語網頁翻譯成台灣繁體中文。",
   "default_locale": "zh_TW",
   "browser_specific_settings": {
@@ -106,6 +106,9 @@
         "mac": "Alt+D"
       },
       "description": "翻譯本頁 - 預設 3"
+    },
+    "youtube-borderless": {
+      "description": "切換 YouTube 無邊模式"
     }
   }
 }
