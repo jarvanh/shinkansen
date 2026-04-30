@@ -818,34 +818,66 @@ a:hover { text-decoration: underline; }
 .preset-model-label[hidden] { display: none !important; }
 
 /* v1.5.0: 雙語對照視覺標記設定 */
-.dual-demo {
+/* v1.8.31: 並排 light / dark 兩個預覽 box */
+.dual-demo-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   margin: 12px 0;
+}
+.dual-demo {
   padding: 12px 14px;
   border: 1px solid #d2d2d7;
   border-radius: 8px;
+}
+.dual-demo-light {
   background: #fff;
 }
+.dual-demo-dark {
+  background: #1a1a1a;
+  border-color: #3a3a3a;
+}
+.dual-demo-label {
+  font-size: 11px;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+.dual-demo-light .dual-demo-label { color: #6e6e73; }
+.dual-demo-dark  .dual-demo-label { color: #9CA3AF; }
+
 .dual-demo .dual-demo-original {
   margin: 0 0 4px 0;
-  color: #1d1d1f;
   font-size: 14px;
   line-height: 1.5;
 }
+.dual-demo-light .dual-demo-original { color: #1d1d1f; }
+.dual-demo-dark  .dual-demo-original { color: #d2d2d7; }
+
 .dual-demo .dual-demo-translation {
   margin: 0;
   font-size: 14px;
   line-height: 1.5;
 }
-/* wrapper 樣式：與 content-inject.js ensureDualWrapperStyle 注入到頁面的 CSS 對齊。
-   這份是給 options 頁的 demo 預覽用，不影響真實網頁的 wrapper。 */
+.dual-demo-light .dual-demo-translation { color: #1d1d1f; }
+.dual-demo-dark  .dual-demo-translation { color: #d2d2d7; }
+
+/* wrapper 樣式:與 content-inject.js ensureDualWrapperStyle 注入到頁面的 CSS 對齊。
+   這份是給 options 頁的 demo 預覽用,不影響真實網頁的 wrapper。 */
 shinkansen-translation {
   display: block;
   margin-top: 0.25em;
+  box-sizing: border-box;
 }
-shinkansen-translation[data-sk-mark="tint"]   { background-color: #FFF8E1; padding: 2px 4px; }
+:where(h1, h2, h3, h4, h5, h6) + shinkansen-translation { margin-top: 0.5em; }
+/* light (default) */
+shinkansen-translation[data-sk-mark="tint"]   { background-color: #FFF8E1; padding: 4px 8px; border-radius: 4px; }
 shinkansen-translation[data-sk-mark="bar"]    { border-left: 2px solid #9CA3AF; padding-left: 8px; }
 shinkansen-translation[data-sk-mark="dashed"] { text-decoration: underline wavy #C7CDD3; text-decoration-thickness: 1px; text-underline-offset: 4px; }
 shinkansen-translation[data-sk-mark="none"]   {}
+/* dark */
+shinkansen-translation[data-sk-mark="tint"][data-sk-theme="dark"]   { background-color: rgba(255, 255, 255, 0.08); }
+shinkansen-translation[data-sk-mark="bar"][data-sk-theme="dark"]    { border-left-color: #9CA3AF; }
+shinkansen-translation[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decoration-color: #9CA3AF; }
 
 .dual-mark-options {
   display: flex;

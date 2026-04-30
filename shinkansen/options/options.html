@@ -188,14 +188,25 @@
     <section>
       <h2>雙語對照視覺標記</h2>
       <p class="muted">
-        當顯示模式設為「雙語對照」時，譯文會以新段落形式 append 在原文之後。
-        以下選項決定譯文段落的視覺標記樣式（顯示模式本身可在 popup 切換）
+        當顯示模式設為「雙語對照」時,譯文會以新段落形式 append 在原文之後。
+        以下選項決定譯文段落的視覺標記樣式(顯示模式本身可在 popup 切換)。
+        v1.8.31 起,Shinkansen 會自動偵測網頁實際背景亮度套用對應配色,亮色與深色頁面各自呈現如下
       </p>
-      <div class="dual-demo">
-        <p class="dual-demo-original">The quick brown fox jumps over the lazy dog.</p>
-        <shinkansen-translation id="dual-demo-wrapper" data-sk-mark="tint">
-          <p class="dual-demo-translation">敏捷的棕狐跨越懶狗</p>
-        </shinkansen-translation>
+      <div class="dual-demo-pair">
+        <div class="dual-demo dual-demo-light">
+          <div class="dual-demo-label">亮色頁面</div>
+          <p class="dual-demo-original">The quick brown fox jumps over the lazy dog.</p>
+          <shinkansen-translation id="dual-demo-wrapper-light" data-sk-mark="tint" data-sk-theme="light">
+            <p class="dual-demo-translation">敏捷的棕狐跨越懶狗</p>
+          </shinkansen-translation>
+        </div>
+        <div class="dual-demo dual-demo-dark">
+          <div class="dual-demo-label">深色頁面</div>
+          <p class="dual-demo-original">The quick brown fox jumps over the lazy dog.</p>
+          <shinkansen-translation id="dual-demo-wrapper-dark" data-sk-mark="tint" data-sk-theme="dark">
+            <p class="dual-demo-translation">敏捷的棕狐跨越懶狗</p>
+          </shinkansen-translation>
+        </div>
       </div>
       <div class="dual-mark-options">
         <label><input type="radio" name="markStyle" value="tint" checked>淡底色</label>

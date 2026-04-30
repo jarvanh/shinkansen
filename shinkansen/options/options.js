@@ -308,9 +308,12 @@ document.addEventListener('click', async (e) => {
 });
 
 // v1.5.0: 雙語視覺標記預覽更新
+// v1.8.31: 並排 light / dark 兩個預覽 box,各自有獨立 wrapper id
 function updateDualDemoMark(mark) {
-  const wrapper = document.getElementById('dual-demo-wrapper');
-  if (wrapper) wrapper.setAttribute('data-sk-mark', mark);
+  ['dual-demo-wrapper-light', 'dual-demo-wrapper-dark'].forEach(id => {
+    const wrapper = document.getElementById(id);
+    if (wrapper) wrapper.setAttribute('data-sk-mark', mark);
+  });
 }
 
 function getSelectedMarkStyle() {
