@@ -266,6 +266,11 @@
     //   onVideoTimeUpdate 根據 video.currentTime 找出當前該顯示的 cue 寫入 overlay。
     //   整句進整句出,不依賴 YouTube 原生 caption-segment(避免 ASR 一字一字跳)。
     displayCues:              [],
+    // CC 按鈕關閉時暫停送 API(captionMap / rawSegments / active 不變,只擋 onVideoTimeUpdate
+    // 等驅動點)。CC 重開時自動續翻並把 translatedUpToMs 對齊當前 currentTime 視窗,避免
+    // 暫停期間使用者拖進度條造成虛假超前。
+    ccPaused:                 false,
+    _ccButtonObserver:        null,
   };
 
   // ─── 無邊模式（隱藏功能,經 chrome.commands 快速鍵 toggle）───────
@@ -554,7 +559,7 @@
       urlSnippet: url ? url.substring(url.indexOf('/api/timedtext'), Math.min(url.length, url.indexOf('/api/timedtext') + 60)) : '',
     });
 
-    if (YT.active) {
+    if (YT.active && !YT.ccPaused) {
       // translateYouTubeSubtitles 已啟動但在等待（rawSegments 剛被填入）
       // 直接觸發當前視窗的翻譯
       const video = document.querySelector('video');
@@ -1010,6 +1015,12 @@
   // 用 class + 全域 style 而非 inline style:避免每個 caption-window 個別處理 mutation 競爭。
   const _ASR_PLAYER_CLASS = 'shinkansen-asr-active';
   const _ASR_HIDE_CSS_ID  = 'shinkansen-asr-hide-css';
+  // CC 關閉(ccPaused)期間隱藏所有字幕殘留:
+  //   - non-ASR 走原生 .caption-window,YouTube 隱藏 CC 後 element 仍可能殘留中文 textContent
+  //   - ASR overlay 由 _updateOverlay 內的 ccPaused 分支自行清空,不靠這條 class
+  // 用 visibility/opacity 而非 display:none:保留 layout 讓 _readNativeCaptionFontSize
+  // 等讀取邏輯不會在 CC 重開時瞬間錯亂。
+  const _CC_PAUSED_PLAYER_CLASS = 'shinkansen-cc-paused';
   // v1.8.16:stylesheet 注入從 _setAsrHidingMode 抽出獨立 helper,
   // bilingual=true 也走「不隱藏原生 CC + overlay 上抬 90px」的 CSS rule(host[bilingual]),
   // 這條 rule 必須跟 .ytp-autohide 規則同份 stylesheet 一起注入,reload 後直接進雙語
@@ -1025,6 +1036,13 @@
       .${_ASR_PLAYER_CLASS} .caption-window,
       .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
       .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      .${_CC_PAUSED_PLAYER_CLASS} .caption-window,
+      .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-rollup,
+      .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
         visibility: hidden !important;
         opacity: 0 !important;
         pointer-events: none !important;
@@ -1057,6 +1075,19 @@
       root.classList.add(_ASR_PLAYER_CLASS);
     } else {
       root.classList.remove(_ASR_PLAYER_CLASS);
+    }
+  }
+
+  // ccPaused 切換時加/移 class 到 player root,讓 stylesheet 隱藏原生 .caption-window
+  // (含已被替換成中文的 textContent)。non-ASR / ASR / bilingual 三種模式共用此規則。
+  function _setCcPausedHidingMode(active) {
+    const root = _getPlayerRoot();
+    if (!root) return;
+    _ensureAsrStylesheet();
+    if (active) {
+      root.classList.add(_CC_PAUSED_PLAYER_CLASS);
+    } else {
+      root.classList.remove(_CC_PAUSED_PLAYER_CLASS);
     }
   }
 
@@ -1140,6 +1171,13 @@
   function _updateOverlay() {
     const YT = SK.YT;
     if (!YT.active || !YT.isAsr) return;
+    // CC 關閉時清空 overlay(避免最後一條中文 cue 卡在畫面上)。
+    // 不在 _observeCcButton 一次性清掉就好的原因:timeupdate 仍會觸發,
+    // 若這裡不擋住會被 _findActiveCue → _setOverlayContent 重新寫回。
+    if (YT.ccPaused) {
+      _setOverlayContent('');
+      return;
+    }
     if (!YT.videoEl) return;
     // 動態同步 native caption font-size / font-family 到 overlay
     // (fullscreen / theatre / 字幕大小設定 / 使用者字型選擇變更時自動跟上)
@@ -1934,6 +1972,8 @@
     // v1.2.54: 移除 translating guard — translateWindowFrom 內部用 translatingWindows Set 防重入，
     // 讓 timeupdate 可在當前視窗翻譯進行中提前啟動下一個視窗（消除英文字幕間隙）
     if (!YT.active || YT.rawSegments.length === 0) return;
+    // CC 關閉時暫停送 API(_observeCcButton 在 CC 重開時會重置 translatedUpToMs + 立刻續翻)
+    if (YT.ccPaused) return;
 
     const video = YT.videoEl;
     if (!video) return;
@@ -1965,6 +2005,7 @@
   function onVideoRateChange() {
     const YT = SK.YT;
     if (!YT.active || YT.rawSegments.length === 0) return;  // v1.2.54: 移除 translating guard
+    if (YT.ccPaused) return;
     const video = YT.videoEl;
     if (!video) return;
 
@@ -1992,6 +2033,9 @@
     const YT = SK.YT;
     _updateOverlay(); // G 路徑:跳轉後立刻刷新 overlay,不等 timeupdate
     if (!YT.active || YT.rawSegments.length === 0) return;
+    // CC 暫停時不更新 translatedUpToMs,避免暫停期間拖進度條導致重開時跳到無關位置;
+    // _observeCcButton 在 CC 重開時會用當下 currentTime 重設起點。
+    if (YT.ccPaused) return;
     const video = YT.videoEl;
     if (!video) return;
 
@@ -2026,6 +2070,65 @@
     video.addEventListener('timeupdate', onVideoTimeUpdate);
     video.addEventListener('seeked',     onVideoSeeked);
     video.addEventListener('ratechange', onVideoRateChange);
+    _observeCcButton();
+  }
+
+  // ─── CC 按鈕監聽:暫停 / 續翻送 API ─────────────────────────
+  // 使用者按關 CC 不應該繼續燒 token。MutationObserver 監聽 .ytp-subtitles-button
+  // 的 aria-pressed 屬性:
+  //   true  → false  : YT.ccPaused = true,onVideoTimeUpdate / RateChange / Seeked 直接 return
+  //   false → true   : YT.ccPaused = false,把 translatedUpToMs 對齊當前 currentTime 的視窗起點
+  //                    後立刻 translateWindowFrom 補齊(暫停期間 currentTime 已推進,不重設會
+  //                    跳過中間)
+  // 註:forceSubtitleReload 自動點開 CC 也會走這裡,流程一致(關 → 開 = 從暫停恢復)。
+
+  function _observeCcButton() {
+    const YT = SK.YT;
+    if (YT._ccButtonObserver) {
+      YT._ccButtonObserver.disconnect();
+      YT._ccButtonObserver = null;
+    }
+    const btn = document.querySelector('.ytp-subtitles-button');
+    if (!btn) return;
+    YT.ccPaused = btn.getAttribute('aria-pressed') !== 'true';
+    // 啟動時若 CC 是關的,立即套用隱藏 class(避免之前殘留的 caption-window 中文字幕在
+    // 翻譯啟動瞬間又被看到)
+    _setCcPausedHidingMode(YT.ccPaused);
+    YT._ccButtonObserver = new MutationObserver(() => {
+      const isOn = btn.getAttribute('aria-pressed') === 'true';
+      const wasPaused = YT.ccPaused;
+      const nextPaused = !isOn;
+      if (wasPaused === nextPaused) return;
+      YT.ccPaused = nextPaused;
+      _setCcPausedHidingMode(nextPaused);
+      if (nextPaused) {
+        // 主動清掉 ASR overlay 殘留(_updateOverlay 在 ccPaused 時也會清,這裡是即時保險)
+        if (YT.isAsr) _setOverlayContent('');
+        SK.sendLog('info', 'youtube', 'cc paused (api hold)');
+        return;
+      }
+      // CC 重開:對齊當前 currentTime 視窗 + 立刻續翻
+      const video = YT.videoEl;
+      if (!YT.active || !video) return;
+      // ASR overlay 立刻依 currentTime 寫回(不等下一次 timeupdate)
+      if (YT.isAsr) _updateOverlay();
+      const config = YT.config || DEFAULT_YT_CONFIG;
+      const windowSizeMs = (config.windowSizeS || 30) * 1000;
+      const currentMs = video.currentTime * 1000;
+      const newWindowStart = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
+      YT.translatedUpToMs = newWindowStart;
+      SK.sendLog('info', 'youtube', 'cc resumed (api on)', {
+        atMs: Math.round(currentMs),
+        windowStartMs: newWindowStart,
+      });
+      if (YT.rawSegments.length > 0) {
+        translateWindowFrom(newWindowStart);
+      }
+    });
+    YT._ccButtonObserver.observe(btn, {
+      attributes: true,
+      attributeFilter: ['aria-pressed'],
+    });
   }
 
   // ─── MutationObserver：即時替換字幕 ──────────────────────
@@ -2317,6 +2420,12 @@
     YT.flushing           = false;       // v1.8.20: 確保下個 session 重啟後 flushOnTheFly 不被舊 flag 卡住
     YT.isAsr              = false;
     YT.displayCues        = [];         // G 路徑:清 overlay 顯示單位
+    YT.ccPaused           = false;
+    if (YT._ccButtonObserver) {
+      YT._ccButtonObserver.disconnect();
+      YT._ccButtonObserver = null;
+    }
+    _setCcPausedHidingMode(false);
     _setAsrHidingMode(false);
     _removeOverlay();
     hideCaptionStatus(); // v1.2.55
@@ -2326,10 +2435,13 @@
 
   SK.stopYouTubeTranslation = stopYouTubeTranslation;
 
-  // ─── 主入口：Alt+S ─────────────────────────────────────────
+  // ─── 主入口:popup toggle / SPA auto-restart ─────────────
+  // 字幕翻譯由 popup「翻譯字幕」勾選驅動,或由 content-script init / SPA nav 在
+  // 自動續啟動偏好開啟時觸發。Alt+S 是「頁面文字翻譯」(handleTranslatePreset),
+  // 跟字幕翻譯互不相關。
 
   // v1.8.16: source 區分使用者明示 toggle vs 自動啟動。
-  //   'manual'(預設,Alt+S / popup):active 時 toggle 還原(再按一次語義)
+  //   'manual'(預設,popup toggle / SET_SUBTITLE):active 時 toggle 還原(再按一次語義)
   //   'auto'(content-script init / SPA nav restart):active 時 no-op,
   //     避免兩條自動鬧鐘在 reload 後 race 互相關掉對方。
   SK.translateYouTubeSubtitles = async function translateYouTubeSubtitles({ source = 'manual' } = {}) {
@@ -2366,6 +2478,7 @@
     YT.lastLeadMs                = 0;         // v1.2.50
     YT._firstCacheHitLogged      = false;     // v1.2.51
     YT._autoCcToggled            = false;     // v1.6.20 A 路徑:每次啟動翻譯重置 auto-CC 旗標
+    YT.ccPaused                  = false;     // attachVideoListener → _observeCcButton 會依 CC 實際狀態重設
     YT.displayCues               = [];        // G 路徑:啟動時清空 overlay cue,等本影片字幕回來
 
     // 提前掛 video 監聽器，不等字幕資料回來（使用者可能在等待期間拖進度條）
