@@ -575,16 +575,13 @@
             會強制送 <code>Origin: chrome-extension://&lt;id&gt;</code> header。
             Ollama 與 llama.cpp 預設的 CORS 設定不認得這個 origin → 直接回 403
           </p>
-          <p class="muted" style="margin: 0 0 6px;"><strong>三種解法擇一</strong>：</p>
+          <p class="muted" style="margin: 0 0 6px;"><strong>兩種解法擇一</strong>：</p>
           <ol class="muted" style="margin: 0 0 0 20px; padding: 0;">
             <li style="margin-bottom: 6px;">
               <strong>Ollama</strong>：啟動前設環境變數 <code>OLLAMA_ORIGINS=*</code>
               （或更嚴格的 <code>chrome-extension://*</code>）。
               macOS 用 <code>launchctl setenv OLLAMA_ORIGINS "*"</code> 後重啟 Ollama；
               Windows 在「系統內容 → 環境變數」加 <code>OLLAMA_ORIGINS</code> = <code>*</code>
-            </li>
-            <li style="margin-bottom: 6px;">
-              <strong>llama.cpp</strong>：啟動 server 時加 <code>--cors-allow-origin '*'</code> 參數
             </li>
             <li>
               <strong>後端不能改 CORS 設定時</strong>：在系統 hosts 檔加一筆
