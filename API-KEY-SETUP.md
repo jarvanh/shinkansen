@@ -1,3 +1,5 @@
+[English](API-KEY-SETUP.en.md) | **繁體中文**
+
 # Shinkansen — Google Gemini API Key 申請指南
 
 > 本指引帶你申請 Gemini API Key，供 Shinkansen 呼叫 Google Gemini 翻譯網頁
