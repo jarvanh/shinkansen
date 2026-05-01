@@ -20,6 +20,30 @@
   <meta name="twitter:image" content="https://jimmysu0309.github.io/shinkansen/og-image.png">
 
   <link rel="icon" type="image/png" href="icon-128.png">
+  <link rel="alternate" hreflang="zh-TW" href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW">
+  <link rel="alternate" hreflang="en" href="https://jimmysu0309.github.io/shinkansen/?lang=en">
+  <link rel="alternate" hreflang="x-default" href="https://jimmysu0309.github.io/shinkansen/">
+
+  <!-- Early language detection — runs before render to pick lang and avoid flash -->
+  <script>
+    (function () {
+      var supported = ['zh-TW', 'en'];
+      var fromQuery = null;
+      try {
+        var p = new URLSearchParams(location.search);
+        fromQuery = p.get('lang');
+      } catch (e) {}
+      var saved = null;
+      try { saved = localStorage.getItem('shinkansen_lang'); } catch (e) {}
+      var nav = (navigator.language || 'en').toLowerCase();
+      var auto = nav.indexOf('zh') === 0 ? 'zh-TW' : 'en';
+      var lang = fromQuery || saved || auto;
+      if (supported.indexOf(lang) === -1) lang = 'en';
+      document.documentElement.lang = lang;
+      document.documentElement.setAttribute('data-lang', lang);
+    })();
+  </script>
+
   <style>
     /* Reset & Base */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -32,8 +56,48 @@
       -webkit-font-smoothing: antialiased;
     }
 
+    /* Hide elements not matching current language until JS runs */
+    html[data-lang="en"] [data-only="zh-TW"],
+    html[data-lang="zh-TW"] [data-only="en"] { display: none; }
+
     /* Layout */
     .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+    /* Language switcher */
+    .lang-switcher {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 0;
+      font-size: 0.78rem;
+      z-index: 100;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: #555;
+      padding: 6px 12px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 500;
+      line-height: 1;
+      transition: background 0.15s, color 0.15s;
+    }
+    .lang-btn + .lang-btn { border-left: 1px solid #e5e7eb; }
+    .lang-btn:hover { color: #2563eb; }
+    .lang-btn.active {
+      background: #2563eb;
+      color: #fff;
+    }
 
     /* Hero */
     .hero {
@@ -221,7 +285,7 @@
       color: #555;
     }
 
-    /* 近期重大更新 */
+    /* Recent updates */
     .recent-updates {
       list-style: none;
       padding: 0;
@@ -242,7 +306,7 @@
       color: #1d1d1f;
     }
 
-    /* Privacy Hero — 專案核心動機 */
+    /* Privacy Hero */
     .privacy-hero {
       background: #f0f5fa;
       border-radius: 16px;
@@ -289,132 +353,145 @@
 
     /* Responsive */
     @media (max-width: 600px) {
-      .hero { padding: 56px 0 36px; }
+      .hero { padding: 64px 0 36px; }
       .hero h1 { font-size: 1.8rem; }
       .features { grid-template-columns: 1fr; }
+      .lang-switcher { top: 10px; right: 10px; }
     }
   </style>
 </head>
 <body>
 
+  <!-- Language switcher -->
+  <div class="lang-switcher" role="group" aria-label="Language">
+    <button class="lang-btn" data-lang="zh-TW" type="button">繁中</button>
+    <button class="lang-btn" data-lang="en" type="button">EN</button>
+  </div>
+
   <!-- Hero -->
   <div class="hero">
     <div class="container">
       <img src="icon-128.png" alt="Shinkansen" class="hero-icon">
-      <h1>Shinkansen<span class="hero-sep">｜</span><span class="hero-subtitle">極速、私密、高品質的網頁翻譯體驗</span></h1>
-      <p class="tagline">你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的電腦直接呼叫 Google Gemini 翻譯，不經過任何第三方</p>
+      <h1>Shinkansen<span class="hero-sep">｜</span><span class="hero-subtitle" data-i18n="hero.subtitle">極速、私密、高品質的網頁翻譯體驗</span></h1>
+      <p class="tagline" data-i18n="hero.tagline">你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的電腦直接呼叫 Google Gemini 翻譯，不經過任何第三方</p>
       <div class="btn-row">
-        <a href="https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg" class="btn-download">從 Chrome Web Store 安裝<span class="btn-version">v<!-- cws-version-start -->1.4.22<!-- cws-version-end --> · 已上架</span></a>
-        <a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.8.36/shinkansen-v1.8.36.zip" class="btn-download secondary">GitHub 下載 beta 版手動安裝<span class="btn-version">v1.8.36 · beta</span></a>
+        <a href="https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg" class="btn-download">
+          <span data-i18n="btn.cws.text">從 Chrome Web Store 安裝</span>
+          <span class="btn-version">v<!-- cws-version-start -->1.4.22<!-- cws-version-end --> · <span data-i18n="btn.cws.status">已上架</span></span>
+        </a>
+        <a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.8.37/shinkansen-v1.8.37.zip" class="btn-download secondary">
+          <span data-i18n="btn.github.text">GitHub 下載 beta 版手動安裝</span>
+          <span class="btn-version">v1.8.37 · beta</span>
+        </a>
       </div>
-      <p class="hero-sub">開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a></p>
+      <p class="hero-sub" data-i18n="hero.sub">開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a></p>
     </div>
   </div>
 
-  <!-- Recent updates — Hero 下方第一個 section，使用者一進站就看到亮點 -->
+  <!-- Recent updates -->
   <section>
     <div class="container">
-      <h2>近期重大更新</h2>
+      <h2 data-i18n="recent.heading">近期重大更新</h2>
       <ul class="recent-updates">
-        <li>新增<strong>極速秒翻</strong>，按下翻譯 1 秒看到頁面開始變中文（限 Gemini）</li>
-        <li>新增<strong>雙語對照模式</strong>，原文 + 譯文並列顯示</li>
-        <li>新增<strong>自訂 AI 模型</strong>，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型</li>
-        <li>新增<strong>AI 分句</strong>，YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀</li>
-        <li>新增<strong>中國用語黑名單</strong>，明確要求 LLM 不能用視頻 / 軟件 / 數據等中國用語</li>
-        <li>新增<strong>只翻文章開頭</strong>選項，先翻前 N 段預覽，大幅節省 token</li>
+        <li data-i18n="recent.1">新增<strong>極速秒翻</strong>，按下翻譯 1 秒看到頁面開始變中文（限 Gemini）</li>
+        <li data-i18n="recent.2">新增<strong>雙語對照模式</strong>，原文 + 譯文並列顯示</li>
+        <li data-i18n="recent.3">新增<strong>自訂 AI 模型</strong>，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型</li>
+        <li data-i18n="recent.4">新增<strong>AI 分句</strong>,YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀</li>
+        <li data-i18n="recent.5">新增<strong>禁用詞清單</strong>，明確要求 LLM 不要使用視頻 / 軟件 / 數據等不希望出現在譯文中的詞</li>
+        <li data-i18n="recent.6">新增<strong>只翻文章開頭</strong>選項，先翻前 N 段預覽，大幅節省 token</li>
       </ul>
     </div>
   </section>
 
-  <!-- Privacy — 專案核心動機，放在最顯眼的位置 -->
+  <!-- Privacy -->
   <div class="container">
     <div class="privacy-hero">
-      <h2>為什麼做 Shinkansen？</h2>
-      <p>既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光</p>
-      <p>Shinkansen 的出發點就是保護您的隱私：</p>
+      <h2 data-i18n="privacy.heading">為什麼做 Shinkansen?</h2>
+      <p data-i18n="privacy.intro1">既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光</p>
+      <p data-i18n="privacy.intro2">Shinkansen 的出發點就是保護您的隱私：</p>
       <div class="privacy-points">
-        <div class="privacy-point">
+        <div class="privacy-point" data-i18n="privacy.point1">
           <strong>資料不外傳</strong>：翻譯請求直連 Google Gemini，不經過任何第三方伺服器
         </div>
-        <div class="privacy-point">
+        <div class="privacy-point" data-i18n="privacy.point2">
           <strong>設定留在本地</strong>：所有資料只存在你自己的電腦上
         </div>
-        <div class="privacy-point">
+        <div class="privacy-point" data-i18n="privacy.point3">
           <strong>原始碼完全公開</strong>：任何人都可以檢視程式碼，確認沒有後門
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Before / After comparison -->
+  <!-- Before / After -->
   <div class="comparison">
     <div class="container">
       <div class="compare-grid">
         <div class="compare-item">
-          <p class="compare-label">翻譯前</p>
-          <img src="screenshot-before.png" alt="翻譯前 — Wikipedia 英文原文">
+          <p class="compare-label" data-i18n="compare.before">翻譯前</p>
+          <img src="screenshot-before.png" alt="翻譯前 — Wikipedia 英文原文" data-i18n-alt="compare.before.alt">
         </div>
         <div class="compare-item">
-          <p class="compare-label">翻譯後</p>
-          <img src="screenshot-after.png" alt="翻譯後 — Shinkansen 將內容翻譯成繁體中文，排版完整保留">
+          <p class="compare-label" data-i18n="compare.after">翻譯後</p>
+          <img src="screenshot-after.png" alt="翻譯後 — Shinkansen 將內容翻譯成繁體中文，排版完整保留" data-i18n-alt="compare.after.alt">
         </div>
       </div>
-      <p class="compare-caption">排版、連結、圖片全部保留，看起來就像原生中文頁面</p>
+      <p class="compare-caption" data-i18n="compare.caption">排版、連結、圖片全部保留，看起來就像原生中文頁面</p>
     </div>
   </div>
 
   <!-- Features -->
   <section>
     <div class="container">
-      <h2>功能特色</h2>
+      <h2 data-i18n="features.heading">功能特色</h2>
       <div class="features">
         <div class="feature">
-          <h3>極速秒翻</h3>
-          <p>按下翻譯 1 秒看到頁面開始變中文，不用等整批 API 回完再一次塞回頁面（限 Gemini）</p>
+          <h3 data-i18n="feature.fast.title">極速秒翻</h3>
+          <p data-i18n="feature.fast.body">按下翻譯 1 秒看到頁面開始變中文，不用等整批 API 回完再一次塞回頁面（限 Gemini）</p>
         </div>
         <div class="feature">
-          <h3>保留網頁排版</h3>
-          <p>原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生中文頁面</p>
+          <h3 data-i18n="feature.layout.title">保留網頁排版</h3>
+          <p data-i18n="feature.layout.body">原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生中文頁面</p>
         </div>
         <div class="feature">
-          <h3>雙語對照</h3>
-          <p>原文與譯文並列顯示，一眼對照學語言或核對譯文；單語覆蓋與雙語對照可隨時切換</p>
+          <h3 data-i18n="feature.dual.title">雙語對照</h3>
+          <p data-i18n="feature.dual.body">原文與譯文並列顯示，一眼對照學語言或核對譯文；單語覆蓋與雙語對照可隨時切換</p>
         </div>
         <div class="feature">
-          <h3>YouTube 字幕翻譯</h3>
-          <p>看 YouTube 影片時，英文字幕自動翻譯為中文，並可選擇雙語對照</p>
+          <h3 data-i18n="feature.youtube.title">YouTube 字幕翻譯</h3>
+          <p data-i18n="feature.youtube.body">看 YouTube 影片時，英文字幕自動翻譯為中文，並可選擇雙語對照</p>
         </div>
         <div class="feature">
-          <h3>跨頁自動延續翻譯</h3>
-          <p>翻譯過的頁面點連結開新分頁、按返回鍵回上一頁都自動翻譯，不用每頁再按一次</p>
+          <h3 data-i18n="feature.spa.title">跨頁自動延續翻譯</h3>
+          <p data-i18n="feature.spa.body">翻譯過的頁面點連結開新分頁、按返回鍵回上一頁都自動翻譯，不用每頁再按一次</p>
         </div>
         <div class="feature">
-          <h3>固定術語表</h3>
-          <p>自訂翻譯對照表，確保專有名詞一律使用你指定的譯名</p>
+          <h3 data-i18n="feature.glossary.title">固定術語表</h3>
+          <p data-i18n="feature.glossary.body">自訂翻譯對照表，確保專有名詞一律使用你指定的譯名</p>
         </div>
         <div class="feature">
-          <h3>中國用語黑名單</h3>
-          <p>可編輯的禁用詞清單（預設 25 條，涵蓋視頻 / 軟件 / 數據 / 網絡 / 質量 / 用戶等常踩雷詞），明確要求 LLM 不可使用</p>
+          <h3 data-i18n="feature.blocklist.title">禁用詞清單</h3>
+          <p data-i18n="feature.blocklist.body">可編輯的禁用詞清單（預設 25 條，例如視頻 / 軟件 / 數據 / 網絡 / 質量 / 用戶），明確要求 LLM 不要使用</p>
         </div>
         <div class="feature">
-          <h3>只翻文章開頭</h3>
-          <p>先翻前幾段預覽再決定是否讀完整篇，大幅節省 token</p>
+          <h3 data-i18n="feature.preview.title">只翻文章開頭</h3>
+          <p data-i18n="feature.preview.body">先翻前幾段預覽再決定是否讀完整篇，大幅節省 token</p>
         </div>
         <div class="feature">
-          <h3>翻譯快取</h3>
-          <p>翻過的段落自動快取，同一頁再開不花錢</p>
+          <h3 data-i18n="feature.cache.title">翻譯快取</h3>
+          <p data-i18n="feature.cache.body">翻過的段落自動快取，同一頁再開不花錢</p>
         </div>
         <div class="feature">
-          <h3>費用透明</h3>
-          <p>每次翻譯即時顯示花費多少錢，設定頁可回查過去每一筆翻譯紀錄的 token 用量與費用，支援圖表與 CSV 匯出</p>
+          <h3 data-i18n="feature.cost.title">費用透明</h3>
+          <p data-i18n="feature.cost.body">每次翻譯即時顯示花費多少錢，設定頁可回查過去每一筆翻譯紀錄的 token 用量與費用，支援圖表與 CSV 匯出</p>
         </div>
         <div class="feature">
-          <h3>三翻譯引擎</h3>
-          <p>Gemini + Google Translate + <strong>自訂模型</strong>（OpenAI 相容端點，可接 OpenRouter / Together / DeepSeek / Ollama 本機等百種模型）並存，依場景自由切換</p>
+          <h3 data-i18n="feature.engines.title">三翻譯引擎</h3>
+          <p data-i18n="feature.engines.body">Gemini + Google Translate + <strong>自訂模型</strong>（OpenAI 相容端點，可接 OpenRouter / Together / DeepSeek / Ollama 本機等百種模型）並存，依場景自由切換</p>
         </div>
         <div class="feature">
-          <h3>自訂快速鍵</h3>
-          <p>三組可自訂快速鍵（<code>Alt+A</code> / <code>Alt+S</code> / <code>Alt+D</code>），一鍵切換翻譯引擎與模型</p>
+          <h3 data-i18n="feature.shortcuts.title">自訂快速鍵</h3>
+          <p data-i18n="feature.shortcuts.body">三組可自訂快速鍵（<code>Alt+A</code> / <code>Alt+S</code> / <code>Alt+D</code>），一鍵切換翻譯引擎與模型</p>
         </div>
       </div>
     </div>
@@ -423,27 +500,27 @@
   <!-- Install Steps -->
   <section>
     <div class="container">
-      <h2>Beta 版手動安裝步驟</h2>
+      <h2 data-i18n="install.heading">Beta 版手動安裝步驟</h2>
       <div class="steps">
         <div class="step">
           <div class="step-num">1</div>
           <div class="step-body">
-            <h3>下載並解壓縮</h3>
-            <p>從上方按鈕下載 <code>.zip</code> 檔案，解壓縮到任意位置</p>
+            <h3 data-i18n="install.step1.title">下載並解壓縮</h3>
+            <p data-i18n="install.step1.body">從上方按鈕下載 <code>.zip</code> 檔案，解壓縮到任意位置</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">2</div>
           <div class="step-body">
-            <h3>載入擴充功能</h3>
-            <p>開啟 Chrome，前往 <code>chrome://extensions/</code>，打開右上角「開發人員模式」，點「載入未封裝項目」，選擇解壓縮後的 <code>shinkansen</code> 資料夾</p>
+            <h3 data-i18n="install.step2.title">載入擴充功能</h3>
+            <p data-i18n="install.step2.body">開啟 Chrome，前往 <code>chrome://extensions/</code>，打開右上角「開發人員模式」，點「載入未封裝項目」，選擇解壓縮後的 <code>shinkansen</code> 資料夾</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">3</div>
           <div class="step-body">
-            <h3>設定 API Key</h3>
-            <p>點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" style="color:#2563eb;">Gemini API Key</a>完成！按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）</p>
+            <h3 data-i18n="install.step3.title">設定 API Key</h3>
+            <p data-i18n="install.step3.body">點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" style="color:#2563eb;">Gemini API Key</a>完成！按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）</p>
           </div>
         </div>
       </div>
@@ -453,11 +530,206 @@
   <!-- Footer -->
   <footer>
     <div class="container">
-      <p>Shinkansen 採用 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/LICENSE">Elastic License 2.0</a> 授權 · <a href="privacy-policy.html">隱私權政策</a> · <a href="https://github.com/jimmysu0309/shinkansen">原始碼</a></p>
-      <p style="margin-top:8px;">Firefox 128+ beta 測試版(尚未驗收,協助 debug 用):<a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.8.36/shinkansen-firefox-v1.8.36-beta.zip">shinkansen-firefox-v1.8.36-beta.zip</a></p>
+      <p data-i18n="footer.license">Shinkansen 採用 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/LICENSE">Elastic License 2.0</a> 授權 · <a href="privacy-policy.html">隱私權政策</a> · <a href="https://github.com/jimmysu0309/shinkansen">原始碼</a></p>
+      <p style="margin-top:8px;"><span data-i18n="footer.firefox">Firefox 128+ beta 測試版（尚未驗收，協助 debug 用）：</span><a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.8.37/shinkansen-firefox-v1.8.37-beta.zip">shinkansen-firefox-v1.8.37-beta.zip</a></p>
       <p style="margin-top:8px; font-style:italic;">No coding skills were harmed in the making of this shit.</p>
     </div>
   </footer>
+
+  <script>
+    (function () {
+      var I18N = {
+        'zh-TW': {
+          'meta.title': 'Shinkansen｜極速、私密、高品質的網頁翻譯體驗',
+          'meta.description': '使用 Google Gemini 將外語網頁翻譯成台灣繁體中文，原地替換文字，保留頁面原始排版你的瀏覽資料不經過第三方伺服器',
+          'og.title': 'Shinkansen — Chrome 網頁翻譯擴充功能',
+          'og.description': '使用 Google Gemini 翻譯網頁，保留原始排版，瀏覽資料不經過第三方伺服器',
+
+          'hero.subtitle': '極速、私密、高品質的網頁翻譯體驗',
+          'hero.tagline': '你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的電腦直接呼叫 Google Gemini 翻譯，不經過任何第三方',
+          'btn.cws.text': '從 Chrome Web Store 安裝',
+          'btn.cws.status': '已上架',
+          'btn.github.text': 'GitHub 下載 beta 版手動安裝',
+          'hero.sub': '開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
+
+          'recent.heading': '近期重大更新',
+          'recent.1': '新增<strong>極速秒翻</strong>，按下翻譯 1 秒看到頁面開始變中文（限 Gemini）',
+          'recent.2': '新增<strong>雙語對照模式</strong>，原文 + 譯文並列顯示',
+          'recent.3': '新增<strong>自訂 AI 模型</strong>，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型',
+          'recent.4': '新增<strong>AI 分句</strong>,YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀',
+          'recent.5': '新增<strong>禁用詞清單</strong>，明確要求 LLM 不要使用視頻 / 軟件 / 數據等不希望出現在譯文中的詞',
+          'recent.6': '新增<strong>只翻文章開頭</strong>選項，先翻前 N 段預覽，大幅節省 token',
+
+          'privacy.heading': '為什麼做 Shinkansen?',
+          'privacy.intro1': '既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光',
+          'privacy.intro2': 'Shinkansen 的出發點就是保護您的隱私：',
+          'privacy.point1': '<strong>資料不外傳</strong>：翻譯請求直連 Google Gemini，不經過任何第三方伺服器',
+          'privacy.point2': '<strong>設定留在本地</strong>：所有資料只存在你自己的電腦上',
+          'privacy.point3': '<strong>原始碼完全公開</strong>：任何人都可以檢視程式碼，確認沒有後門',
+
+          'compare.before': '翻譯前',
+          'compare.after': '翻譯後',
+          'compare.before.alt': '翻譯前 — Wikipedia 英文原文',
+          'compare.after.alt': '翻譯後 — Shinkansen 將內容翻譯成繁體中文，排版完整保留',
+          'compare.caption': '排版、連結、圖片全部保留，看起來就像原生中文頁面',
+
+          'features.heading': '功能特色',
+          'feature.fast.title': '極速秒翻',
+          'feature.fast.body': '按下翻譯 1 秒看到頁面開始變中文，不用等整批 API 回完再一次塞回頁面（限 Gemini）',
+          'feature.layout.title': '保留網頁排版',
+          'feature.layout.body': '原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生中文頁面',
+          'feature.dual.title': '雙語對照',
+          'feature.dual.body': '原文與譯文並列顯示，一眼對照學語言或核對譯文；單語覆蓋與雙語對照可隨時切換',
+          'feature.youtube.title': 'YouTube 字幕翻譯',
+          'feature.youtube.body': '看 YouTube 影片時，英文字幕自動翻譯為中文，並可選擇雙語對照',
+          'feature.spa.title': '跨頁自動延續翻譯',
+          'feature.spa.body': '翻譯過的頁面點連結開新分頁、按返回鍵回上一頁都自動翻譯，不用每頁再按一次',
+          'feature.glossary.title': '固定術語表',
+          'feature.glossary.body': '自訂翻譯對照表，確保專有名詞一律使用你指定的譯名',
+          'feature.blocklist.title': '禁用詞清單',
+          'feature.blocklist.body': '可編輯的禁用詞清單（預設 25 條，例如視頻 / 軟件 / 數據 / 網絡 / 質量 / 用戶），明確要求 LLM 不要使用',
+          'feature.preview.title': '只翻文章開頭',
+          'feature.preview.body': '先翻前幾段預覽再決定是否讀完整篇，大幅節省 token',
+          'feature.cache.title': '翻譯快取',
+          'feature.cache.body': '翻過的段落自動快取，同一頁再開不花錢',
+          'feature.cost.title': '費用透明',
+          'feature.cost.body': '每次翻譯即時顯示花費多少錢，設定頁可回查過去每一筆翻譯紀錄的 token 用量與費用，支援圖表與 CSV 匯出',
+          'feature.engines.title': '三翻譯引擎',
+          'feature.engines.body': 'Gemini + Google Translate + <strong>自訂模型</strong>（OpenAI 相容端點，可接 OpenRouter / Together / DeepSeek / Ollama 本機等百種模型）並存，依場景自由切換',
+          'feature.shortcuts.title': '自訂快速鍵',
+          'feature.shortcuts.body': '三組可自訂快速鍵（<code>Alt+A</code> / <code>Alt+S</code> / <code>Alt+D</code>），一鍵切換翻譯引擎與模型',
+
+          'install.heading': 'Beta 版手動安裝步驟',
+          'install.step1.title': '下載並解壓縮',
+          'install.step1.body': '從上方按鈕下載 <code>.zip</code> 檔案，解壓縮到任意位置',
+          'install.step2.title': '載入擴充功能',
+          'install.step2.body': '開啟 Chrome，前往 <code>chrome://extensions/</code>，打開右上角「開發人員模式」，點「載入未封裝項目」，選擇解壓縮後的 <code>shinkansen</code> 資料夾',
+          'install.step3.title': '設定 API Key',
+          'install.step3.body': '點工具列的 Shinkansen 圖示 → 設定 → 貼上你的 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" style="color:#2563eb;">Gemini API Key</a>完成！按 <code>Alt+S</code> 用 Gemini 翻譯，或按 <code>Alt+D</code> 用免費的 Google Translate（不需 API Key）',
+
+          'footer.license': 'Shinkansen 採用 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/LICENSE">Elastic License 2.0</a> 授權 · <a href="privacy-policy.html">隱私權政策</a> · <a href="https://github.com/jimmysu0309/shinkansen">原始碼</a>',
+          'footer.firefox': 'Firefox 128+ beta 測試版（尚未驗收，協助 debug 用）：'
+        },
+        'en': {
+          'meta.title': 'Shinkansen | Fast, private, high-quality web translation',
+          'meta.description': 'Translate foreign-language web pages into Traditional Chinese (Taiwan) with Google Gemini. In-place text replacement preserves the original layout. Your browsing never touches a third-party server.',
+          'og.title': 'Shinkansen — Chrome web translation extension',
+          'og.description': 'Translate web pages with Google Gemini. Original layout preserved. Browsing data never touches a third-party server.',
+
+          'hero.subtitle': 'Fast, private, high-quality web translation',
+          'hero.tagline': 'Your browsing should not pass through someone else\'s server.<br>Shinkansen calls Google Gemini directly from your browser — no third party in between.',
+          'btn.cws.text': 'Install from Chrome Web Store',
+          'btn.cws.status': 'published',
+          'btn.github.text': 'Manual install (beta from GitHub)',
+          'hero.sub': 'Open source · <a href="https://github.com/jimmysu0309/shinkansen#readme">Documentation</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
+
+          'recent.heading': 'Recent major updates',
+          'recent.1': 'Added <strong>Instant Translation</strong> — see the page start turning Chinese within 1 second of pressing translate (Gemini only).',
+          'recent.2': 'Added <strong>Bilingual mode</strong> — original and translation shown side by side.',
+          'recent.3': 'Added <strong>Custom AI models</strong> — bring your own OpenRouter / Claude / DeepSeek / local Ollama, etc.',
+          'recent.4': 'Added <strong>AI re-segmentation</strong> — YouTube auto-generated captions are re-segmented by AI for more natural Chinese subtitles.',
+          'recent.5': 'Added <strong>Blocked-word list</strong> — explicitly tell the LLM to avoid words you don\'t want appearing in the translation.',
+          'recent.6': 'Added <strong>Translate opening only</strong> — preview the first N paragraphs to save tokens.',
+
+          'privacy.heading': 'Why Shinkansen?',
+          'privacy.intro1': 'Existing immersive web-translation tools forward every page you read to a third-party server — every article, every email, all of it potentially visible to someone else.',
+          'privacy.intro2': 'Shinkansen exists to protect your privacy:',
+          'privacy.point1': '<strong>No data forwarding</strong>: translation requests go directly to Google Gemini. No third-party server in between.',
+          'privacy.point2': '<strong>Settings stay local</strong>: all data lives on your own computer.',
+          'privacy.point3': '<strong>Fully open source</strong>: anyone can read the code and verify there is no backdoor.',
+
+          'compare.before': 'Before',
+          'compare.after': 'After',
+          'compare.before.alt': 'Before — Wikipedia English original',
+          'compare.after.alt': 'After — Shinkansen translates the content into Traditional Chinese while preserving the layout',
+          'compare.caption': 'Layout, links, and images are preserved — it looks like a native Chinese page.',
+
+          'features.heading': 'Features',
+          'feature.fast.title': 'Instant translation',
+          'feature.fast.body': 'See the page start turning Chinese within 1 second of pressing translate. No need to wait for the entire batch to return (Gemini only).',
+          'feature.layout.title': 'Preserves page layout',
+          'feature.layout.body': 'In-place text replacement keeps fonts, sizes, colors, and links intact — it looks like a native Chinese page.',
+          'feature.dual.title': 'Bilingual side-by-side',
+          'feature.dual.body': 'Original and translation shown together for language learning or proofreading. Switch between overlay and bilingual modes anytime.',
+          'feature.youtube.title': 'YouTube subtitle translation',
+          'feature.youtube.body': 'Watch YouTube videos with English captions auto-translated to Chinese, with optional bilingual display.',
+          'feature.spa.title': 'Auto-translate across pages',
+          'feature.spa.body': 'Once a page is translated, clicking links or pressing Back also auto-translates the next page — no need to trigger translation per page.',
+          'feature.glossary.title': 'Custom glossary',
+          'feature.glossary.body': 'Pin specific terms to your preferred translations so proper nouns are always rendered consistently.',
+          'feature.blocklist.title': 'Blocked-word list',
+          'feature.blocklist.body': 'An editable list of words you don\'t want in the translation (25 defaults aimed at common mainland Chinese phrasings). The LLM is explicitly instructed not to use them.',
+          'feature.preview.title': 'Translate opening only',
+          'feature.preview.body': 'Preview the first few paragraphs before deciding whether to translate the whole article — saves tokens.',
+          'feature.cache.title': 'Translation cache',
+          'feature.cache.body': 'Already-translated paragraphs are cached automatically — re-opening the same page costs nothing.',
+          'feature.cost.title': 'Transparent pricing',
+          'feature.cost.body': 'Cost is shown live during translation. The settings page tracks token usage and cost for every past run, with charts and CSV export.',
+          'feature.engines.title': 'Three translation engines',
+          'feature.engines.body': 'Gemini + Google Translate + <strong>custom models</strong> (any OpenAI-compatible endpoint — OpenRouter / Together / DeepSeek / local Ollama, etc.) coexist. Switch freely depending on context.',
+          'feature.shortcuts.title': 'Custom shortcuts',
+          'feature.shortcuts.body': 'Three customizable shortcuts (<code>Alt+A</code> / <code>Alt+S</code> / <code>Alt+D</code>) for switching engines and models on the fly.',
+
+          'install.heading': 'Beta manual install',
+          'install.step1.title': 'Download and unzip',
+          'install.step1.body': 'Download the <code>.zip</code> from the button above and unzip it anywhere.',
+          'install.step2.title': 'Load the extension',
+          'install.step2.body': 'Open Chrome, go to <code>chrome://extensions/</code>, enable Developer mode (top right), click "Load unpacked", and select the unzipped <code>shinkansen</code> folder.',
+          'install.step3.title': 'Set up your API key',
+          'install.step3.body': 'Click the Shinkansen icon in the toolbar → Settings → paste your <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" style="color:#2563eb;">Gemini API key</a>. Done! Press <code>Alt+S</code> to translate with Gemini, or <code>Alt+D</code> to use the free Google Translate (no API key needed).',
+
+          'footer.license': 'Shinkansen is licensed under <a href="https://github.com/jimmysu0309/shinkansen/blob/main/LICENSE">Elastic License 2.0</a> · <a href="privacy-policy.html">Privacy policy</a> · <a href="https://github.com/jimmysu0309/shinkansen">Source code</a>',
+          'footer.firefox': 'Firefox 128+ beta (unverified, debug help wanted): '
+        }
+      };
+
+      function applyI18n(lang) {
+        var dict = I18N[lang] || I18N['en'];
+        document.documentElement.lang = lang;
+        document.documentElement.setAttribute('data-lang', lang);
+
+        if (dict['meta.title']) document.title = dict['meta.title'];
+        var sel = function (q) { return document.querySelector(q); };
+        var setMeta = function (q, v) { var el = sel(q); if (el && v) el.setAttribute('content', v); };
+        setMeta('meta[name="description"]', dict['meta.description']);
+        setMeta('meta[property="og:title"]', dict['og.title']);
+        setMeta('meta[property="og:description"]', dict['og.description']);
+        setMeta('meta[name="twitter:title"]', dict['og.title']);
+        setMeta('meta[name="twitter:description"]', dict['og.description']);
+
+        var nodes = document.querySelectorAll('[data-i18n]');
+        for (var i = 0; i < nodes.length; i++) {
+          var key = nodes[i].getAttribute('data-i18n');
+          if (dict[key] !== undefined) nodes[i].innerHTML = dict[key];
+        }
+        var altNodes = document.querySelectorAll('[data-i18n-alt]');
+        for (var j = 0; j < altNodes.length; j++) {
+          var akey = altNodes[j].getAttribute('data-i18n-alt');
+          if (dict[akey] !== undefined) altNodes[j].setAttribute('alt', dict[akey]);
+        }
+
+        var btns = document.querySelectorAll('.lang-btn');
+        for (var k = 0; k < btns.length; k++) {
+          btns[k].classList.toggle('active', btns[k].getAttribute('data-lang') === lang);
+        }
+      }
+
+      function setLang(lang) {
+        try { localStorage.setItem('shinkansen_lang', lang); } catch (e) {}
+        applyI18n(lang);
+      }
+
+      var initial = document.documentElement.getAttribute('data-lang') || 'en';
+      applyI18n(initial);
+
+      var btns = document.querySelectorAll('.lang-btn');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('click', function () {
+          setLang(this.getAttribute('data-lang'));
+        });
+      }
+    })();
+  </script>
 
 </body>
 </html>

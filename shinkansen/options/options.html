@@ -188,9 +188,9 @@
     <section>
       <h2>雙語對照視覺標記</h2>
       <p class="muted">
-        當顯示模式設為「雙語對照」時,譯文會以新段落形式 append 在原文之後。
-        以下選項決定譯文段落的視覺標記樣式(顯示模式本身可在 popup 切換)。
-        v1.8.31 起,Shinkansen 會自動偵測網頁實際背景亮度套用對應配色,亮色與深色頁面各自呈現如下
+        當顯示模式設為「雙語對照」時，譯文會以新段落形式 append 在原文之後。
+        以下選項決定譯文段落的視覺標記樣式（顯示模式本身可在 popup 切換）。
+        v1.8.31 起，Shinkansen 會自動偵測網頁實際背景亮度套用對應配色，亮色與深色頁面各自呈現如下
       </p>
       <div class="dual-demo-pair">
         <div class="dual-demo dual-demo-light">
@@ -270,7 +270,7 @@
       <p>Shinkansen 採用 <strong>Elastic License 2.0 (ELv2)</strong> 授權</p>
       <p>你可以自由查看原始碼、學習、修改、自己使用，但<strong>不能把 Shinkansen（或改寫版本）包成服務拿去賣</strong></p>
       <p class="muted">完整條款請見擴充功能目錄內的 LICENSE 檔案，或參閱 <a href="https://www.elastic.co/licensing/elastic-license" target="_blank" rel="noopener">Elastic License 2.0 官方全文</a></p>
-      <p class="muted">作者：Jimmy Su ・ Twitter (X)：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
+      <p class="muted">作者：Jimmy Su ・ Twitter （X）：<a href="https://x.com/jimmy_su" target="_blank" rel="noopener">@jimmy_su</a></p>
     </section>
 
     </div><!-- /tab-settings -->
@@ -286,7 +286,7 @@
         詳細費率見 <a href="https://ai.google.dev/pricing" target="_blank" rel="noopener">Gemini 官方定價頁</a>
       </p>
       <p class="muted" style="font-size: 13px;">
-        Preset 翻譯的計價優先順序:覆蓋值 → 內建表 → 下方「後備路徑單價」。單位皆為「每 1M tokens 的美金價格」
+        Preset 翻譯的計價優先順序：覆蓋值 → 內建表 → 下方「後備路徑單價」。單位皆為「每 1M tokens 的美金價格」
       </p>
 
       <div class="model-pricing-overrides">
@@ -375,7 +375,7 @@
     <section>
       <details class="advanced-details">
         <summary>效能調校（進階）— 批次大小、並行數量、單頁段落上限</summary>
-        <p class="muted">調整每批翻譯的大小與並行數量，影響翻譯速度與品質的平衡。一般使用者不需要動,維持預設即可</p>
+        <p class="muted">調整每批翻譯的大小與並行數量，影響翻譯速度與品質的平衡。一般使用者不需要動，維持預設即可</p>
         <label>
           同時並發批次上限
           <input type="number" id="maxConcurrentBatches" step="1" min="1" max="50">
@@ -402,16 +402,16 @@
     <section>
       <details class="advanced-details">
         <summary>API 配額管理（進階）— Gemini API 層級、自訂上限、失敗重試</summary>
-        <p class="muted">Shinkansen 會在背景幫你管理 Gemini API 用量。大頁面翻譯時會把請求平均攤開避免 burst 觸發 Google 限速;快超過每日上限時提早警告,不會等到失敗才知道。多數情況維持預設即可</p>
+        <p class="muted">Shinkansen 會在背景幫你管理 Gemini API 用量。大頁面翻譯時會把請求平均攤開避免 burst 觸發 Google 限速；快超過每日上限時提早警告，不會等到失敗才知道。多數情況維持預設即可</p>
         <label>
           Gemini API 層級
           <select id="tier">
             <option value="free">Free（免費）</option>
-            <option value="tier1">Tier 1（付費,已啟用 billing）</option>
-            <option value="tier2">Tier 2（累積消費 $250+,首次付款 30 天後）</option>
+            <option value="tier1">Tier 1（付費，已啟用 billing）</option>
+            <option value="tier2">Tier 2（累積消費 $250+，首次付款 30 天後）</option>
             <option value="custom">自訂（手動填入下方數值）</option>
           </select>
-          <small class="muted">不確定自己是哪一層?到 <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">Gemini API Rate Limit</a> 查詢。剛申請 API key 沒啟用付費 = Free。層級切換時下方三個數字自動更新,只有把 Tier 選為「自訂」才需要手動填</small>
+          <small class="muted">不確定自己是哪一層？到 <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noopener">Gemini API Rate Limit</a> 查詢。剛申請 API key 沒啟用付費 = Free。層級切換時下方三個數字自動更新，只有把 Tier 選為「自訂」才需要手動填</small>
         </label>
         <div class="triple">
           <label>
@@ -430,7 +430,7 @@
         <label>
           失敗重試次數
           <input type="number" id="maxRetries" step="1" min="0" max="10">
-          <small class="muted">單批翻譯遇到 API 錯誤（如 429 配額限制）時的最大重試次數,設為 0 表示不重試、失敗即跳過,預設 3 次</small>
+          <small class="muted">單批翻譯遇到 API 錯誤（如 429 配額限制）時的最大重試次數，設為 0 表示不重試、失敗即跳過，預設 3 次</small>
         </label>
       </details>
     </section>
@@ -518,7 +518,7 @@
         <label>
           阻塞門檻（批次數）
           <input type="number" id="glossaryBlockingThreshold" step="1" min="0" max="50">
-          <small class="muted">頁面切批 > 此值才「先等術語表再翻譯」（blocking），≤ 此值則術語表跟翻譯並行（fire-and-forget，不阻塞首字）。預設 10——中等長度頁面省 1.5-7 秒首字延遲，但 batch 0 翻的部分可能跟後段術語不一致。設 0 = 全部走 fire-and-forget（永不阻塞）;設極大值（如 50）= 幾乎都阻塞（舊行為）</small>
+          <small class="muted">頁面切批 > 此值才「先等術語表再翻譯」（blocking），≤ 此值則術語表跟翻譯並行（fire-and-forget，不阻塞首字）。預設 10——中等長度頁面省 1.5-7 秒首字延遲，但 batch 0 翻的部分可能跟後段術語不一致。設 0 = 全部走 fire-and-forget（永不阻塞）；設極大值（如 50）= 幾乎都阻塞（舊行為）</small>
         </label>
         <label>
           術語表 Temperature
@@ -560,10 +560,10 @@
       </p>
       <label>
         Base URL
-        <input type="text" id="cp-baseUrl" placeholder="例如:https://openrouter.ai/api/v1">
+        <input type="text" id="cp-baseUrl" placeholder="例如：https://openrouter.ai/api/v1">
         <small class="muted">
           OpenAI 相容模型端點的根目錄。系統會自動接 <code>/chat/completions</code>。
-          常見:<code>https://openrouter.ai/api/v1</code>、<code>https://api.together.xyz/v1</code>、
+          常見：<code>https://openrouter.ai/api/v1</code>、<code>https://api.together.xyz/v1</code>、
           <code>http://localhost:11434/v1</code>(Ollama)
         </small>
       </label>
@@ -654,8 +654,8 @@
         <summary class="muted" style="font-size: 13px; cursor: pointer; margin-top: 8px;">進階：自訂 request body 額外參數（JSON，覆蓋上方思考強度）</summary>
         <textarea id="cp-extra-body-json" rows="4" placeholder='例：{"reasoning":{"max_tokens":4000},"top_k":40}' style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
         <small class="muted">
-          內容會深層 merge 進 chat.completions request body，可用來:
-          （1）強制覆蓋上方「思考強度」自動產生的設定;
+          內容會深層 merge 進 chat.completions request body，可用來：
+          （1）強制覆蓋上方「思考強度」自動產生的設定；
           （2）加 provider 專屬參數（例如 OpenRouter 的 <code>top_k</code> / <code>min_p</code>、
           Anthropic 的 <code>metadata</code>）。
           格式錯誤會在 Debug 分頁 log 一條 warn 並忽略，翻譯不會中斷
@@ -693,7 +693,7 @@
     <section>
       <h2>禁用詞清單</h2>
       <p class="muted">
-        針對 LLM 容易漏網的中國大陸用語自訂禁用對照表。內容會以高顯著性區塊
+        針對 AI 模型容易漏網的禁用辭彙自訂禁用對照表。內容會以高顯著性區塊
         注入 Gemini 的 system prompt 末端，明確要求譯文不可使用左欄詞彙、
         必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文
       </p>
@@ -915,7 +915,7 @@
       </label>
     </section>
 
-    <!-- v1.6.23: 簡化為單一 toggle：開啟=混合模式(progressive)、關閉=預設分句(heuristic) -->
+    <!-- v1.6.23: 簡化為單一 toggle：開啟=混合模式（progressive）、關閉=預設分句（heuristic） -->
     <section>
       <h2>自動產生字幕分句模式</h2>
       <p class="muted">
@@ -989,13 +989,13 @@
       <button type="button" id="yt-reset-prompt" class="secondary">重置為預設 Prompt</button>
     </section>
 
-    <!-- v1.5.8: 字幕是否套用全域的固定術語表 / 中國用語黑名單。預設關省 token。 -->
+    <!-- v1.5.8: 字幕是否套用全域的固定術語表 / 禁用詞清單。預設關省 token。 -->
     <section>
       <details class="advanced-details">
         <summary>進階：固定術語表 & 禁用詞清單</summary>
         <p class="muted">
-          是否把「術語表」分頁的固定術語表、與「禁用詞清單」分頁的中國用語黑名單也注入到字幕翻譯的 prompt？<br>
-          <strong>預設關閉以省 token</strong>——字幕本來就走獨立 prompt，且字幕短句 LLM 不太會誤翻黑名單詞，套用收益小、開銷會在高頻字幕場景累積
+          是否把「術語表」分頁的固定術語表、與「禁用詞清單」分頁的禁用對照表也注入到字幕翻譯的 prompt？<br>
+          <strong>預設關閉以省 token</strong>——字幕本來就走獨立 prompt，且字幕短句 AI 模型不太會誤翻禁用詞，套用收益小、開銷會在高頻字幕場景累積
         </p>
         <label class="checkbox-label">
           <input type="checkbox" id="ytApplyFixedGlossary">
@@ -1014,7 +1014,7 @@
     <section>
       <details class="advanced-details">
         <summary>進階：字幕分批翻譯參數</summary>
-        <p class="muted">字幕依時間分批翻譯。每批翻譯涵蓋一段時間內的字幕，在快用完前提前翻好下一批。一般使用者不需要動,維持預設即可</p>
+        <p class="muted">字幕依時間分批翻譯。每批翻譯涵蓋一段時間內的字幕，在快用完前提前翻好下一批。一般使用者不需要動，維持預設即可</p>
         <label>
           每批涵蓋秒數
           <input type="number" id="ytWindowSizeS" step="5" min="10" max="120">
@@ -1028,7 +1028,7 @@
       </details>
     </section>
 
-    <!-- YouTube 無邊模式（隱藏功能,需於 chrome://extensions/shortcuts 自行綁快速鍵） -->
+    <!-- YouTube 無邊模式（隱藏功能，需於 chrome://extensions/shortcuts 自行綁快速鍵） -->
     <section>
       <details class="advanced-details">
         <summary>進階：YouTube 無邊模式</summary>
