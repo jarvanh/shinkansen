@@ -6,7 +6,7 @@ A fast, smooth Chrome extension that translates foreign-language web pages into 
 
 The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictionless reading experience.
 
-> [Install from Chrome Web Store](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) (recommended) · [Download latest zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · See the [project page](https://jimmysu0309.github.io/shinkansen/) for install guide and product overview · [Changelog](CHANGELOG.md)
+> [Install from Chrome Web Store](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) · [Install from Firefox Add-ons](https://addons.mozilla.org/firefox/addon/shinkansen/) · [Download latest zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · See the [project page](https://jimmysu0309.github.io/shinkansen/) for install guide and product overview · [Changelog](CHANGELOG.md)
 
 ## Recent major updates
 
@@ -51,9 +51,13 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 
 ## Installation
 
-**Recommended: Chrome Web Store**
+**Chrome / Edge / Brave (Chromium browsers)**
 
 Go to the [Chrome Web Store listing](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) and click "Add to Chrome".
+
+**Firefox**
+
+Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shinkansen/) and click "Add to Firefox".
 
 **Developer build (load unpacked)**
 
