@@ -1,7 +1,7 @@
 # Shinkansen Firefox — Build Instructions for AMO Reviewers
 
 This document explains how to rebuild the submitted Firefox extension ZIP
-(`shinkansen-firefox-vX.Y.Z-beta.zip`) from the accompanying source ZIP
+(`shinkansen-firefox-vX.Y.Z.zip`) from the accompanying source ZIP
 (`shinkansen-firefox-vX.Y.Z-source.zip`).
 
 The build process is **trivial**: a single `jq` invocation patches 5 lines
@@ -52,7 +52,7 @@ winget install jqlang.jq
    ./firefox-build.sh
    ```
 
-3. Output: `shinkansen-firefox-vX.Y.Z-beta.zip` in the current directory,
+3. Output: `shinkansen-firefox-vX.Y.Z.zip` in the current directory,
    matching the submitted Firefox ZIP byte-for-byte (modulo ZIP timestamp
    metadata).
 
@@ -121,7 +121,7 @@ All other files (`background.js`, `content-*.js`, `lib/**/*`, `popup/**/*`,
 After running `firefox-build.sh`, verify the patched manifest:
 
 ```bash
-unzip -p shinkansen-firefox-vX.Y.Z-beta.zip manifest.json | jq '{version, background, browser_specific_settings}'
+unzip -p shinkansen-firefox-vX.Y.Z.zip manifest.json | jq '{version, background, browser_specific_settings}'
 ```
 
 Expected output:

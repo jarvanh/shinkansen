@@ -54,7 +54,7 @@ jobs:
           name: ${{ steps.version.outputs.VERSION }}
           files: |
             shinkansen-${{ steps.version.outputs.VERSION }}.zip
-            shinkansen-firefox-${{ steps.version.outputs.VERSION }}-beta.zip
+            shinkansen-firefox-${{ steps.version.outputs.VERSION }}.zip
             shinkansen-firefox-${{ steps.version.outputs.VERSION }}-source.zip
           generate_release_notes: true
           # GitHub 預設「建立時間最新 = Latest」會被補建舊 tag 偷走 Latest 標籤。
