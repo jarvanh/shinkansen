@@ -6,7 +6,7 @@
 
 名稱「新幹線」象徵快速、平穩、流暢的閱讀體驗。
 
-> [從 Chrome Web Store 安裝](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg)（推薦）· [下載最新版本 zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · 安裝教學與產品介紹見 [官方網頁](https://jimmysu0309.github.io/shinkansen/) · [功能變更紀錄](CHANGELOG.md)
+> [從 Chrome Web Store 安裝](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) · [從 Firefox Add-ons 安裝](https://addons.mozilla.org/firefox/addon/shinkansen/) · [下載最新版本 zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · 安裝教學與產品介紹見 [官方網頁](https://jimmysu0309.github.io/shinkansen/) · [功能變更紀錄](CHANGELOG.md)
 
 ## 近期重大更新
 
@@ -51,9 +51,13 @@
 
 ## 安裝方式
 
-**推薦：Chrome Web Store**
+**Chrome / Edge / Brave 等 Chromium 瀏覽器**
 
 前往 [Chrome Web Store 安裝頁面](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) 點「加到 Chrome」即可。
+
+**Firefox**
+
+前往 [Firefox Add-ons 安裝頁面](https://addons.mozilla.org/firefox/addon/shinkansen/) 點「Add to Firefox」即可。
 
 **開發版（載入未封裝）**
 
