@@ -29,6 +29,8 @@ let translateAbortController = null;
 let currentDoc = null;       // analyzeLayout 輸出
 let currentPdfDoc = null;    // PDF.js PDFDocumentProxy（記得 destroy）
 let currentDebugPage = 0;
+let currentReaderHandle = null;
+let currentModelOverride = null;
 
 function showStage(name) {
   for (const [key, el] of Object.entries(stages)) {
@@ -63,12 +65,17 @@ function setParsingDetail(text) {
 }
 
 function releaseCurrentDoc() {
+  if (currentReaderHandle) {
+    try { currentReaderHandle.destroy(); } catch (_) { /* ignore */ }
+    currentReaderHandle = null;
+  }
   if (currentPdfDoc) {
     closeDocument(currentPdfDoc);
     currentPdfDoc = null;
   }
   currentDoc = null;
   currentDebugPage = 0;
+  currentModelOverride = null;
   if (window.__skLayoutDoc) delete window.__skLayoutDoc;
 }
 
@@ -510,6 +517,31 @@ function bindReaderUI() {
     }
     setTimeout(() => { btn.textContent = orig; }, 2500);
   });
+  $('reader-sync-toggle').addEventListener('change', (e) => {
+    if (currentReaderHandle) {
+      currentReaderHandle.setSyncEnabled(e.target.checked);
+    }
+  });
+  $('reader-zoom-out').addEventListener('click', () => stepZoom(-0.1));
+  $('reader-zoom-in').addEventListener('click', () => stepZoom(+0.1));
+  $('reader-retry-all-btn').addEventListener('click', async () => {
+    if (!currentReaderHandle) return;
+    const btn = $('reader-retry-all-btn');
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '重試中…';
+    try {
+      const r = await currentReaderHandle.retryAllFailed();
+      btn.textContent = `${r.success}/${r.total} 成功`;
+    } catch (err) {
+      console.error('retryAll 失敗', err);
+      btn.textContent = '重試失敗';
+    }
+    setTimeout(() => {
+      btn.textContent = origText;
+      // updateRetryAllUI 會在 onAfterRetry 內被呼叫,這裡不用手動 reset hidden
+    }, 2500);
+  });
 }
 
 async function openReader() {
@@ -518,7 +550,39 @@ async function openReader() {
   showStage('reader');
   // 等 stage 切換 + layout 確定後再 render(canvas size 才對)
   await new Promise((r) => requestAnimationFrame(r));
-  await renderReader(currentDoc, currentPdfDoc, $('reader-col-original'), $('reader-col-translated'));
+  if (currentReaderHandle) {
+    try { currentReaderHandle.destroy(); } catch (_) { /* ignore */ }
+    currentReaderHandle = null;
+  }
+  currentReaderHandle = await renderReader(
+    currentDoc,
+    currentPdfDoc,
+    $('reader-col-original'),
+    $('reader-col-translated'),
+    {
+      modelOverride: currentModelOverride,
+      onFailedCountChange: updateRetryAllUI,
+    }
+  );
+  // 套用 sync toggle + 重設 zoom 顯示
+  if (currentReaderHandle) {
+    currentReaderHandle.setSyncEnabled($('reader-sync-toggle').checked);
+    $('reader-zoom-level').textContent = `${Math.round(currentReaderHandle.getZoom() * 100)}%`;
+  }
+}
+
+function updateRetryAllUI(failedCount) {
+  const btn = $('reader-retry-all-btn');
+  $('reader-failed-count').textContent = String(failedCount);
+  btn.hidden = failedCount === 0;
+  btn.disabled = false;
+}
+
+function stepZoom(delta) {
+  if (!currentReaderHandle) return;
+  const cur = currentReaderHandle.getZoom();
+  const next = currentReaderHandle.setZoom(cur + delta);
+  $('reader-zoom-level').textContent = `${Math.round(next * 100)}%`;
 }
 
 function bindDebugUI() {
@@ -610,6 +674,7 @@ async function startTranslate() {
   } catch (err) {
     console.warn('[Shinkansen] 讀 translatePresets 失敗,改用 background 預設模型', err);
   }
+  currentModelOverride = modelOverride;
 
   showStage('translating');
   setProgress({

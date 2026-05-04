@@ -164,6 +164,56 @@ export async function translateDocument(doc, options = {}) {
 }
 
 /**
+ * 重新翻譯單一 block(W5 段落級 retry)。
+ *
+ * @param {LayoutBlock} block — 要重翻的 block,結果會寫回 block.translation / .translationStatus
+ * @param {object} options
+ * @param {string} [options.modelOverride]
+ * @param {Array}  [options.glossary]
+ * @returns {Promise<{ ok: boolean, error?: string }>}
+ */
+export async function translateSingleBlock(block, options = {}) {
+  const { modelOverride, glossary } = options;
+  if (!block || !block.plainText) return { ok: false, error: 'no plainText' };
+
+  block.translationStatus = 'translating';
+  block.translationError = null;
+
+  let response;
+  try {
+    response = await chrome.runtime.sendMessage({
+      type: 'TRANSLATE_DOC_BATCH',
+      payload: { texts: [block.plainText], modelOverride, glossary },
+    });
+  } catch (err) {
+    const msg = (err && err.message) || String(err);
+    block.translationStatus = 'failed';
+    block.translationError = msg;
+    return { ok: false, error: msg };
+  }
+
+  if (!response || !Array.isArray(response.result) || response.result.length === 0) {
+    const msg = (response && response.error) || 'no response';
+    block.translationStatus = 'failed';
+    block.translationError = msg;
+    return { ok: false, error: msg };
+  }
+
+  const tr = response.result[0];
+  if (typeof tr === 'string' && tr.length > 0) {
+    block.translation = tr;
+    block.translationStatus = 'done';
+    block.translationError = null;
+    return { ok: true };
+  } else {
+    block.translation = null;
+    block.translationStatus = 'failed';
+    block.translationError = 'empty translation';
+    return { ok: false, error: 'empty translation' };
+  }
+}
+
+/**
  * @typedef {Object} TranslateProgress
  * @property {number} totalBlocks
  * @property {number} translatedBlocks

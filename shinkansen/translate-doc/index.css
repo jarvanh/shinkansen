@@ -368,7 +368,30 @@ body {
   min-height: 0;
 }
 
+.reader-zoom-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reader-zoom-group button {
+  padding: 2px 10px;
+  min-width: 32px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reader-zoom-level {
+  display: inline-block;
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .reader-col {
+  position: relative;  /* 讓內部 reader-page 的 offsetParent = reader-col,scroll sync 計算正確 */
   overflow-y: auto;
   background: var(--bg-soft);
   padding: 16px;
@@ -392,73 +415,99 @@ body {
 
 .reader-page-original canvas {
   display: block;
-  max-width: 100%;
-  height: auto;
+  width: 100%;
+  height: 100%;
 }
 
 .reader-page-translated {
-  /* 譯文 page 的 width 對齊左欄 canvas,height 由 flow content 決定 + minHeight 對齊左欄
-     高度。內部 block 順序排列(flow),不再 absolute,避免譯文長過原 bbox 撞到下一段 */
-  padding: 32px 28px;
-  box-sizing: border-box;
+  /* 譯文 page = canvas(底層原 PDF render bitmap)+ absolute overlay 譯文 div */
+  position: relative;
+}
+
+.reader-page-translated canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.reader-translated-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* 不擋下層 canvas 文字選取(雖 canvas 本身不可選) */
 }
 
 .reader-block {
-  font-family: var(--font);
+  position: absolute;
+  background: #fff; /* 完全不透白底蓋原文(0.97 會讓深色英文 3% 透出) */
   color: var(--text);
-  font-size: 14px;
-  line-height: 1.7;
+  font-family: var(--font);
+  line-height: 1.35;
   word-wrap: break-word;
   overflow-wrap: anywhere;
-  margin-bottom: 12px;
-}
-
-.reader-block:last-child {
-  margin-bottom: 0;
+  pointer-events: auto;
+  padding: 1px 3px;
+  box-sizing: border-box;
+  /* box-shadow 4px 外擴白底,蓋掉 bbox 邊界外的 ascender / descender 殘影
+     (PDF.js bbox 不含字型 ascender / descender margin,bbox 邊緣可能差 2-4px) */
+  box-shadow: 0 0 0 4px #fff;
 }
 
 .reader-block-heading {
   font-weight: 700;
   color: #18171c;
-  font-size: 17px;
-  margin-top: 18px;
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-
-.reader-block-heading:first-child {
-  margin-top: 0;
 }
 
 .reader-block-list-item {
-  padding-left: 16px;
-  text-indent: -16px;
+  /* plainText 已含 marker;flow 用 text-indent 不適用於 absolute,留樣式空 */
 }
 
-.reader-block-footnote,
+.reader-block-footnote {
+  color: var(--text-muted);
+}
+
 .reader-block-page-number {
   color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
-.reader-block-table,
-.reader-block-formula,
-.reader-block-figure {
-  /* 不送翻譯的 type:右欄保留原文 + 灰底提示「未翻譯」 */
-  background: rgba(0, 0, 0, 0.03);
-  color: var(--text-muted);
-  font-style: italic;
-  padding: 8px 12px;
-  border-radius: 4px;
+/* 不可翻譯 type(table / formula / figure)在新模型下不蓋 overlay,所以這些 class
+   不再生效 — 留樣式空避免 CSS warning */
+
+.reader-block-retry {
+  /* failed block 的 ↻ 按鈕,absolute 定位在 bbox 右上角(由 inline style 設位置) */
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--error-text);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--error-text);
   font-size: 13px;
-  white-space: pre-wrap;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  pointer-events: auto;
 }
 
-.reader-block-failed {
-  /* 翻譯失敗:顯示原文 + 紅色虛線下劃線 */
-  text-decoration: underline dashed var(--error-text);
-  text-underline-offset: 3px;
+.reader-block-retry:hover {
+  background: var(--error-bg);
+  border-color: var(--error-text);
+}
+
+.reader-block-retry:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.reader-block-translating {
+  /* retry 中:顯示 spinner-like 效果 + 灰底 */
+  background: rgba(0, 113, 227, 0.05);
+  color: var(--text-muted);
 }
 
 .reader-empty {

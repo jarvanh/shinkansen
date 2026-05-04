@@ -10,9 +10,9 @@
   <header class="app-header">
     <h1>
       <img src="../icons/icon-128.png" alt="" class="app-icon">
-      <span>翻譯文件</span>
+      <span>翻譯文件(beta)</span>
     </h1>
-    <span class="app-subtitle">本機 PDF 翻譯成台灣繁體中文</span>
+    <span class="app-subtitle">PDF 檔翻譯</span>
   </header>
 
   <main id="app-main">
@@ -109,6 +109,16 @@
       <div class="reader-toolbar">
         <span id="reader-title" class="reader-title"></span>
         <span class="debug-toolbar-spacer"></span>
+        <span class="reader-zoom-group" title="調整顯示大小(50%-200%,用 CSS 縮放,canvas 解析度不變)">
+          <button id="reader-zoom-out" class="secondary-btn" type="button">−</button>
+          <span id="reader-zoom-level" class="reader-zoom-level">100%</span>
+          <button id="reader-zoom-in" class="secondary-btn" type="button">+</button>
+        </span>
+        <label class="debug-toolbar-toggle" title="關閉後左右欄各自獨立捲動,不互相同步">
+          <input type="checkbox" id="reader-sync-toggle" checked>
+          同步捲動
+        </label>
+        <button id="reader-retry-all-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗段落">重試失敗 (<span id="reader-failed-count">0</span>)</button>
         <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿">複製譯文</button>
         <button id="reader-back-overlay-btn" class="secondary-btn" type="button">查看版面 overlay</button>
         <button id="reader-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
