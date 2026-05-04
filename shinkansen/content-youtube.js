@@ -555,9 +555,13 @@
     // G 路徑:ASR 字幕一進來就 enable hiding mode + 預建 overlay 容器,
     //         避免使用者啟動翻譯瞬間還看到原生英文字幕跳動。
     // commit 5c:bilingualMode=true → 不隱藏原生 CC(中英對照);false=純中文(既有行為)
-    if (YT.isAsr) {
+    // v1.8.42:non-ASR 路徑雙語也要 _applyBilingualMode(內部會建 overlay 並掛 attr),
+    //         讓中文走獨立 overlay 顯示在原生英文 CC 上方,而非塞進 segment innerHTML
+    //         (舊路徑 2 行英文時譯文會擠掉第二行)。ASR 路徑不論雙語純中文都需要
+    //         _ensureOverlay(純中文模式 native CC 被藏,中文由 overlay 取代)。
+    {
       const cfg = YT.config || await getYtConfig();
-      _ensureOverlay();
+      if (YT.isAsr) _ensureOverlay();
       _applyBilingualMode(cfg.bilingualMode === true);
     }
     const lastMs = segments[segments.length - 1]?.startMs ?? 0;
@@ -876,33 +880,39 @@
             padding: 0 24px;
             box-sizing: border-box;
           }
-          /* cue rows:用 span + display:inline-block,寬度 shrink-to-fit 內容
-             v1.8.2: padding 從 0.15em 0.7em 縮成 0.05em 0.3em — 對齊 YouTube 原生
-             字幕緊貼文字的視覺比例(原本左右各多出近半字寬,上下也鬆) */
-          .cue {
+          /* v1.8.42:cue-block 是 .src + .tgt 的共用容器,黑底 background 改放這層,
+             讓 non-ASR 雙語下英文 + 中文兩行**共用同一塊黑底**(原本 .src/.tgt 各自
+             inline-block + 各自 background → 兩塊分開的視覺汙染)。
+             ASR 雙語下 .src 仍 hidden,cue-block 內只有 .tgt → 黑底範圍剛好包 .tgt,
+             視覺跟舊版一致 */
+          .cue-block {
             display: inline-block;
             max-width: 100%;
             padding: 0.05em 0.3em;
             background: rgba(0, 0, 0, 0.75);   /* 對齊 YouTube 原生 */
             color: #fff;
-            line-height: 1.45;
             border-radius: 3px;
-            white-space: pre-wrap;
             text-align: center;
             box-sizing: border-box;
           }
-          .src {
-            font-size: calc(var(--sk-cue-size, 18px) * 0.78);
-            opacity: 0.75;
-          }
-          .tgt {
+          .src, .tgt {
+            display: block;
             font-size: var(--sk-cue-size, 18px);
+            font-style: var(--sk-cue-font-style, normal);
+            font-weight: var(--sk-cue-font-weight, normal);
+            white-space: pre-wrap;
           }
+          /* v1.8.42:.src 內 <br> 換行(2 行原文)用 1.05 緊縮行距,避免英文兩行間隙過寬;
+             .tgt 中文 1.45 易讀;.src 跟 .tgt 之間的間距由 block 元素自然 baseline 決定 */
+          .src { line-height: 0.95; }
+          .tgt { line-height: 1.45; }
           .src[hidden], .tgt:empty { display: none; }
         </style>
         <div class="window">
-          <span class="cue src" hidden></span>
-          <span class="cue tgt"></span>
+          <div class="cue-block">
+            <span class="src" hidden></span>
+            <span class="tgt"></span>
+          </div>
         </div>
       `;
     }
@@ -997,6 +1007,10 @@
     const srcEl = host.shadowRoot.querySelector('.src');
     if (!targetText) {
       if (tgtEl.innerHTML !== '') tgtEl.innerHTML = '';
+      if (srcEl) {
+        if (srcEl.innerHTML !== '') srcEl.innerHTML = '';
+        srcEl.hidden = true;
+      }
       host.style.display = 'none';
       return;
     }
@@ -1006,13 +1020,105 @@
     const html = _escapeHtml(wrapped).replace(/\n/g, '<br>');
     // AMO source review: html = _escapeHtml(text) + 自家 <br>,user input 已 escape。
     if (tgtEl.innerHTML !== html) tgtEl.innerHTML = html;
-    // source 暫不顯示(避免跟原生 ASR caption 三層字幕重疊;之後可加 toggle)
-    if (sourceText !== undefined && srcEl) srcEl.hidden = true;
+    // v1.8.42:有傳 sourceText 就顯示原文(non-ASR 雙語把 native CC 藏起來,中英
+    //         都搬到 overlay 同一塊;ASR 雙語不傳 sourceText,native CC 仍可見不重複)
+    if (srcEl) {
+      if (sourceText) {
+        const srcHtml = _escapeHtml(String(sourceText)).replace(/\n/g, '<br>');
+        if (srcEl.innerHTML !== srcHtml) srcEl.innerHTML = srcHtml;
+        srcEl.hidden = false;
+      } else {
+        if (srcEl.innerHTML !== '') srcEl.innerHTML = '';
+        srcEl.hidden = true;
+      }
+    }
     host.style.display = 'block';
   }
 
   // 暴露給 spec 用
   SK._wrapTargetTextForOverlay = _wrapTargetText;
+
+  // v1.8.42:non-ASR 雙語模式 overlay 同步 helper。收集當前 visible
+  // .ytp-caption-segment 對應的譯文,join 後寫到獨立 overlay,並動態量測
+  // native .caption-window 的 top,把 overlay --sk-cue-bottom 設為
+  // (playerBottom - cwTop + gap)。讓中文永遠貼在英文 CC 整 block 上方,
+  // 不論英文 1 行 / 2 行 / 多行都不會撞。caption mutation 與 bilingual
+  // toggle 進入時呼叫;ASR / 純中文模式 short-circuit。
+  function _updateNonAsrBilingualOverlay() {
+    const YT = SK.YT;
+    if (!YT.active || YT.isAsr) return;
+    if (YT.config?.bilingualMode !== true) return;
+
+    // 收集 visible segment 譯文 + 對應原文。multi-segment 字幕(2 行原文)在
+    // captionMap 走 dedup:第一個 segment 存合併譯文,後續 segment 存空字串
+    // (見 translateWindowFrom 的 covered[0]=trans, covered[k>=1]='')。
+    // 所以 srcBits 一律收英文(不論 cached 是否空字串),保留 visible 行;
+    // transBits 只收非空 cached(自動 dedup,避免一個合併譯文重複 N 次)。
+    const segs = document.querySelectorAll('.ytp-caption-segment');
+    const transBits = [];
+    const srcBits = [];
+    for (const seg of segs) {
+      const txt = (seg.textContent || '').trim();
+      if (!txt) continue;
+      if (RE_CJK.test(txt)) continue;
+      const cached = YT.captionMap.get(normText(txt));
+      // 只在 captionMap 已知此 key(命中 - 不論 cached 為空或譯文)才把英文搬上 overlay,
+      // 避免把「尚未翻譯」的 segment 推上 overlay 造成只有英文沒中文的閃爍
+      if (cached === undefined) continue;
+      srcBits.push(txt);
+      if (cached) transBits.push(cached);
+    }
+    const joinedTrans = transBits.join('\n');
+    const joinedSrc = srcBits.join('\n');
+    // v1.8.42:把英文原文也送進 overlay .src(native CC 藏起來,中英並存於 overlay
+    //         同一個 wrapper,視覺上只剩一塊黑底,不再有「原生英文 1+2 行 + 中文」三塊)
+    _setOverlayContent(joinedTrans, joinedSrc);
+
+    const host = document.querySelector(_OVERLAY_TAG);
+    if (!host) return;
+
+    // v1.8.42:字型大小 / family / style 同步到 native CC,讓中文跟英文視覺對齊
+    //         (ASR 路徑 _updateOverlay 已做這件事;non-ASR 雙語也要做,否則
+    //         中文用預設 18px,英文用 native 36px,大小差好幾倍)
+    const nativeFz = _readNativeCaptionFontSize();
+    if (nativeFz) host.style.setProperty('--sk-cue-size', nativeFz + 'px');
+    const nativeFf = _readNativeCaptionFontFamily();
+    if (nativeFf) host.style.setProperty('--sk-cue-font-family', nativeFf);
+    // native CC 的 font-style(italic / normal)— 旁白等敘述字幕常用 italic,
+    // 中文跟著 italic 視覺較一致;讀第一個 caption-segment 的 computed style
+    const seg = document.querySelector('.ytp-caption-segment');
+    if (seg) {
+      const cs = getComputedStyle(seg);
+      if (cs.fontStyle) host.style.setProperty('--sk-cue-font-style', cs.fontStyle);
+      if (cs.fontWeight) host.style.setProperty('--sk-cue-font-weight', cs.fontWeight);
+    }
+
+    _updateOverlayAnchor();
+  }
+  SK._updateNonAsrBilingualOverlay = _updateNonAsrBilingualOverlay;
+
+  // v1.8.42:overlay 動態 anchor — 對齊原生 caption-window 的 bottom。native CC 已藏
+  //         (visibility:hidden 不影響 layout),所以 cwBottom 仍能讀到正確位置;
+  //         controls 顯示時 YouTube 自己會把 cw 上推,anchor 自動跟著走。
+  //         ASR / non-ASR 雙語模式共用此 helper。
+  function _updateOverlayAnchor() {
+    const host = document.querySelector(_OVERLAY_TAG);
+    if (!host) return;
+    const player = _getPlayerRoot();
+    const cw = document.querySelector('.caption-window');
+    if (player && cw) {
+      const playerRect = player.getBoundingClientRect();
+      const cwRect = cw.getBoundingClientRect();
+      if (playerRect.height > 0 && cwRect.height > 0) {
+        const bottom = Math.max(0, Math.round(playerRect.bottom - cwRect.bottom));
+        host.style.setProperty('--sk-cue-bottom', bottom + 'px');
+        return;
+      }
+    }
+    // 沒 caption-window → 清掉動態 anchor 讓 stylesheet fallback 接管(ASR 雙語走
+    // host[bilingual] CSS rule 90px,純中文走 host CSS rule 30px)
+    host.style.removeProperty('--sk-cue-bottom');
+  }
 
   function _removeOverlay() {
     const root = _getPlayerRoot();
@@ -1043,6 +1149,7 @@
     // .ytp-caption-segment 的 computed font-size 當作 overlay 字體基準。
     // pointer-events:none 避免使用者誤點(雖然 absolute positioned 沒互動性)。
     style.textContent = `
+      .${_ASR_PLAYER_CLASS} .ytp-caption-window-container,
       .${_ASR_PLAYER_CLASS} .caption-window,
       .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
       .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
@@ -1050,6 +1157,7 @@
         opacity: 0 !important;
         pointer-events: none !important;
       }
+      .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-container,
       .${_CC_PAUSED_PLAYER_CLASS} .caption-window,
       .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-rollup,
       .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
@@ -1102,14 +1210,26 @@
   }
 
   // commit 5c:統一切 bilingualMode 的副作用 — 字幕隱藏/顯示 + overlay 位置調整。
-  // 雙語模式中文 overlay 要避開原生英文 CC(原生位置約 30-40px from bottom),把
-  // overlay --sk-cue-bottom 推到 90px 在英文上方。純中文模式(原生 CC 已隱藏)
-  // overlay 回預設 30px 佔據原生 CC 的視覺位置。
+  // ASR 路徑:雙語不藏 native(中英並存)、純中文藏 native(由我們的 overlay 取代)。
+  // non-ASR 路徑:不動 native CC(_setAsrHidingMode 對 non-ASR 純中文模式會把
+  //              已被替換成中文的 segment 一起藏起來,所以 isAsr 才呼叫)。
+  // v1.8.42:non-ASR 雙語也走獨立 overlay(過去把譯文 innerHTML <br> 接在 segment
+  //         內,2 行英文時擠掉第二行)。bilingual=true 時建 overlay + 設 attr +
+  //         呼叫 _updateNonAsrBilingualOverlay 立即同步;bilingual=false 退出時
+  //         清 overlay 並對 visible segment 重跑 replaceSegmentEl 寫入中文。
   function _applyBilingualMode(bilingual) {
-    _setAsrHidingMode(!bilingual);
+    // v1.8.42:四種組合的 native CC 藏/不藏 truth table
+    //   ASR + 雙語     :藏(英文 + 中文都搬到 overlay 同一塊;ASR cue 已知 sourceText)
+    //   ASR + 純中文   :藏(中文 overlay 取代)
+    //   non-ASR + 雙語  :藏(英文 + 中文都搬到 overlay 同一塊)
+    //   non-ASR + 純中文:不藏(native segment 內已被替換成中文)
+    const shouldHideNative = bilingual || SK.YT.isAsr;
+    _setAsrHidingMode(shouldHideNative);
+    // 確保 host 存在(ASR 在 captionsXHR 已 _ensureOverlay 過,non-ASR 雙語進入這條路徑首次需要)
+    if (bilingual) _ensureOverlay();
     // commit 5c.6:用 host attribute + CSS rule(_setAsrHidingMode 內注入的 stylesheet)
-    // 控制 overlay 位置,讓 chrome 顯示時的 :not(.ytp-autohide) selector 可以再上抬,
-    // 避免 inline style override 卡住自動上抬邏輯。
+    // 控制 ASR 雙語 overlay 位置;non-ASR 雙語則靠 _updateNonAsrBilingualOverlay
+    // 動態 inline style 覆蓋此固定值。
     const host = document.querySelector(_OVERLAY_TAG);
     if (host) {
       if (bilingual) {
@@ -1117,11 +1237,27 @@
       } else {
         host.removeAttribute('bilingual');
       }
-      // 清除 commit 5c.1 之前可能殘留的 inline style override(避免擋住 attr CSS rule)
+      // 清除 inline style override(避免擋住 attr CSS rule;non-ASR 動態 anchor 後續會重設)
       host.style.removeProperty('--sk-cue-bottom');
+      // 退出雙語清掉 overlay 內容(避免最後一句中文卡在畫面上)
+      if (!bilingual) _setOverlayContent('');
     }
     // commit 5c.3:即時切到雙語時把已顯示的「翻譯中…」清掉(雙語下這 status 不該存在)
     if (bilingual) hideCaptionStatus();
+
+    // v1.8.42:non-ASR 雙語進入時 / live toggle 進入時,立即 sync overlay 一次
+    // (current visible segment 的譯文寫到 overlay,不等下一次 caption mutation)
+    if (bilingual && !SK.YT.isAsr && SK.YT.active) {
+      _updateNonAsrBilingualOverlay();
+    }
+    // non-ASR 退出雙語回純中文:對 visible segment 重跑 replaceSegmentEl
+    // (此時雙語=false,replaceSegmentEl 會走 _setSegmentText 把英文換成中文)。
+    // RE_CJK guard 確保已是中文的不會被誤改。
+    if (!bilingual && !SK.YT.isAsr && SK.YT.active) {
+      document.querySelectorAll('.ytp-caption-segment').forEach((el) => {
+        try { replaceSegmentEl(el); } catch (_) {}
+      });
+    }
   }
 
   // 讀 YouTube 原生字幕字體大小(已套用使用者字幕設定 + player size 自適應比例)。
@@ -1204,7 +1340,14 @@
     // L1934 的 hideCaptionStatus → 「翻譯中…」永遠殘留。改在 overlay 寫入時若有
     // 中文 cue 命中,就主動 hide(冪等,沒 status indicator 時直接 return)。
     if (cue && cue.targetText) hideCaptionStatus();
-    _setOverlayContent(cue ? cue.targetText : '');
+    // v1.8.42:ASR 雙語把 sourceText(英文)也寫進 overlay .src,跟 non-ASR 雙語視覺一致
+    //         (中英都在同一塊黑底)。純中文模式 sourceText=undefined,.src 自動 hidden。
+    const isBilingual = YT.config?.bilingualMode === true;
+    const targetText = cue ? cue.targetText : '';
+    const sourceText = (isBilingual && cue) ? cue.sourceText : undefined;
+    _setOverlayContent(targetText, sourceText);
+    // ASR 雙語 native CC 已藏,overlay 對齊 native cw bottom 取代視覺位置
+    if (isBilingual && cue) _updateOverlayAnchor();
   }
 
   // 中文閱讀時間補償:LLM 自由分句把多段 ASR 合成一句中文,中文密度高,
@@ -2217,38 +2360,30 @@
     // 快取命中 → 瞬間替換
     const cached = SK.YT.captionMap.get(key);
     if (cached !== undefined) {
-      if (el.textContent !== cached) {
-        // v1.2.51: 第一次 cache hit = 使用者第一次「看到」翻譯字幕的時刻
-        const YT = SK.YT;
-        if (cached && !YT._firstCacheHitLogged) {
-          YT._firstCacheHitLogged = true;
-          SK.sendLog('info', 'youtube', '🎯 first translated subtitle visible', {
-            sessionOffsetMs: Date.now() - YT.sessionStartTime,  // 距 session 啟動幾 ms
-            videoNowMs: Math.round((YT.videoEl?.currentTime || 0) * 1000),
-            captionMapSize: YT.captionMap.size,
-            key: key.slice(0, 40),
-          });
-        }
-        // v1.2.58: 每次中文字幕出現都呼叫 hideCaptionStatus（冪等，無提示時直接 return）
-        // 修正：seek 後 _firstCacheHitLogged 已為 true，但 showCaptionStatus 可能已再次顯示，
-        // 只靠 !_firstCacheHitLogged gate 會導致新顯示的提示永遠不被移除。
-        if (cached) hideCaptionStatus();
-        // commit 5c.4:雙語模式(非 ASR 路徑)寫「原文 + 譯文兩行」<br> 串接。
-        // commit 5c.5:跳過 _wrapTargetText 自動切點 — 它依字數限制(中文 15-35 字)切,
-        // 對英文寬鬆但對中文常硬切兩行(image 22:中文長句被切,英文沒切)。直接寫
-        // innerHTML + <br>,讓 caption-window 的 CSS word-wrap 依實際容器寬度自然處理。
-        const isBilingual = SK.YT.config?.bilingualMode === true;
-        if (isBilingual && cached) {
-          const html = `${_escapeHtml(original)}<br>${_escapeHtml(cached)}`;
-          // AMO source review: html = _escapeHtml(原文) + <br> + _escapeHtml(譯文),雙重 escape,
-          // <br> 是 dev literal。user input(YouTube 字幕原文)與 LLM 譯文都已 escape。
-          if (el.innerHTML !== html) el.innerHTML = html;
-        } else {
-          // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>,避免衝出 video 寬
-          _setSegmentText(el, cached);
-        }
-        // 同步展開字幕框（不用 rAF——新版 expandCaptionLine 純設 style，不需量測 layout；
-        // 若用 rAF，瀏覽器會先 paint 出「中文 + 舊 315px 容器」再展開，造成一幀閃爍）
+      const YT = SK.YT;
+      const isBilingual = YT.config?.bilingualMode === true;
+      // v1.2.51: 第一次 cache hit = 使用者第一次「看到」翻譯字幕的時刻
+      // (雙語 non-ASR 下 segment textContent 永遠保留英文,不能用 textContent 判,改靠 _firstCacheHitLogged 旗標 idempotent)
+      if (cached && !YT._firstCacheHitLogged) {
+        YT._firstCacheHitLogged = true;
+        SK.sendLog('info', 'youtube', '🎯 first translated subtitle visible', {
+          sessionOffsetMs: Date.now() - YT.sessionStartTime,
+          videoNowMs: Math.round((YT.videoEl?.currentTime || 0) * 1000),
+          captionMapSize: YT.captionMap.size,
+          key: key.slice(0, 40),
+        });
+      }
+      // v1.2.58: 每次中文字幕出現都呼叫 hideCaptionStatus(冪等)
+      if (cached) hideCaptionStatus();
+
+      // v1.8.42:雙語 non-ASR 改走獨立 overlay,不論 cached 是 trans 或 ''(multi-segment
+      //         dedup),segment 都不動,讓 native 原文保留;由 _updateNonAsrBilingualOverlay
+      //         收集 visible segments 寫到 overlay。純中文 non-ASR 把 cached 寫入 segment,
+      //         空字串就清空(避免 multi-segment dedup 後續 segment 保留英文殘留)。
+      if (isBilingual) {
+        if (cached) _updateNonAsrBilingualOverlay();
+      } else if (el.textContent !== cached) {
+        _setSegmentText(el, cached);
         if (cached) expandCaptionLine(el);
       }
       return;
@@ -2322,18 +2457,16 @@
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
         const trans = SK.sanitizeMarkers(res.result[i] || texts[i]);
         YT.captionMap.set(key, trans);
+        const isBilingual = YT.config?.bilingualMode === true;
         for (const el of (queue.get(key) || [])) {
           if (document.contains(el) && normText(el.textContent) === key) {
-            // commit 5c.4:雙語模式(非 ASR)寫「原文 + 譯文兩行」
-            // commit 5c.5:雙語跳過 _wrapTargetText,讓 CSS word-wrap 自然處理
-            const isBilingual = YT.config?.bilingualMode === true;
-            if (isBilingual && trans) {
-              const original = el.textContent.trim();
-              const html = `${_escapeHtml(original)}<br>${_escapeHtml(trans)}`;
-              // AMO source review: html = _escapeHtml(原文) + <br> + _escapeHtml(譯文),雙重 escape。
-              if (el.innerHTML !== html) el.innerHTML = html;
+            // v1.8.42:雙語 non-ASR 不動 segment innerHTML(讓 native 原文保留),
+            //         由 _updateNonAsrBilingualOverlay 收集寫到 overlay;純中文 trans
+            //         是 '' 也要寫入 segment(清空,避免 multi-segment dedup 後續
+            //         segment 保留英文殘留)。
+            if (isBilingual) {
+              if (trans) _updateNonAsrBilingualOverlay();
             } else {
-              // v1.8.9: 過長譯文比照 ASR 走 _wrapTargetText 切點 + <br>
               _setSegmentText(el, trans);
             }
           }
@@ -2370,6 +2503,12 @@
             replaceSegmentEl(parent);
           }
         }
+      }
+      // v1.8.42:雙語 non-ASR 模式下,native caption-window 內容 / 行數變動會觸發
+      //         上面的 mutation;順手重算 overlay anchor 與內容,確保中文永遠
+      //         貼在當前英文 CC 上方(2 行 → 行數變化撐高 cw → anchor 跟著上抬)。
+      if (YT.config?.bilingualMode === true && !YT.isAsr) {
+        _updateNonAsrBilingualOverlay();
       }
     });
 
@@ -2518,6 +2657,12 @@
     const config = await getYtConfig();
     _debugUpdate('字幕翻譯已啟動，等待 CC 字幕資料…');
 
+    // v1.8.42:確保 player root class / stylesheet / overlay 狀態對齊雙語設定。
+    //         captionsXHR 可能在 user 按 translate 之前已被 browser cache、本 session
+    //         不再觸發,line 558 的 _applyBilingualMode 沒機會跑;這裡補一次,
+    //         讓 _setAsrHidingMode(true) 把 native CC 藏掉(雙語下中英都搬 overlay)
+    _applyBilingualMode(config.bilingualMode === true);
+
     // observer 提前啟動：captionMap 尚空時 cache miss → 字幕保持原文
     // 待 shinkansen-yt-captions 填入 rawSegments 後，translateWindowFrom 寫入 captionMap，字幕瞬間替換
     startCaptionObserver();
@@ -2620,15 +2765,16 @@
   });
 
   // commit 5c:bilingualMode 即時切換(toggle 不需要 reload 影片頁)
+  // v1.8.42:non-ASR 也支援 toggle live,_applyBilingualMode 內會分流處理
+  //         (ASR 動 player class、non-ASR 重跑 segment;內部都有 active guard)。
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync' || !changes.ytSubtitle) return;
     const newVal = changes.ytSubtitle.newValue || {};
     const newBilingual = newVal.bilingualMode === true;
     if (SK.YT.config) SK.YT.config.bilingualMode = newBilingual;
-    // 只在 ASR 字幕已啟用時即時 reapply(避免 ASR 還沒啟動就動 player class)
-    if (SK.YT.isAsr && SK.YT.active) {
+    if (SK.YT.active) {
       _applyBilingualMode(newBilingual);
-      SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual });
+      SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual, isAsr: SK.YT.isAsr });
     }
   });
 
