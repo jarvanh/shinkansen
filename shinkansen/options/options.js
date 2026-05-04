@@ -1413,6 +1413,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ─── 用量頁面狀態 ────────────────────────────────────────
 let usageChart = null;
 let currentGranularity = 'day';
+
+// v1.8.39: 用量明細表分頁(避免幾千筆紀錄一次塞 DOM 拖慢主執行緒)
+const USAGE_PAGE_SIZE = 100;
+let usageCurrentPage = 1;        // 1-based
+let usageFilteredCache = [];     // 最近一次 filter 結果(供翻頁時 slice)
 let allUsageRecords = [];   // v1.2.60: client-side 搜尋用，保留完整記錄
 
 // v1.5.7: 用量紀錄「模型」欄改用「翻譯快速鍵」三組 preset 的 label 標記。
@@ -1478,14 +1483,15 @@ function initUsageDateRange() {
   buildTimeSelectOptions();
   const to = new Date();
   const from = new Date();
-  from.setDate(from.getDate() - 30);
+  // v1.8.39: 預設範圍從 30 天縮到 7 天,降低初始載入筆數(分頁仍可手動拉長日期看更多)
+  from.setDate(from.getDate() - 7);
   from.setHours(0, 0, 0, 0);
   setDateTimeFields('usage-from', from);
   setDateTimeFields('usage-to', to);
 }
 
 function getUsageDateRange() {
-  const from = readDateTimeFields('usage-from', '00:00') ?? (Date.now() - 30 * 86400000);
+  const from = readDateTimeFields('usage-from', '00:00') ?? (Date.now() - 7 * 86400000);
   const to   = readDateTimeFields('usage-to',   '23:59') ?? Date.now();
   return { from, to };
 }
@@ -1674,13 +1680,21 @@ function renderTable(records) {
   if (!records || records.length === 0) {
     tbody.innerHTML = '';
     emptyMsg.hidden = false;
+    renderUsagePagination(0);
     return;
   }
   emptyMsg.hidden = true;
 
+  // v1.8.39: 只 render 當前頁的 records,其餘交給分頁按鈕切換
+  const totalPages = Math.max(1, Math.ceil(records.length / USAGE_PAGE_SIZE));
+  if (usageCurrentPage > totalPages) usageCurrentPage = totalPages;
+  if (usageCurrentPage < 1) usageCurrentPage = 1;
+  const startIdx = (usageCurrentPage - 1) * USAGE_PAGE_SIZE;
+  const pageRecords = records.slice(startIdx, startIdx + USAGE_PAGE_SIZE);
+
   // AMO source review: usage records 來自本 extension 自己寫進 IndexedDB(usage-db.js)的計費紀錄,
   // 所有 string 欄位渲染前都經 escapeHtml/escapeAttr,數字欄位是計算結果。無外部 user input 流入。
-  tbody.innerHTML = records.map(r => {
+  tbody.innerHTML = pageRecords.map(r => {
     const isGoogle = r.engine === 'google';  // v1.4.0
     // v0.99: 思考 token 以 output 費率計費，加入明細計算
     const billedTokens = (r.billedInputTokens || 0) + (r.outputTokens || 0);
@@ -1716,6 +1730,39 @@ function renderTable(records) {
       <td class="num">${costCell}</td>
     </tr>`;
   }).join('');
+
+  renderUsagePagination(records.length);
+}
+
+// v1.8.39: 更新分頁 UI(總筆數、頁碼、prev/next disabled 狀態)
+function renderUsagePagination(totalCount) {
+  const nav = $('usage-pagination');
+  const info = $('usage-page-info');
+  const prevBtn = $('usage-page-prev');
+  const nextBtn = $('usage-page-next');
+  if (!nav || !info || !prevBtn || !nextBtn) return;
+
+  if (totalCount <= USAGE_PAGE_SIZE) {
+    // 一頁就放得下,隱藏分頁列
+    nav.hidden = true;
+    return;
+  }
+  nav.hidden = false;
+  const totalPages = Math.ceil(totalCount / USAGE_PAGE_SIZE);
+  info.textContent = `第 ${usageCurrentPage} / ${totalPages} 頁(${totalCount} 筆)`;
+  prevBtn.disabled = usageCurrentPage <= 1;
+  nextBtn.disabled = usageCurrentPage >= totalPages;
+}
+
+// v1.8.39: 切頁 — 不重 query,只 re-render 當前頁
+function changeUsagePage(delta) {
+  const totalPages = Math.max(1, Math.ceil(usageFilteredCache.length / USAGE_PAGE_SIZE));
+  const next = usageCurrentPage + delta;
+  if (next < 1 || next > totalPages) return;
+  usageCurrentPage = next;
+  renderTable(usageFilteredCache);
+  // 切頁後捲回表格頂端,避免使用者迷失位置
+  $('usage-tbody')?.parentElement?.scrollTo({ top: 0 });
 }
 
 // v1.2.62: 從記錄陣列重算彙總卡片（讓搜尋/filter 結果同步反映在計費數字上）
@@ -1756,6 +1803,7 @@ function populateModelFilter() {
 }
 
 // v1.2.60: 搜尋過濾，同時比對標題與 URL；v1.3.2: 加入模型篩選
+// v1.8.39: filter 結果存進 usageFilteredCache 供翻頁重用,並 reset 到第 1 頁
 function applyUsageSearch() {
   const q = ($('usage-search')?.value || '').trim().toLowerCase();
   const modelFilter = ($('usage-model-filter')?.value || '');
@@ -1768,6 +1816,8 @@ function applyUsageSearch() {
   if (modelFilter) {
     filtered = filtered.filter(r => (r.model || '') === modelFilter);
   }
+  usageFilteredCache = filtered;
+  usageCurrentPage = 1;
   renderTable(filtered);
   updateSummaryFromRecords(filtered);
 }
@@ -1808,6 +1858,10 @@ $('usage-search')?.addEventListener('input', () => {
   _usageSearchTimer = setTimeout(applyUsageSearch, 150);
 });
 $('usage-model-filter')?.addEventListener('change', applyUsageSearch);
+
+// v1.8.39: 分頁按鈕
+$('usage-page-prev')?.addEventListener('click', () => changeUsagePage(-1));
+$('usage-page-next')?.addEventListener('click', () => changeUsagePage(+1));
 
 // 粒度切換
 document.querySelectorAll('.gran-btn').forEach(btn => {

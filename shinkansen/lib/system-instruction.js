@@ -1,16 +1,26 @@
-// system-instruction.js — 跨 provider 共用的翻譯 batch 構建 helper（v1.5.7 起）
+// system-instruction.js — 跨 provider 共用的翻譯 batch 構建 helper(v1.5.7 起)
 //
-// 從 lib/gemini.js 抽出，讓 Gemini 與 OpenAI-compatible 兩條 adapter 共用同一份：
-//   1. DELIMITER：多段串接分隔符
-//   2. packChunks：依字元預算 + 段數雙門檻 greedy 分批
-//   3. buildEffectiveSystemInstruction：依批次內容動態追加規則
-//      （多段分隔符規則 / 段內換行規則 / 佔位符規則 / 自動 glossary
-//        / fixedGlossary / 中國用語黑名單）
+// 從 lib/gemini.js 抽出,讓 Gemini 與 OpenAI-compatible 兩條 adapter 共用同一份:
+//   1. DELIMITER:多段串接分隔符
+//   2. packChunks:依字元預算 + 段數雙門檻 greedy 分批
+//   3. buildEffectiveSystemInstruction:依批次內容動態追加規則
+//      (段內換行規則 / 佔位符規則 / fixedGlossary / 中國用語黑名單 /
+//       自動 glossary / 多段分隔符規則)
 //
-// 抽出原因：自訂 OpenAI-compat provider 也要繼承「黑名單 + 固定術語表」自動注入
-//          （依 Jimmy 設計決定 #3：systemPrompt 獨立、黑名單 & 固定術語表共用）。
-//          改放 lib/ 共用模組讓 Gemini 與 OpenAI-compat 兩個 adapter 同步演進，
+// 抽出原因:自訂 OpenAI-compat provider 也要繼承「黑名單 + 固定術語表」自動注入
+//          (依 Jimmy 設計決定 #3:systemPrompt 獨立、黑名單 & 固定術語表共用)。
+//          改放 lib/ 共用模組讓 Gemini 與 OpenAI-compat 兩個 adapter 同步演進,
 //          未來新加翻譯規則只改一處。
+//
+// 順序設計(v1.8.39 起,為 Gemini implicit cache hit rate 重排):
+//   prefix 共享度由高到低,動態變動部分推到最末。
+//   baseSystem(完全固定)→ 段內換行(條件性,頁內穩定)→ 佔位符(條件性,頁內穩定)
+//   → fixedGlossary(使用者級固定)→ forbiddenTerms(使用者級固定)
+//   → glossary(頁面級,跨頁變)→ 多段分隔符規則(嵌入 batch 段數 N,batch 級變)。
+//   把 N 嵌入的「本批次包含 N 段」這條規則從第 2 位推到最末端,讓所有 batch 共享前段
+//   prefix(原本只能共享 baseSystem ~1500 tokens,新排法可達 ~2000 tokens)。
+//   trade-off:forbiddenTerms 不再「最末端」,LLM 注意力略降——靠 regression
+//   spec(forbidden-terms-leak / multi-segment 系列)監測。
 
 import { DEFAULT_UNITS_PER_BATCH, DEFAULT_CHARS_PER_BATCH } from './constants.js';
 
@@ -70,26 +80,40 @@ export function packChunks(texts) {
 
 /**
  * 組合最終的 system instruction。
- * 基礎翻譯指令 → 多段分隔符規則 → 段內換行規則 → 佔位符規則 → 自動 glossary → fixedGlossary → 中國用語黑名單。
- * 順序很重要：行為規則緊跟基礎指令，術語表/黑名單是「參考資料」放末端。
  *
- * @param {string} baseSystem 使用者設定的基礎 system instruction（每個 provider 可能不同）
+ * 順序(v1.8.39 起):
+ *   baseSystem → 段內換行規則 → 佔位符規則 → fixedGlossary → forbiddenTerms
+ *   → 自動 glossary → 多段分隔符規則(本批次包含 N 段)
+ *
+ * 設計理由:Gemini implicit cache 命中率優化。
+ *   - prefix 越穩定的部分越靠前(baseSystem / fixedGlossary / forbiddenTerms 是使用者級固定,跨頁亦共享)
+ *   - 條件性出現但「同頁穩定」的(段內換行 / 佔位符)放在前段,實務上整頁批次幾乎都會同 trigger
+ *   - 頁面級變動的 glossary 放在 batch 級變動的「本批次包含 N 段」之前
+ *   - batch 級變動的「本批次包含 N 段」(嵌入 literal 數字 N)推到最末端,
+ *     讓所有 batch 共享前段 prefix
+ *
+ * 歷史排序(v0.71-v1.8.38):
+ *   baseSystem → 多段分隔符 → 段內換行 → 佔位符 → glossary → fixedGlossary → forbiddenTerms
+ *   舊排法把「本批次包含 N 段」放第 2 位,N 一變(例如最後一批 segs<20)導致
+ *   後面所有 token 都 cache miss,實測 Medium 長文 hit rate 只能達 ~49%;
+ *   新排法預估可拉到 ~80-90%。
+ *
+ * Trade-off:forbiddenTerms 不再「最末端最高權重」。
+ *   v0.71 的 v0.70 bug 教訓:「術語表夾在中間會稀釋 LLM 對佔位符規則的注意力,
+ *   導致 ⟦*N⟧ 標記洩漏」。新排法把 forbiddenTerms 從末端往前移,理論上 LLM
+ *   注意力略降。靠 forbidden-terms-leak-detect / multi-segment 等 regression
+ *   spec + 真實頁面驗證監測。
+ *
+ * @param {string} baseSystem 使用者設定的基礎 system instruction(每個 provider 可能不同)
  * @param {string[]} texts 本批原文陣列
  * @param {string} joined 已用 DELIMITER join 過的完整文字
  * @param {Array<{source:string, target:string}>} [glossary] 可選的自動擷取術語對照表
- * @param {Array<{source:string, target:string}>} [fixedGlossary] 可選的使用者固定術語表（優先級高於 glossary）
+ * @param {Array<{source:string, target:string}>} [fixedGlossary] 可選的使用者固定術語表
  * @param {Array<{forbidden:string, replacement:string}>} [forbiddenTerms] 中國用語黑名單
  * @returns {string} 完整的 effectiveSystem
  */
 export function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary, forbiddenTerms) {
   const parts = [baseSystem];
-
-  // 多段翻譯分隔符與序號規則
-  if (texts.length > 1) {
-    parts.push(
-      `額外規則（多段翻譯分隔符與序號，極重要）:\n本批次包含 ${texts.length} 段文字。每段開頭有序號標記 «N»（N 為 1 到 ${texts.length}），段與段之間以分隔符 <<<SHINKANSEN_SEP>>> 隔開。\n你的輸出必須：\n- 每段譯文開頭也加上對應的序號標記 «N»（N 與輸入的序號一一對應）\n- 段與段之間用完全相同的分隔符 <<<SHINKANSEN_SEP>>> 隔開\n- 恰好輸出 ${texts.length} 段譯文和 ${texts.length - 1} 個分隔符\n- 不可合併段落、不可省略分隔符、不可增減段數`
-    );
-  }
 
   // 段內換行保留規則
   if (texts.some(t => t && t.indexOf('\n') !== -1)) {
@@ -105,7 +129,38 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
     );
   }
 
-  // 自動擷取術語對照表
+  // v1.0.29: 使用者固定術語表(使用者級固定,跨頁亦共享,放前段協助 cache 命中)
+  // v1.8.20: 對 source / target 消毒,防止頁面內容塞 sentinel token 影響協定
+  if (fixedGlossary && fixedGlossary.length > 0) {
+    const lines = fixedGlossary
+      .map(e => `${sanitizeTermText(e.source)} → ${sanitizeTermText(e.target)}`)
+      .filter(l => !/^\s*→\s*$/.test(l))
+      .join('\n');
+    if (lines) {
+      parts.push(
+        '以下是使用者指定的固定術語表，優先級高於下方所有術語對照。遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
+      );
+    }
+  }
+
+  // v1.5.6: 中國用語黑名單(使用者級固定,跨頁亦共享,放前段協助 cache 命中)。
+  // 用 <forbidden_terms_blacklist> XML tag 包起來,跟 DEFAULT_SYSTEM_PROMPT 第 2 條
+  // 的「依本 prompt 末端 <forbidden_terms_blacklist> 區塊」reference 對應。
+  // v1.8.39 起從末端前移到 fixedGlossary 之後——失去「最末端最高權重」位置,
+  // 靠 regression spec(forbidden-terms-leak-detect 系列)監測 LLM 服從度退化。
+  if (forbiddenTerms && forbiddenTerms.length > 0) {
+    const tableLines = forbiddenTerms
+      .map(t => `${sanitizeTermText(t.forbidden)} → ${sanitizeTermText(t.replacement)}`)
+      .filter(l => !/^\s*→\s*$/.test(l))
+      .join('\n');
+    if (tableLines) {
+      parts.push(
+        '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國大陸用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
+      );
+    }
+  }
+
+  // 自動擷取術語對照表(頁面級,跨頁變;放在使用者級規則之後讓跨頁 cache 共享前段)
   // v1.8.20: 對 source / target 消毒,防止頁面內容塞 sentinel token 影響協定
   if (glossary && glossary.length > 0) {
     const lines = glossary
@@ -119,32 +174,11 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
     }
   }
 
-  // v1.0.29: 使用者固定術語表（優先級最高，放在最末端讓 LLM 給予最高權重）
-  if (fixedGlossary && fixedGlossary.length > 0) {
-    const lines = fixedGlossary
-      .map(e => `${sanitizeTermText(e.source)} → ${sanitizeTermText(e.target)}`)
-      .filter(l => !/^\s*→\s*$/.test(l))
-      .join('\n');
-    if (lines) {
-      parts.push(
-        '以下是使用者指定的固定術語表，優先級高於上方所有術語對照。遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
-      );
-    }
-  }
-
-  // v1.5.6: 中國用語黑名單。放在所有規則最末端（高於 fixedGlossary）讓 LLM 給予最高權重。
-  // 用 <forbidden_terms_blacklist> XML tag 包起來，跟 DEFAULT_SYSTEM_PROMPT 第 2 條
-  // 的「依本 prompt 末端 <forbidden_terms_blacklist> 區塊」reference 對應。
-  if (forbiddenTerms && forbiddenTerms.length > 0) {
-    const tableLines = forbiddenTerms
-      .map(t => `${sanitizeTermText(t.forbidden)} → ${sanitizeTermText(t.replacement)}`)
-      .filter(l => !/^\s*→\s*$/.test(l))
-      .join('\n');
-    if (tableLines) {
-      parts.push(
-        '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國大陸用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
-      );
-    }
+  // 多段翻譯分隔符與序號規則(嵌入 batch 段數 N,batch 級變動;放最末端讓前段 cache 共享)
+  if (texts.length > 1) {
+    parts.push(
+      `額外規則（多段翻譯分隔符與序號，極重要）:\n本批次包含 ${texts.length} 段文字。每段開頭有序號標記 «N»（N 為 1 到 ${texts.length}），段與段之間以分隔符 <<<SHINKANSEN_SEP>>> 隔開。\n你的輸出必須：\n- 每段譯文開頭也加上對應的序號標記 «N»（N 與輸入的序號一一對應）\n- 段與段之間用完全相同的分隔符 <<<SHINKANSEN_SEP>>> 隔開\n- 恰好輸出 ${texts.length} 段譯文和 ${texts.length - 1} 個分隔符\n- 不可合併段落、不可省略分隔符、不可增減段數`
+    );
   }
 
   return parts.join('\n\n');

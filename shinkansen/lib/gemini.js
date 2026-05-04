@@ -368,12 +368,15 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     : texts;
   const joined = markedTexts.join(DELIMITER);
 
-  // 若本批文字含 ⟦…⟧ 佔位符（content.js 為了保留連結 / 樣式而注入的）,
-  // 在 systemInstruction 後面追加一條規則，要求 LLM 原樣保留這些標記。
+  // 若本批文字含 ⟦…⟧ 佔位符(content.js 為了保留連結 / 樣式而注入的),
+  // 在 systemInstruction 後面追加一條規則,要求 LLM 原樣保留這些標記。
   //
-  // v0.71: 建構順序很重要——行為規則（換行、佔位符）必須緊跟在基礎翻譯指令後面，
-  // 術語表是「參考資料」放最後。若術語表夾在中間會稀釋 LLM 對佔位符規則的注意力，
-  // 導致 ⟦*N⟧ 標記洩漏到譯文裡（v0.70 的 bug）。
+  // v0.71: 建構順序歷史是「行為規則(換行、佔位符)必須緊跟在基礎翻譯指令後面,
+  // 術語表是『參考資料』放最後」,避免術語表稀釋 LLM 對佔位符規則的注意力(v0.70 bug)。
+  //
+  // v1.8.39 重排:為 Gemini implicit cache hit rate 把「本批次包含 N 段」推到最末端、
+  // glossary 也後移到使用者級規則之後。詳見 lib/system-instruction.js 的 jsdoc。
+  // 行為規則(換行、佔位符)仍緊跟基礎指令,維持 v0.71 的設計核心。
   const effectiveSystem = buildEffectiveSystemInstruction(systemInstruction, texts, joined, glossary, fixedGlossary, forbiddenTerms);
 
   const body = {

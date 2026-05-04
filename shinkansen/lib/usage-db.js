@@ -402,3 +402,24 @@ function csvEscape(str) {
   }
   return str;
 }
+
+/**
+ * v1.8.39: 判斷是否該跳過寫入此 record。
+ * 「整頁本地 cache 全命中、沒打任何 API」的紀錄(token / chars / cost 全為 0)
+ * 對使用者沒有資訊價值,只會塞滿用量列表。
+ *
+ * 不跳過 youtube-subtitle:它走 upsertYouTubeUsage 累計合併路徑,單次 record 為 0
+ * 不代表整支影片為 0(可能是先 cache hit 後才有 API call 累進來)。
+ *
+ * @param {Object} record — 待寫入的紀錄
+ * @returns {boolean} true = 跳過寫入
+ */
+export function shouldSkipUsageRecord(record) {
+  if (!record) return true;
+  if (record.source === 'youtube-subtitle') return false;
+  const ip = Number(record.inputTokens) || 0;
+  const op = Number(record.outputTokens) || 0;
+  const ch = Number(record.chars) || 0;
+  const cost = Number(record.billedCostUSD) || 0;
+  return ip === 0 && op === 0 && ch === 0 && cost === 0;
+}

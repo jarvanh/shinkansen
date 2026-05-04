@@ -445,6 +445,24 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
+/* v1.8.39: 用量明細分頁 */
+.usage-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.usage-pagination .usage-page-info {
+  font-size: 12px;
+  min-width: 200px;
+  text-align: center;
+}
+.usage-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ═══ v0.88: Log 分頁 ═══════════════════════════════════════ */
 .log-toolbar {
   display: flex;

@@ -17,7 +17,13 @@
 
 ## 條目
 
-(目前沒有 pending 條目)
+### v1.8.39 — 2026-05-04 — translateUnits 段落 hash dedup
+- **症狀(避免):** Medium 文章 60 張圖每張 alt 都是同字串 `"Press enter or click to view image in full size"`,packBatches 把 60 段切成 3 個 batch 各 20 段重複內容。實測 batch 11 浪費整個 API call(1754 input tokens / 2.7 秒),batch 12/13 雖然本地 cache 救起來但 batch 11 仍多打。
+- **修在:** shinkansen/content.js translateUnits 入口處(serialize 後、packBatches 前)做 text hash dedup,build `origIndicesByText: Map<text, origIdx[]>` + `dedupedTexts/Units/Slots`;packBatches 收 deduped 子集;runBatch + STREAMING_SEGMENT 路徑 inject 時 broadcast 到所有 dup 原始位置(用各 dup 自己的 slots,因為 slots 綁的 DOM 不同)。
+- **為什麼還不能寫測試:** dedup 邏輯緊耦合在 translateUnits 內 60 行(serialize → dedup → packBatches → runBatch broadcast inject),要寫 regression spec 需要 fixture HTML(60+ 段重複文字)+ mock TRANSLATE_BATCH 回應 + 驗 broadcast 後 60 個 element 都有譯文 + 驗 log 含 `milestone:dedup_done` saved=59。中等複雜任務,需要建新 fixture + mock pattern,本輪先實機驗證(Medium 真實頁面)為主。
+- **建議 spec 位置:** test/regression/translate-dedup-broadcast.spec.js
+- **建議 fixture 結構:** 5 段 unique 文字 + 60 段全相同 "Press enter or click to view image in full size" 散布其中(模擬 Medium image alt 重複),驗 milestone:dedup_done saved=59,packBatches 後 batch 數比未 dedup 少,所有 65 段對應 element 都有 [data-shinkansen-translated] 屬性。
+- **同類 google translate 路徑(translateUnitsGoogle)未動:** 同樣有重複內容浪費 fetch 的問題,但本輪 scope 鎖在 Gemini 路徑,Google 路徑下次回頭處理(預估改動同模式,~30 行)。
 
 <!--
 條目格式範例(實際加入時把上面那行 placeholder 刪掉):
