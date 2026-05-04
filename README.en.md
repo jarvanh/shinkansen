@@ -235,6 +235,12 @@ Since v1.5.7, in addition to Gemini and Google Translate, you can connect one Op
 - Must be genuinely OpenAI-compatible (`POST /chat/completions` + `Bearer` Authorization + standard `messages` structure + `usage.prompt_tokens` / `completion_tokens` fields). Anthropic's and Gemini's **native** APIs cannot be connected directly, but you can route them through OpenRouter
 - Pricing must be entered manually; token counts depend on the provider returning a correct `usage` object in responses
 
+### Firefox: connecting to a local server
+
+Firefox's **HTTPS-Only Mode** (`about:preferences#privacy`, scroll to the bottom) — when enabled — forces all `http://` requests issued by extensions to be **upgraded to `https://`**, so connections to `http://localhost:11434/v1` (Ollama), `http://192.168.x.x:8081/v1` (local llama.cpp server), and similar HTTP endpoints fail outright. Chrome has no equivalent mechanism; this is Firefox-specific.
+
+**Fix**: go to `about:preferences#privacy` → set HTTPS-Only Mode to "Don't enable", or add an exception for the URL. If the Base URL field starts with `http://`, Shinkansen detects Firefox and shows an inline warning.
+
 ## Blocked-word list
 
 When AI models translate into Traditional Chinese, they generally try to use Taiwan-standard phrasing, but occasionally produce words like 视频, 软件, 数据, 网络, 用户 — variants more common in mainland Chinese — especially when the source is English (video / software / data / user) and the model defaults to the most common Mandarin rendering. To handle this, Shinkansen ships with a built-in blocked-word mapping that explicitly tells the model: never use the left column; always use the right column.

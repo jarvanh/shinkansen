@@ -92,8 +92,21 @@ textarea { resize: vertical; font-family: -apple-system, 'PingFang TC', sans-ser
 .api-test-result[data-state="fail"]    { background: #fff1f0; color: #c1312b; border: 1px solid #f5c1bd; }
 .api-test-result[data-state="loading"] { background: #f2f2f7; color: #555;    border: 1px solid #e5e5ea; }
 
+/* v1.8.41:Firefox HTTPS-Only Mode 警告（橘色 attention，不到 error 等級） */
+.firefox-https-warn:not([hidden]) {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: #fff8eb;
+  border: 1px solid #f5d987;
+  border-radius: 6px;
+  color: #855900;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* 自行輸入模型 ID（v0.64） */
-/* v1.6.15: .custom-model-row 隨全域 model dropdown 一起移除(自行輸入欄位失效) */
+/* v1.6.15: .custom-model-row 隨全域 model dropdown 一起移除（自行輸入欄位失效） */
 
 .muted { color: #86868b; font-size: 12px; }
 
@@ -120,10 +133,10 @@ button.primary:hover { background: #0077ed; }
 
 button.secondary {
   /* v1.6.17: 高度與字級對齊 .primary(padding 9px 20px + font-size 14px),
-     保留 secondary 自身視覺性(白底藍邊細字)。primary 因 padding 10px 24px
-     + 粗字 600 + 無 border 仍視覺較突出,符合「主動作 vs 次動作」design pattern。
+     保留 secondary 自身視覺性（白底藍邊細字）。primary 因 padding 10px 24px
+     + 粗字 600 + 無 border 仍視覺較突出，符合「主動作 vs 次動作」design pattern。
      box-sizing: content-box 下 secondary 總高 ≈ 9*2 + 14*1.2 + 2(border) ≈ 38px;
-     primary 總高 ≈ 10*2 + 14*1.2 ≈ 37px,差距在 1px 內視覺一致。 */
+     primary 總高 ≈ 10*2 + 14*1.2 ≈ 37px，差距在 1px 內視覺一致。 */
   padding: 9px 20px;
   background: #fff;
   color: #0071e3;
@@ -418,9 +431,9 @@ a:hover { text-decoration: underline; }
 .usage-table th { font-weight: 600; color: #86868b; font-size: 11px; text-transform: uppercase; }
 .usage-table th.num,
 .usage-table td.num { text-align: right; }
-/* preset label 自 v1.8.19 起放寬至 30 字元,避免長 label 撐寬整列;
-   原 v1.2.61 的 nowrap 是為了「不要把『3.1-flash-lite』折行」,放寬後改成
-   max-width + ellipsis 兼顧短/長 label 兩種情境,完整 label 由 title attr 補。 */
+/* preset label 自 v1.8.19 起放寬至 30 字元，避免長 label 撐寬整列；
+   原 v1.2.61 的 nowrap 是為了「不要把『3.1-flash-lite』折行」，放寬後改成
+   max-width + ellipsis 兼顧短/長 label 兩種情境，完整 label 由 title attr 補。 */
 .usage-table .col-model {
   white-space: nowrap;
   max-width: 220px;
@@ -774,7 +787,7 @@ a:hover { text-decoration: underline; }
 .preset-card-header strong { color: #1d1d1f; }
 .preset-card-primary .preset-card-header strong { color: #0071e3; font-size: 15px; }
 
-/* v1.6.14: per-model 計價覆蓋表(Gemini 分頁) */
+/* v1.6.14: per-model 計價覆蓋表（Gemini 分頁） */
 .model-pricing-overrides {
   display: flex;
   flex-direction: column;
@@ -879,8 +892,8 @@ a:hover { text-decoration: underline; }
 .dual-demo-light .dual-demo-translation { color: #1d1d1f; }
 .dual-demo-dark  .dual-demo-translation { color: #d2d2d7; }
 
-/* wrapper 樣式:與 content-inject.js ensureDualWrapperStyle 注入到頁面的 CSS 對齊。
-   這份是給 options 頁的 demo 預覽用,不影響真實網頁的 wrapper。 */
+/* wrapper 樣式：與 content-inject.js ensureDualWrapperStyle 注入到頁面的 CSS 對齊。
+   這份是給 options 頁的 demo 預覽用，不影響真實網頁的 wrapper。 */
 shinkansen-translation {
   display: block;
   margin-top: 0.25em;
@@ -912,6 +925,25 @@ shinkansen-translation[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decor
   cursor: pointer;
 }
 .dual-mark-options input[type="radio"] {
+  margin: 0;
+}
+
+/* v1.8.41：金額顯示幣值 radio */
+.currency-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+}
+.currency-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #1d1d1f;
+  cursor: pointer;
+}
+.currency-options input[type="radio"] {
   margin: 0;
 }
 
@@ -967,16 +999,16 @@ shinkansen-translation[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decor
    [hidden] { display: none }，造成 hidden=true 仍顯示的 bug。 */
 .update-banner-row[hidden] { display: none !important; }
 
-/* preset label 自 v1.8.19 起放寬到 30 字元,「工具列翻譯本頁按鈕」與
+/* preset label 自 v1.8.19 起放寬到 30 字元，「工具列翻譯本頁按鈕」與
    「自動翻譯網站使用的預設」兩個 select 的 option text 為「{slotTitle}:{label}」,
-   給 max-width 避免長 label 撐寬整個 form row(瀏覽器會自動 truncate option 顯示)。 */
+   給 max-width 避免長 label 撐寬整個 form row（瀏覽器會自動 truncate option 顯示）。 */
 #popup-button-slot,
 #auto-translate-slot {
   max-width: 360px;
   width: 100%;
 }
 
-/* v1.8.19: 配額 section 進階摺疊區。預設收起,點 summary 展開內容。 */
+/* v1.8.19: 配額 section 進階摺疊區。預設收起，點 summary 展開內容。 */
 .advanced-details {
   margin-top: 12px;
   border: 1px solid #e5e5ea;

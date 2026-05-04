@@ -4,7 +4,7 @@
 import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
-import { formatTokens, formatUSD, parseUserNum, buildUsageCsvFilename } from '../lib/format.js';
+import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
@@ -20,9 +20,9 @@ const MODEL_PRICING = Object.fromEntries(
 
 
 // v1.6.15: 全域 #model dropdown 已移除（v1.4.12 起 preset modelOverride 涵蓋
-// 95%+ 場景,真實後備路徑剩 testGeminiKey 按鈕 + cache key 構建）。改讀
-// 「主要預設」(slot 2)的 model;若 slot 2 引擎不是 gemini → fallback 到
-// DEFAULTS.geminiConfig.model(避免 testGeminiKey 沒 model 可送)。
+// 95%+ 場景，真實後備路徑剩 testGeminiKey 按鈕 + cache key 構建）。改讀
+// 「主要預設」(slot 2）的 model；若 slot 2 引擎不是 gemini → fallback 到
+// DEFAULTS.geminiConfig.model（避免 testGeminiKey 沒 model 可送）。
 function getSelectedModel() {
   const engineSel = $('preset-engine-2');
   const modelSel = $('preset-model-2');
@@ -33,9 +33,9 @@ function getSelectedModel() {
 }
 
 // v1.6.15: SERVICE_TIER_MULTIPLIER + applyModelPricing 已移除。
-// 原本是「全域 model dropdown 切換時自動帶入參考價到後備路徑單價」的便利功能,
-// model dropdown 移除後不再有觸發點;且 v1.6.14 已加 per-model override 表
-// 取代「自動帶價」的 UX 功能。後備路徑單價現在純由使用者填,不自動連動 service tier。
+// 原本是「全域 model dropdown 切換時自動帶入參考價到後備路徑單價」的便利功能，
+// model dropdown 移除後不再有觸發點；且 v1.6.14 已加 per-model override 表
+// 取代「自動帶價」的 UX 功能。後備路徑單價現在純由使用者填，不自動連動 service tier。
 
 function applyTierToInputs(tier, model) {
   const rpmEl = $('rpm');
@@ -71,7 +71,7 @@ async function load() {
     apiKey: localApiKey,
   };
   $('apiKey').value = s.apiKey;
-  // v1.6.15: 全域 #model dropdown 已移除,不再從 storage 載入到 UI。
+  // v1.6.15: 全域 #model dropdown 已移除，不再從 storage 載入到 UI。
   // settings.geminiConfig.model 仍保留 storage 結構（避免 migration）但 UI 不顯示。
   $('serviceTier').value = s.geminiConfig.serviceTier;
   $('temperature').value = s.geminiConfig.temperature;
@@ -79,8 +79,8 @@ async function load() {
   $('topK').value = s.geminiConfig.topK;
   $('maxOutputTokens').value = s.geminiConfig.maxOutputTokens;
   $('systemInstruction').value = s.geminiConfig.systemInstruction;
-  // v1.6.16: 後備路徑單價 UI 已移除(對應 input element 不存在),不再從 settings 載入到 UI。
-  // settings.pricing 仍保留 storage 結構作 belt-and-suspenders(background.js:610 fallback 路徑保留)。
+  // v1.6.16: 後備路徑單價 UI 已移除（對應 input element 不存在），不再從 settings 載入到 UI。
+  // settings.pricing 仍保留 storage 結構作 belt-and-suspenders(background.js:610 fallback 路徑保留）。
   // v1.6.14: per-model 計價覆蓋
   const overrides = s.modelPricingOverrides || {};
   const fillOverride = (id, model, key) => {
@@ -105,9 +105,9 @@ async function load() {
   if (s.rpmOverride) $('rpm').value = s.rpmOverride;
   if (s.tpmOverride) $('tpm').value = s.tpmOverride;
   if (s.rpdOverride) $('rpd').value = s.rpdOverride;
-  // v1.6.19: 統一用 ?? 不用 || ——使用者輸入 0(batch size 等)是合法
-  // 設定意圖,|| 會把 0 當 falsy 默默改回預設值,造成 UI 「我設了 0 卻看到 10%」。
-  // v1.8.19: 安全邊際從 UI 移除,程式碼內部維持 storage default 0.1 即可
+  // v1.6.19: 統一用 ?? 不用 || ——使用者輸入 0(batch size 等）是合法
+  // 設定意圖，|| 會把 0 當 falsy 默默改回預設值，造成 UI 「我設了 0 卻看到 10%」。
+  // v1.8.19: 安全邊際從 UI 移除，程式碼內部維持 storage default 0.1 即可
   $('maxConcurrentBatches').value = s.maxConcurrentBatches ?? 10;
   $('maxUnitsPerBatch').value = s.maxUnitsPerBatch ?? 20;
   $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? 3500;
@@ -121,9 +121,9 @@ async function load() {
   // v0.69: 術語表一致化設定
   const gl = { ...DEFAULTS.glossary, ...(s.glossary || {}) };
   $('glossaryEnabled').checked = gl.enabled !== false;
-  // v1.7.2: 術語擷取獨立模型(預設 Flash Lite),空字串表示「與主翻譯相同」
+  // v1.7.2: 術語擷取獨立模型（預設 Flash Lite)，空字串表示「與主翻譯相同」
   $('glossaryModel').value = gl.model ?? DEFAULTS.glossary.model;
-  // v1.7.3: 阻塞門檻可調(預設 10,> 此值才 blocking,≤ 此值走 fire-and-forget)
+  // v1.7.3: 阻塞門檻可調（預設 10,> 此值才 blocking,≤ 此值走 fire-and-forget)
   $('glossaryBlockingThreshold').value = gl.blockingThreshold ?? DEFAULTS.glossary.blockingThreshold;
   $('glossaryTemperature').value = gl.temperature;
   $('glossaryTimeout').value = gl.timeoutMs;
@@ -150,6 +150,14 @@ async function load() {
   }
   updateDualDemoMark(savedMark);
 
+  // v1.8.41：金額顯示幣值
+  const validCurrencies = ['USD', 'TWD'];
+  const savedCurrency = validCurrencies.includes(s.displayCurrency) ? s.displayCurrency : 'TWD';
+  for (const r of document.querySelectorAll('input[name="displayCurrency"]')) {
+    r.checked = (r.value === savedCurrency);
+  }
+  refreshExchangeRateDisplay();
+
   // v1.0.29: 固定術語表
   fixedGlossary = {
     global: Array.isArray(s.fixedGlossary?.global) ? s.fixedGlossary.global : [],
@@ -168,6 +176,8 @@ async function load() {
   // apiKey 走 storage.local（不在 sync 也不在 saved 物件，獨立讀取）
   const cp = { ...DEFAULTS.customProvider, ...(s.customProvider || {}) };
   $('cp-baseUrl').value = cp.baseUrl || '';
+  // v1.8.41:initial check Firefox HTTPS-Only Mode 警告
+  refreshFirefoxHttpsWarn();
   $('cp-model').value = cp.model || '';
   $('cp-systemPrompt').value = cp.systemPrompt || '';
   $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : 0.7;
@@ -188,8 +198,8 @@ async function load() {
   const ytEngineEl = $('ytEngine');
   if (ytEngineEl) ytEngineEl.value = yt.engine || 'gemini';
   $('ytAutoTranslate').checked       = yt.autoTranslate       === true;
-  // v1.6.23: ASR 分句改單一 toggle——開啟=progressive(混合模式)、關閉=heuristic(預設分句)。
-  // 舊 'llm' 值視為 progressive(行為相近,LLM 結果仍會顯示;只是改成漸進方式)。
+  // v1.6.23: ASR 分句改單一 toggle——開啟=progressive（混合模式）、關閉=heuristic（預設分句）。
+  // 舊 'llm' 值視為 progressive（行為相近，LLM 結果仍會顯示；只是改成漸進方式）。
   $('ytAsrProgressive').checked = yt.asrMode !== 'heuristic';
   // v1.5.8: 字幕是否套用固定術語表 / 黑名單
   $('ytApplyFixedGlossary').checked  = yt.applyFixedGlossary  === true;
@@ -236,7 +246,7 @@ async function load() {
   // v1.6.6: 工具列「翻譯本頁」按鈕的 preset slot dropdown
   // v1.6.13: 自動翻譯網站使用的 preset slot
   // v1.6.14: slot 2 顯示「主要預設」、slot 1/3 顯示「預設 2/3」
-  // 兩個下拉選單的 option text 由 refreshSlotDropdownLabels() 統一處理,
+  // 兩個下拉選單的 option text 由 refreshSlotDropdownLabels() 統一處理，
   // 此處只負責設 value
   refreshSlotDropdownLabels();
   const popupSlotSel = $('popup-button-slot');
@@ -308,7 +318,7 @@ document.addEventListener('click', async (e) => {
 });
 
 // v1.5.0: 雙語視覺標記預覽更新
-// v1.8.31: 並排 light / dark 兩個預覽 box,各自有獨立 wrapper id
+// v1.8.31: 並排 light / dark 兩個預覽 box，各自有獨立 wrapper id
 function updateDualDemoMark(mark) {
   ['dual-demo-wrapper-light', 'dual-demo-wrapper-dark'].forEach(id => {
     const wrapper = document.getElementById(id);
@@ -322,6 +332,67 @@ function getSelectedMarkStyle() {
   return ['tint', 'bar', 'dashed', 'none'].includes(v) ? v : 'tint';
 }
 
+// v1.8.41：Firefox HTTPS-Only Mode 偵測——baseUrl 是 http:// + UA 是 Firefox 才顯示警告。
+// Firefox 開啟 HTTPS-Only Mode（about:preferences#privacy）會把 extension 發出的 http
+// request 強制升級成 https，extension 端無法 override；連本機 server 直接失敗。
+// 對使用者而言錯誤訊息只會顯示「網路錯誤」沒上下文，inline 警告直接點出根因。
+function isFirefoxUserAgent() {
+  return typeof navigator !== 'undefined' && /Firefox\//.test(navigator.userAgent || '');
+}
+
+function refreshFirefoxHttpsWarn() {
+  const warn = document.getElementById('cp-baseurl-firefox-warn');
+  if (!warn) return;
+  const url = ($('cp-baseUrl')?.value || '').trim().toLowerCase();
+  const shouldWarn = url.startsWith('http://') && isFirefoxUserAgent();
+  warn.hidden = !shouldWarn;
+}
+
+// v1.8.41：讀取目前選中的幣值 radio
+function getSelectedCurrency() {
+  const checked = document.querySelector('input[name="displayCurrency"]:checked');
+  const v = checked?.value;
+  return ['USD', 'TWD'].includes(v) ? v : 'TWD';
+}
+
+// v1.8.41：當前幣值 + 匯率快取狀態，給 fmt helpers 用，避免每次顯示都 await
+let currentCurrencyState = { currency: 'TWD', rate: 31.6, fetchedAt: 0, source: 'fallback' };
+
+function fmtMoneyOpts() {
+  return { currency: currentCurrencyState.currency, rate: currentCurrencyState.rate };
+}
+
+// v1.8.41：更新「目前匯率」顯示文字 + radio 同步
+async function refreshExchangeRateDisplay() {
+  const el = document.getElementById('currency-rate-display');
+  if (!el) return;
+  try {
+    const resp = await browser.runtime.sendMessage({ type: 'EXCHANGE_RATE_GET' });
+    if (resp?.ok) {
+      currentCurrencyState = {
+        currency: getSelectedCurrency(),
+        rate: resp.rate,
+        fetchedAt: resp.fetchedAt,
+        source: resp.source,
+      };
+      el.textContent = formatRateLine(resp);
+    }
+  } catch {
+    el.textContent = '匯率讀取失敗，使用 fallback NT$ 31.6';
+  }
+}
+
+function formatRateLine(rate) {
+  const rateStr = Number(rate.rate).toFixed(2);
+  if (rate.source === 'fallback' || !rate.fetchedAt) {
+    return `目前匯率：1 USD = ${rateStr} TWD（fallback，尚未抓到 open.er-api.com 資料）`;
+  }
+  const d = new Date(rate.fetchedAt);
+  const ymd = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const hm  = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  return `目前匯率：1 USD = ${rateStr} TWD ・ ${ymd} ${hm} 更新自 open.er-api.com`;
+}
+
 // v1.4.13: engine='google' 時隱藏 model 欄
 // v1.5.7: engine='openai-compat' 也隱藏（model 由「自訂 Provider」分頁設定）
 function updatePresetModelVisibility(slot) {
@@ -331,8 +402,8 @@ function updatePresetModelVisibility(slot) {
 }
 
 // 「工具列翻譯本頁按鈕」「自動翻譯網站」兩個下拉選單的 option text
-// 跟著「翻譯快速鍵」preset 標籤即時聯動。直接從 DOM input 讀目前值,
-// 不需重新讀 storage,使用者打字當下就能看到變化。
+// 跟著「翻譯快速鍵」preset 標籤即時聯動。直接從 DOM input 讀目前值，
+// 不需重新讀 storage，使用者打字當下就能看到變化。
 function _slotTitle(slot) {
   return slot === 2 ? '主要預設' : `預設 ${slot === 1 ? 2 : 3}`;
 }
@@ -378,14 +449,14 @@ function updateYtPromptCostHint() {
   const ytModel = $('ytModel').value;
   const ytInput = parseFloat($('ytInputPerMTok').value);
   const mainModel = getSelectedModel();
-  // v1.6.16: 後備路徑單價 UI 已移除;mainInput fallback 改用主要預設(slot 2)的內建表 pricing。
-  // 這個 hint 是設定頁字幕 prompt 開銷估算用,翻譯實際計費走獨立路徑(yt.pricing / customProvider / preset modelOverride),不受影響。
+  // v1.6.16: 後備路徑單價 UI 已移除；mainInput fallback 改用主要預設（slot 2）的內建表 pricing。
+  // 這個 hint 是設定頁字幕 prompt 開銷估算用，翻譯實際計費走獨立路徑（yt.pricing / customProvider / preset modelOverride)，不受影響。
   const mainInput = MODEL_PRICING[mainModel]?.input ?? 0;
 
   if (engine === 'openai-compat') {
     // 自訂模型字幕路徑用 customProvider 那組
     inputPrice = isNaN(cpInput) ? 0 : cpInput;
-    modelDisplay = cpModel || '(未設定)';
+    modelDisplay = cpModel || '（未設定）';
   } else if (engine === 'gemini') {
     if (!isNaN(ytInput) && ytInput > 0) {
       inputPrice = ytInput;
@@ -423,12 +494,12 @@ function updateYtPromptCostHint() {
     return;
   }
   if (!inputPrice) {
-    // AMO source review: 純 dev hardcoded 字串,無外部變數。
+    // AMO source review: 純 dev hardcoded 字串，無外部變數。
     hintEl.innerHTML = '<strong>無法估算費用</strong>：請在對應的計價欄位設定 input 單價（USD / 1M tokens）。';
     return;
   }
 
-  // AMO source review: 模型名稱經 escapeHtml(line ~2050 helper),其他 ${...} 是純數字計算結果,無 user input。
+  // AMO source review: 模型名稱經 escapeHtml(line ~2050 helper)，其他 ${...} 是純數字計算結果，無 user input。
   hintEl.innerHTML =
     `<strong>token 開銷估算</strong>（以目前模型 <code>${escapeHtml(modelDisplay)}</code> 計，input $${inputPrice}/1M tokens、30 分鐘影片約 60 批）：<br>` +
     `<span style="display:inline-block; margin-left: 12px;">• 套用「固定術語表」（${fgCount} 條）→ 每批 prompt +${fgTok} token，全片約 ${fmtUSD(fgTok)}（cache 命中後 ~${fmtUSD(fgTok, 0.25)}）</span><br>` +
@@ -437,8 +508,8 @@ function updateYtPromptCostHint() {
 }
 
 // v1.4.13: 從 chrome.commands.getAll() 讀取實際綁定鍵位顯示在每張 card 右上角
-// v1.8.19: command id 主要預設(slot 2)從 translate-preset-2 改為 translate-preset-0
-//          (字典序保證 chrome://extensions/shortcuts 顯示順序「主要 → 預設 2 → 預設 3」)
+// v1.8.19: command id 主要預設（slot 2）從 translate-preset-2 改為 translate-preset-0
+//          （字典序保證 chrome://extensions/shortcuts 顯示順序「主要 → 預設 2 → 預設 3」)
 async function refreshPresetKeyBindings() {
   const SLOT_TO_COMMAND_ID = { 1: 'translate-preset-1', 2: 'translate-preset-0', 3: 'translate-preset-3' };
   try {
@@ -459,8 +530,8 @@ async function refreshPresetKeyBindings() {
 }
 
 // v1.8.14: 並發 save 防護
-// 之前 save() 是 read-modify-write(sync.get → 組整桶 → sync.set),沒任何 lock。
-// 兩個 Tab 的儲存按鈕共用同一個 save(),快速連按 / 跨 Tab 同時改 / 打字+按鈕同時觸發
+// 之前 save() 是 read-modify-write(sync.get → 組整桶 → sync.set)，沒任何 lock。
+// 兩個 Tab 的儲存按鈕共用同一個 save()，快速連按 / 跨 Tab 同時改 / 打字+按鈕同時觸發
 // → 後一筆 set 可能蓋掉前一筆 get 之間的 in-flight 變更。
 let _saveInFlight = false;
 
@@ -478,62 +549,62 @@ async function _saveImpl() {
   // v0.62 起：apiKey 單獨寫到 browser.storage.local，不進 sync
   const apiKeyValue = $('apiKey').value.trim();
   await browser.storage.local.set({ apiKey: apiKeyValue });
-  // v1.6.15: 讀回現存的 geminiConfig.model 不從 UI 取(全域 dropdown 已移除)。
-  // 保留 storage 欄位避免 migration,且 testGeminiKey 已改走「主要預設」的 model。
-  // v1.6.16: 同樣讀回 settings.pricing(後備路徑單價 UI 也移除了)。
+  // v1.6.15: 讀回現存的 geminiConfig.model 不從 UI 取（全域 dropdown 已移除）。
+  // 保留 storage 欄位避免 migration，且 testGeminiKey 已改走「主要預設」的 model。
+  // v1.6.16: 同樣讀回 settings.pricing（後備路徑單價 UI 也移除了）。
   const existing = await browser.storage.sync.get(['geminiConfig', 'pricing']);
   const existingModel = existing.geminiConfig?.model || DEFAULTS.geminiConfig.model;
   const settings = {
     geminiConfig: {
       model: existingModel,
       serviceTier: $('serviceTier').value,
-      // v1.8.20: 改用 parseUserNum——空字串/非法字元走 default,避免 NaN 寫進 storage 後送 API 拒絕。
+      // v1.8.20: 改用 parseUserNum——空字串/非法字元走 default，避免 NaN 寫進 storage 後送 API 拒絕。
       temperature: parseUserNum($('temperature').value, DEFAULTS.geminiConfig.temperature),
       topP: parseUserNum($('topP').value, DEFAULTS.geminiConfig.topP),
       topK: parseUserNum($('topK').value, DEFAULTS.geminiConfig.topK),
       maxOutputTokens: parseUserNum($('maxOutputTokens').value, DEFAULTS.geminiConfig.maxOutputTokens),
       systemInstruction: $('systemInstruction').value,
     },
-    // v1.6.16: 後備路徑單價 UI 已移除,從 storage 拉現存值寫回(沿用 v1.6.15 對 geminiConfig.model 的同 pattern)
+    // v1.6.16: 後備路徑單價 UI 已移除，從 storage 拉現存值寫回（沿用 v1.6.15 對 geminiConfig.model 的同 pattern)
     pricing: existing.pricing || DEFAULTS.pricing,
     domainRules: {
       whitelist: $('whitelist').value.split('\n').map(s => s.trim()).filter(Boolean),
     },
     debugLog: $('debugLog').checked,
     tier: $('tier').value,
-    // v1.6.19: 改用 parseUserNum——空字串/非法字元走 default,合法數字(含 0)保留。
-    // 沿用 `|| default` 會把使用者明確打的 0 一律當 falsy 改回預設,造成 UI 不一致。
-    // v1.8.19: safetyMargin 從 UI 移除,save() 不再寫,維持 storage 既有值(0.1)
+    // v1.6.19: 改用 parseUserNum——空字串/非法字元走 default，合法數字（含 0）保留。
+    // 沿用 `|| default` 會把使用者明確打的 0 一律當 falsy 改回預設，造成 UI 不一致。
+    // v1.8.19: safetyMargin 從 UI 移除，save() 不再寫，維持 storage 既有值（0.1)
     maxRetries: parseUserNum($('maxRetries').value, 3),
     maxConcurrentBatches: parseUserNum($('maxConcurrentBatches').value, 10),
     maxUnitsPerBatch: parseUserNum($('maxUnitsPerBatch').value, 20),
     maxCharsPerBatch: parseUserNum($('maxCharsPerBatch').value, 3500),
     maxTranslateUnits: parseUserNum($('maxTranslateUnits').value, 1000),
-    // v1.8.3: 只翻文章開頭(節省費用)
+    // v1.8.3: 只翻文章開頭（節省費用）
     partialMode: {
       enabled: $('partialModeEnabled').checked,
       maxUnits: parseUserNum($('partialModeMaxUnits').value, 25),
     },
-    // 只有 custom tier 才寫入 override(其他 tier 的數字從對照表讀,不存)
+    // 只有 custom tier 才寫入 override（其他 tier 的數字從對照表讀，不存）
     rpmOverride: $('tier').value === 'custom' ? (Number($('rpm').value) || null) : null,
     tpmOverride: $('tier').value === 'custom' ? (Number($('tpm').value) || null) : null,
     rpdOverride: $('tier').value === 'custom' ? (Number($('rpd').value) || null) : null,
     // v0.69: 術語表一致化
     glossary: {
       enabled: $('glossaryEnabled').checked,
-      // v1.7.2: 術語擷取獨立模型;空字串 = 與主翻譯模型相同(舊行為)
+      // v1.7.2: 術語擷取獨立模型；空字串 = 與主翻譯模型相同（舊行為）
       model: $('glossaryModel').value,
       prompt: $('glossaryPrompt').value,
-      // v1.8.20: 改 parseUserNum,避免使用者打 0 (合法 temperature) 被 falsy 改回 0.1
+      // v1.8.20: 改 parseUserNum，避免使用者打 0 （合法 temperature) 被 falsy 改回 0.1
       temperature: parseUserNum($('glossaryTemperature').value, DEFAULTS.glossary.temperature ?? 0.1),
       skipThreshold: DEFAULTS.glossary.skipThreshold,
-      // v1.7.3: blockingThreshold 使用者可調(0 = 永遠 fire-and-forget,大值 = 幾乎都 blocking)
+      // v1.7.3: blockingThreshold 使用者可調（0 = 永遠 fire-and-forget，大值 = 幾乎都 blocking)
       blockingThreshold: parseUserNum($('glossaryBlockingThreshold').value, DEFAULTS.glossary.blockingThreshold),
       timeoutMs: parseUserNum($('glossaryTimeout').value, 60000),
       maxTerms: DEFAULTS.glossary.maxTerms,
     },
     // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
-    // v1.8.20: 空字串 → 0/100 = 0 → toast 完全透明,改 parseUserNum 走預設
+    // v1.8.20: 空字串 → 0/100 = 0 → toast 完全透明，改 parseUserNum 走預設
     toastOpacity: parseUserNum($('toastOpacity').value, (DEFAULTS.toastOpacity ?? 0.95) * 100) / 100,
     toastPosition: $('toastPosition').value,
     // v1.1.3: Toast 自動關閉
@@ -542,13 +613,15 @@ async function _saveImpl() {
     showProgressToast: $('showProgressToast').checked,
     // v1.5.0: 雙語對照視覺標記
     translationMarkStyle: getSelectedMarkStyle(),
+    // v1.8.41：金額顯示幣值
+    displayCurrency: getSelectedCurrency(),
     // v1.0.21: 頁面層級繁中偵測開關
     skipTraditionalChinesePage: $('skipTraditionalChinesePage').checked,
     // v1.2.11: YouTube 字幕設定
     ytSubtitle: {
       engine: ($('ytEngine')?.value || 'gemini'),  // v1.4.0
       autoTranslate:      $('ytAutoTranslate').checked,
-      // v1.6.23: ASR 分句單一 toggle——checked=progressive(混合)、unchecked=heuristic
+      // v1.6.23: ASR 分句單一 toggle——checked=progressive（混合）、unchecked=heuristic
       asrMode: $('ytAsrProgressive').checked ? 'progressive' : 'heuristic',
       // v1.5.8: 字幕是否套用固定術語表 / 黑名單
       applyFixedGlossary:  $('ytApplyFixedGlossary').checked,
@@ -589,13 +662,13 @@ async function _saveImpl() {
       const v = Number($('popup-button-slot')?.value);
       return [1, 2, 3].includes(v) ? v : 2;
     })(),
-    // v1.6.13: 自動翻譯網站(白名單)觸發時走的 preset slot
+    // v1.6.13: 自動翻譯網站（白名單）觸發時走的 preset slot
     autoTranslateSlot: (() => {
       const v = Number($('auto-translate-slot')?.value);
       return [1, 2, 3].includes(v) ? v : 2;
     })(),
-    // v1.6.14: per-model 計價覆蓋(Google 改價時使用者自填)。
-    // 兩欄都是合法數字才寫入 entry,任一欄空白整個 model 不存(走內建表)。
+    // v1.6.14: per-model 計價覆蓋（Google 改價時使用者自填）。
+    // 兩欄都是合法數字才寫入 entry，任一欄空白整個 model 不存（走內建表）。
     modelPricingOverrides: (() => {
       const collect = (model, inputId, outputId) => {
         const i = $(inputId)?.value?.trim();
@@ -639,12 +712,12 @@ async function _saveImpl() {
       return forbiddenTerms.filter(t => t.forbidden || t.replacement);
     })(),
     // v1.5.7: 自訂 OpenAI-compatible Provider
-    // v1.6.18: 加入 thinkingLevel + extraBodyJson(各家 thinking schema 統一抽象)
+    // v1.6.18: 加入 thinkingLevel + extraBodyJson（各家 thinking schema 統一抽象）
     customProvider: {
       baseUrl: ($('cp-baseUrl').value || '').trim(),
       model: ($('cp-model').value || '').trim(),
       systemPrompt: $('cp-systemPrompt').value || '',
-      // v1.8.20: temperature 改 parseUserNum 避免 0 被當 falsy;單價 0 是合法值改 parseUserNum 0
+      // v1.8.20: temperature 改 parseUserNum 避免 0 被當 falsy；單價 0 是合法值改 parseUserNum 0
       temperature: parseUserNum($('cp-temperature').value, DEFAULTS.customProvider?.temperature ?? 0.7),
       inputPerMTok: parseUserNum($('cp-inputPerMTok').value, 0),
       outputPerMTok: parseUserNum($('cp-outputPerMTok').value, 0),
@@ -723,7 +796,7 @@ $('cp-reset-prompt')?.addEventListener('click', () => {
 $('gemini-reset-all')?.addEventListener('click', () => {
   if (!confirm('確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：Service Tier、模型計價覆蓋（清空走內建表）、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Top P、Top K、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後仍需點「儲存設定」才會生效。')) return;
   const D = DEFAULTS;
-  // v1.6.15: 全域 #model dropdown 已移除,不再 reset 模型 UI;只 reset service tier。
+  // v1.6.15: 全域 #model dropdown 已移除，不再 reset 模型 UI；只 reset service tier。
   // settings.geminiConfig.model 由「儲存設定」按鈕從 storage 讀回沿用。
   $('serviceTier').value = D.geminiConfig.serviceTier;
   // LLM 參數
@@ -733,8 +806,8 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('maxOutputTokens').value = D.geminiConfig.maxOutputTokens;
   $('systemInstruction').value = D.geminiConfig.systemInstruction;
   // 計價
-  // v1.6.16: 後備路徑單價 UI 已移除,reset 不再動 settings.pricing 欄位。
-  // v1.6.14: per-model override 欄位 reset 為空(預設 modelPricingOverrides:{} 對應 UI 全空 = 走內建表)。
+  // v1.6.16: 後備路徑單價 UI 已移除，reset 不再動 settings.pricing 欄位。
+  // v1.6.14: per-model override 欄位 reset 為空（預設 modelPricingOverrides:{} 對應 UI 全空 = 走內建表）。
   for (const id of [
     'override-lite-input',  'override-lite-output',
     'override-flash-input', 'override-flash-output',
@@ -746,7 +819,7 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   // 配額（先填 tier 觸發 RPM/TPM/RPD readonly 帶值，再清掉 override）
   $('tier').value = D.tier;
   applyTierToInputs(D.tier, D.geminiConfig.model);
-  // v1.8.19: safetyMargin UI 已移除,reset 不再 touch
+  // v1.8.19: safetyMargin UI 已移除，reset 不再 touch
   $('maxRetries').value = D.maxRetries;
   // 效能
   $('maxConcurrentBatches').value = D.maxConcurrentBatches;
@@ -777,13 +850,16 @@ $('ytEngine')?.addEventListener('change', () => {
   updateYtPromptCostHint();
 });
 // v1.5.8: 字幕模型 / 計價變動時重算 cost hint
-// v1.6.15: 移除 'model'(全域 dropdown 已移除)。preset-model-2 切換不影響字幕成本估算
-// 因為字幕用獨立的 ytSubtitle.model;字幕 prompt token 成本估算只看字幕端設定。
-// v1.6.16: 移除 'inputPerMTok'(後備路徑單價 UI 已移除)
+// v1.6.15: 移除 'model'（全域 dropdown 已移除）。preset-model-2 切換不影響字幕成本估算
+// 因為字幕用獨立的 ytSubtitle.model；字幕 prompt token 成本估算只看字幕端設定。
+// v1.6.16: 移除 'inputPerMTok'（後備路徑單價 UI 已移除）
 for (const id of ['ytModel', 'ytInputPerMTok', 'cp-model', 'cp-inputPerMTok']) {
   $(id)?.addEventListener('change', updateYtPromptCostHint);
   $(id)?.addEventListener('input', updateYtPromptCostHint);
 }
+
+// v1.8.41:Base URL 改成 http:// 時即時提示 Firefox HTTPS-Only Mode 警告
+$('cp-baseUrl')?.addEventListener('input', refreshFirefoxHttpsWarn);
 
 // v1.2.39: 切換 YouTube 模型時自動帶入參考計價（與主模型的邏輯相同）
 $('ytModel').addEventListener('change', () => {
@@ -841,6 +917,53 @@ document.getElementById('tab-youtube').addEventListener('change', markDirty);
 $('debugLog').addEventListener('change', markDirty);
 $('ytDebugToast').addEventListener('change', markDirty);
 $('ytOnTheFly').addEventListener('change', markDirty);
+
+// v1.8.41：幣值 radio change → currentCurrencyState 同步，並重新渲染用量分頁
+// （用量分頁可能已渲染好，radio 切換後表格 / 累計 / chart 都要立即反映）
+function rerenderUsageWithCurrency() {
+  // 表格 + 累計卡片
+  if (allUsageRecords.length) applyUsageSearch();
+  // chart（若已渲染過）
+  if (lastChartData) renderChart(lastChartData);
+}
+
+for (const r of document.querySelectorAll('input[name="displayCurrency"]')) {
+  r.addEventListener('change', () => {
+    currentCurrencyState.currency = getSelectedCurrency();
+    rerenderUsageWithCurrency();
+  });
+}
+
+// v1.8.41：重新抓取匯率按鈕（force fetch，跳過 freshness 檢查）
+$('refresh-rate-btn')?.addEventListener('click', async () => {
+  const btn = $('refresh-rate-btn');
+  const el = document.getElementById('currency-rate-display');
+  btn.disabled = true;
+  btn.dataset.state = 'loading';
+  btn.textContent = '抓取中⋯';
+  try {
+    const resp = await browser.runtime.sendMessage({ type: 'EXCHANGE_RATE_REFRESH' });
+    if (resp?.ok) {
+      currentCurrencyState = {
+        currency: getSelectedCurrency(),
+        rate: resp.rate,
+        fetchedAt: resp.fetchedAt,
+        source: resp.source,
+      };
+      el.textContent = formatRateLine(resp);
+      // 已渲染的用量分頁也要重算金額
+      rerenderUsageWithCurrency();
+    } else {
+      el.textContent = `匯率抓取失敗（${resp?.error || '未知'}），沿用現有 ${Number(resp?.rate || 31.6).toFixed(2)}`;
+    }
+  } catch (err) {
+    el.textContent = `匯率抓取失敗：${err?.message || err}`;
+  } finally {
+    btn.disabled = false;
+    btn.dataset.state = '';
+    btn.textContent = '重新抓取匯率';
+  }
+});
 
 // 顯示/隱藏 API Key 切換（v0.63）— 讓使用者能確認貼上去的 key 沒有貼錯
 $('toggle-api-key').addEventListener('click', () => {
@@ -900,13 +1023,13 @@ $('test-api-key').addEventListener('click', async () => {
 });
 
 // Tier 變更 → 自動更新 RPM/TPM/RPD 顯示
-// v1.6.15: 全域 model dropdown 已移除,Service Tier 已搬到 LLM 參數微調 section。
-// applyModelPricing(model) 在這裡也失去意義(model 不再從 UI 變,計價走 v1.6.14 per-model
-// override 表;Service Tier 影響的是內建表 multiplier,但「後備路徑單價」不再隨 tier 變)。
+// v1.6.15: 全域 model dropdown 已移除，Service Tier 已搬到 LLM 參數微調 section。
+// applyModelPricing(model) 在這裡也失去意義（model 不再從 UI 變，計價走 v1.6.14 per-model
+// override 表；Service Tier 影響的是內建表 multiplier，但「後備路徑單價」不再隨 tier 變）。
 $('tier').addEventListener('change', () => {
   applyTierToInputs($('tier').value, getSelectedModel());
 });
-// v1.8.19: safetyMargin slider UI 已移除,程式碼內部維持 storage default 0.1
+// v1.8.19: safetyMargin slider UI 已移除，程式碼內部維持 storage default 0.1
 $('toastOpacity').addEventListener('input', () => {
   $('toastOpacityLabel').textContent = $('toastOpacity').value;
 });
@@ -1149,7 +1272,7 @@ $('import-input').addEventListener('change', async (e) => {
 //   safari-web-extension:// → Safari       → 隱藏連結（Safari 不支援 about:* / chrome://*）
 const _extUrl = browser.runtime.getURL('');
 // v1.8.22: 改 querySelectorAll(class) 支援多個 chrome://extensions/shortcuts 連結
-// (例:翻譯快速鍵段落 + YouTube 無邊模式段落各放一個)。
+// （例：翻譯快速鍵段落 + YouTube 無邊模式段落各放一個）。
 const _shortcutsLinks = document.querySelectorAll('.open-shortcuts-link');
 if (_extUrl.startsWith('moz-extension://')) {
   _shortcutsLinks.forEach((link) => {
@@ -1179,8 +1302,8 @@ let fixedGlossary = { global: [], byDomain: {} };
 let currentDomain = ''; // 目前選中的網域
 
 function renderGlossaryTable(tbody, entries) {
-  // AMO source review: 所有使用者可變欄位(e.source / e.target / e.note)都經 escapeAttr / escapeHtml,
-  // 數字 i 是 array index(integer),無 user input 流入未 escape 的 innerHTML 位置。
+  // AMO source review: 所有使用者可變欄位（e.source / e.target / e.note）都經 escapeAttr / escapeHtml,
+  // 數字 i 是 array index(integer)，無 user input 流入未 escape 的 innerHTML 位置。
   tbody.innerHTML = entries.map((e, i) =>
     `<tr data-idx="${i}">` +
     `<td><input type="text" class="fg-source" value="${escapeAttr(e.source)}" placeholder="英文原文"></td>` +
@@ -1239,7 +1362,7 @@ $('fixed-global-tbody').addEventListener('focusout', () => {
 function updateDomainSelect() {
   const sel = $('fixed-domain-select');
   const domains = Object.keys(fixedGlossary.byDomain).sort();
-  // AMO source review: domain 字串(使用者輸入)經 escapeAttr / escapeHtml 雙重處理,
+  // AMO source review: domain 字串（使用者輸入）經 escapeAttr / escapeHtml 雙重處理，
   // 第一段是 dev hardcoded 字串。
   sel.innerHTML = '<option value="">選擇網域…</option>' +
     domains.map(d => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join('');
@@ -1328,7 +1451,7 @@ function renderForbiddenTermsTable() {
   const tbody = $('forbidden-terms-tbody');
   // v1.5.8: 備註 input 加 title attribute（hover 顯示原生 tooltip 看完整內容），
   // 編輯時靠 CSS focus 規則浮起放寬看完整文字。
-  // AMO source review: 所有使用者欄位經 escapeAttr / escapeHtml,無未 escape user input。
+  // AMO source review: 所有使用者欄位經 escapeAttr / escapeHtml，無未 escape user input。
   tbody.innerHTML = forbiddenTerms.map((t, i) => {
     const noteVal = escapeAttr(t.note || '');
     return `<tr data-idx="${i}">` +
@@ -1404,12 +1527,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (panel) panel.classList.add('active');
     // 切到用量頁時載入資料
     if (btn.dataset.tab === 'usage') {
-      // v1.8.40: 自動把「到」時間 bump 到當下,確保涵蓋切 tab 之前剛翻譯完的紀錄。
-      // 原本 to 由 initUsageDateRange / 上次手動設值固定,getUsageDateRange 讀回時
-      // 精度只到分鐘(秒/毫秒被丟),若新紀錄 timestamp > 欄位寫入時的當下分鐘起始
-      // 就不在 query 範圍 → 「打開 options 看不到剛翻完的紀錄,要 refresh / 點現在時間」。
-      // 切 usage tab 通常就是想看最新狀態,自動 bump 符合直覺;若 user 在 tab 內手動
-      // 改 to(看歷史)不受影響(只在切進來那刻覆寫)。
+      // v1.8.40: 自動把「到」時間 bump 到當下，確保涵蓋切 tab 之前剛翻譯完的紀錄。
+      // 原本 to 由 initUsageDateRange / 上次手動設值固定，getUsageDateRange 讀回時
+      // 精度只到分鐘（秒/毫秒被丟），若新紀錄 timestamp > 欄位寫入時的當下分鐘起始
+      // 就不在 query 範圍 → 「打開 options 看不到剛翻完的紀錄，要 refresh / 點現在時間」。
+      // 切 usage tab 通常就是想看最新狀態，自動 bump 符合直覺；若 user 在 tab 內手動
+      // 改 to（看歷史）不受影響（只在切進來那刻覆寫）。
       setDateTimeFields('usage-to', new Date());
       loadUsageData();
     }
@@ -1423,11 +1546,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 let usageChart = null;
 let currentGranularity = 'day';
 
-// v1.8.39: 用量明細表分頁(避免幾千筆紀錄一次塞 DOM 拖慢主執行緒)
+// v1.8.39: 用量明細表分頁（避免幾千筆紀錄一次塞 DOM 拖慢主執行緒）
 const USAGE_PAGE_SIZE = 100;
 let usageCurrentPage = 1;        // 1-based
-let usageFilteredCache = [];     // 最近一次 filter 結果(供翻頁時 slice)
+let usageFilteredCache = [];     // 最近一次 filter 結果（供翻頁時 slice)
 let allUsageRecords = [];   // v1.2.60: client-side 搜尋用，保留完整記錄
+let lastChartData = null;   // v1.8.41: 幣值切換時 re-render chart 用（避免重打 IndexedDB)
 
 // v1.5.7: 用量紀錄「模型」欄改用「翻譯快速鍵」三組 preset 的 label 標記。
 // 在 load() 結尾把當前 presets / customProvider 寫進這裡，供 modelToLabel() 渲染時查表。
@@ -1467,7 +1591,7 @@ let _timeSelectsBuilt = false;
 function buildTimeSelectOptions() {
   if (_timeSelectsBuilt) return;
   _timeSelectsBuilt = true;
-  // AMO source review: hourOptions / minOptions 是純 dev 生成的時間下拉(_pad2 把 0..59 整數補零成 2 位字串),完全無 user input。
+  // AMO source review: hourOptions / minOptions 是純 dev 生成的時間下拉（_pad2 把 0..59 整數補零成 2 位字串），完全無 user input。
   const hourOptions = Array.from({ length: 24 }, (_, h) => `<option value="${_pad2(h)}">${_pad2(h)}</option>`).join('');
   const minOptions  = Array.from({ length: 60 }, (_, m) => `<option value="${_pad2(m)}">${_pad2(m)}</option>`).join('');
   for (const id of ['usage-from-hour', 'usage-to-hour']) $(id).innerHTML = hourOptions;
@@ -1492,7 +1616,7 @@ function initUsageDateRange() {
   buildTimeSelectOptions();
   const to = new Date();
   const from = new Date();
-  // v1.8.39: 預設範圍從 30 天縮到 7 天,降低初始載入筆數(分頁仍可手動拉長日期看更多)
+  // v1.8.39: 預設範圍從 30 天縮到 7 天，降低初始載入筆數（分頁仍可手動拉長日期看更多）
   from.setDate(from.getDate() - 7);
   from.setHours(0, 0, 0, 0);
   setDateTimeFields('usage-from', from);
@@ -1515,8 +1639,8 @@ function fmtTime(ts) {
   return `${mm}/${dd} ${hh}:${mi}`;
 }
 
-// v1.8.20: in-flight request token,只渲染最新一筆。日期/粒度切換頻繁時三條
-// Promise.all 後發但先回的會覆蓋先發但後回的,圖表 stale-data race。
+// v1.8.20: in-flight request token，只渲染最新一筆。日期/粒度切換頻繁時三條
+// Promise.all 後發但先回的會覆蓋先發但後回的，圖表 stale-data race。
 let _loadUsageDataReqId = 0;
 
 // ─── 載入用量資料 ────────────────────────────────────────
@@ -1537,7 +1661,8 @@ async function loadUsageData() {
   // 彙總卡片
   if (statsRes?.ok) {
     const s = statsRes.stats;
-    $('usage-total-cost').textContent = formatUSD(s.totalBilledCostUSD);
+    $('usage-total-cost').textContent = formatMoney(s.totalBilledCostUSD, fmtMoneyOpts());
+    $('usage-total-cost-label').textContent = `累計費用（${currentCurrencyState.currency}）`;
     // v0.99: 思考 token 以 output 費率計費，加入總計
     $('usage-total-tokens').textContent = formatTokens(s.totalBilledInputTokens + s.totalOutputTokens);
     $('usage-total-count').textContent = String(s.count);
@@ -1552,7 +1677,10 @@ async function loadUsageData() {
   }
 
   // 折線圖
-  if (chartRes?.ok) renderChart(chartRes.data);
+  if (chartRes?.ok) {
+    lastChartData = chartRes.data;
+    renderChart(chartRes.data);
+  }
 
   // 明細表格（v1.2.60: 存入 allUsageRecords 供搜尋過濾用；v1.3.2: 同步重建模型篩選選項）
   if (recordsRes?.ok) {
@@ -1573,11 +1701,18 @@ function renderChart(data) {
 
   const labels = data.map(d => d.period);
   const tokenData = data.map(d => d.totalTokens);
-  const costData = data.map(d => d.billedCostUSD);
+  // v1.8.41：內部仍以 USD 為基準算合計 / 點值，顯示時（tooltip / Y 軸 / subtitle）再用
+  // formatMoney 換算成當前幣值。chart Y 軸資料用換算後的數字，讓刻度直觀。
+  const isTwd = currentCurrencyState.currency === 'TWD';
+  const costData = isTwd
+    ? data.map(d => (d.billedCostUSD || 0) * currentCurrencyState.rate)
+    : data.map(d => d.billedCostUSD || 0);
+  const costLabel = isTwd ? '費用（TWD)' : '費用（USD)';
+  const yAxisTitle = isTwd ? 'TWD' : 'USD';
 
   // 計算期間合計，顯示在圖表右上角
   const totalTokens = tokenData.reduce((s, v) => s + v, 0);
-  const totalCost = costData.reduce((s, v) => s + v, 0);
+  const totalCostUSD = data.reduce((s, d) => s + (d.billedCostUSD || 0), 0);
 
   usageChart = new Chart(ctx, {
     type: 'line',
@@ -1596,7 +1731,7 @@ function renderChart(data) {
           pointHoverRadius: 5,
         },
         {
-          label: '費用（USD）',
+          label: costLabel,
           data: costData,
           borderColor: '#34c759',
           backgroundColor: 'rgba(52, 199, 89, 0.08)',
@@ -1622,14 +1757,20 @@ function renderChart(data) {
           callbacks: {
             label: function(ctx) {
               if (ctx.datasetIndex === 0) return `Tokens: ${formatTokens(ctx.parsed.y)}`;
-              return `費用: ${formatUSD(ctx.parsed.y)}`;
+              // v1.8.41:tooltip 顯示已換算的金額（TWD 模式時 ctx.parsed.y 已是 TWD 數值）
+              if (isTwd) {
+                const v = ctx.parsed.y;
+                if (v < 0.1) return `費用： NT$ ${v.toFixed(3)}`;
+                return `費用： NT$ ${v.toFixed(1)}`;
+              }
+              return `費用： ${formatUSD(ctx.parsed.y)}`;
             },
           },
         },
         // Chart.js subtitle 用作期間累計顯示
         subtitle: {
           display: true,
-          text: `期間合計：${formatTokens(totalTokens)} tokens / ${formatUSD(totalCost)}`,
+          text: `期間合計：${formatTokens(totalTokens)} tokens / ${formatMoney(totalCostUSD, fmtMoneyOpts())}`,
           align: 'end',
           font: { size: 11, weight: 'normal' },
           color: '#86868b',
@@ -1642,9 +1783,9 @@ function renderChart(data) {
             font: { size: 10 },
             maxTicksLimit: 12,
             maxRotation: 0,
-            // 日粒度時 X 軸只顯示「日」,避免 2026-04-30 這種長字串擠成一團;
-            // 月 / 年粒度仍顯示原 period 字串。tooltip title 不受影響(走 default
-            // formatter,顯示完整 period)
+            // 日粒度時 X 軸只顯示「日」，避免 2026-04-30 這種長字串擠成一團；
+            // 月 / 年粒度仍顯示原 period 字串。tooltip title 不受影響（走 default
+            // formatter，顯示完整 period)
             callback: function(value) {
               const label = this.getLabelForValue(value);
               if (currentGranularity === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(label)) {
@@ -1672,9 +1813,9 @@ function renderChart(data) {
           grid: { drawOnChartArea: false },
           ticks: {
             font: { size: 10 },
-            callback: (v) => '$' + v.toFixed(2),
+            callback: (v) => isTwd ? 'NT$' + Math.round(v) : '$' + v.toFixed(2),
           },
-          title: { display: true, text: 'USD', font: { size: 10 }, color: '#34c759' },
+          title: { display: true, text: yAxisTitle, font: { size: 10 }, color: '#34c759' },
         },
       },
     },
@@ -1694,25 +1835,25 @@ function renderTable(records) {
   }
   emptyMsg.hidden = true;
 
-  // v1.8.39: 只 render 當前頁的 records,其餘交給分頁按鈕切換
+  // v1.8.39: 只 render 當前頁的 records，其餘交給分頁按鈕切換
   const totalPages = Math.max(1, Math.ceil(records.length / USAGE_PAGE_SIZE));
   if (usageCurrentPage > totalPages) usageCurrentPage = totalPages;
   if (usageCurrentPage < 1) usageCurrentPage = 1;
   const startIdx = (usageCurrentPage - 1) * USAGE_PAGE_SIZE;
   const pageRecords = records.slice(startIdx, startIdx + USAGE_PAGE_SIZE);
 
-  // AMO source review: usage records 來自本 extension 自己寫進 IndexedDB(usage-db.js)的計費紀錄,
-  // 所有 string 欄位渲染前都經 escapeHtml/escapeAttr,數字欄位是計算結果。無外部 user input 流入。
+  // AMO source review: usage records 來自本 extension 自己寫進 IndexedDB(usage-db.js）的計費紀錄，
+  // 所有 string 欄位渲染前都經 escapeHtml/escapeAttr，數字欄位是計算結果。無外部 user input 流入。
   tbody.innerHTML = pageRecords.map(r => {
     const isGoogle = r.engine === 'google';  // v1.4.0
     // v0.99: 思考 token 以 output 費率計費，加入明細計算
     const billedTokens = (r.billedInputTokens || 0) + (r.outputTokens || 0);
     // v1.5.7: 模型欄顯示 preset label；查不到才回退 model id 短名
     // v1.8.19: label 放寬到 30 字後 col-model 加 max-width + ellipsis,
-    //          完整 label 由 title attr 補(hover tooltip)
+    //          完整 label 由 title attr 補（hover tooltip)
     const shortModel = modelToLabel(r.model);
     const shortModelEsc = escapeHtml(shortModel);
-    const title = escapeHtml(r.title || '(無標題)');
+    const title = escapeHtml(r.title || '（無標題）');
     const urlDisplay = escapeHtml(shortenUrl(r.url || ''));
     const urlFull = escapeHtml(r.url || '');
     // v1.0.30: Gemini implicit cache hit rate（Google Translate 不適用）
@@ -1730,7 +1871,7 @@ function renderTable(records) {
     const tokenCell = isGoogle
       ? String(r.chars || 0)
       : `${formatTokens(billedTokens)}${hitHtml}`;
-    const costCell = isGoogle ? '$0' : formatUSD(r.billedCostUSD || 0);
+    const costCell = isGoogle ? formatMoney(0, fmtMoneyOpts()) : formatMoney(r.billedCostUSD || 0, fmtMoneyOpts());
     return `<tr>
       <td>${fmtTime(r.timestamp)}</td>
       <td>${title}${urlHtml}</td>
@@ -1743,7 +1884,7 @@ function renderTable(records) {
   renderUsagePagination(records.length);
 }
 
-// v1.8.39: 更新分頁 UI(總筆數、頁碼、prev/next disabled 狀態)
+// v1.8.39: 更新分頁 UI（總筆數、頁碼、prev/next disabled 狀態）
 function renderUsagePagination(totalCount) {
   const nav = $('usage-pagination');
   const info = $('usage-page-info');
@@ -1752,25 +1893,25 @@ function renderUsagePagination(totalCount) {
   if (!nav || !info || !prevBtn || !nextBtn) return;
 
   if (totalCount <= USAGE_PAGE_SIZE) {
-    // 一頁就放得下,隱藏分頁列
+    // 一頁就放得下，隱藏分頁列
     nav.hidden = true;
     return;
   }
   nav.hidden = false;
   const totalPages = Math.ceil(totalCount / USAGE_PAGE_SIZE);
-  info.textContent = `第 ${usageCurrentPage} / ${totalPages} 頁(${totalCount} 筆)`;
+  info.textContent = `第 ${usageCurrentPage} / ${totalPages} 頁（${totalCount} 筆）`;
   prevBtn.disabled = usageCurrentPage <= 1;
   nextBtn.disabled = usageCurrentPage >= totalPages;
 }
 
-// v1.8.39: 切頁 — 不重 query,只 re-render 當前頁
+// v1.8.39: 切頁 — 不重 query，只 re-render 當前頁
 function changeUsagePage(delta) {
   const totalPages = Math.max(1, Math.ceil(usageFilteredCache.length / USAGE_PAGE_SIZE));
   const next = usageCurrentPage + delta;
   if (next < 1 || next > totalPages) return;
   usageCurrentPage = next;
   renderTable(usageFilteredCache);
-  // 切頁後捲回表格頂端,避免使用者迷失位置
+  // 切頁後捲回表格頂端，避免使用者迷失位置
   $('usage-tbody')?.parentElement?.scrollTo({ top: 0 });
 }
 
@@ -1788,7 +1929,8 @@ function updateSummaryFromRecords(records) {
   for (const [m, c] of Object.entries(modelCount)) {
     if (c > topCount) { topCount = c; topModel = m; }
   }
-  $('usage-total-cost').textContent   = formatUSD(totalCost);
+  $('usage-total-cost').textContent   = formatMoney(totalCost, fmtMoneyOpts());
+  $('usage-total-cost-label').textContent = `累計費用（${currentCurrencyState.currency}）`;
   $('usage-total-tokens').textContent = formatTokens(totalTokens);
   $('usage-total-count').textContent  = String(records.length);
   // v1.5.7: 最常用模型卡片也用 preset label 顯示
@@ -1803,7 +1945,7 @@ function populateModelFilter() {
   const models = [...new Set(allUsageRecords.map(r => r.model || '').filter(Boolean))].sort();
   // 重建選項（保留「全部模型」作為第一個選項）
   // v1.5.7: option text 用 preset label 顯示；option value 仍是 model id 維持 filter 行為
-  // AMO source review: model id 跟 label 都經 escapeHtml/escapeAttr,第一段是 dev hardcoded。
+  // AMO source review: model id 跟 label 都經 escapeHtml/escapeAttr，第一段是 dev hardcoded。
   sel.innerHTML = '<option value="">全部模型</option>' +
     models.map(m => {
       const label = escapeHtml(modelToLabel(m));
@@ -1812,7 +1954,7 @@ function populateModelFilter() {
 }
 
 // v1.2.60: 搜尋過濾，同時比對標題與 URL；v1.3.2: 加入模型篩選
-// v1.8.39: filter 結果存進 usageFilteredCache 供翻頁重用,並 reset 到第 1 頁
+// v1.8.39: filter 結果存進 usageFilteredCache 供翻頁重用，並 reset 到第 1 頁
 function applyUsageSearch() {
   const q = ($('usage-search')?.value || '').trim().toLowerCase();
   const modelFilter = ($('usage-model-filter')?.value || '');
@@ -1883,12 +2025,12 @@ document.querySelectorAll('.gran-btn').forEach(btn => {
 });
 
 // v1.6.11: 手動重新載入用量紀錄（不需關閉設定頁）
-// 使用者回報：translatePage 寫入新紀錄後,設定頁停留在用量頁也不會自動更新,
+// 使用者回報：translatePage 寫入新紀錄後，設定頁停留在用量頁也不會自動更新，
 // Cmd+R refresh 也會回到預設分頁。loadUsageData() 已能保留當前的篩選狀態
-// （日期範圍 / 搜尋 / 模型 filter / 粒度）只重抓底層資料,直接呼叫即可。
+// （日期範圍 / 搜尋 / 模型 filter / 粒度）只重抓底層資料，直接呼叫即可。
 $('usage-reload')?.addEventListener('click', () => {
-  // v1.8.40: 重新載入時也 bump「到」時間到當下,確保涵蓋剛翻完的紀錄
-  // (詳見 tab click handler 內 usage 分支的註解)
+  // v1.8.40: 重新載入時也 bump「到」時間到當下，確保涵蓋剛翻完的紀錄
+  // （詳見 tab click handler 內 usage 分支的註解）
   setDateTimeFields('usage-to', new Date());
   loadUsageData();
 });
@@ -1940,7 +2082,7 @@ function stopLogPolling() {
   }
 }
 
-// v1.8.20: in-flight guard——SW 喚醒慢時 setInterval 不等上一輪,兩個 in-flight call
+// v1.8.20: in-flight guard——SW 喚醒慢時 setInterval 不等上一輪，兩個 in-flight call
 // 共用同一 logLatestSeq 各自拿回相同 log → concat 兩次 → 表格出現重複行。
 let _fetchLogsInFlight = false;
 async function fetchLogs() {
@@ -1952,7 +2094,7 @@ async function fetchLogs() {
       payload: { afterSeq: logLatestSeq },
     });
     if (!res?.ok) return;
-    // v1.8.14: 沒新 log 直接 return,不重 render(原本即使空也整表 innerHTML 一遍)
+    // v1.8.14: 沒新 log 直接 return，不重 render（原本即使空也整表 innerHTML 一遍）
     if (!res.logs || res.logs.length === 0) {
       if (res.latestSeq) logLatestSeq = res.latestSeq;
       return;
@@ -2063,8 +2205,8 @@ function renderLogTable() {
   // v1.5.7: search 命中 data 時自動展開該行 data，並把命中字串包 <mark> 高亮
   const searchLower = ($('log-search').value || '').trim().toLowerCase();
 
-  // AMO source review: log entries 來自本 extension 自己 sendLog 寫進 buffer 的紀錄,所有 string
-  // 欄位渲染前都經 escapeHtml/escapeAttr,搜尋字串(user input)也經 escape 才插入 <mark>。
+  // AMO source review: log entries 來自本 extension 自己 sendLog 寫進 buffer 的紀錄，所有 string
+  // 欄位渲染前都經 escapeHtml/escapeAttr，搜尋字串（user input）也經 escape 才插入 <mark>。
   tbody.innerHTML = visible.map(entry => {
     const time = formatLogTime(entry.t);
     const catClass = `log-cat log-cat-${entry.category || 'system'}`;
