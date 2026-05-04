@@ -4,15 +4,15 @@
 //   1. text run → line:y_top 接近的 run merge 成「視覺行」+ 同 line 的 run x 不能
 //      離既有右緣超過 X_GAP_RATIO × medianLineHeight (避免雙欄第一行被誤合併)
 //   2. line → column:1-D K-means(k=1/2/3)+ silhouette score 選最佳 k,column 中心
-//      過近時降階,並要求每欄至少有 MIN_COLUMN_LINE_RATIO 的 line(避免少量裝飾元素
+//      過近時降階，並要求每欄至少有 MIN_COLUMN_LINE_RATIO 的 line(避免少量裝飾元素
 //      觸發誤判雙欄)
-//   3. column → block:同欄內按 y_top 由小到大(視覺由上往下),垂直間距 >
+//   3. column → block：同欄內按 y_top 由小到大(視覺由上往下)，垂直間距 >
 //      FACTOR × medianLineHeight 切 block
-//   4. reading order:跨欄 by column index、欄內 by y_top 升序
-//   5. block type 啟發式:依 fontSize / 位置 / 第一字元 / 行寬 pattern 推 heading /
+//   4. reading order：跨欄 by column index、欄內 by y_top 升序
+//   5. block type 啟發式：依 fontSize / 位置 / 第一字元 / 行寬 pattern 推 heading /
 //      list-item / footnote / page-number / table / paragraph
 //
-// 座標系:全部 canvas 座標(y 由上往下,套過 viewport.transform)。bbox = [left, top, right, bottom]
+// 座標系：全部 canvas 座標(y 由上往下，套過 viewport.transform)。bbox = [left, top, right, bottom]
 //
 // 後續 iter:
 //   W2-iter5: plainText 構建加 de-hyphenation + 行尾續行銜接(SPEC §17.4.4)
@@ -23,36 +23,36 @@
 // 同視覺行的 y_top 容忍誤差(pt)。同一行 baseline 可能因上下標、字型差略有微差。
 const SAME_LINE_Y_TOLERANCE = 2;
 
-// 同視覺行的 run 與既有右緣的最大 x 間距(以 medianLineHeight 為單位):超過視為
-// 「跨欄同 y」不該合併。Wikipedia / 雙欄論文 / 兩欄聯絡資訊兩欄第一行 baseline 可能接近,
+// 同視覺行的 run 與既有右緣的最大 x 間距(以 medianLineHeight 為單位)：超過視為
+// 「跨欄同 y」不該合併。Wikipedia / 雙欄論文 / 兩欄聯絡資訊兩欄第一行 baseline 可能接近，
 // 不加這條會被誤合併成單一跨欄 line。
 const SAME_LINE_MAX_X_GAP_FACTOR = 4;
 
 // 兩條相鄰 line 的「行間距 ÷ medianLineHeight」超過此倍數即切 block
-// (1.5 為平衡點:1.3 切太細製造假陽性,1.6 對 spec sheet 太嚴。實測在 17 份 PDF
+// (1.5 為平衡點：1.3 切太細製造假陽性，1.6 對 spec sheet 太嚴。實測在 17 份 PDF
 // 樣本上 1.5 是 short-paragraph 假陽性 / huge-block 漏切的最佳折衷)
 const VERTICAL_GAP_FACTOR = 1.5;
 
 // 兩條相鄰 line 的字級差超過此倍數的 medianLineHeight 即切 block(分離 heading / body)
-// 同一 line 內不同字級的 run 在 groupIntoLines 已合成同 line,這條只看 line 之間
+// 同一 line 內不同字級的 run 在 groupIntoLines 已合成同 line，這條只看 line 之間
 const LINE_FONT_SIZE_DELTA_FACTOR = 0.5;
 
-// dominant fontName 純度閾值:line 內單一 fontName 字數佔比 ≥ 此值才認為「整行同字型」
-// (低於此值代表 line 內混了 italic / bold 等 inline emphasis,不該觸發 fontName 切點)
+// dominant fontName 純度閾值：line 內單一 fontName 字數佔比 ≥ 此值才認為「整行同字型」
+// (低於此值代表 line 內混了 italic / bold 等 inline emphasis，不該觸發 fontName 切點)
 const DOMINANT_FONT_NAME_PURITY_RATIO = 0.95;
 
-// Column 偵測:中心相距 < pageWidth × COLUMN_MIN_GAP_RATIO 視為同欄(SPEC §17.4.3)
+// Column 偵測：中心相距 < pageWidth × COLUMN_MIN_GAP_RATIO 視為同欄(SPEC §17.4.3)
 const COLUMN_MIN_GAP_RATIO = 0.3;
 
-// Column 偵測:k=1 / k=2 / k=3 三組 silhouette score,score 差 < 此閾值時偏好較小 k
+// Column 偵測：k=1 / k=2 / k=3 三組 silhouette score,score 差 < 此閾值時偏好較小 k
 const SILHOUETTE_BIAS_TO_FEWER_COLUMNS = 0.08;
 
-// Column 偵測:最弱欄 line 數佔比若 < MIN_COLUMN_LINE_RATIO 則降階(避免少量裝飾元素
-// 觸發誤判雙欄;典型場景:Quotation 的「Quotation 標題 / TTL / Lucy Chou」三條右半 line
+// Column 偵測：最弱欄 line 數佔比若 < MIN_COLUMN_LINE_RATIO 則降階(避免少量裝飾元素
+// 觸發誤判雙欄；典型場景：Quotation 的「Quotation 標題 / TTL / Lucy Chou」三條右半 line
 // 不該獨立成欄)
 const MIN_COLUMN_LINE_RATIO = 0.18;
 
-// K-means 收斂上限(text run 數量有限,實務 5-10 步即收斂)
+// K-means 收斂上限(text run 數量有限，實務 5-10 步即收斂)
 const KMEANS_MAX_ITERS = 30;
 
 // ----- Block type 分類啟發式參數 -----
@@ -65,7 +65,7 @@ const HEADING_MAX_CHARS = 200;
 const FOOTNOTE_FONT_SIZE_FACTOR = 0.85;
 const FOOTNOTE_BOTTOM_THRESHOLD = 0.75;
 
-// page-number:位於頁首 / 頁尾 PAGE_NUMBER_EDGE_RATIO 內
+// page-number：位於頁首 / 頁尾 PAGE_NUMBER_EDGE_RATIO 內
 const PAGE_NUMBER_EDGE_RATIO = 0.1;
 
 // table:block 內 line 數 ≥ TABLE_MIN_LINES + 平均每行字數 < TABLE_MAX_AVG_CHARS
@@ -73,14 +73,14 @@ const PAGE_NUMBER_EDGE_RATIO = 0.1;
 const TABLE_MIN_LINES = 4;
 const TABLE_MAX_AVG_CHARS = 35;
 
-// list-item sub-split:當 block 內 ≥ LIST_SUBSPLIT_MIN_LINES 行 + 多數行起首是 list
-// marker 時,按 marker 切多個 block。處理「60 行 spec list 整段一個 block」場景。
+// list-item sub-split：當 block 內 ≥ LIST_SUBSPLIT_MIN_LINES 行 + 多數行起首是 list
+// marker 時，按 marker 切多個 block。處理「60 行 spec list 整段一個 block」場景。
 const LIST_SUBSPLIT_MIN_LINES = 5;
 const LIST_SUBSPLIT_MARKER_RATIO = 0.6; // 多數行起首必須是 marker 才切
 const LIST_MARKER_RE = /^\s*(?:[-•·*–—]|\d+[.)]|\([a-zA-Z0-9]+\))\s/;
 
 /**
- * 主入口:接受 W1 parsePdf 的 raw doc,回傳版面 IR doc。
+ * 主入口：接受 W1 parsePdf 的 raw doc，回傳版面 IR doc。
  *
  * @param {RawPdfDocument} rawDoc — pdf-engine.js parsePdf 輸出
  * @returns {LayoutDoc}
@@ -107,7 +107,7 @@ function analyzePage(rawPage) {
   const runs = (rawPage.textRuns || []).slice();
   if (runs.length === 0) return out;
 
-  // 1) medianLineHeight:用 run height 中位數估,作為「同行容忍」與「切 block」的 baseline
+  // 1) medianLineHeight：用 run height 中位數估，作為「同行容忍」與「切 block」的 baseline (forwarded)
   const runHeights = runs
     .map((r) => r.bbox[3] - r.bbox[1])
     .filter((h) => h > 0)
@@ -121,12 +121,18 @@ function analyzePage(rawPage) {
   const lines = groupIntoLines(runs, medianLineHeight);
   if (lines.length === 0) return out;
 
-  // 3) Column 偵測:對每條 line 的 left 跑 K-means
+  // 2.5) 標「同一視覺行」的兄弟 line — same-line x gap 太大被切散的多條 line(典型:
+  //      News Release 第一行「For Immediate Release ............ February 12, 2024」
+  //      左右分置)。後續 splitColumnIntoBlocks 對 siblingsInRow 強制切獨立 block,
+  //      避免 plainText 把左右兩段 collapse 成單一字串送 LLM,譯文還原無法分置
+  markSiblingsInRow(lines, medianLineHeight);
+
+  // 3) Column 偵測：對每條 line 的 left 跑 K-means
   const pageWidth = rawPage.viewport.width || 0;
   const columnAssignments = detectColumns(lines, pageWidth);
   out.columnCount = columnAssignments.columnCount;
 
-  // 4) 同 column 內切 block(canvas 座標,top 升序 = 視覺由上往下)
+  // 4) 同 column 內切 block(canvas 座標，top 升序 = 視覺由上往下)
   const initialBlocks = [];
   for (let colIdx = 0; colIdx < columnAssignments.columnCount; colIdx++) {
     const colLines = lines.filter((_, i) => columnAssignments.assignment[i] === colIdx);
@@ -135,29 +141,29 @@ function analyzePage(rawPage) {
     initialBlocks.push(...colBlocks);
   }
 
-  // 4.5a) heading sub-split:掃 block 內每行,找「heading-shaped」line 切成獨立 block。
-  //       條件:lines[i].dominantFontName 與 block majority 不同 + 字數短 + 前面有比正常
-  //       leading 大的 gap(防 inline italic 引文整行誤切;heading 前通常多一行 spacing)
+  // 4.5a) heading sub-split：掃 block 內每行，找「heading-shaped」line 切成獨立 block。
+  //       條件：lines[i].dominantFontName 與 block majority 不同 + 字數短 + 前面有比正常
+  //       leading 大的 gap(防 inline italic 引文整行誤切；heading 前通常多一行 spacing)
   const afterHeadingSplit = [];
   for (const b of initialBlocks) {
     afterHeadingSplit.push(...maybeSplitHeadingsAcrossBlock(b, medianLineHeight));
   }
 
-  // 4.5b) list-item sub-split:大 block 內若多數行起首是 list marker,按 marker 切多個 block
+  // 4.5b) list-item sub-split：大 block 內若多數行起首是 list marker，按 marker 切多個 block
   const blocks = [];
   for (const b of afterHeadingSplit) {
     const subBlocks = maybeSubsplitListBlock(b);
     blocks.push(...subBlocks);
   }
 
-  // 5) reading order:跨欄按 column 升序、同欄按 top 升序(視覺由上往下)
+  // 5) reading order：跨欄按 column 升序、同欄按 top 升序(視覺由上往下)
   blocks.sort((a, b) => {
     if (a.column !== b.column) return a.column - b.column;
     return a.bbox[1] - b.bbox[1];
   });
   blocks.forEach((b, i) => { b.readingOrder = i; });
 
-  // 給每個 block 配個穩定 id(reading order 排完才分配,確保 id 連續)
+  // 給每個 block 配個穩定 id(reading order 排完才分配，確保 id 連續)
   blocks.forEach((b, i) => { b.blockId = `p${rawPage.pageIndex}-b${i}`; });
 
   // 6) block type 啟發式分類(SPEC §17.4.3)
@@ -214,7 +220,7 @@ function classifyBlockType(block, ctx) {
   const blockMidY = (blockTop + blockBottom) / 2;
   const blockWidth = bbox[2] - bbox[0];
 
-  // 1) page-number:純數字 / "Page N" / "N of M" + 位於頁首或頁尾 + lineCount=1
+  // 1) page-number：純數字 / "Page N" / "N of M" + 位於頁首或頁尾 + lineCount=1
   // 字級不限——某些 PDF 頁碼字級跟 body 接近
   const pageNumRe = /^(?:page\s+)?(\d+|\d+\s*\/\s*\d+|\d+\s+of\s+\d+)\.?$/i;
   if (lineCount === 1 && pageNumRe.test(trimmed)) {
@@ -245,20 +251,20 @@ function classifyBlockType(block, ctx) {
     return 'heading';
   }
 
-  // 4) list-item:第一字元 ∈ bullet / dash / asterisk 集合,或開頭為 "1." / "1)"
+  // 4) list-item：第一字元 ∈ bullet / dash / asterisk 集合，或開頭為 "1." / "1)"
   const firstChar = trimmed.charAt(0);
   if ('•·-–—*'.includes(firstChar)) return 'list-item';
   if (/^\d+[.)]\s/.test(trimmed)) return 'list-item';
   if (/^\(?[a-zA-Z]\)\s/.test(trimmed)) return 'list-item';
 
-  // 5) table(layout-only,不依賴 operator list):
+  // 5) table(layout-only，不依賴 operator list):
   //    block 內 line 數 ≥ 4 + 平均每行字數短 + line bbox left 不單調(同 row 中
-  //    cell 排列規律但跳躍)→ 視為表格。這是粗判,W2-iter6 加 operator list 補強
+  //    cell 排列規律但跳躍)→ 視為表格。這是粗判，W2-iter6 加 operator list 補強
   if (lineCount >= TABLE_MIN_LINES && (block._devLines || []).length > 0) {
     const lines = block._devLines;
     const avgChars = lines.reduce((s, l) => s + (l.text || '').length, 0) / lines.length;
     if (avgChars < TABLE_MAX_AVG_CHARS) {
-      // 看 line left 是否有大跳躍(≥ blockWidth × 0.2)的次數;表格通常 cell 對齊不同欄
+      // 看 line left 是否有大跳躍(≥ blockWidth × 0.2)的次數；表格通常 cell 對齊不同欄
       let leftJumps = 0;
       for (let i = 1; i < lines.length; i++) {
         const dl = Math.abs(lines[i].bbox[0] - lines[i - 1].bbox[0]);
@@ -298,7 +304,7 @@ function groupIntoLines(runs, medianLineHeight) {
     const sameRowY = Math.abs(run.bbox[1] - currentLine.refTop) <= SAME_LINE_Y_TOLERANCE;
     // 2) x 不能距既有 line 的右緣太遠——避免雙欄第一行 baseline 接近時被誤合併
     //    把「x 與 currentLine 既有 bbox 重疊或相鄰一段距離」視為同行
-    const xGap = run.bbox[0] - currentLine.bbox[2]; // 正值 = run 在 line 右邊有空白;負值 = 重疊
+    const xGap = run.bbox[0] - currentLine.bbox[2]; // 正值 = run 在 line 右邊有空白；負值 = 重疊
     const sameRowX = xGap <= sameLineMaxXGap;
     if (sameRowY && sameRowX) {
       currentLine.runs.push(run);
@@ -321,17 +327,17 @@ function newLineFromRun(run) {
 }
 
 function finalizeLine(line) {
-  // line 內 run 按 x0 升序,讓拼字順序對
+  // line 內 run 按 x0 升序，讓拼字順序對
   line.runs.sort((a, b) => a.bbox[0] - b.bbox[0]);
   // line 級資訊
   const fontSizes = line.runs.map((r) => r.fontSize || 0).filter((s) => s > 0);
   const dominantFontSize = fontSizes.length > 0
     ? fontSizes.reduce((a, b) => a + b, 0) / fontSizes.length
     : 0;
-  // dominant fontName:只在「整行 ≥ DOMINANT_FONT_NAME_PURITY_RATIO 字數同一 fontName」
-  // 時才設,否則設空字串。這條規則服務「heading 整行純粹單一字型 vs body 含 inline
-  // italic 混字型」的辨識——body 含 italic emphasis 時 dominantFontName 會留空,
-  // splitColumnIntoBlocks 比對時兩端都需有值才切,空字串不觸發誤切。
+  // dominant fontName：只在「整行 ≥ DOMINANT_FONT_NAME_PURITY_RATIO 字數同一 fontName」
+  // 時才設，否則設空字串。這條規則服務「heading 整行純粹單一字型 vs body 含 inline
+  // italic 混字型」的辨識——body 含 italic emphasis 時 dominantFontName 會留空，
+  // splitColumnIntoBlocks 比對時兩端都需有值才切，空字串不觸發誤切。
   const fontCounts = new Map();
   let totalChars = 0;
   for (const r of line.runs) {
@@ -361,7 +367,7 @@ function finalizeLine(line) {
   };
 }
 
-// ---------- 2) Column 偵測:1-D K-means + silhouette ----------
+// ---------- 2) Column 偵測：1-D K-means + silhouette ----------
 
 function detectColumns(lines, pageWidth) {
   // 每條 line 的 left 為 feature
@@ -373,12 +379,12 @@ function detectColumns(lines, pageWidth) {
     if (xs.length < k) break;
     const result = kmeans1d(xs, k);
     if (!result) continue;
-    // 邊界 1:中心相距太近的 k 不採用(避免縮排被當多欄)
+    // 邊界 1：中心相距太近的 k 不採用(避免縮排被當多欄)
     const minGap = pageWidth > 0 ? pageWidth * COLUMN_MIN_GAP_RATIO : 0;
     if (k > 1 && minPairwiseGap(result.centers) < minGap) continue;
-    // 邊界 2:最弱 cluster 的 line 數佔比 < MIN_COLUMN_LINE_RATIO 不採用
-    // (避免少量裝飾元素 / 浮動標題觸發誤判;典型場景:Quotation 右半三條 single-line
-    // 元素被 K-means 視為第二欄,但其實主內容仍是單欄)
+    // 邊界 2：最弱 cluster 的 line 數佔比 < MIN_COLUMN_LINE_RATIO 不採用
+    // (避免少量裝飾元素 / 浮動標題觸發誤判；典型場景：Quotation 右半三條 single-line
+    // 元素被 K-means 視為第二欄，但其實主內容仍是單欄)
     if (k > 1) {
       const counts = new Array(k).fill(0);
       for (const a of result.assignment) counts[a]++;
@@ -397,7 +403,7 @@ function detectColumns(lines, pageWidth) {
     };
   }
 
-  // 選分數最高的 k,但若多個 k 分數差距 < bias 則偏好較少欄
+  // 選分數最高的 k，但若多個 k 分數差距 < bias 則偏好較少欄
   candidates.sort((a, b) => b.score - a.score);
   let chosen = candidates[0];
   for (const c of candidates) {
@@ -427,7 +433,7 @@ function kmeans1d(values, k) {
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     return { centers: [mean], assignment: values.map(() => 0) };
   }
-  // 初始化:取 values 中按位置等距的 k 個 quantile 當 seed
+  // 初始化：取 values 中按位置等距的 k 個 quantile 當 seed
   const sorted = values.slice().sort((a, b) => a - b);
   let centers = [];
   for (let i = 0; i < k; i++) {
@@ -466,7 +472,7 @@ function kmeans1d(values, k) {
     if (!changed) break;
   }
 
-  // 若有 cluster 為空(初始化偏差),退回 k-1
+  // 若有 cluster 為空(初始化偏差)，退回 k-1
   const counts = new Array(k).fill(0);
   for (const a of assignment) counts[a]++;
   if (counts.some((c) => c === 0)) return null;
@@ -486,7 +492,7 @@ function minPairwiseGap(centers) {
 }
 
 function silhouetteScore(values, assignment, centers) {
-  // 1-D 簡化:a(i) = |x_i - own center|, b(i) = |x_i - 第二近 center|
+  // 1-D 簡化：a(i) = |x_i - own center|, b(i) = |x_i - 第二近 center|
   // s(i) = (b - a) / max(a, b)。整體取平均。
   let sum = 0;
   let n = 0;
@@ -511,6 +517,50 @@ function silhouetteScore(values, assignment, centers) {
 
 // ---------- 3) Column → blocks ----------
 
+// 同 visual row 兄弟 line 標記的 x gap 閾值(以 medianLineHeight 為單位):
+//   line A.right → line B.left 的 gap 必須 ≥ MEDIAN × 此倍數,才認為「明顯左右分置」
+//   實測:News Release「For Immediate Release ... February 12, 2024」gap ≈ 300pt
+//   (對 11pt body = 27 倍);各 spec sheet 同 row 多 cell 表格 gap 通常 < 80pt,
+//   設 8(對 11pt body ≈ 88pt)能精確抓 News Release 的左右分置而不誤切表格
+const SIBLING_ROW_MIN_X_GAP_FACTOR = 8;
+
+// 對所有 lines 標「同一視覺行的兄弟 line」(典型場景:News Release 第一行
+// 「For Immediate Release ............ February 12, 2024」左右兩段分置)
+//
+// 條件(三條都要過):
+//   1. 同 visual row(top 距 ≤ SAME_LINE_Y_TOLERANCE)
+//   2. 該 row 內**剛好 2 條 line**(3+ 條 line 視為表格 cell,不該切)
+//   3. 兩條 line 之間 x gap ≥ SIBLING_ROW_MIN_X_GAP_FACTOR × medianLineHeight
+function markSiblingsInRow(lines, medianLineHeight) {
+  const minGap = SIBLING_ROW_MIN_X_GAP_FACTOR * (medianLineHeight || 12);
+  // 先按 top 分群(允許 SAME_LINE_Y_TOLERANCE 容忍)
+  const sortedIdx = lines.map((_, i) => i).sort((a, b) => lines[a].bbox[1] - lines[b].bbox[1]);
+  let groupStart = 0;
+  while (groupStart < sortedIdx.length) {
+    let groupEnd = groupStart;
+    const refTop = lines[sortedIdx[groupStart]].bbox[1];
+    while (groupEnd + 1 < sortedIdx.length &&
+      Math.abs(lines[sortedIdx[groupEnd + 1]].bbox[1] - refTop) <= SAME_LINE_Y_TOLERANCE) {
+      groupEnd++;
+    }
+    const groupSize = groupEnd - groupStart + 1;
+    // 條件 2:剛好 2 條 line(>= 3 條視為表格 cell,不切)
+    if (groupSize === 2) {
+      const a = lines[sortedIdx[groupStart]];
+      const b = lines[sortedIdx[groupEnd]];
+      const left = a.bbox[0] < b.bbox[0] ? a : b;
+      const right = a.bbox[0] < b.bbox[0] ? b : a;
+      const xGap = right.bbox[0] - left.bbox[2];
+      // 條件 3:x gap 夠大
+      if (xGap >= minGap) {
+        a.siblingsInRow = true;
+        b.siblingsInRow = true;
+      }
+    }
+    groupStart = groupEnd + 1;
+  }
+}
+
 function splitColumnIntoBlocks(colLines, medianLineHeight, columnIdx) {
   if (colLines.length === 0) return [];
   const blocks = [];
@@ -518,18 +568,26 @@ function splitColumnIntoBlocks(colLines, medianLineHeight, columnIdx) {
   for (let i = 1; i < colLines.length; i++) {
     const prev = colLines[i - 1];
     const cur = colLines[i];
-    // canvas 座標,colLines 已按 top 升序(視覺由上往下):
+    // siblingsInRow：同視覺行被切散的多條 line(左右分置場景)，強制切獨立 block。
+    // 不論 vertical gap / fontSize,prev / cur 任一是 sibling 都切——確保「左段」、
+    // 「右段」各自一個 block 翻譯，譯文不會 collapse 成單一字串
+    if (prev.siblingsInRow || cur.siblingsInRow) {
+      blocks.push(buildBlockFromLines(currentLines, columnIdx));
+      currentLines = [cur];
+      continue;
+    }
+    // canvas 座標，colLines 已按 top 升序(視覺由上往下):
     // gap = cur.top - prev.bottom = 兩條 line 之間的真實垂直空白
-    // 同行時 prev 與 cur 重疊 → gap < 0;緊鄰下一行 → gap ≈ leading;
+    // 同行時 prev 與 cur 重疊 → gap < 0；緊鄰下一行 → gap ≈ leading;
     // 隔了一個段落 → gap ≈ medianLineHeight × N
     const gap = cur.bbox[1] - prev.bbox[3];
     const fontDelta = Math.abs((cur.fontSize || 0) - (prev.fontSize || 0));
     const splitOnGap = gap > VERTICAL_GAP_FACTOR * medianLineHeight;
     const splitOnFont = fontDelta > LINE_FONT_SIZE_DELTA_FACTOR * medianLineHeight;
-    // dominantFontName 變化曾用作切點(分離 heading 跟 body),但實測 Plano news release
-    // body 中 italic 引文整行(如「Best Places to Live in Texas」)會誤切;且大段 paragraph
-    // 內混 italic 變化會把段落切成 3-5 段。取消此規則:接受同 fontSize 不同字型的 heading
-    // 跟 body 黏在一起 trade-off,讓 body 段落完整。
+    // dominantFontName 變化曾用作切點(分離 heading 跟 body)，但實測 Plano news release
+    // body 中 italic 引文整行(如「Best Places to Live in Texas」)會誤切；且大段 paragraph
+    // 內混 italic 變化會把段落切成 3-5 段。取消此規則：接受同 fontSize 不同字型的 heading
+    // 跟 body 黏在一起 trade-off，讓 body 段落完整。
     if (splitOnGap || splitOnFont) {
       blocks.push(buildBlockFromLines(currentLines, columnIdx));
       currentLines = [cur];
@@ -545,10 +603,10 @@ function buildBlockFromLines(lines, columnIdx) {
   let bbox = lines[0].bbox.slice();
   for (let i = 1; i < lines.length; i++) bbox = unionBBox(bbox, lines[i].bbox);
 
-  // plainText:line 之間以 ASCII space 銜接,收斂多重空白
+  // plainText:line 之間以 ASCII space 銜接，收斂多重空白
   const plainText = lines.map((l) => l.plainText).join(' ').replace(/\s+/g, ' ').trim();
 
-  // fontSize:對 line 的 fontSize 取平均(line 內已先做過平均)
+  // fontSize：對 line 的 fontSize 取平均(line 內已先做過平均)
   const fs = lines.map((l) => l.fontSize).filter((s) => s > 0);
   const fontSize = fs.length > 0 ? fs.reduce((a, b) => a + b, 0) / fs.length : 0;
 
@@ -558,9 +616,9 @@ function buildBlockFromLines(lines, columnIdx) {
     bbox: l.bbox,
     plainText: l.plainText || '',
     fontSize: l.fontSize || 0,
-    // 注意:sub-split path(maybeSplitHeadingFromBlock / maybeSubsplitListBlock)
-    // 構造 lineLikes 時若漏傳 dominantFontName,這裡 fallback 為 ''——但實作上 sub-split
-    // 拿 _lines 元素已含 dominantFontName,正常 path 會保留
+    // 注意：sub-split path(maybeSplitHeadingFromBlock / maybeSubsplitListBlock)
+    // 構造 lineLikes 時若漏傳 dominantFontName，這裡 fallback 為 ''——但實作上 sub-split
+    // 拿 _lines 元素已含 dominantFontName，正常 path 會保留
     dominantFontName: l.dominantFontName || '',
   }));
 
@@ -574,34 +632,34 @@ function buildBlockFromLines(lines, columnIdx) {
     fontSize,
     lineCount: lines.length,
     runCount,
-    // 內部 lines 結構,供 list sub-split 與 type 啟發式用
+    // 內部 lines 結構，供 list sub-split 與 type 啟發式用
     _lines: internalLines,
-    // dev probe alias(harness summary 用,W3 移除)
+    // dev probe alias(harness summary 用，W3 移除)
     _devLines: internalLines.map((l) => ({ bbox: l.bbox, text: l.plainText.slice(0, 60) })),
   };
 }
 
 // block 第一行若是「heading-shaped」(字數短 + dominantFontName 跟餘段 majority 不同)
-// 就切出獨立 heading block。設計:只切第一行,不切中間 / 結尾。
+// 就切出獨立 heading block。設計：只切第一行，不切中間 / 結尾。
 //
 // 為什麼只切第一行(不通用 fontName 切點):
 //   通用 fontName 切點對 body 段內的 italic 引文(如 "Best Places to Live in Texas")
 //   會把該行整段切散。Plano news release p0 就出現過大段 February 12 paragraph 被切
-//   成 3 段。「block 第一行 heading-shaped」是更窄的訊號,只在段首孤立短句 + 跟餘段
-//   字型不同時觸發,既能抓 Plano「About Plano / About Sysgration」這類 heading,又不
+//   成 3 段。「block 第一行 heading-shaped」是更窄的訊號，只在段首孤立短句 + 跟餘段
+//   字型不同時觸發，既能抓 Plano「About Plano / About Sysgration」這類 heading，又不
 //   傷段內 italic emphasis。
 const HEADING_SHAPED_MIN_CHARS = 3;
 const HEADING_SHAPED_MAX_CHARS = 60;
 const HEADING_REST_PURITY_RATIO = 0.5; // 餘段 dominantFontName 純度需 ≥ 50% 才認 majority
-                                        // (body 段內常混 italic / 引文,提到 70% 會擋掉 Plano p1 的合法 heading 切點)
+                                        // (body 段內常混 italic / 引文，提到 70% 會擋掉 Plano p1 的合法 heading 切點)
 
-// 掃 block 內每行,找「heading-shaped」line 切成獨立 heading block。
+// 掃 block 內每行，找「heading-shaped」line 切成獨立 heading block。
 //
 // 切點條件(任一行 i 視為 heading line):
 //   - lines[i].dominantFontName 與 block 內 majority dominantFontName 不同
 //   - 字數在 [HEADING_SHAPED_MIN_CHARS, HEADING_SHAPED_MAX_CHARS] 範圍
-//   - 若 i > 0:前面 gap(lines[i].top - lines[i-1].bottom)≥ HEADING_PRECEDING_GAP_FACTOR ×
-//     medianLineHeight,避免 body 中段內 italic 引文整行誤切(inline italic 通常緊貼前後 line,
+//   - 若 i > 0：前面 gap(lines[i].top - lines[i-1].bottom)≥ HEADING_PRECEDING_GAP_FACTOR ×
+//     medianLineHeight，避免 body 中段內 italic 引文整行誤切(inline italic 通常緊貼前後 line,
 //     gap < 1× medianLineHeight;heading 通常前面有 spacing)
 //   - i === 0 不需 gap 條件(block 第一行天然從前一個 block 的「block 邊界」隔開)
 const HEADING_PRECEDING_GAP_FACTOR = 1.0;
@@ -643,7 +701,7 @@ function maybeSplitHeadingsAcrossBlock(block, medianLineHeight) {
   }
   if (headingIdxs.length === 0) return [block];
 
-  // 按 headingIdxs 把 lines 切成 segments:每個 heading line 自己是一段,
+  // 按 headingIdxs 把 lines 切成 segments：每個 heading line 自己是一段，
   // 中間/前後的非 heading line group 合併成一段
   const segments = []; // 每個 segment 是 line array
   let cursor = 0;
@@ -670,8 +728,8 @@ function maybeSplitHeadingsAcrossBlock(block, medianLineHeight) {
     );
 }
 
-// 大 block 若多數行起首為 list marker,按 marker 切多個 block。
-// 目的:LD750EQF 之類 spec sheet 的「60 行 list-item 段」自動切成多個獨立段落,
+// 大 block 若多數行起首為 list marker，按 marker 切多個 block。
+// 目的：LD750EQF 之類 spec sheet 的「60 行 list-item 段」自動切成多個獨立段落，
 // 翻譯時 LLM 拿到的單元更小、cache hit 更精準。
 function maybeSubsplitListBlock(block) {
   const lines = block._lines || [];
@@ -680,7 +738,7 @@ function maybeSubsplitListBlock(block) {
   const isMarker = lines.map((l) => LIST_MARKER_RE.test(l.plainText || ''));
   const markerCount = isMarker.filter(Boolean).length;
   if (markerCount < lines.length * LIST_SUBSPLIT_MARKER_RATIO) return [block];
-  // 起頭那行必須是 marker 才開始切;否則 marker 之間 cluster 不對齊
+  // 起頭那行必須是 marker 才開始切；否則 marker 之間 cluster 不對齊
   if (!isMarker[0]) return [block];
 
   // 按 marker 起首切 group

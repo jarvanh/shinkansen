@@ -61,10 +61,9 @@
         <div class="result-row"><span>整份字數</span><span id="result-chars"></span></div>
         <div class="result-row"><span>切出 block 數</span><span id="result-blocks"></span></div>
       </div>
-      <p class="result-hint">完整版面 IR 已輸出至 DevTools Console（按 F12 / ⌥⌘I 查看）</p>
       <div class="result-actions">
         <button id="translate-btn" class="primary-btn" type="button">開始翻譯</button>
-        <button id="debug-btn" class="secondary-btn" type="button">查看版面 overlay</button>
+        <button id="result-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
         <button id="reupload-btn" class="secondary-btn" type="button">重新上傳</button>
       </div>
     </section>
@@ -86,10 +85,32 @@
       </div>
     </section>
 
-    <!-- 階段 6：翻譯完成簡短摘要(W4 起改用閱讀器顯示對照) -->
-    <section id="stage-translated" class="stage" hidden>
-      <h2 class="result-title">翻譯完成</h2>
+    <!-- 翻譯設定 modal(stage-result / reader-toolbar 各一個按鈕都開這個) -->
+    <dialog id="translate-settings-dialog" class="summary-dialog">
+      <h2 class="result-title">翻譯設定</h2>
+      <div class="settings-section">
+        <div class="settings-label">使用模型 preset</div>
+        <div id="settings-preset-list" class="settings-preset-list"></div>
+        <p class="settings-hint">三組 preset 內容(引擎 / 模型 / 標籤)在 popup → 設定 → 翻譯快速鍵 自訂</p>
+      </div>
+      <div class="settings-section">
+        <label class="settings-checkbox-row">
+          <input type="checkbox" id="settings-apply-glossary">
+          <span>術語表一致化</span>
+        </label>
+        <p class="settings-hint">翻譯前先掃整份 PDF 由 LLM 萃取專有名詞 / 人名對照表,再套到所有 batch。長文(尤其人名眾多)各段譯名一致。會多一次 LLM 呼叫(~ 1-3 秒、~ $0.001)</p>
+      </div>
+      <div class="result-actions">
+        <button id="translate-settings-save-btn" class="primary-btn" type="button">儲存</button>
+        <button id="translate-settings-cancel-btn" class="secondary-btn" type="button">取消</button>
+      </div>
+    </dialog>
+
+    <!-- 翻譯紀錄 modal(從工具欄「翻譯紀錄」按鈕開啟) -->
+    <dialog id="translate-summary-dialog" class="summary-dialog">
+      <h2 class="result-title">翻譯紀錄</h2>
       <div class="result-summary">
+        <div class="result-row"><span>檔名</span><span id="translated-filename"></span></div>
         <div class="result-row"><span>已翻譯段落</span><span id="translated-count"></span></div>
         <div class="result-row"><span>翻譯失敗</span><span id="translated-failed"></span></div>
         <div class="result-row"><span>快取命中</span><span id="translated-cache-hits"></span></div>
@@ -98,17 +119,14 @@
         <div class="result-row"><span>累計費用</span><span id="translated-cost"></span></div>
       </div>
       <div class="result-actions">
-        <button id="translated-open-reader-btn" class="primary-btn" type="button">開啟雙頁閱讀器</button>
-        <button id="translated-view-overlay-btn" class="secondary-btn" type="button">查看版面 overlay</button>
-        <button id="translated-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
+        <button id="translate-summary-overlay-btn" class="secondary-btn" type="button">查看版面結構</button>
+        <button id="translate-summary-close-btn" class="secondary-btn" type="button">關閉</button>
       </div>
-    </section>
+    </dialog>
 
-    <!-- 階段 7：雙頁並排閱讀器(W4) -->
+    <!-- 階段 6：雙頁並排閱讀器(W4) -->
     <section id="stage-reader" class="stage" hidden>
       <div class="reader-toolbar">
-        <span id="reader-title" class="reader-title"></span>
-        <span class="debug-toolbar-spacer"></span>
         <span class="reader-zoom-group" title="調整顯示大小(50%-200%，用 CSS 縮放，canvas 解析度不變)">
           <button id="reader-zoom-out" class="secondary-btn" type="button">−</button>
           <span id="reader-zoom-level" class="reader-zoom-level">100%</span>
@@ -121,7 +139,8 @@
         <button id="reader-retry-all-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗段落">重試失敗 (<span id="reader-failed-count">0</span>)</button>
         <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照 PDF(每張原頁後接一張譯文頁)">下載譯文 PDF</button>
         <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿">複製譯文</button>
-        <button id="reader-back-overlay-btn" class="secondary-btn" type="button">查看版面 overlay</button>
+        <button id="reader-summary-btn" class="secondary-btn" type="button" title="查看翻譯紀錄(已翻段數 / 失敗 / 快取命中 / token / 費用)+ 開啟版面 overlay">翻譯紀錄</button>
+        <button id="reader-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
         <button id="reader-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
       </div>
       <div class="reader-grid">

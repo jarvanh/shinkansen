@@ -9,6 +9,8 @@ import { analyzeLayout } from './layout-analyzer.js';
 import { translateDocument } from './translate.js';
 import { renderReader, buildPlainTextDump } from './reader.js';
 import { downloadBilingualPdf } from './pdf-renderer.js';
+import { formatMoney } from '../lib/format.js';
+import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEBUG_RENDER_SCALE = 1.5;
@@ -20,7 +22,6 @@ const stages = {
   parsing: $('stage-parsing'),
   result: $('stage-result'),
   translating: $('stage-translating'),
-  translated: $('stage-translated'),
   reader: $('stage-reader'),
   debug: $('stage-debug'),
 };
@@ -33,6 +34,12 @@ let currentDebugPage = 0;
 let currentReaderHandle = null;
 let currentModelOverride = null;
 let currentOriginalArrayBuffer = null; // W6：留 PDF 原 ArrayBuffer 給 pdf-lib 重組譯文 PDF 用
+let lastTranslateSummary = null;       // 翻譯紀錄 modal 顯示用
+// 翻譯設定：選定 preset slot(1 / 2 / 3)，從 storage.local.translateDocPresetSlot 讀，
+// 預設 1。對應 storage.sync.translatePresets[slot - 1] 的 model 當 modelOverride
+let currentPresetSlot = 1;
+let cachedPresets = null;
+let currentApplyGlossary = false;
 
 function showStage(name) {
   for (const [key, el] of Object.entries(stages)) {
@@ -79,6 +86,7 @@ function releaseCurrentDoc() {
   currentDebugPage = 0;
   currentModelOverride = null;
   currentOriginalArrayBuffer = null;
+  lastTranslateSummary = null;
   if (window.__skLayoutDoc) delete window.__skLayoutDoc;
 }
 
@@ -471,40 +479,178 @@ function bindResultUI() {
     releaseCurrentDoc();
     showStage('upload');
   });
-  $('debug-btn').addEventListener('click', () => {
-    if (!currentDoc) return;
-    currentDebugPage = 0;
-    showStage('debug');
-    renderDebugPage();
-  });
   $('translate-btn').addEventListener('click', () => startTranslate());
 }
 
-function bindTranslatedUI() {
+function bindTranslatingUI() {
+  // 翻譯中 stage 的「取消」按鈕(原 bindTranslatedUI 內含此 binding,
+  // stage-translated 砍掉後該 binding 仍要保留)
   $('translate-cancel-btn').addEventListener('click', () => {
     if (translateAbortController) {
       translateAbortController.abort();
     }
   });
-  $('translated-open-reader-btn').addEventListener('click', () => openReader());
-  $('translated-view-overlay-btn').addEventListener('click', () => {
+}
+
+const TRANSLATABLE_TYPES_SET = new Set(['paragraph', 'heading', 'list-item', 'caption', 'footnote']);
+const GLOSSARY_INPUT_MAX_CHARS = 60_000;
+
+// 對整份 PDF 送 EXTRACT_GLOSSARY 拿 [{source, target}] 對照表(術語表一致化)
+async function extractGlossaryForDoc(doc) {
+  const parts = [];
+  let acc = 0;
+  for (const page of doc.pages) {
+    for (const b of page.blocks) {
+      if (!TRANSLATABLE_TYPES_SET.has(b.type)) continue;
+      const t = b.plainText && b.plainText.trim();
+      if (!t) continue;
+      if (acc + t.length > GLOSSARY_INPUT_MAX_CHARS) {
+        parts.push(t.slice(0, GLOSSARY_INPUT_MAX_CHARS - acc));
+        acc = GLOSSARY_INPUT_MAX_CHARS;
+        break;
+      }
+      parts.push(t);
+      acc += t.length + 1;
+    }
+    if (acc >= GLOSSARY_INPUT_MAX_CHARS) break;
+  }
+  const compressedText = parts.join('\n');
+  if (compressedText.length < 200) {
+    console.log('[Shinkansen] glossary skipped (text too short)', { chars: compressedText.length });
+    return null;
+  }
+  const inputHash = await sha1(compressedText);
+  console.log('[Shinkansen] glossary extracting', { chars: compressedText.length, hash: inputHash.slice(0, 8) });
+  try {
+    const res = await chrome.runtime.sendMessage({
+      type: 'EXTRACT_GLOSSARY',
+      payload: { compressedText, inputHash },
+    });
+    if (res?.ok && Array.isArray(res.glossary) && res.glossary.length > 0) {
+      return res.glossary;
+    }
+    if (res?.ok) {
+      console.log('[Shinkansen] glossary returned empty');
+      return null;
+    }
+    console.warn('[Shinkansen] glossary not ok', res?.error);
+    return null;
+  } catch (err) {
+    console.warn('[Shinkansen] glossary extract failed', err && err.message);
+    return null;
+  }
+}
+
+async function sha1(text) {
+  const buf = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest('SHA-1', buf);
+  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 翻譯設定：讀使用者選定 slot，取對應 preset 的 model 當 modelOverride。
+// 不存在 / Google MT(model 為 null)時 modelOverride = undefined，讓 background
+// 走全域 geminiConfig.model 預設
+async function resolveModelOverride() {
+  const presets = await loadPresets();
+  const idx = (currentPresetSlot || 1) - 1;
+  const p = presets[idx];
+  if (p && p.engine === 'gemini' && p.model) return p.model;
+  return undefined;
+}
+
+async function loadPresets() {
+  if (cachedPresets) return cachedPresets;
+  try {
+    const r = await chrome.storage.sync.get(['translatePresets']);
+    cachedPresets = Array.isArray(r.translatePresets) ? r.translatePresets : [];
+  } catch (err) {
+    console.warn('[Shinkansen] 讀 translatePresets 失敗', err);
+    cachedPresets = [];
+  }
+  return cachedPresets;
+}
+
+async function loadCurrentPresetSlot() {
+  try {
+    const r = await chrome.storage.local.get(['translateDocPresetSlot', 'translateDocApplyGlossary']);
+    const slot = parseInt(r.translateDocPresetSlot, 10);
+    if (slot >= 1 && slot <= 3) currentPresetSlot = slot;
+    else currentPresetSlot = 1;
+    currentApplyGlossary = r.translateDocApplyGlossary === true;
+  } catch (err) {
+    currentPresetSlot = 1;
+    currentApplyGlossary = false;
+  }
+}
+
+async function openSettingsDialog() {
+  const presets = await loadPresets();
+  const dlg = $('translate-settings-dialog');
+  $('settings-apply-glossary').checked = currentApplyGlossary;
+  const list = $('settings-preset-list');
+  list.innerHTML = '';
+  for (let i = 0; i < 3; i++) {
+    const p = presets[i] || { slot: i + 1, engine: 'gemini', model: null, label: `Slot ${i + 1}` };
+    const slot = i + 1;
+    const row = document.createElement('label');
+    row.className = 'settings-preset-row' + (slot === currentPresetSlot ? ' is-selected' : '');
+    row.innerHTML = `
+      <input type="radio" name="preset-slot" value="${slot}" ${slot === currentPresetSlot ? 'checked' : ''}>
+      <span class="preset-label">Slot ${slot} · ${p.label || '(未命名)'}</span>
+      <span class="preset-engine">${p.engine === 'gemini' ? (p.model || 'gemini') : (p.engine === 'google' ? 'Google MT' : p.engine)}</span>
+    `;
+    row.addEventListener('click', () => {
+      list.querySelectorAll('.settings-preset-row').forEach((el) => el.classList.remove('is-selected'));
+      row.classList.add('is-selected');
+      row.querySelector('input').checked = true;
+    });
+    list.appendChild(row);
+  }
+  dlg.showModal();
+}
+
+function bindSettingsDialogUI() {
+  const dlg = $('translate-settings-dialog');
+  $('translate-settings-cancel-btn').addEventListener('click', () => dlg.close());
+  $('translate-settings-save-btn').addEventListener('click', async () => {
+    const checked = dlg.querySelector('input[name="preset-slot"]:checked');
+    const slot = checked ? parseInt(checked.value, 10) : currentPresetSlot;
+    const applyGlossary = $('settings-apply-glossary').checked;
+    currentPresetSlot = slot;
+    currentApplyGlossary = applyGlossary;
+    try {
+      await chrome.storage.local.set({
+        translateDocPresetSlot: slot,
+        translateDocApplyGlossary: applyGlossary,
+      });
+    } catch (_) { /* ignore */ }
+    dlg.close();
+  });
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg) dlg.close();
+  });
+  // stage-result + reader-toolbar 兩個按鈕都開同一個 dialog
+  $('result-settings-btn').addEventListener('click', () => openSettingsDialog());
+  $('reader-settings-btn').addEventListener('click', () => openSettingsDialog());
+}
+
+function bindSummaryDialogUI() {
+  const dlg = $('translate-summary-dialog');
+  $('translate-summary-close-btn').addEventListener('click', () => dlg.close());
+  $('translate-summary-overlay-btn').addEventListener('click', () => {
+    dlg.close();
     if (!currentDoc) return;
     currentDebugPage = 0;
     showStage('debug');
     renderDebugPage();
   });
-  $('translated-reupload-btn').addEventListener('click', () => {
-    releaseCurrentDoc();
-    showStage('upload');
+  // 點 backdrop(對話框外)關閉
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg) dlg.close();
   });
 }
 
 function bindReaderUI() {
-  $('reader-back-overlay-btn').addEventListener('click', () => {
-    currentDebugPage = 0;
-    showStage('debug');
-    renderDebugPage();
-  });
   $('reader-reupload-btn').addEventListener('click', () => {
     releaseCurrentDoc();
     showStage('upload');
@@ -530,6 +676,11 @@ function bindReaderUI() {
   });
   $('reader-zoom-out').addEventListener('click', () => stepZoom(-0.1));
   $('reader-zoom-in').addEventListener('click', () => stepZoom(+0.1));
+  $('reader-summary-btn').addEventListener('click', async () => {
+    if (!lastTranslateSummary) return;
+    await fillSummaryDialog(lastTranslateSummary);
+    $('translate-summary-dialog').showModal();
+  });
   $('reader-download-pdf-btn').addEventListener('click', async () => {
     if (!currentDoc || !currentOriginalArrayBuffer) return;
     const btn = $('reader-download-pdf-btn');
@@ -582,7 +733,6 @@ function bindReaderUI() {
 
 async function openReader() {
   if (!currentDoc || !currentPdfDoc) return;
-  $('reader-title').textContent = currentDoc.meta.filename || '(未命名)';
   showStage('reader');
   // 等 stage 切換 + layout 確定後再 render(canvas size 才對)
   await new Promise((r) => requestAnimationFrame(r));
@@ -668,7 +818,12 @@ function bindDebugUI() {
     setTimeout(() => { btn.textContent = orig; }, 2500);
   });
   $('debug-back-btn').addEventListener('click', () => {
-    showStage('result');
+    // 已翻譯過 → 回閱讀器；尚未翻譯(只解析過)→ 回 stage-result
+    if (currentReaderHandle && lastTranslateSummary) {
+      showStage('reader');
+    } else {
+      showStage('result');
+    }
   });
 
   // 鍵盤左右切頁
@@ -688,9 +843,13 @@ function init() {
   setVersionFooter();
   bindUploadUI();
   bindResultUI();
-  bindTranslatedUI();
+  bindTranslatingUI();
+  bindSummaryDialogUI();
+  bindSettingsDialogUI();
   bindReaderUI();
   bindDebugUI();
+  // 啟動讀使用者選定的 preset slot
+  loadCurrentPresetSlot();
   showStage('upload');
 }
 
@@ -699,17 +858,8 @@ function init() {
 async function startTranslate() {
   if (!currentDoc) return;
 
-  // 讀使用者預設 preset。MVP 先用 slot 1 (translatePresets[0])，通常是 Flash Lite。
-  // W3-iter2 加 UI 讓使用者選 slot，目前 hardcoded 取第一組 gemini engine 的 preset。
-  let modelOverride = undefined;
-  try {
-    const settings = await chrome.storage.sync.get(['translatePresets']);
-    const presets = settings.translatePresets || [];
-    const geminiPreset = presets.find((p) => p && p.engine === 'gemini' && p.model);
-    if (geminiPreset) modelOverride = geminiPreset.model;
-  } catch (err) {
-    console.warn('[Shinkansen] 讀 translatePresets 失敗，改用 background 預設模型', err);
-  }
+  // 從翻譯設定選定的 preset slot 拿 modelOverride
+  const modelOverride = await resolveModelOverride();
   currentModelOverride = modelOverride;
 
   showStage('translating');
@@ -723,11 +873,24 @@ async function startTranslate() {
     cumulativeCostUSD: 0,
   });
 
+  // 術語表一致化:翻譯前先送整份 PDF 給 background 的 EXTRACT_GLOSSARY,拿 [{source, target}]
+  // 對照表後傳進 translateDocument,每個 chunk 都帶 glossary 進 prompt 確保各段譯名一致
+  let glossary = null;
+  if (currentApplyGlossary) {
+    setParsingDetail('術語表一致化:萃取對照表中…');
+    $('translate-progress-count').textContent = '建立術語表中…';
+    glossary = await extractGlossaryForDoc(currentDoc);
+    if (glossary) {
+      console.log('[Shinkansen] glossary extracted:', glossary.length, 'terms');
+    }
+  }
+
   translateAbortController = new AbortController();
   let summary;
   try {
     summary = await translateDocument(currentDoc, {
       modelOverride,
+      glossary,
       signal: translateAbortController.signal,
       onProgress: setProgress,
     });
@@ -746,25 +909,44 @@ async function startTranslate() {
   }
   translateAbortController = null;
 
-  // 顯示完成頁
-  $('translated-count').textContent = `${summary.translatedBlocks - summary.failedBlocks} / ${summary.totalBlocks}`;
-  $('translated-failed').textContent = summary.failedBlocks
-    ? `${summary.failedBlocks} 段`
-    : '0';
-  const cacheHits = summary.cacheHits || 0;
-  $('translated-cache-hits').textContent = cacheHits > 0
-    ? `${cacheHits} 段(${((cacheHits / summary.totalBlocks) * 100).toFixed(0)}%)`
-    : '0';
-  $('translated-input-tokens').textContent = summary.cumulativeInputTokens.toLocaleString('en-US');
-  $('translated-output-tokens').textContent = summary.cumulativeOutputTokens.toLocaleString('en-US');
-  $('translated-cost').textContent = `$${summary.cumulativeCostUSD.toFixed(4)} USD`;
+  // 存進 module state 供 reader-toolbar「翻譯紀錄」按鈕開的 dialog 顯示
+  lastTranslateSummary = summary;
 
   // dev probe expose 翻譯結果
   if (window.__skLayoutDoc) {
     window.__skLayoutDoc.translateSummary = summary;
   }
 
-  showStage('translated');
+  // 直接進雙頁閱讀器(原本中介的 stage-translated 已砍掉)
+  await openReader();
+}
+
+async function fillSummaryDialog(summary) {
+  if (!summary) return;
+  const filename = (currentDoc && currentDoc.meta && currentDoc.meta.filename) || '(未命名)';
+  $('translated-filename').textContent = filename;
+  $('translated-count').textContent = `${summary.translatedBlocks - summary.failedBlocks} / ${summary.totalBlocks}`;
+  $('translated-failed').textContent = summary.failedBlocks ? `${summary.failedBlocks} 段` : '0';
+  const cacheHits = summary.cacheHits || 0;
+  $('translated-cache-hits').textContent = cacheHits > 0 && summary.totalBlocks > 0
+    ? `${cacheHits} 段(${((cacheHits / summary.totalBlocks) * 100).toFixed(0)}%)`
+    : '0';
+  $('translated-input-tokens').textContent = summary.cumulativeInputTokens.toLocaleString('en-US');
+  $('translated-output-tokens').textContent = summary.cumulativeOutputTokens.toLocaleString('en-US');
+  // 跟主設定的 displayCurrency + cached rate 一致(USD / TWD 切換)
+  $('translated-cost').textContent = await formatCostStr(summary.cumulativeCostUSD);
+}
+
+async function formatCostStr(usd) {
+  try {
+    const [{ displayCurrency = 'TWD' }, rateInfo] = await Promise.all([
+      chrome.storage.sync.get('displayCurrency'),
+      getCachedRate(),
+    ]);
+    return formatMoney(usd, { currency: displayCurrency, rate: rateInfo?.rate || FALLBACK_USD_TWD_RATE });
+  } catch (_) {
+    return formatMoney(usd, { currency: 'USD' });
+  }
 }
 
 function setProgress(p) {

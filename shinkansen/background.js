@@ -69,15 +69,16 @@ function estimateInputTokens(texts) {
   return Math.ceil(total / 3.5);
 }
 
-// ─── 啟動時：版本檢查，版本變更則清空快取 ───────────────────
+// ─── 啟動時：版本檢查 ───────────────────
+// v1.8.45 起版本變更不再清快取,只更新標記。讓累積翻譯跨版本保留(避免每次 bump 都
+// 重打 API);若 prompt / 行為大改要清,使用者用 popup「清除快取」手動觸發。
 (async () => {
   const currentVersion = browser.runtime.getManifest().version;
   const result = await cache.checkVersionAndClear(currentVersion);
-  if (result.cleared) {
-    debugLog('info', 'cache', 'cache cleared on version change', {
+  if (result.changed) {
+    debugLog('info', 'cache', 'version mark updated (cache preserved across version changes)', {
       oldVersion: result.oldVersion ?? '?',
       newVersion: currentVersion,
-      removed: result.removed,
     });
   } else {
     debugLog('info', 'cache', 'cache up-to-date', { version: currentVersion });

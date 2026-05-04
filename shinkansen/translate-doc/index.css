@@ -226,11 +226,16 @@ body {
 
 .result-row span:first-child {
   color: var(--text-muted);
+  white-space: nowrap;        /* 「檔名」這類 2 字 label 不要被擠到折行 */
+  flex-shrink: 0;
 }
 
 .result-row span:last-child {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  margin-left: 12px;
+  word-break: break-all;       /* 長檔名(右側值)允許在英數中間斷行 */
 }
 
 .result-hint {
@@ -326,6 +331,103 @@ body {
   font-size: 12px;
 }
 
+/* ----- 翻譯紀錄 modal ----- */
+
+.summary-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-width: 360px;
+  max-width: 480px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+.summary-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.summary-dialog .result-title {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.summary-dialog .result-actions {
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.settings-section {
+  margin-bottom: 16px;
+}
+
+.settings-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.settings-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.settings-preset-row:hover {
+  background: var(--bg-soft);
+}
+
+.settings-preset-row input[type="radio"] {
+  margin: 0;
+}
+
+.settings-preset-row.is-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.settings-preset-row .preset-engine {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-hint {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+.settings-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-checkbox-row input[type="checkbox"] {
+  margin: 0;
+}
+
 /* ----- 雙頁並排閱讀器(W4) ----- */
 
 #app-main:has(#stage-reader:not([hidden])) {
@@ -333,31 +435,34 @@ body {
   padding: 0;
 }
 
+/* reader 模式下隱藏 app-header(視覺上工具欄取代成 page 頂部)，撐滿預覽面積 */
+body:has(#stage-reader:not([hidden])) .app-header,
+body:has(#stage-reader:not([hidden])) .app-footer {
+  display: none;
+}
+
 #stage-reader {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 100px);
-  /* app-header 約 80px + footer 12px + padding ≈ 100,留滿視窗給閱讀器 */
+  height: 100vh;
 }
 
 .reader-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 4px 12px;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--border);
   font-size: 13px;
   flex-shrink: 0;
 }
 
-.reader-title {
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 60%;
+/* reader-toolbar 內 button 變窄一些，工具欄高度縮小 */
+.reader-toolbar .primary-btn,
+.reader-toolbar .secondary-btn {
+  padding: 5px 10px;
+  font-size: 12px;
 }
 
 .reader-grid {
@@ -409,7 +514,7 @@ body {
 }
 
 .reader-page-original {
-  /* 由 reader.js 設 width / height,保持原 PDF 比例 */
+  /* 由 reader.js 設 width / height，保持原 PDF 比例 */
   line-height: 0;
 }
 
@@ -450,7 +555,7 @@ body {
   pointer-events: auto;
   padding: 1px 3px;
   box-sizing: border-box;
-  /* box-shadow 4px 外擴白底,蓋掉 bbox 邊界外的 ascender / descender 殘影
+  /* box-shadow 4px 外擴白底，蓋掉 bbox 邊界外的 ascender / descender 殘影
      (PDF.js bbox 不含字型 ascender / descender margin,bbox 邊緣可能差 2-4px) */
   box-shadow: 0 0 0 4px #fff;
 }
@@ -461,7 +566,7 @@ body {
 }
 
 .reader-block-list-item {
-  /* plainText 已含 marker;flow 用 text-indent 不適用於 absolute,留樣式空 */
+  /* plainText 已含 marker;flow 用 text-indent 不適用於 absolute，留樣式空 */
 }
 
 .reader-block-footnote {
@@ -472,11 +577,11 @@ body {
   color: var(--text-muted);
 }
 
-/* 不可翻譯 type(table / formula / figure)在新模型下不蓋 overlay,所以這些 class
+/* 不可翻譯 type(table / formula / figure)在新模型下不蓋 overlay，所以這些 class
    不再生效 — 留樣式空避免 CSS warning */
 
 .reader-block-retry {
-  /* failed block 的 ↻ 按鈕,absolute 定位在 bbox 右上角(由 inline style 設位置) */
+  /* failed block 的 ↻ 按鈕，absolute 定位在 bbox 右上角(由 inline style 設位置) */
   position: absolute;
   width: 22px;
   height: 22px;
@@ -505,7 +610,7 @@ body {
 }
 
 .reader-block-translating {
-  /* retry 中:顯示 spinner-like 效果 + 灰底 */
+  /* retry 中：顯示 spinner-like 效果 + 灰底 */
   background: rgba(0, 113, 227, 0.05);
   color: var(--text-muted);
 }
@@ -521,7 +626,7 @@ body {
 
 #stage-debug {
   /* debug 階段不被 #app-main 的 max-width: 720px 限制——overlay 要對著 canvas
-     原始尺寸顯示,寬大頁(A4 横放、雜誌)需要更寬視口。提升 main 的 max-width。 */
+     原始尺寸顯示，寬大頁(A4 横放、雜誌)需要更寬視口。提升 main 的 max-width。 */
   max-width: 100%;
 }
 

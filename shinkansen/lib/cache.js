@@ -402,15 +402,21 @@ export async function stats() {
 }
 
 /**
- * 比對 manifest 版本與儲存版本，若不同則清空快取並更新版本標記。
- * 回傳 true 代表有清空動作。
+ * 比對 manifest 版本與儲存版本,版本變更時更新標記。
+ *
+ * v1.8.45 起改成「不清快取」:過去版本變更會 clearAll(),理由是 prompt / cache
+ * key 結構改後可能有 stale entry。但 cache key 本身已含 model / glossary hash /
+ * forbidden hash 各自決定 miss/hit,prompt 改若要強制 miss 應由使用者手動「清除
+ * 快取」按鈕觸發。每次版本變更自動清會讓累積翻譯白白浪費 API 費,違反 Jimmy 的
+ * 體驗預期。
+ *
+ * 回傳 changed 表示版本標記是否更新(永遠不清快取)。
  */
 export async function checkVersionAndClear(currentVersion) {
   const stored = await browser.storage.local.get(VERSION_KEY);
   if (stored[VERSION_KEY] !== currentVersion) {
-    const removed = await clearAll();
     await browser.storage.local.set({ [VERSION_KEY]: currentVersion });
-    return { cleared: true, removed, oldVersion: stored[VERSION_KEY] };
+    return { cleared: false, changed: true, oldVersion: stored[VERSION_KEY] };
   }
-  return { cleared: false };
+  return { cleared: false, changed: false };
 }

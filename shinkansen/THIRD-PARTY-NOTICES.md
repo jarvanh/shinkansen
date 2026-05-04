@@ -37,7 +37,7 @@ Shinkansen 整合下列第三方軟體與字型，本檔列出來源、授權與
 - **用途**：翻譯文件下載譯文 PDF 時內嵌作為譯文中文字型(中文標點 / 漢字 95%+
   覆蓋率)。pdf-lib subset: true 在最終 PDF 內只 embed 譯文用到的字 subset(典型
   100-300KB)，不影響譯文 PDF 大小
-- **檔案**:`shinkansen/lib/vendor/fonts/NotoSansTC-Regular.otf`
+- **檔案**:`shinkansen/lib/vendor/fonts/NotoSansTC-Regular.ttf`
 - **來源**:Google Noto CJK Sans 計畫(github.com/notofonts/noto-cjk)
 - **授權**:SIL Open Font License Version 1.1
 - **授權檔**:`shinkansen/lib/vendor/fonts/LICENSE-NotoSansTC.txt`
