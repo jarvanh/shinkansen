@@ -19,6 +19,16 @@
 
 (目前沒有 pending 條目)
 
+<!-- v1.8.46 清空紀錄(2026-05-05):
+  - W6 譯文 PDF 下載對 owner-password + AESv2 弱加密 PDF 失敗(Trimble TDC6 SpecSheet)
+    → 換 @cantoo/pdf-lib 2.6.5 fork(補 mozilla/pdf.js port 的 AES decrypt)
+    + PDFDocument.load 加 { ignoreEncryption: true, password: '' }
+    → 已補 test/regression/pdf-download-encrypted.spec.js(SANITY:暫時 revert
+      password='' 驗證 spec 正確 fail EncryptedPDFError,還原 fix → pass)
+    → fixture 走 docs/excluded(整個 .gitignore),CI 沒檔自動 skip,本機才跑
+-->
+
+
 <!-- v1.8.42 清空紀錄(2026-05-04):
   - non-ASR 雙語改走獨立 overlay + multi-segment dedup → 已補 test/regression/youtube-bilingual-overlay.spec.js
     (4 條 case:雙語不動 segment、雙語 dedup seg2 cached='' 也 push srcBits、純中文 dedup seg2 cached='' 清空 segment、_applyBilingualMode 加 hide class;case 3 已 SANITY 驗過)

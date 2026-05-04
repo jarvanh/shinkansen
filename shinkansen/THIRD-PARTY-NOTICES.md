@@ -12,12 +12,14 @@ Shinkansen 整合下列第三方軟體與字型，本檔列出來源、授權與
 - **授權**:Apache License 2.0
 - **授權檔**:`shinkansen/lib/vendor/pdfjs/LICENSE`
 
-### pdf-lib
+### pdf-lib (@cantoo/pdf-lib)
 
-- **用途**：翻譯文件功能下載「雙頁並排對照 PDF」時用 pdf-lib 創新 PDFDocument、
+- **用途**:翻譯文件功能下載「雙頁並排對照 PDF」時用 pdf-lib 創新 PDFDocument、
   copyPages 把原 page embed 進新 doc、addPage 創新譯文頁、page.drawText 畫譯文
-- **檔案**:`shinkansen/lib/vendor/pdf-lib/pdf-lib.min.js`
-- **來源**:Hopding(github.com/Hopding/pdf-lib)
+- **檔案**:`shinkansen/lib/vendor/pdf-lib/pdf-lib.min.js`(@cantoo/pdf-lib 2.6.5,
+  Andrew Dillon 原作 hopding/pdf-lib 1.17.1 的活躍 fork,補上 mozilla/pdf.js 的
+  AES decrypt 邏輯,讓含 owner-password 安全限制的弱加密 PDF 也能匯出譯文 PDF)
+- **來源**:cantoo-scribe(github.com/cantoo-scribe/pdf-lib)/ Andrew Dillon
 - **授權**:MIT License
 - **授權檔**:`shinkansen/lib/vendor/pdf-lib/LICENSE-pdf-lib.md`
 

@@ -154,6 +154,98 @@ async function handleFile(file) {
       })),
     };
 
+    // dev hook for tools/pdf-structure-verify.js — 不影響 production,
+    // 只暴露操作 module-scope state 的函式,供 harness 注入 fake translation
+    // + 攔截 downloadBilingualPdf 的 PDF bytes 做版面結構核對
+    window.__skVerify = {
+      hasDoc: () => !!currentDoc,
+      injectPlainTextAsTranslation: () => {
+        if (!currentDoc) return null;
+        let count = 0;
+        for (const page of currentDoc.pages) {
+          for (const block of page.blocks) {
+            if (TRANSLATABLE_TYPES_SET.has(block.type) && block.plainText && block.plainText.trim()) {
+              block.translation = block.plainText;
+              block.translationStatus = 'done';
+              count++;
+            }
+          }
+        }
+        return { translatableCount: count };
+      },
+      generateAndVerifyPdf: async () => {
+        if (!currentDoc || !currentOriginalArrayBuffer) return null;
+        let capturedBytes = null;
+        const origCreateObjectURL = URL.createObjectURL;
+        const origAppendChild = document.body.appendChild.bind(document.body);
+        URL.createObjectURL = function (blob) {
+          if (blob && typeof blob.arrayBuffer === 'function') {
+            blob.arrayBuffer().then((buf) => { capturedBytes = new Uint8Array(buf); });
+          }
+          return 'blob:verify-stub';
+        };
+        document.body.appendChild = function (el) {
+          if (el && el.tagName === 'A' && el.download) el.click = () => {};
+          return origAppendChild(el);
+        };
+        let result = null;
+        let error = null;
+        const t0 = performance.now();
+        try {
+          result = await downloadBilingualPdf(currentOriginalArrayBuffer, currentDoc, {});
+          for (let i = 0; i < 200 && !capturedBytes; i++) {
+            await new Promise((r) => setTimeout(r, 20));
+          }
+        } catch (err) {
+          error = (err && err.message) || String(err);
+        } finally {
+          URL.createObjectURL = origCreateObjectURL;
+          document.body.appendChild = origAppendChild;
+        }
+        const elapsedMs = Math.round(performance.now() - t0);
+        if (!result || !capturedBytes) {
+          return { ok: false, error: error || 'no-bytes-captured', elapsedMs };
+        }
+        // 重 parse 驗證頁數 + 文字 run 數量
+        const pdfjsLib = await import('../lib/vendor/pdfjs/pdf.min.mjs');
+        let reparsed = null;
+        let reparseError = null;
+        try {
+          const loadingTask = pdfjsLib.getDocument({ data: capturedBytes.slice(0).buffer, disableFontFace: false });
+          const pdfDoc = await loadingTask.promise;
+          const pageDiagnostics = [];
+          for (let i = 0; i < pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i + 1);
+            const tc = await page.getTextContent();
+            const viewport = page.getViewport({ scale: 1 });
+            pageDiagnostics.push({
+              pageIndex: i,
+              width: Math.round(viewport.width),
+              height: Math.round(viewport.height),
+              runCount: tc.items.length,
+            });
+          }
+          reparsed = { numPages: pdfDoc.numPages, pages: pageDiagnostics };
+          await pdfDoc.destroy();
+        } catch (err) {
+          reparseError = (err && err.message) || String(err);
+        }
+        return {
+          ok: true,
+          error: null,
+          byteLength: result.byteLength,
+          captured: capturedBytes.byteLength,
+          elapsedMs,
+          reparsed,
+          reparseError,
+        };
+      },
+      computeStructureDiagnostics: () => {
+        if (!currentDoc) return null;
+        return computeStructureDiagnostics(currentDoc);
+      },
+    };
+
     // W2 暫定：把版面 IR 印到 console 供肉眼驗
     const totalBlocks = doc.pages.reduce((sum, p) => sum + p.blocks.length, 0);
     console.group('[Shinkansen] PDF 版面分析完成');
@@ -494,6 +586,63 @@ function bindTranslatingUI() {
 
 const TRANSLATABLE_TYPES_SET = new Set(['paragraph', 'heading', 'list-item', 'caption', 'footnote']);
 const GLOSSARY_INPUT_MAX_CHARS = 60_000;
+
+// 結構面診斷:純從 layout doc 推 reader / pdf-renderer 注入後的版面正確性。
+// 不需要真的 render UI / 生成 PDF 就能 catch 大部分 IR 問題。供 __skVerify hook 用。
+function computeStructureDiagnostics(doc) {
+  const issues = [];
+  const PCT_EPSILON = 0.5; // 容忍 0.5% 邊緣誤差(round 進位)
+  const BBOX_OUTSIDE_TOL = 1.5; // 容忍 1.5pt 邊緣誤差
+  for (const page of doc.pages) {
+    const pageW = page.viewport.width;
+    const pageH = page.viewport.height;
+    if (!(pageW > 0 && pageH > 0)) {
+      issues.push({ pageIndex: page.pageIndex, blockId: '-', code: 'invalid-page-size', detail: `${pageW}x${pageH}` });
+      continue;
+    }
+    const seenOrders = new Set();
+    for (const block of page.blocks) {
+      if (!Array.isArray(block.bbox) || block.bbox.length !== 4) {
+        issues.push({ pageIndex: page.pageIndex, blockId: block.blockId || '-', code: 'no-bbox', detail: '' });
+        continue;
+      }
+      const [x0, y0, x1, y1] = block.bbox;
+      if (!(x0 < x1 && y0 < y1)) {
+        issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'invalid-bbox', detail: `[${x0.toFixed(1)},${y0.toFixed(1)},${x1.toFixed(1)},${y1.toFixed(1)}]` });
+        continue;
+      }
+      if (x0 < -BBOX_OUTSIDE_TOL || y0 < -BBOX_OUTSIDE_TOL || x1 > pageW + BBOX_OUTSIDE_TOL || y1 > pageH + BBOX_OUTSIDE_TOL) {
+        issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'bbox-outside-page', detail: `[${x0.toFixed(1)},${y0.toFixed(1)},${x1.toFixed(1)},${y1.toFixed(1)}] page=${pageW.toFixed(0)}x${pageH.toFixed(0)}` });
+      }
+      if (TRANSLATABLE_TYPES_SET.has(block.type)) {
+        if (!block.plainText || !block.plainText.trim()) {
+          issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'empty-plain-text', detail: block.type });
+        }
+      }
+      if (typeof block.fontSize === 'number' && (block.fontSize < 0 || block.fontSize > 200)) {
+        issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'extreme-font-size', detail: `${block.fontSize.toFixed(1)}pt` });
+      }
+      // reader.js renderOverlayBlock 算的 % 必須合法
+      const leftPct = (x0 / pageW) * 100;
+      const topPct = (y0 / pageH) * 100;
+      const widthPct = ((x1 - x0) / pageW) * 100;
+      const heightPct = ((y1 - y0) / pageH) * 100;
+      if (leftPct < -PCT_EPSILON || topPct < -PCT_EPSILON
+          || leftPct + widthPct > 100 + PCT_EPSILON
+          || topPct + heightPct > 100 + PCT_EPSILON) {
+        issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'overlay-pct-overflow', detail: `L=${leftPct.toFixed(1)} T=${topPct.toFixed(1)} W=${widthPct.toFixed(1)} H=${heightPct.toFixed(1)}` });
+      }
+      // readingOrder duplicate 檢查
+      if (typeof block.readingOrder === 'number') {
+        if (seenOrders.has(block.readingOrder)) {
+          issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'duplicate-reading-order', detail: String(block.readingOrder) });
+        }
+        seenOrders.add(block.readingOrder);
+      }
+    }
+  }
+  return { issueCount: issues.length, issues };
+}
 
 // 對整份 PDF 送 EXTRACT_GLOSSARY 拿 [{source, target}] 對照表(術語表一致化)
 async function extractGlossaryForDoc(doc) {

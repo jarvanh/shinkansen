@@ -14,14 +14,23 @@
 // 而非雙頁並排對照。原本 W6-iter1 設計每頁 [原頁 + 譯文頁] 雙頁並排，W6-iter2 改成
 // 「只譯文頁(原頁當底層裝飾)」，因為使用者實際需求是看譯文版，原頁可隨時開原 PDF 看。
 //
-// 字型：vendor 的 NotoSansTC-Regular.ttf(SIL OFL,11.4MB TrueType Variable Font);
-// pdf-lib subset: true 在最終 PDF 內只 embed 譯文用到的字，通常 100-300KB,
+// 字型:vendor 的 NotoSansTC-Regular.ttf(SIL OFL,11.4MB TrueType Variable Font);
+// pdf-lib subset: true 在最終 PDF 內只 embed 譯文用到的字,通常 100-300KB,
 // 不影響譯文 PDF 大小。
-// (原本 vendor OTF/CFF 版本，fontkit 1.1.1 對 CFF-based OTF subset 是已知問題，
+// (原本 vendor OTF/CFF 版本,fontkit 1.1.1 對 CFF-based OTF subset 是已知問題,
 //  輸出 PDF 中文字會 render 成 broken glyphs;TTF/TrueType 沒此 issue)
 //
-// 依賴：window.PDFLib(pdf-lib UMD)、window.fontkit(fontkit UMD，給 embedFont 用)
-//   — 由 index.html 用 <script src> 載入 vendor min.js,page 級 globals
+// 依賴:window.PDFLib(@cantoo/pdf-lib UMD,hopding/pdf-lib 1.17.1 的活躍 fork,
+// 補上 mozilla/pdf.js port 的 AES decrypt 支援)、window.fontkit(fontkit UMD,
+// 給 embedFont 用)— 由 index.html 用 <script src> 載入 vendor min.js,page 級 globals
+//
+// 加密 PDF 處理:`PDFDocument.load(...)` 必須帶 `{ ignoreEncryption: true,
+// password: '' }`。
+//   - 不帶 password 參數:cantoo 走「強制忽略加密但物件仍是密」分支,後續
+//     embedPages 會在 `PDFContext.lookup(pagesRef)` 拿到 undefined 而炸
+//   - 帶 password='' 觸發 cantoo 的 decryption 路徑,實測對 AESv2 + R=4 + 空
+//     user pwd + owner-only 限制的 PDF(如 Trimble 系列 spec sheet)可順利
+//     解開,生成譯文 PDF
 
 const FONT_PATH = 'lib/vendor/fonts/NotoSansTC-Regular.ttf';
 
@@ -60,7 +69,9 @@ export async function downloadBilingualPdf(originalArrayBuffer, layoutDoc, optio
   const cjkFont = await newDoc.embedFont(fontBytes, { subset: true });
 
   onProgress({ stage: 'parsing' });
-  const origDoc = await PDFDocument.load(originalArrayBuffer);
+  // password: '' 是 cantoo 解密路徑的 trigger;對非加密 PDF 無副作用
+  // (cantoo 內部會先檢查 isEncrypted 才走 decrypt branch)
+  const origDoc = await PDFDocument.load(originalArrayBuffer, { ignoreEncryption: true, password: '' });
   const pageCount = layoutDoc.pages.length;
   // 一次 embedPages 全部頁(比 for-loop 內逐頁 embedPage 快；pdf-lib 內部 batch parse)
   const origPages = origDoc.getPages().slice(0, pageCount);
