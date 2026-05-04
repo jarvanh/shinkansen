@@ -17,6 +17,19 @@
 
 ## 條目
 
+### v1.8.40 — 2026-05-04 — YouTube 字幕原文已是繁中時跳過 Gemini 翻譯
+- **症狀(避免):** 使用者勾選「自動翻譯字幕」後,即使 YouTube 影片的字幕本身已是繁中(zh-Hant / zh-TW / zh-HK / zh-MO),Shinkansen 仍照送 Gemini 翻譯一次,浪費 token + 延遲顯示 + 可能譯出怪內容。
+- **修在:** shinkansen/content-youtube.js
+  1. `shinkansen-yt-captions` listener(line ~542)從 caption URL 抓 `lang` 參數存進 `YT.captionLang`,順便把 captionLang 加進 `XHR captions captured` log 欄位;reset `YT._skipLoggedForLang = false` 讓跨影片仍會 log skip 原因
+  2. SK.YT 預設值加 `captionLang: null` 欄位(line ~243-247)+ inline 註解
+  3. `translateWindowFrom`(line ~1572)入口加 `_shouldSkipBecauseAlreadyTraditionalChinese()` 判斷,命中就 return + 第一次 log `skip translate: caption already traditional chinese`(後續同影片不重複 log)
+  4. SKIP_TRANSLATE_LANGS_TW set 含 4 個 BCP-47 繁中代碼:`zh-Hant` / `zh-TW` / `zh-HK` / `zh-MO`
+- **明確不在範圍**(維持送 Gemini): `zh-Hans` / `zh-CN`(簡中,讓 LLM 簡轉繁更精準)、`zh`(泛中,無從區分繁簡)、其他語言
+- **為什麼還不能寫測試:** content-youtube.js 7000+ 行,字幕路徑要 mock `<video>` element + `shinkansen-yt-captions` CustomEvent + caption URL parsing + window-based translation pipeline,既有 fixture 沒這個 pattern。需要先設計「YouTube 字幕測試 fixture / mock framework」共用基礎,單條 spec 沒這層工程量會太重。
+- **建議 spec 位置:** test/regression/youtube-skip-already-zh-hant.spec.js
+- **建議 fixture 結構:** mock 一個含 `<video>` element 的 page + helper 用 `dispatchEvent(new CustomEvent('shinkansen-yt-captions', { detail: { url, segments } }))` 觸發 listener,url 含 `lang=zh-Hant`,驗 `translateWindowFrom` 進入後立刻 return + log 含 `skip translate: caption already traditional chinese`。
+- **內容 heuristic 增強(未來)**: URL lang 偶爾不準(YouTube auto-translated tlang= 標 zh-Hant 但實際內容是 hybrid)。可選增強:抓首批 cue 的 text 算「中文字符占比 > 70%」當 fallback 判斷依據。本輪先走 URL lang only。
+
 ### v1.8.39 — 2026-05-04 — translateUnits 段落 hash dedup
 - **症狀(避免):** Medium 文章 60 張圖每張 alt 都是同字串 `"Press enter or click to view image in full size"`,packBatches 把 60 段切成 3 個 batch 各 20 段重複內容。實測 batch 11 浪費整個 API call(1754 input tokens / 2.7 秒),batch 12/13 雖然本地 cache 救起來但 batch 11 仍多打。
 - **修在:** shinkansen/content.js translateUnits 入口處(serialize 後、packBatches 前)做 text hash dedup,build `origIndicesByText: Map<text, origIdx[]>` + `dedupedTexts/Units/Slots`;packBatches 收 deduped 子集;runBatch + STREAMING_SEGMENT 路徑 inject 時 broadcast 到所有 dup 原始位置(用各 dup 自己的 slots,因為 slots 綁的 DOM 不同)。

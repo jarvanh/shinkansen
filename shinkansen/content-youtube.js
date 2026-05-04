@@ -243,6 +243,9 @@
     isAsr:            false,        // 本影片字幕是否為 YouTube 自動產生（kind=asr）。
                                     //   true → translateWindowFrom 走 ASR 合句路徑（D' 模式,timestamp mode）。
                                     //   shinkansen-yt-captions listener 依 URL search param kind=asr 偵測。
+    captionLang:      null,         // v1.8.40: caption URL 的 lang 參數,例如 'en' / 'zh-Hant' / 'zh-CN' / 'ja'
+                                    //   用於 translateWindowFrom 判斷是否該 skip(已是繁中字幕就不送 Gemini 翻譯)。
+                                    //   shinkansen-yt-captions listener 從 URL searchParams.get('lang') 抓。
     translatingWindows: new Set(), // v1.2.54: 正在翻譯中的視窗 startMs 集合（允許不同視窗並行）
     translatedUpToMs: 0,           // 已翻譯涵蓋到的時間點（ms）
     config:           null,        // ytSubtitle settings 快取
@@ -537,12 +540,18 @@
     // D' 模式偵測：URL 含 kind=asr 即為 YouTube 自動產生字幕，
     // 走「LLM 自由合句 + 時間戳對齊」路徑(timestamp mode)
     // 而非逐條翻譯——後者對 1-3 字短條無法產生有意義譯文。
+    // v1.8.40: 順便抓 lang 參數,讓 translateWindowFrom 能判斷字幕原語言。
+    //          字幕本身是繁中(zh-Hant / zh-TW / zh-HK / zh-MO)就 skip 翻譯。
     try {
       const u = new URL(url, location.href);
       YT.isAsr = u.searchParams.get('kind') === 'asr';
+      YT.captionLang = u.searchParams.get('lang') || null;
     } catch (_) {
       YT.isAsr = false;
+      YT.captionLang = null;
     }
+    // v1.8.40: 換影片/換字幕來源時 reset skip-log 旗標,避免跨影片不再 log skip 原因
+    YT._skipLoggedForLang = false;
     // G 路徑:ASR 字幕一進來就 enable hiding mode + 預建 overlay 容器,
     //         避免使用者啟動翻譯瞬間還看到原生英文字幕跳動。
     // commit 5c:bilingualMode=true → 不隱藏原生 CC(中英對照);false=純中文(既有行為)
@@ -556,6 +565,7 @@
       segmentCount: segments.length,
       lastMs,
       isAsr: YT.isAsr,
+      captionLang: YT.captionLang,
       urlSnippet: url ? url.substring(url.indexOf('/api/timedtext'), Math.min(url.length, url.indexOf('/api/timedtext') + 60)) : '',
     });
 
@@ -1566,10 +1576,31 @@
 
   // ─── 時間視窗翻譯 ──────────────────────────────────────────
 
+  // v1.8.40: 字幕已是繁體中文時不送 Gemini 翻譯
+  // YouTube /api/timedtext URL 帶 lang= 參數(例如 'en' / 'zh-Hant' / 'ja')
+  // 明確繁中(zh-Hant / zh-TW / zh-HK / zh-MO)→ 直接 skip,避免浪費 token 翻自己。
+  // 簡中(zh-Hans / zh-CN)跟泛中(zh)維持送 Gemini 處理(LLM 簡轉繁更精準)。
+  // 設計上這裡只看 URL lang(快、便宜、不誤判),內容 heuristic 留未來增強。
+  const SKIP_TRANSLATE_LANGS_TW = new Set(['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO']);
+  function _shouldSkipBecauseAlreadyTraditionalChinese() {
+    return SK.YT.captionLang && SKIP_TRANSLATE_LANGS_TW.has(SK.YT.captionLang);
+  }
+
   async function translateWindowFrom(windowStartMs) {
     const YT = SK.YT;
     if (YT.translatingWindows.has(windowStartMs)) return;  // v1.2.54: per-window 防重入
     if (!YT.active) return;
+    // v1.8.40: 字幕原文已是繁中 → 跳過整個翻譯流程,記一次 log 讓使用者在 debug 面板看得到原因
+    if (_shouldSkipBecauseAlreadyTraditionalChinese()) {
+      if (!YT._skipLoggedForLang) {
+        SK.sendLog('info', 'youtube', 'skip translate: caption already traditional chinese', {
+          captionLang: YT.captionLang,
+          videoId: YT.videoId,
+        });
+        YT._skipLoggedForLang = true;
+      }
+      return;
+    }
 
     // 取得設定
     const config = await getYtConfig();

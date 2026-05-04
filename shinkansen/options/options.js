@@ -1403,7 +1403,16 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const panel = $('tab-' + btn.dataset.tab);
     if (panel) panel.classList.add('active');
     // 切到用量頁時載入資料
-    if (btn.dataset.tab === 'usage') loadUsageData();
+    if (btn.dataset.tab === 'usage') {
+      // v1.8.40: 自動把「到」時間 bump 到當下,確保涵蓋切 tab 之前剛翻譯完的紀錄。
+      // 原本 to 由 initUsageDateRange / 上次手動設值固定,getUsageDateRange 讀回時
+      // 精度只到分鐘(秒/毫秒被丟),若新紀錄 timestamp > 欄位寫入時的當下分鐘起始
+      // 就不在 query 範圍 → 「打開 options 看不到剛翻完的紀錄,要 refresh / 點現在時間」。
+      // 切 usage tab 通常就是想看最新狀態,自動 bump 符合直覺;若 user 在 tab 內手動
+      // 改 to(看歷史)不受影響(只在切進來那刻覆寫)。
+      setDateTimeFields('usage-to', new Date());
+      loadUsageData();
+    }
     // 切到 Log 頁時開始 polling
     if (btn.dataset.tab === 'log') startLogPolling();
     else stopLogPolling();
@@ -1878,6 +1887,9 @@ document.querySelectorAll('.gran-btn').forEach(btn => {
 // Cmd+R refresh 也會回到預設分頁。loadUsageData() 已能保留當前的篩選狀態
 // （日期範圍 / 搜尋 / 模型 filter / 粒度）只重抓底層資料,直接呼叫即可。
 $('usage-reload')?.addEventListener('click', () => {
+  // v1.8.40: 重新載入時也 bump「到」時間到當下,確保涵蓋剛翻完的紀錄
+  // (詳見 tab click handler 內 usage 分支的註解)
+  setDateTimeFields('usage-to', new Date());
   loadUsageData();
 });
 
