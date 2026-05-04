@@ -600,7 +600,7 @@ const messageHandlers = {
   },
   // v1.5.7: API Key 測試 — 設定頁「測試」按鈕觸發。
   // Gemini 走 GET models/<model>?key=<key> 不耗 token；
-  // OpenAI-compat 走 POST /chat/completions max_tokens=1 ping，耗 ~1 token。
+  // OpenAI-compat 走 POST /chat/completions ping(v1.8.43 起不帶 max_tokens),耗 ~1-3 token。
   TEST_GEMINI_KEY: {
     async: true,
     handler: (payload) => testGeminiKey(payload),
@@ -1350,9 +1350,14 @@ async function testGeminiKey(payload) {
 
 /**
  * 測試自訂 OpenAI-compatible Provider。
- * 走 `POST /chat/completions` 帶 max_tokens=1 + 「ping」訊息——耗 ~1 token，
- * 同時驗證 baseUrl / model / apiKey 三者皆正確。比 GET /models 通用（部分
- * provider 不支援 GET /models）。
+ * 走 `POST /chat/completions` + 「ping」訊息,同時驗證 baseUrl / model / apiKey
+ * 三者皆正確。比 GET /models 通用(部分 provider 不支援 GET /models)。
+ *
+ * v1.8.43:不送 max_tokens——GPT-5 / o1 / o3 系列拒收 max_tokens 改認
+ * max_completion_tokens,而 OpenRouter / DeepSeek / 較舊 OpenAI-compat 後端
+ * 不一定認新欄位,改一個 break 一群。實際翻譯路徑(lib/openai-compat.js)
+ * 本來就不送 max_tokens,測試路徑對齊即可。ping 訊息 server 自然回 1-3 token,
+ * 沒 limit 也不會失控。
  */
 async function testCustomProvider(payload) {
   const baseUrl = (payload?.baseUrl || '').trim().replace(/\/+$/, '');
@@ -1370,7 +1375,6 @@ async function testCustomProvider(payload) {
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
     const reqBody = {
       messages: [{ role: 'user', content: 'ping' }],
-      max_tokens: 1,
       stream: false,
     };
     if (model) reqBody.model = model;
