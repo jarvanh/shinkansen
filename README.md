@@ -302,3 +302,13 @@ v1.8.44 — 完整功能清單與規格詳見 [SPEC.md](SPEC.md)。
 本專案採用 [Elastic License 2.0 (ELv2)](LICENSE) 授權。
 
 白話來說：你可以自由查看原始碼、學習、修改、自己使用，但**不能把 Shinkansen（或改寫版本）包成服務拿去賣**。完整條款請見 [LICENSE](LICENSE) 檔案。
+
+## 第三方資源
+
+Shinkansen 整合下列開源軟體與字型，完整來源、授權與授權檔位置見
+[THIRD-PARTY-NOTICES.md](shinkansen/THIRD-PARTY-NOTICES.md):
+
+- **PDF.js**(Mozilla,Apache 2.0)— 翻譯文件功能 PDF 解析 / render
+- **pdf-lib**(Hopding,MIT)— 譯文 PDF 下載重組
+- **fontkit**(Devon Govett / Hopding fork,MIT)— pdf-lib 的字型解析後端
+- **Noto Sans CJK TC Regular**(Google Noto,SIL OFL 1.1)— 譯文 PDF 內嵌中文字型

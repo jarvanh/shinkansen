@@ -302,3 +302,14 @@ v1.8.44 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chine
 This project is licensed under the [Elastic License 2.0 (ELv2)](LICENSE).
 
 In plain English: you're free to view the source, learn from it, modify it, and use it yourself, but you **cannot** package Shinkansen (or any modified version) as a hosted or managed service to third parties. See the [LICENSE](LICENSE) file for the full text.
+
+## Third-Party Notices
+
+Shinkansen bundles the following open-source libraries and fonts. Full source,
+licenses, and license file locations are listed in
+[THIRD-PARTY-NOTICES.md](shinkansen/THIRD-PARTY-NOTICES.md):
+
+- **PDF.js** (Mozilla, Apache 2.0) — PDF parsing / page rendering for the document translation feature
+- **pdf-lib** (Hopding, MIT) — bilingual PDF reconstruction on download
+- **fontkit** (Devon Govett / Hopding fork, MIT) — font parser used by pdf-lib for CJK subsetting
+- **Noto Sans CJK TC Regular** (Google Noto, SIL OFL 1.1) — embedded Traditional Chinese font for the translated PDF
