@@ -11,7 +11,11 @@
     "test:version": "playwright test test/version-check.spec.js",
     "test:jest": "jest --config jest.config.cjs",
     "test:all": "playwright test && jest --config jest.config.cjs",
-    "debug": "node tools/debug-harness.js"
+    "debug": "node tools/debug-harness.js",
+    "pdf-layout": "node tools/pdf-layout-harness.js",
+    "pdf-snapshot": "node tools/pdf-layout-snapshot.js",
+    "pdf-snapshot:update": "node tools/pdf-layout-snapshot.js --update",
+    "pdf-snapshot:metrics": "node tools/pdf-layout-snapshot.js --metrics"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
