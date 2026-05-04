@@ -69,7 +69,7 @@
       </div>
     </section>
 
-    <!-- 階段 4.5:翻譯中(W3) -->
+    <!-- 階段 4.5：翻譯中(W3) -->
     <section id="stage-translating" class="stage" hidden>
       <h2 class="result-title">翻譯中</h2>
       <div class="translate-progress-wrap">
@@ -86,7 +86,7 @@
       </div>
     </section>
 
-    <!-- 階段 6:翻譯完成簡短摘要(W4 起改用閱讀器顯示對照) -->
+    <!-- 階段 6：翻譯完成簡短摘要(W4 起改用閱讀器顯示對照) -->
     <section id="stage-translated" class="stage" hidden>
       <h2 class="result-title">翻譯完成</h2>
       <div class="result-summary">
@@ -104,21 +104,22 @@
       </div>
     </section>
 
-    <!-- 階段 7:雙頁並排閱讀器(W4) -->
+    <!-- 階段 7：雙頁並排閱讀器(W4) -->
     <section id="stage-reader" class="stage" hidden>
       <div class="reader-toolbar">
         <span id="reader-title" class="reader-title"></span>
         <span class="debug-toolbar-spacer"></span>
-        <span class="reader-zoom-group" title="調整顯示大小(50%-200%,用 CSS 縮放,canvas 解析度不變)">
+        <span class="reader-zoom-group" title="調整顯示大小(50%-200%，用 CSS 縮放，canvas 解析度不變)">
           <button id="reader-zoom-out" class="secondary-btn" type="button">−</button>
           <span id="reader-zoom-level" class="reader-zoom-level">100%</span>
           <button id="reader-zoom-in" class="secondary-btn" type="button">+</button>
         </span>
-        <label class="debug-toolbar-toggle" title="關閉後左右欄各自獨立捲動,不互相同步">
+        <label class="debug-toolbar-toggle" title="關閉後左右欄各自獨立捲動，不互相同步">
           <input type="checkbox" id="reader-sync-toggle" checked>
           同步捲動
         </label>
         <button id="reader-retry-all-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗段落">重試失敗 (<span id="reader-failed-count">0</span>)</button>
+        <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照 PDF(每張原頁後接一張譯文頁)">下載譯文 PDF</button>
         <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿">複製譯文</button>
         <button id="reader-back-overlay-btn" class="secondary-btn" type="button">查看版面 overlay</button>
         <button id="reader-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
@@ -149,7 +150,7 @@
           <input type="number" id="debug-isolate-input" min="0" placeholder="全部">
         </span>
         <span class="debug-toolbar-toggle">
-          上色:
+          上色：
           <select id="debug-color-mode" class="debug-color-select">
             <option value="type" selected>依類型</option>
             <option value="order">依 reading order</option>
@@ -165,8 +166,8 @@
 
       <div class="debug-type-legend" id="debug-type-legend"></div>
 
-      <!-- detail 放在 viewport 上方 + sticky,讓使用者 hover 時不需要 scroll
-           就能看到原文/譯文(bbox / canvas 高可達 1100+ px,放下面看不到) -->
+      <!-- detail 放在 viewport 上方 + sticky，讓使用者 hover 時不需要 scroll
+           就能看到原文/譯文(bbox / canvas 高可達 1100+ px，放下面看不到) -->
       <div class="debug-detail" id="debug-detail">
         <span class="debug-detail-empty">把游標移到 bbox 上看該 block 的 plainText / 譯文</span>
       </div>
@@ -184,6 +185,10 @@
     <span class="footer-version" id="footer-version"></span>
   </footer>
 
+  <!-- pdf-lib + fontkit UMD bundles(W6 譯文 PDF 下載用)
+       — 載成 window.PDFLib / window.fontkit globals，給 pdf-renderer.js 用 -->
+  <script src="../lib/vendor/pdf-lib/pdf-lib.min.js"></script>
+  <script src="../lib/vendor/pdf-lib/fontkit.umd.min.js"></script>
   <script type="module" src="index.js"></script>
 </body>
 </html>

@@ -90,7 +90,9 @@
     {
       "resources": [
         "translate-doc/*",
-        "lib/vendor/pdfjs/*"
+        "lib/vendor/pdfjs/*",
+        "lib/vendor/pdf-lib/*",
+        "lib/vendor/fonts/*"
       ],
       "matches": ["<all_urls>"]
     }

@@ -1,13 +1,14 @@
 // index.js — translate-doc 頁面主協調層
 //
 // W2-iter1：上傳 → parsePdf → analyzeLayout → 顯示版面 IR 摘要 + 提供 debug overlay 預覽
-// (SVG 疊在 PDF.js canvas 上,可肉眼驗 block 切分是否合理)。
+// (SVG 疊在 PDF.js canvas 上，可肉眼驗 block 切分是否合理)。
 // 完整翻譯 / 閱讀器 / 下載走後續週次。
 
 import { parsePdf, preflightFile, renderPageToCanvas, closeDocument, PdfParseError } from './pdf-engine.js';
 import { analyzeLayout } from './layout-analyzer.js';
 import { translateDocument } from './translate.js';
 import { renderReader, buildPlainTextDump } from './reader.js';
+import { downloadBilingualPdf } from './pdf-renderer.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEBUG_RENDER_SCALE = 1.5;
@@ -31,6 +32,7 @@ let currentPdfDoc = null;    // PDF.js PDFDocumentProxy（記得 destroy）
 let currentDebugPage = 0;
 let currentReaderHandle = null;
 let currentModelOverride = null;
+let currentOriginalArrayBuffer = null; // W6：留 PDF 原 ArrayBuffer 給 pdf-lib 重組譯文 PDF 用
 
 function showStage(name) {
   for (const [key, el] of Object.entries(stages)) {
@@ -76,6 +78,7 @@ function releaseCurrentDoc() {
   currentDoc = null;
   currentDebugPage = 0;
   currentModelOverride = null;
+  currentOriginalArrayBuffer = null;
   if (window.__skLayoutDoc) delete window.__skLayoutDoc;
 }
 
@@ -97,6 +100,9 @@ async function handleFile(file) {
   setParsingDetail('讀取檔案內容…');
 
   try {
+    // W6：讀一次 file.arrayBuffer() cache 起來，給後續 pdf-renderer 重組譯文 PDF 用
+    // (parsePdf 內也讀一次，但 PDF.js 內部消費掉，不能 reuse；這裡多 read 一次)
+    currentOriginalArrayBuffer = await file.arrayBuffer();
     const rawDoc = await parsePdf(file, (progress) => {
       switch (progress.stage) {
         case 'reading':
@@ -132,7 +138,7 @@ async function handleFile(file) {
         bodyFontSize: p.bodyFontSize,
         blocks: p.blocks,
       })),
-      // dev probe(W2-iter3 期間留著,iter4 移除):raw text runs 也 expose 供 harness 抓
+      // dev probe(W2-iter3 期間留著，iter4 移除):raw text runs 也 expose 供 harness 抓
       _rawPages: rawDoc.pages.map((p) => ({
         pageIndex: p.pageIndex,
         viewport: p.viewport,
@@ -140,13 +146,13 @@ async function handleFile(file) {
       })),
     };
 
-    // W2 暫定:把版面 IR 印到 console 供肉眼驗
+    // W2 暫定：把版面 IR 印到 console 供肉眼驗
     const totalBlocks = doc.pages.reduce((sum, p) => sum + p.blocks.length, 0);
     console.group('[Shinkansen] PDF 版面分析完成');
     console.log('meta:', doc.meta);
     console.log('stats:', doc.stats);
     console.log('warnings:', doc.warnings);
-    console.log('總 block 數:', totalBlocks);
+    console.log('總 block 數：', totalBlocks);
     console.log('pages:', doc.pages);
     if (doc.pages[0]) {
       console.log('首頁 blocks:', doc.pages[0].blocks);
@@ -162,7 +168,7 @@ async function handleFile(file) {
 
     if (doc.warnings.length > 0) {
       const warnEl = $('upload-error');
-      warnEl.textContent = doc.warnings.map((w) => `提醒:${w.message}`).join(' / ');
+      warnEl.textContent = doc.warnings.map((w) => `提醒：${w.message}`).join(' / ');
       warnEl.hidden = false;
     }
 
@@ -172,7 +178,7 @@ async function handleFile(file) {
       showError(err.message);
     } else {
       console.error('[Shinkansen] PDF 解析失敗', err);
-      showError(`解析失敗:${(err && err.message) || String(err)}`);
+      showError(`解析失敗：${(err && err.message) || String(err)}`);
     }
     releaseCurrentDoc();
   }
@@ -185,17 +191,17 @@ function blockHue(readingOrder) {
   return (readingOrder * 137.508) % 360;
 }
 
-// type 對應的色盤(HSL 三元組:hue, saturation, lightness)
+// type 對應的色盤(HSL 三元組：hue, saturation, lightness)
 const BLOCK_TYPE_COLORS = {
-  heading: [0, 75, 50],       // 紅暖色:標題
-  paragraph: [210, 70, 50],   // 藍:正文
-  'list-item': [140, 60, 42], // 綠:條列
-  footnote: [40, 60, 45],     // 橙:腳註
-  'page-number': [0, 0, 60],  // 灰:頁碼
-  table: [280, 60, 50],       // 紫:表格
-  formula: [320, 60, 45],     // 洋紅:公式(W2-iter6)
-  caption: [180, 60, 40],     // 青:說明(W2-iter6)
-  figure: [0, 0, 75],         // 淡灰:圖
+  heading: [0, 75, 50],       // 紅暖色：標題
+  paragraph: [210, 70, 50],   // 藍：正文
+  'list-item': [140, 60, 42], // 綠：條列
+  footnote: [40, 60, 45],     // 橙：腳註
+  'page-number': [0, 0, 60],  // 灰：頁碼
+  table: [280, 60, 50],       // 紫：表格
+  formula: [320, 60, 45],     // 洋紅：公式(W2-iter6)
+  caption: [180, 60, 40],     // 青：說明(W2-iter6)
+  figure: [0, 0, 75],         // 淡灰：圖
 };
 
 function blockColorForType(type) {
@@ -259,7 +265,7 @@ function setBlockDetail(block) {
   // 原文
   const origLabel = document.createElement('span');
   origLabel.style.color = 'var(--text-faint)';
-  origLabel.textContent = '原文:';
+  origLabel.textContent = '原文：';
   el.appendChild(origLabel);
   const origText = document.createElement('span');
   origText.textContent = ' ' + previewText(block.plainText);
@@ -270,7 +276,7 @@ function setBlockDetail(block) {
     el.appendChild(document.createElement('br'));
     const trLabel = document.createElement('span');
     trLabel.style.color = 'var(--primary)';
-    trLabel.textContent = '譯文:';
+    trLabel.textContent = '譯文：';
     el.appendChild(trLabel);
     const trText = document.createElement('span');
     trText.textContent = ' ' + previewText(block.translation);
@@ -279,7 +285,7 @@ function setBlockDetail(block) {
     el.appendChild(document.createElement('br'));
     const errLabel = document.createElement('span');
     errLabel.style.color = 'var(--error-text)';
-    errLabel.textContent = `翻譯失敗: ${block.translationError}`;
+    errLabel.textContent = `翻譯失敗： ${block.translationError}`;
     el.appendChild(errLabel);
   }
 }
@@ -323,7 +329,7 @@ async function renderDebugPage() {
   const isolateRaw = $('debug-isolate-input').value.trim();
   const isolateOrder = isolateRaw === '' ? null : Number.parseInt(isolateRaw, 10);
 
-  // bbox 已是 canvas 座標(y 由上往下,套過 viewport.transform),直接乘 scale 即可
+  // bbox 已是 canvas 座標(y 由上往下，套過 viewport.transform)，直接乘 scale 即可
   const scale = renderInfo.scale;
 
   setBlockDetail(null);
@@ -394,7 +400,7 @@ async function renderDebugPage() {
     group.addEventListener('mouseenter', () => setBlockDetail(block));
     group.addEventListener('mouseleave', () => setBlockDetail(null));
     group.addEventListener('click', () => {
-      // click 鎖定 detail,再 click 同一個解鎖
+      // click 鎖定 detail，再 click 同一個解鎖
       if (group.classList.contains('is-active')) {
         group.classList.remove('is-active');
         setBlockDetail(null);
@@ -524,6 +530,36 @@ function bindReaderUI() {
   });
   $('reader-zoom-out').addEventListener('click', () => stepZoom(-0.1));
   $('reader-zoom-in').addEventListener('click', () => stepZoom(+0.1));
+  $('reader-download-pdf-btn').addEventListener('click', async () => {
+    if (!currentDoc || !currentOriginalArrayBuffer) return;
+    const btn = $('reader-download-pdf-btn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '產生 PDF 中…';
+    try {
+      const result = await downloadBilingualPdf(currentOriginalArrayBuffer, currentDoc, {
+        onProgress: (p) => {
+          if (p.stage === 'page') {
+            btn.textContent = `處理第 ${p.current} / ${p.total} 頁…`;
+          } else if (p.stage === 'saving') {
+            btn.textContent = '寫檔中…';
+          } else if (p.stage === 'font') {
+            btn.textContent = '載入字型…';
+          }
+        },
+      });
+      const sizeMB = (result.byteLength / 1024 / 1024).toFixed(1);
+      btn.textContent = `已下載 ${sizeMB} MB`;
+    } catch (err) {
+      console.error('[Shinkansen] 下載譯文 PDF 失敗', err);
+      btn.textContent = `失敗：${(err && err.message) || '未知錯誤'}`;
+    }
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.disabled = false;
+    }, 3000);
+  });
   $('reader-retry-all-btn').addEventListener('click', async () => {
     if (!currentReaderHandle) return;
     const btn = $('reader-retry-all-btn');
@@ -539,7 +575,7 @@ function bindReaderUI() {
     }
     setTimeout(() => {
       btn.textContent = origText;
-      // updateRetryAllUI 會在 onAfterRetry 內被呼叫,這裡不用手動 reset hidden
+      // updateRetryAllUI 會在 onAfterRetry 內被呼叫，這裡不用手動 reset hidden
     }, 2500);
   });
 }
@@ -605,7 +641,7 @@ function bindDebugUI() {
 
   $('debug-copy-json-btn').addEventListener('click', async () => {
     if (!currentDoc) return;
-    // 序列化:剝掉 pdfDoc(PDF.js proxy 不可序列化),保留所有 layout 資訊
+    // 序列化：剝掉 pdfDoc(PDF.js proxy 不可序列化)，保留所有 layout 資訊
     const dump = {
       meta: currentDoc.meta,
       stats: currentDoc.stats,
@@ -627,7 +663,7 @@ function bindDebugUI() {
     } catch (err) {
       console.error('clipboard 失敗', err);
       console.log('[Shinkansen] dump JSON:', json);
-      btn.textContent = '失敗,看 console';
+      btn.textContent = '失敗，看 console';
     }
     setTimeout(() => { btn.textContent = orig; }, 2500);
   });
@@ -663,8 +699,8 @@ function init() {
 async function startTranslate() {
   if (!currentDoc) return;
 
-  // 讀使用者預設 preset。MVP 先用 slot 1 (translatePresets[0]),通常是 Flash Lite。
-  // W3-iter2 加 UI 讓使用者選 slot,目前 hardcoded 取第一組 gemini engine 的 preset。
+  // 讀使用者預設 preset。MVP 先用 slot 1 (translatePresets[0])，通常是 Flash Lite。
+  // W3-iter2 加 UI 讓使用者選 slot，目前 hardcoded 取第一組 gemini engine 的 preset。
   let modelOverride = undefined;
   try {
     const settings = await chrome.storage.sync.get(['translatePresets']);
@@ -672,7 +708,7 @@ async function startTranslate() {
     const geminiPreset = presets.find((p) => p && p.engine === 'gemini' && p.model);
     if (geminiPreset) modelOverride = geminiPreset.model;
   } catch (err) {
-    console.warn('[Shinkansen] 讀 translatePresets 失敗,改用 background 預設模型', err);
+    console.warn('[Shinkansen] 讀 translatePresets 失敗，改用 background 預設模型', err);
   }
   currentModelOverride = modelOverride;
 
