@@ -20,8 +20,8 @@
 
 import { debugLog } from './logger.js';
 import { DELIMITER, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
-// v1.6.18: thinking 控制 mapping(各家 provider 的 thinking schema 不同,統一成
-// thinkingLevel 'auto/off/low/medium/high' + extraBodyJson 進階透傳)
+// v1.6.18: thinking 控制 mapping（各家 provider 的 thinking schema 不同，統一成
+// thinkingLevel 'auto/off/low/medium/high' + extraBodyJson 進階透傳）
 import { buildThinkingPayload } from './openai-compat-thinking.js';
 
 const MAX_BACKOFF_MS = 8000;
@@ -145,7 +145,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   const cp = settings.customProvider || {};
   const { baseUrl, model, systemPrompt, temperature, apiKey, thinkingLevel, extraBodyJson } = cp;
   // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key）；商用後端漏填會自然 401
-  if (!model) throw new Error('尚未設定自訂 Provider 的模型 ID。');
+  // v1.8.41:Model 也允許為空（llama.cpp 啟動時鎖 model,body 不送 model 欄位即用 server 預設）;
+  // 商用後端不送 model 會自然 4xx「model required」，讓 provider error 自己講話。
 
   // 多段時加序號標記（與 Gemini 同邏輯）
   const useSeqMarkers = texts.length > 1;
@@ -159,8 +160,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     : '你是專業的英文 → 繁體中文（台灣慣用語）翻譯助理，僅輸出譯文不加任何說明。';
   const effectiveSystem = buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary, forbiddenTerms);
 
-  // v1.6.18: 依 baseUrl + model 偵測 provider,組對應 thinking 控制 payload。
-  // 若 user 的 extraBodyJson 解析失敗,debugLog 一條 warn 但不阻斷翻譯。
+  // v1.6.18: 依 baseUrl + model 偵測 provider，組對應 thinking 控制 payload。
+  // 若 user 的 extraBodyJson 解析失敗，debugLog 一條 warn 但不阻斷翻譯。
   const thinkingPayload = buildThinkingPayload({
     baseUrl, model,
     level: thinkingLevel || 'auto',
@@ -169,7 +170,6 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   });
 
   const body = {
-    model,
     messages: [
       { role: 'system', content: effectiveSystem },
       { role: 'user', content: joined },
@@ -178,6 +178,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     stream: false,
     ...thinkingPayload,
   };
+  // v1.8.41:model 為空（llama.cpp / Ollama）時不送 model 欄位，讓 server 用啟動時鎖定的 model。
+  if (model) body.model = model;
 
   const url = resolveChatCompletionsUrl(baseUrl);
   // v1.6.7: apiKey 為空時不送 Authorization（本機 llama.cpp / Ollama 等不需要 key）

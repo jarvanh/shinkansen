@@ -109,7 +109,7 @@
   async function rescanTick() {
     rescanTimer = null;
     if (!STATE.translated) return;
-    // v1.8.5: 「只翻文章開頭」啟用時,延遲 rescan 不掃新段落 — 使用者明確只想要文章開頭。
+    // v1.8.5: 「只翻文章開頭」啟用時，延遲 rescan 不掃新段落 — 使用者明確只想要文章開頭。
     if (STATE.partialModeActive) {
       SK.sendLog('info', 'translate', 'partialMode: skip rescan');
       return;
@@ -139,8 +139,8 @@
   const BATCH_TIMEOUT_MS = 90_000;
 
   // v1.6.19: 把 Promise.race 包成 helper,sendMessage 先 settle 時 clearTimeout
-  // 釋放 timer。舊版每個 batch 都留一個 90s timer 直到 fire(雖然 race 已 settle
-  // 後 reject 被忽略,但 timer 物件 + Error 物件占住到 fire 才 GC,長頁面 50+
+  // 釋放 timer。舊版每個 batch 都留一個 90s timer 直到 fire（雖然 race 已 settle
+  // 後 reject 被忽略，但 timer 物件 + Error 物件占住到 fire 才 GC，長頁面 50+
   // batch 累積成 timer leak)。
   function sendMessageWithTimeout(message, timeoutMs) {
     let timer;
@@ -176,12 +176,12 @@
   // ─── Greedy 打包 ─────────────────────────────────────
 
   // v1.7.2: 加入 firstMaxUnits / firstMaxChars 讓 batch 0 用較小的 limit。
-  // batch 0 序列等 Gemini,token 少回送快;batch 1+ 並行不吃序列延遲,維持原 limit 衝吞吐。
-  // 兩個新參數預設 null = 走舊行為(全部 batch 用同 limit),向下相容 translateUnitsGoogle / 字幕路徑。
+  // batch 0 序列等 Gemini,token 少回送快；batch 1+ 並行不吃序列延遲，維持原 limit 衝吞吐。
+  // 兩個新參數預設 null = 走舊行為（全部 batch 用同 limit)，向下相容 translateUnitsGoogle / 字幕路徑。
   function packBatches(texts, units, slotsList, maxUnits, maxChars, firstMaxUnits = null, firstMaxChars = null) {
     const jobs = [];
     let cur = null;
-    // v1.8.14: flush 時寫入 idx,呼叫端用 job.idx 取代 jobs.indexOf(job)(O(N²) → O(1))
+    // v1.8.14: flush 時寫入 idx，呼叫端用 job.idx 取代 jobs.indexOf(job)(O(N²) → O(1))
     const flush = () => {
       if (cur && cur.texts.length > 0) {
         cur.idx = jobs.length;
@@ -189,7 +189,7 @@
       }
       cur = null;
     };
-    // 「正在切第一批」= jobs 還沒 push 任何 batch + (firstMaxUnits / firstMaxChars 有值)
+    // 「正在切第一批」= jobs 還沒 push 任何 batch + (firstMaxUnits / firstMaxChars 有值）
     const limU = () => (jobs.length === 0 && firstMaxUnits != null) ? firstMaxUnits : maxUnits;
     const limC = () => (jobs.length === 0 && firstMaxChars != null) ? firstMaxChars : maxChars;
     for (let i = 0; i < texts.length; i++) {
@@ -243,12 +243,12 @@
     SK.sendLog('info', 'translate', 'milestone:tu_serialize_done', { t: Date.now() - tu_entry, units: total });
 
     // ─── v1.8.39: 段落 hash dedup ──────────────────────────
-    // 同 text 內容的段(典型例子:Medium 文章 60 張圖每張的 alt 都是
-    // "Press enter or click to view image in full size")只送 1 段給 API,
+    // 同 text 內容的段（典型例子：Medium 文章 60 張圖每張的 alt 都是
+    // "Press enter or click to view image in full size"）只送 1 段給 API,
     // 翻完後 broadcast inject 到所有 dup 原始位置。slots 仍按各 dup 自己的
-    // (因為同 text 內容的 placeholder 結構必相同,只是綁的 DOM 元素不同)。
+    // （因為同 text 內容的 placeholder 結構必相同，只是綁的 DOM 元素不同）。
     //
-    // 實作:把 packBatches 收到的 texts/units/slotsList 替換成 unique 子集,
+    // 實作：把 packBatches 收到的 texts/units/slotsList 替換成 unique 子集，
     // runBatch 內 inject 時透過 origIndicesByText 把譯文 broadcast 到所有 dup unit。
     const origIndicesByText = new Map();  // text → [orig idx 0, orig idx 1, ...]
     for (let i = 0; i < texts.length; i++) {
@@ -258,7 +258,7 @@
       arr.push(i);
     }
     const uniqueIndices = Array.from(origIndicesByText.values()).map(arr => arr[0]);
-    uniqueIndices.sort((a, b) => a - b);  // 保持原順序,讓 partialMode「前 N 段」概念維持
+    uniqueIndices.sort((a, b) => a - b);  // 保持原順序，讓 partialMode「前 N 段」概念維持
     const dedupSavedCount = total - uniqueIndices.length;
     if (dedupSavedCount > 0) {
       SK.sendLog('info', 'translate', 'milestone:dedup_done', {
@@ -276,7 +276,7 @@
     let maxConcurrent = SK.DEFAULT_MAX_CONCURRENT;
     let maxUnitsPerBatch = SK.DEFAULT_UNITS_PER_BATCH;
     let maxCharsPerBatch = SK.DEFAULT_CHARS_PER_BATCH;
-    // v1.8.3: partialMode(只翻文章開頭,節省費用)
+    // v1.8.3: partialMode（只翻文章開頭，節省費用）
     let partialMode = { enabled: false, maxUnits: 25 };
     try {
       const batchCfg = await browser.storage.sync.get(['maxConcurrentBatches', 'maxUnitsPerBatch', 'maxCharsPerBatch', 'partialMode']);
@@ -304,20 +304,20 @@
       billedInputTokens: 0, billedCostUSD: 0,
       cacheHits: 0,
     };
-    // v1.8.3: partialMode 啟用時,第一批 limit 用使用者設定的 maxUnits;chars 仍用 BATCH0_CHARS 內部限制
-    // v1.8.8: ignorePartialMode 路徑(「翻譯剩餘段落」按鈕)走全頁翻譯,batch 0 用標準 BATCH0_UNITS
+    // v1.8.3: partialMode 啟用時，第一批 limit 用使用者設定的 maxUnits;chars 仍用 BATCH0_CHARS 內部限制
+    // v1.8.8: ignorePartialMode 路徑（「翻譯剩餘段落」按鈕）走全頁翻譯，batch 0 用標準 BATCH0_UNITS
     const partialModeActive = partialMode.enabled && !ignorePartialMode;
     const firstBatchUnits = partialModeActive ? partialMode.maxUnits : SK.BATCH0_UNITS;
-    // v1.8.39: packBatches 收 deduped 版本(不含重複 text),減少 batch 數與 API token
+    // v1.8.39: packBatches 收 deduped 版本（不含重複 text)，減少 batch 數與 API token
     const jobs = packBatches(dedupedTexts, dedupedUnits, dedupedSlots, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
     SK.sendLog('info', 'translate', 'milestone:tu_packed', { t: Date.now() - tu_entry, batches: jobs.length });
-    // v1.8.8 instrumentation: packBatches 詳情(每批 unit 數 / chars)
+    // v1.8.8 instrumentation: packBatches 詳情（每批 unit 數 / chars)
     // v1.8.39: log 欄位改名強調「上限 vs 實際」差異——歷史命名 `firstBatchUnits` 容易被誤讀成
-    // 「batch 0 的實際段數」(其實是傳給 packBatches 的段數上限),曾跟 batch 0 stream start
-    // 的 units=23 對不上引發誤判。新欄位:
+    // 「batch 0 的實際段數」（其實是傳給 packBatches 的段數上限），曾跟 batch 0 stream start
+    // 的 units=23 對不上引發誤判。新欄位：
     //   firstBatchUnitLimit / firstBatchCharLimit  → packBatches 切批時用的兩個上限
     //   firstBatchActualUnits / firstBatchActualChars → jobs[0] 真正包到的數字
-    // 兩者差異(例如 limit=25, actual=23)代表 packBatches 在 char 上限提前 flush,屬正常 greedy 行為。
+    // 兩者差異（例如 limit=25, actual=23）代表 packBatches 在 char 上限提前 flush，屬正常 greedy 行為。
     SK.sendLog('info', 'translate', 'packBatches detail', {
       totalBatches: jobs.length,
       batchSizes: jobs.map((j, i) => ({ idx: i, units: j.texts.length, chars: j.chars })),
@@ -367,7 +367,7 @@
         if (response.rpdExceeded) rpdWarning = true;
         if (response.hadMismatch) hadAnyMismatch = true;
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
-        // v1.8.39: dedup broadcast — 同一份譯文 broadcast 到所有 dup 原始位置,
+        // v1.8.39: dedup broadcast — 同一份譯文 broadcast 到所有 dup 原始位置，
         // 讓 60 段重複的 image alt 只翻 1 次但 inject 60 個 element。
         let injectedThisBatch = 0;
         translations.forEach((tr, j) => {
@@ -380,7 +380,7 @@
               injectedThisBatch++;
             }
           } else {
-            // 防呆 fallback:dedup map 沒命中(理論上不會發生)→ 退回單次 inject
+            // 防呆 fallback:dedup map 沒命中（理論上不會發生）→ 退回單次 inject
             SK.injectTranslation(job.units[j], sanitized, job.slots[j]);
             injectedThisBatch++;
           }
@@ -395,10 +395,10 @@
     };
 
     // v1.8.0: Streaming 版 batch 0。透過 STREAMING_* onMessage listener 收 SW 推來的
-    // first_chunk / segment / done / error / aborted 訊息。回傳兩個 promise 讓主流程協調:
-    //   firstChunkPromise:第一個 SSE chunk 抵達時 resolve(主流程在此時同步 dispatch batch 1+)
-    //   donePromise:streaming 完整結束(成功/失敗/abort)時 resolve/reject
-    // 1.5 秒沒收到 first_chunk 視為 streaming 失敗,呼叫端 fallback 走 non-streaming runBatch。
+    // first_chunk / segment / done / error / aborted 訊息。回傳兩個 promise 讓主流程協調：
+    //   firstChunkPromise：第一個 SSE chunk 抵達時 resolve（主流程在此時同步 dispatch batch 1+)
+    //   donePromise:streaming 完整結束（成功/失敗/abort）時 resolve/reject
+    // 1.5 秒沒收到 first_chunk 視為 streaming 失敗，呼叫端 fallback 走 non-streaming runBatch。
     const FIRST_CHUNK_TIMEOUT_MS = 1500;
     const runBatch0Streaming = (job) => {
       const streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -408,21 +408,21 @@
       let firstChunkResolve, doneResolve, doneReject;
       const firstChunkPromise = new Promise((r) => { firstChunkResolve = r; });
       const donePromise = new Promise((res, rej) => { doneResolve = res; doneReject = rej; });
-      // 防 unhandled rejection:某些 fallback 路徑(first_chunk timeout / safeSendMessage 回
-      // !resp.started / SW 端 STREAMING_ERROR 在 first_chunk 前)會略過 `await donePromise`
+      // 防 unhandled rejection：某些 fallback 路徑（first_chunk timeout / safeSendMessage 回
+      // !resp.started / SW 端 STREAMING_ERROR 在 first_chunk 前）會略過 `await donePromise`
       // 但 reject 仍會到達 → 「Uncaught (in promise) Error: streaming failed to start」這類
       // 誤訊息洩漏到 chrome://extensions/ 錯誤面板。掛 noop catch 是新建 chain,
       // 不影響真正在某處 await + try/catch 接到 reject 的路徑。
       donePromise.catch(() => {});
 
-      // v1.8.0 instrumentation:第一個 segment inject 時間(對應使用者首字延遲)
+      // v1.8.0 instrumentation：第一個 segment inject 時間（對應使用者首字延遲）
       let firstSegmentInjectedT = null;
 
       // v1.8.0: abort 傳播 — 使用者按 Option+S 取消 → 通知 SW 中斷 streaming + 清理 listener
       const abortHandler = () => {
         SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream abort triggered`, { streamId });
         SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId } }).catch(() => {});
-        // 解開 main 流程的 await(SW 端會回傳 STREAMING_ABORTED 但本地 listener 已移除,
+        // 解開 main 流程的 await(SW 端會回傳 STREAMING_ABORTED 但本地 listener 已移除，
         // 為防卡死直接在這裡 resolve)
         try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {}
         firstChunkResolve(false);
@@ -430,7 +430,7 @@
       };
       if (signal) {
         if (signal.aborted) {
-          // 進入 streaming 之前就已 aborted,直接走 abort path
+          // 進入 streaming 之前就已 aborted，直接走 abort path
           abortHandler();
         } else {
           signal.addEventListener('abort', abortHandler, { once: true });
@@ -447,7 +447,7 @@
           const tr = SK.sanitizeMarkers(message.payload.translation);
           if (typeof idx === 'number' && idx >= 0 && idx < job.texts.length && tr) {
             try {
-              // v1.8.39: dedup broadcast(streaming 路徑)— 同 text 翻譯結果 broadcast 到所有 dup unit
+              // v1.8.39: dedup broadcast(streaming 路徑）— 同 text 翻譯結果 broadcast 到所有 dup unit
               const uniqueText = job.texts[idx];
               const allOrigIndices = origIndicesByText.get(uniqueText);
               if (allOrigIndices && allOrigIndices.length > 0) {
@@ -471,12 +471,12 @@
         } else if (message.type === 'STREAMING_DONE') {
           const elapsed = Date.now() - t0;
           const usage = message.payload.usage || {};
-          // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
-          // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
-          // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
-          // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
-          // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
-          // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
+          // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段）時 reject,
+          // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming（整批 resolve 後一次 split)。
+          // segment 0 可能已被 streaming 注入合併譯文（A 已 sanitize),retry 會用乾淨版本覆蓋。
+          // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段）時 reject,
+          // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming（整批 resolve 後一次 split)。
+          // segment 0 可能已被 streaming 注入合併譯文（A 已 sanitize),retry 會用乾淨版本覆蓋。
           if (message.payload.hadMismatch) {
             SK.sendLog('warn', 'translate', `batch 1/${jobs.length} stream DONE with hadMismatch, triggering retry`, { elapsed, totalSegments: message.payload.totalSegments });
             browser.runtime.onMessage.removeListener(onMessage);
@@ -489,7 +489,7 @@
           pageUsage.cachedTokens += usage.cachedTokens || 0;
           pageUsage.billedInputTokens += usage.billedInputTokens || 0;
           pageUsage.billedCostUSD += usage.billedCostUSD || 0;
-          // streaming fast path(background.js allHit 走 cache 不打 API)會帶 usage.cacheHits=texts.length,
+          // streaming fast path(background.js allHit 走 cache 不打 API）會帶 usage.cacheHits=texts.length,
           // 沒帶 cacheHits 的真送 API streaming 視為 0 hit。漏接此欄位會讓 pickRescanToast 判定不到
           // 純 cache hit,SPA rescan toast 一律跳「已翻 N 段新內容」誤導使用者以為又花了 token。
           pageUsage.cacheHits += usage.cacheHits || 0;
@@ -542,8 +542,8 @@
 
     if (jobs.length > 0) {
       let batch0NeedsFallback = false;
-      // v1.8.3: partialMode 啟用時,只跑 batch 0,不 dispatch jobs.slice(1)
-      // v1.8.8: ignorePartialMode 路徑(「翻譯剩餘段落」按鈕)要翻完所有 batch
+      // v1.8.3: partialMode 啟用時，只跑 batch 0，不 dispatch jobs.slice(1)
+      // v1.8.8: ignorePartialMode 路徑（「翻譯剩餘段落」按鈕）要翻完所有 batch
       const skipBatch1Plus = partialModeActive;
       SK.sendLog('info', 'translate', 'main flow start', {
         useStreaming, skipBatch1Plus, jobsCount: jobs.length, t: Date.now() - tu_entry,
@@ -557,7 +557,7 @@
         const r = await stream.firstChunkOrTimeout;
         SK.sendLog('info', 'translate', 'stream firstChunkOrTimeout result', { kind: r.kind, t: Date.now() - tu_entry });
         if (r.kind === 'first_chunk') {
-          // streaming 已開始流入 — 同步 dispatch batch 1+ 並行(partialMode 啟用時跳過)
+          // streaming 已開始流入 — 同步 dispatch batch 1+ 並行（partialMode 啟用時跳過）
           const willParallel = jobs.length > 1 && !signal?.aborted && !skipBatch1Plus;
           SK.sendLog('info', 'translate', 'parallel batches dispatch decision', { willParallel, count: willParallel ? jobs.length - 1 : 0 });
           const parallelP = willParallel
@@ -574,7 +574,7 @@
           await parallelP;
           SK.sendLog('info', 'translate', 'after await parallelP', { t: Date.now() - tu_entry, doneSoFar: done });
         } else {
-          // first_chunk 1.5s 沒到(timeout 或 STREAMING_ERROR 在 first_chunk 前發生)
+          // first_chunk 1.5s 沒到（timeout 或 STREAMING_ERROR 在 first_chunk 前發生）
           // → 中斷 streaming,fallback 走 v1.7.x 序列 batch 0 + 並行 batch 1+
           stream.cleanup();
           if (r.kind === 'timeout') {
@@ -588,7 +588,7 @@
       }
 
       if (batch0NeedsFallback) {
-        // v1.7.1 行為:序列跑 batch 0 → 並行 batch 1+(partialMode 啟用時跳過 batch 1+)
+        // v1.7.1 行為：序列跑 batch 0 → 並行 batch 1+(partialMode 啟用時跳過 batch 1+)
         await runBatch(jobs[0]);
         if (jobs.length > 1 && !signal?.aborted && !skipBatch1Plus) {
           await runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch);
@@ -636,17 +636,17 @@
       statePartialModeActive: STATE.partialModeActive,
       alreadyMarkedCount: document.querySelectorAll('[data-shinkansen-translated]').length,
     });
-    // v1.8.7: options.ignorePartialMode = true 從「翻譯剩餘段落」按鈕觸發,
-    // 不走 restorePage 早退,直接重翻整頁(前面已翻好的段落會從 cache fast path 命中)
+    // v1.8.7: options.ignorePartialMode = true 從「翻譯剩餘段落」按鈕觸發，
+    // 不走 restorePage 早退，直接重翻整頁（前面已翻好的段落會從 cache fast path 命中）
     if (STATE.translated && !options.ignorePartialMode) {
       restorePage();
       return;
     }
-    // ignorePartialMode 路徑:STATE.translated=true 進來時,先靜默重置 translated state
-    // 讓後續流程能跑完整翻譯(否則 STATE.translated=true 會讓 translateUnits 內 inject 邏輯異常)
+    // ignorePartialMode 路徑：STATE.translated=true 進來時，先靜默重置 translated state
+    // 讓後續流程能跑完整翻譯（否則 STATE.translated=true 會讓 translateUnits 內 inject 邏輯異常）
     if (STATE.translated && options.ignorePartialMode) {
       SK.sendLog('info', 'translate', 'ignorePartialMode: re-translate without restorePage', { previousPartialMode: STATE.partialModeActive });
-      // 不 clear DOM,只重置 translated flag — 已注入的譯文保留,後續 cache fast path 會原樣覆蓋(冪等)
+      // 不 clear DOM，只重置 translated flag — 已注入的譯文保留，後續 cache fast path 會原樣覆蓋（冪等）
       STATE.translated = false;
     }
 
@@ -716,6 +716,21 @@
       if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
     }
 
+    // v1.8.41：把 displayCurrency + 最新匯率灌進 SK.currencyState，讓 toast line2
+    // 的 SK.formatMoney 知道用 USD 還是 TWD 顯示。匯率讀 storage.local.exchangeRate
+    // (background.js 每天 fetch 一次寫進去），失敗則用 fallback 31.6。
+    {
+      const currency = settings.displayCurrency === 'USD' ? 'USD' : 'TWD';
+      let rate = 31.6;
+      try {
+        const { exchangeRate } = await browser.storage.local.get('exchangeRate');
+        if (exchangeRate && Number.isFinite(exchangeRate.rate) && exchangeRate.rate > 0) {
+          rate = exchangeRate.rate;
+        }
+      } catch (_) { /* 用 fallback */ }
+      SK.currencyState = { currency, rate };
+    }
+
     STATE.translating = true;
     STATE.abortController = new AbortController();
     const translateStartTime = Date.now();
@@ -731,27 +746,27 @@
     }
     SK.sendLog('info', 'translate', 'milestone:collect_done', { t: Date.now() - entryTime, dt: Date.now() - t_collect_start, segments: units.length });
 
-    // v1.8.6: partialMode 啟用時跳過 prioritizeUnits,走純 DOM 順序。
-    // 為什麼:partialMode 對使用者語意是「翻頁面 DOM 前 N 段」(視覺上連續中文,
-    // 不夾雜),不是「prioritize 認為最重要的 N 段散落各處」。在 Ghost / Substack
-    // 等部落格,prioritizeUnits 會把短內文段(score < 5,例如「I feel nothing
-    // when I see an LLM's output」這種 ~150 字 + 1 個逗號)排到 tier 1 後面,
+    // v1.8.6: partialMode 啟用時跳過 prioritizeUnits，走純 DOM 順序。
+    // 為什麼：partialMode 對使用者語意是「翻頁面 DOM 前 N 段」（視覺上連續中文，
+    // 不夾雜），不是「prioritize 認為最重要的 N 段散落各處」。在 Ghost / Substack
+    // 等部落格，prioritizeUnits 會把短內文段（score < 5，例如「I feel nothing
+    // when I see an LLM's output」這種 ~150 字 + 1 個逗號）排到 tier 1 後面，
     // partialMode truncate 25 段全給 tier 0 → 中間夾雜未翻段落。
     // Trade-off: Wikipedia / GitHub 等「DOM 前段是 nav / chrome」的網站開
-    // partialMode 會翻到導覽列(回到 v1.7.0 之前行為),但這類網站非 partialMode
-    // 主要使用情境(使用者比較會在文章型部落格 / 新聞站開節省模式)。
+    // partialMode 會翻到導覽列（回到 v1.7.0 之前行為），但這類網站非 partialMode
+    // 主要使用情境（使用者比較會在文章型部落格 / 新聞站開節省模式）。
     const pm = settings.partialMode;
-    // v1.8.7: options.ignorePartialMode = true(從「翻譯剩餘段落」按鈕觸發)時忽略 toggle,
-    // 即使使用者 toggle 仍開啟也走完整翻譯。toggle 本身不被改寫,下次翻新頁面仍走節省模式。
+    // v1.8.7: options.ignorePartialMode = true（從「翻譯剩餘段落」按鈕觸發）時忽略 toggle,
+    // 即使使用者 toggle 仍開啟也走完整翻譯。toggle 本身不被改寫，下次翻新頁面仍走節省模式。
     const pmActive = !options.ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     STATE.partialModeActive = pmActive;
 
     if (!pmActive) {
-      // v1.7.1: 把內文核心(main/article 後代、長段落)推到 array 前面,
+      // v1.7.1: 把內文核心（main/article 後代、長段落）推到 array 前面，
       // 配合下方 translateUnits 的「序列 batch 0 + 並行 rest」,
       // 讓使用者最快看到的譯文是文章開頭而不是 nav / 短連結。
-      // 排序在 truncate 之前,使用者超量時優先丟棄低優先級段落(寧丟 nav 不丟內文)。
+      // 排序在 truncate 之前，使用者超量時優先丟棄低優先級段落（寧丟 nav 不丟內文）。
       const t_priority_start = Date.now();
       units = SK.prioritizeUnits(units);
       SK.sendLog('info', 'translate', 'milestone:prioritize_done', { t: Date.now() - entryTime, dt: Date.now() - t_priority_start });
@@ -773,8 +788,8 @@
       units = units.slice(0, maxTotalUnits);
     }
 
-    // v1.8.5: partialMode 啟用時 truncate units 到 maxUnits,讓 toast 顯示實際翻譯段數
-    // (25 / 25 而非 25 / 227),且 packBatches 自然只切 1 批。
+    // v1.8.5: partialMode 啟用時 truncate units 到 maxUnits，讓 toast 顯示實際翻譯段數
+    // (25 / 25 而非 25 / 227)，且 packBatches 自然只切 1 批。
     let pmSkippedCount = 0;  // v1.8.7: 用於 success toast「翻譯剩餘段落」按鈕判斷
     if (pmActive && units.length > pm.maxUnits) {
       pmSkippedCount = units.length - pm.maxUnits;
@@ -921,7 +936,7 @@
       if (failures.length) {
         const failedSegs = failures.reduce((s, f) => s + f.count, 0);
         const firstErr = failures[0].error;
-        SK.showToast('error', `翻譯部分失敗:${failedSegs} / ${total} 段失敗`, {
+        SK.showToast('error', `翻譯部分失敗：${failedSegs} / ${total} 段失敗`, {
           stopTimer: true,
           detail: firstErr.slice(0, 120),
         });
@@ -952,7 +967,7 @@
         if (totalTokens > 0) {
           const billedTotalTokens = pageUsage.billedInputTokens + pageUsage.outputTokens;
           let line1 = `${SK.formatTokens(billedTotalTokens)} tokens`;
-          let line2 = SK.formatUSD(pageUsage.billedCostUSD);
+          let line2 = SK.formatMoney(pageUsage.billedCostUSD);
           if (pageUsage.cachedTokens > 0 && pageUsage.inputTokens > 0) {
             const hitPct = (pageUsage.cachedTokens / pageUsage.inputTokens) * 100;
             const savedPct = pageUsage.costUSD > 0
@@ -983,9 +998,9 @@
         // v1.6.5: 同時也帶 welcome notice（CWS 剛升級提示，每日節流）。
         const updateNotice = await SK.maybeBuildUpdateNotice();
         const welcomeNotice = await SK.maybeBuildWelcomeNotice();
-        // v1.8.7: partialMode 翻完後若有剩餘段落,toast 顯示「翻譯剩餘段落」按鈕。
-        // 點按 → 觸發 ignorePartialMode 路徑(忽略 toggle 一次,但不改 toggle 設定),
-        // 前面已翻好的 N 段從 cache fast path 命中,只後段打 API。toast 常駐直到使用者點按或關閉。
+        // v1.8.7: partialMode 翻完後若有剩餘段落，toast 顯示「翻譯剩餘段落」按鈕。
+        // 點按 → 觸發 ignorePartialMode 路徑（忽略 toggle 一次，但不改 toggle 設定）,
+        // 前面已翻好的 N 段從 cache fast path 命中，只後段打 API。toast 常駐直到使用者點按或關閉。
         const action = (pmActive && pmSkippedCount > 0) ? {
           label: '翻譯剩餘段落',
           onClick: () => {
@@ -1051,7 +1066,7 @@
     } catch (err) {
       SK.sendLog('error', 'translate', 'translatePage error', { error: err.message || String(err) });
       if (!abortSignal.aborted) {
-        SK.showToast('error', `翻譯失敗:${err.message}`, { stopTimer: true });
+        SK.showToast('error', `翻譯失敗：${err.message}`, { stopTimer: true });
       }
     } finally {
       STATE.translating = false;
@@ -1060,18 +1075,18 @@
   };
 
   // v1.8.14: abort 路徑共用的「還原 originalHTML + clear + translated=false」。
-  // Gemini abort(L840)+ Google abort(L1219)兩處原本各自寫一份。
-  // SPA reset(content-spa.js:resetForSpaNavigation)語意不同(頁面已變不需還原
-  // 舊頁 innerHTML),不抽進這條 helper。
+  // Gemini abort(L840)+ Google abort(L1219）兩處原本各自寫一份。
+  // SPA reset(content-spa.js:resetForSpaNavigation）語意不同（頁面已變不需還原
+  // 舊頁 innerHTML)，不抽進這條 helper。
   function restoreOriginalHTMLAndReset() {
     if (STATE.originalHTML.size > 0) {
-      // v1.8.20: SPA framework rerender 後 el 可能已 detached,直接寫 innerHTML 不會報錯
+      // v1.8.20: SPA framework rerender 後 el 可能已 detached，直接寫 innerHTML 不會報錯
       // 但對使用者頁面零作用。記下 detached 數量讓 Jimmy 從 Debug 分頁能看出原因。
       let detached = 0;
       STATE.originalHTML.forEach((originalHTML, el) => {
         if (!el.isConnected) { detached++; return; }
-        // AMO source review: originalHTML 來自 STATE.originalHTML(本 extension 翻譯前用
-        // el.innerHTML 讀出來自存的原始 DOM 字串),純還原用,無 user input 流入。
+        // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 翻譯前用
+        // el.innerHTML 讀出來自存的原始 DOM 字串），純還原用，無 user input 流入。
         el.innerHTML = originalHTML;
         el.removeAttribute('data-shinkansen-translated');
       });
@@ -1098,18 +1113,18 @@
     // `if (hasAttribute('data-shinkansen-dual-source')) return;` 命中所有段落，
     // 全部早期 return，使用者「按 Opt+A 翻譯 → 再按還原 → 再按只看到原文」。
     // single 模式維持原本反向覆寫 originalHTML 邏輯。
-    // v1.8.14: dual 與 single 共用 originalHTML 還原迴圈(原本兩分支字字相同)。
-    // dual 額外多一步:先移除 wrapper(同時清 data-shinkansen-dual-source attribute);
+    // v1.8.14: dual 與 single 共用 originalHTML 還原迴圈（原本兩分支字字相同）。
+    // dual 額外多一步：先移除 wrapper（同時清 data-shinkansen-dual-source attribute);
     // 之後共用 forEach 還原 dual fallback 元素 + single 全部元素。
     if (STATE.translatedMode === 'dual') {
       SK.removeDualWrappers?.();
     }
-    // v1.8.20: 跳過已 detached 的元素(SPA framework 重建 DOM tree 後對舊 ref 寫入無效),
-    // 並 log 出來讓使用者知道原文未必能完整還原(這在 SPA 上是不可逆的)
+    // v1.8.20: 跳過已 detached 的元素（SPA framework 重建 DOM tree 後對舊 ref 寫入無效）,
+    // 並 log 出來讓使用者知道原文未必能完整還原（這在 SPA 上是不可逆的）
     let restoreDetached = 0;
     STATE.originalHTML.forEach((originalHTML, el) => {
       if (!el.isConnected) { restoreDetached++; return; }
-      // AMO source review: originalHTML 來自 STATE.originalHTML(本 extension 自存的原文 DOM),純還原用。
+      // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 自存的原文 DOM)，純還原用。
       el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
     });
@@ -1214,7 +1229,7 @@
     // v1.4.13: gtOptions.label 顯示於 loading toast
     const labelPrefix = gtOptions.label ? `[${gtOptions.label}] ` : '';
     // 若同一引擎已翻譯 → 還原（toggle）
-    // v1.8.7: ignorePartialMode 豁免,讓「翻譯剩餘段落」按鈕能在已翻譯狀態重觸發
+    // v1.8.7: ignorePartialMode 豁免，讓「翻譯剩餘段落」按鈕能在已翻譯狀態重觸發
     if (STATE.translated && STATE.translatedBy === 'google' && !gtOptions.ignorePartialMode) {
       restorePage();
       return;
@@ -1282,14 +1297,14 @@
       return;
     }
 
-    // v1.8.6: partialMode 啟用時跳過 prioritizeUnits 走 DOM 順序(同 translatePage Gemini 路徑)
+    // v1.8.6: partialMode 啟用時跳過 prioritizeUnits 走 DOM 順序（同 translatePage Gemini 路徑）
     // v1.8.7: ignorePartialMode 豁免
     const pm = settings.partialMode;
     const pmActive = !gtOptions.ignorePartialMode
       && !!(pm && pm.enabled === true && Number.isFinite(pm.maxUnits) && pm.maxUnits >= 1);
     STATE.partialModeActive = pmActive;
     if (!pmActive) {
-      // v1.7.1: 與 translatePage 同樣的優先級排序(內文核心優先)
+      // v1.7.1: 與 translatePage 同樣的優先級排序（內文核心優先）
       units = SK.prioritizeUnits(units);
     }
 
@@ -1302,7 +1317,7 @@
       truncatedCount = units.length - maxTotalUnits;
       units = units.slice(0, maxTotalUnits);
     }
-    // v1.8.5/8.6: partialMode 啟用時 truncate(同 Gemini 路徑)
+    // v1.8.5/8.6: partialMode 啟用時 truncate（同 Gemini 路徑）
     if (pmActive && units.length > pm.maxUnits) {
       units = units.slice(0, pm.maxUnits);
     }
@@ -1697,7 +1712,7 @@
           SK.sendLog('info', 'system', 'YouTube auto-subtitle enabled, activating on load');
           // 稍微延遲，等 content script 完成初始化、XHR 攔截器就位
           // v1.8.16: source: 'auto' 防 reload 後跟 yt-navigate-finish 路徑 race
-          //          (兩條鬧鐘都 fire,後到那條看 active 別誤觸 toggle stop)
+          //          （兩條鬧鐘都 fire，後到那條看 active 別誤觸 toggle stop)
           setTimeout(() => {
             SK.translateYouTubeSubtitles?.({ source: 'auto' }).catch(err => {
               SK.sendLog('warn', 'system', 'YouTube auto-subtitle failed', { error: err.message });
@@ -1733,16 +1748,16 @@
       const { autoTranslate = false, autoTranslateSlot } = await browser.storage.sync.get(['autoTranslate', 'autoTranslateSlot']);
       if (!autoTranslate) return;
       if (await SK.isDomainWhitelisted()) {
-        // v1.6.13: 走指定 preset slot 而非裸 translatePage(),讓白名單行為跟使用者
-        // 期待的「按下對應快速鍵」一致(走 preset.model 的 modelOverride)。
-        // 沒設過 / 範圍外時 fallback slot 2,跟 v1.6.12 之前的行為等價。
+        // v1.6.13: 走指定 preset slot 而非裸 translatePage()，讓白名單行為跟使用者
+        // 期待的「按下對應快速鍵」一致（走 preset.model 的 modelOverride)。
+        // 沒設過 / 範圍外時 fallback slot 2，跟 v1.6.12 之前的行為等價。
         const n = Number(autoTranslateSlot);
         const slot = [1, 2, 3].includes(n) ? n : 2;
         SK.sendLog('info', 'system', 'domain in auto-translate list, translating on load', { url: location.href, slot });
         if (typeof SK.handleTranslatePreset === 'function') {
           SK.handleTranslatePreset(slot);
         } else {
-          // 防禦性 fallback(理論上 SK.handleTranslatePreset 永遠在 content.js 內 export)
+          // 防禦性 fallback（理論上 SK.handleTranslatePreset 永遠在 content.js 內 export)
           SK.translatePage({ label: '自動翻譯' });
         }
       }

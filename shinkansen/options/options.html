@@ -244,6 +244,20 @@
       </label>
     </section>
 
+    <!-- v1.8.41：金額顯示幣值 -->
+    <section>
+      <h2>金額顯示幣值</h2>
+      <p class="muted">影響翻譯完成通知、popup 累計、用量明細分頁的金額顯示。內部計價仍以美金為基準，只在顯示時換算</p>
+      <div class="currency-options">
+        <label><input type="radio" name="displayCurrency" value="USD">USD（美金）</label>
+        <label><input type="radio" name="displayCurrency" value="TWD" checked>TWD（台幣）</label>
+      </div>
+      <p class="muted" id="currency-rate-hint" style="margin-top: 12px;">
+        <span id="currency-rate-display">目前匯率讀取中…</span>
+        <button type="button" id="refresh-rate-btn" class="ghost-btn" style="margin-left: 8px;">重新抓取匯率</button>
+      </p>
+    </section>
+
     <section>
       <h2>匯入 / 匯出設定</h2>
       <p class="muted">匯出為 JSON 檔案備份，或從檔案匯入還原（API Key 不包含在匯出入範圍）</p>
@@ -564,7 +578,14 @@
         <small class="muted">
           OpenAI 相容模型端點的根目錄。系統會自動接 <code>/chat/completions</code>。
           常見：<code>https://openrouter.ai/api/v1</code>、<code>https://api.together.xyz/v1</code>、
-          <code>http://localhost:11434/v1</code>(Ollama)
+          <code>http://localhost:11434/v1</code>（Ollama）
+        </small>
+        <!-- v1.8.41:Firefox HTTPS-Only Mode 偵測警告。Firefox 開啟此模式時會把 extension 發出的
+             HTTP request 強制升級成 HTTPS（extension 端無法 override），連本機 server 直接失敗。 -->
+        <small id="cp-baseurl-firefox-warn" class="muted firefox-https-warn" hidden>
+          ⚠ <strong>Firefox 使用者注意</strong>：Firefox 的 HTTPS-Only Mode 會把 <code>http://</code> 請求強制升級成 <code>https://</code>，
+          導致連本機 server 失敗。請到 <code>about:preferences#privacy</code> 滑到「HTTPS-Only Mode」改為「Don't enable」，
+          或對該網址加入例外
         </small>
       </label>
       <details class="advanced-details" style="margin-top: 4px; margin-bottom: 12px;">
@@ -593,11 +614,12 @@
       </details>
       <label>
         模型 ID
-        <input type="text" id="cp-model" placeholder="例如：anthropic/claude-sonnet-4-5">
+        <input type="text" id="cp-model" placeholder="例如：anthropic/claude-sonnet-4-5（llama.cpp / Ollama 可留空）">
         <small class="muted">
           OpenRouter 的 model ID 格式為 <code>provider/model</code>（如
           <code>anthropic/claude-sonnet-4-5</code>、<code>google/gemini-2.5-flash</code>、
-          <code>deepseek/deepseek-chat</code>）；其他端點直接填 model 名稱
+          <code>deepseek/deepseek-chat</code>）；其他端點直接填 model 名稱。
+          本機 server（llama.cpp / Ollama）啟動時若已鎖定 model 可留空，request 不送此欄位即用 server 預設
         </small>
       </label>
       <label>
@@ -762,7 +784,7 @@
       <div class="usage-summary">
         <div class="summary-card">
           <div class="summary-value" id="usage-total-cost">$0.00</div>
-          <div class="summary-label">累計費用（USD）</div>
+          <div class="summary-label" id="usage-total-cost-label">累計費用</div>
         </div>
         <div class="summary-card">
           <div class="summary-value" id="usage-total-tokens">0</div>
@@ -800,7 +822,7 @@
         <p class="muted" id="usage-empty" hidden>此期間沒有翻譯紀錄</p>
       </div>
 
-      <!-- v1.8.39: 分頁(每頁 100 筆,避免 2K+ 筆一次塞 DOM 拖慢主執行緒) -->
+      <!-- v1.8.39: 分頁（每頁 100 筆，避免 2K+ 筆一次塞 DOM 拖慢主執行緒） -->
       <nav class="usage-pagination" id="usage-pagination" hidden aria-label="用量明細分頁">
         <button id="usage-page-prev" class="secondary" type="button">上一頁</button>
         <span class="usage-page-info muted" id="usage-page-info"></span>

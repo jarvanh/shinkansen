@@ -150,7 +150,7 @@
         0%, 100% { opacity: 1; }
         50%      { opacity: .4; }
       }
-      /* v1.8.7 / v1.8.8: action button(節省模式翻完後「翻譯剩餘段落」按鈕用)
+      /* v1.8.7 / v1.8.8: action button（節省模式翻完後「翻譯剩餘段落」按鈕用）
          配色對齊 toast 白底深字風格 + 既有進度條品牌藍 #0071e3 */
       .toast-action {
         display: inline-block;
@@ -305,6 +305,25 @@
     return '$' + n.toFixed(2);
   };
 
+  // v1.8.41:TWD 格式化（USD × rate → NT$，一位小數；極小值 < NT$ 0.1 用 3 位）
+  SK.formatTWD = function formatTWD(usd, rate) {
+    if (!usd) return 'NT$ 0';
+    const twd = usd * rate;
+    if (twd < 0.1) return 'NT$ ' + twd.toFixed(3);
+    return 'NT$ ' + twd.toFixed(1);
+  };
+
+  // v1.8.41：依 SK.currencyState 自動選擇 USD / TWD 顯示。
+  // currencyState 由 content.js 從 storage 讀進來注入（預設 fallback 在這保險）。
+  SK.formatMoney = function formatMoney(usd) {
+    const st = SK.currencyState || { currency: 'TWD', rate: 31.6 };
+    if (st.currency === 'TWD') return SK.formatTWD(usd, st.rate || 31.6);
+    return SK.formatUSD(usd);
+  };
+
+  // 預設值——content.js init 時會用真實值覆蓋
+  SK.currencyState = SK.currencyState || { currency: 'TWD', rate: 31.6 };
+
   /**
    * kind: 'loading' | 'success' | 'error'
    * opts: { progress?, startTimer?, stopTimer?, autoHideMs?, detail?, mismatch? }
@@ -360,8 +379,8 @@
 
     // v1.6.5: welcome notice（CWS 剛升級提示，每日節流由呼叫端判斷）
     if (opts.welcomeNotice && opts.welcomeNotice.version) {
-      // AMO source review: 靜態 template,內嵌的 version 來自 manifest 自己的 version 欄位
-      // (本 extension 寫進 storage 後再讀回),格式為 semver 字串(已被 manifest 驗證),無 user input。
+      // AMO source review: 靜態 template，內嵌的 version 來自 manifest 自己的 version 欄位
+      // （本 extension 寫進 storage 後再讀回），格式為 semver 字串（已被 manifest 驗證），無 user input。
       welcomeNoticeMsg.innerHTML = `<strong>已升級至 v${opts.welcomeNotice.version}</strong> — 點工具列圖示看新功能`;
       welcomeNoticeEl.hidden = false;
     } else {
@@ -399,7 +418,7 @@
       }, opts.autoHideMs);
     }
 
-    // v1.8.7: 有 action button 時不 auto-hide,讓使用者有時間決定點按或關閉
+    // v1.8.7: 有 action button 時不 auto-hide，讓使用者有時間決定點按或關閉
     if (kind === 'success' && !opts.autoHideMs && !opts.action) {
       if (toastAutoHide) {
         toastHideHandle = setTimeout(() => {

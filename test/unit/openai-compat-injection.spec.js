@@ -128,13 +128,22 @@ test.describe('OpenAI-compat translateBatch', () => {
     expect(fetchCalls[0].headers.Authorization).toBeUndefined();
   });
 
-  test('model 缺失 → 仍會 throw（model 是必填）', async () => {
-    let err = null;
-    try {
-      await translateBatch(['Hello'], makeSettings({ model: '' }), null, null, null);
-    } catch (e) { err = e; }
-    expect(err).not.toBeNull();
-    expect(err.message).toContain('模型');
+  // v1.8.41:model 改為可空(llama.cpp / Ollama 啟動時鎖 model);body 不送 model 欄位
+  // 即用 server 預設,商用後端會自然回 4xx「model required」讓 provider error 自己講話。
+  // 對應 issue:llama.cpp 預設不需要指定模型 ID,「模型 ID」欄位應允許留空。
+  test('model 為空 → 不 throw,且 request body 不含 model 欄位', async () => {
+    await translateBatch(['Hello'], makeSettings({ model: '' }), null, null, null);
+    expect(fetchCalls.length).toBe(1);
+    expect('model' in fetchCalls[0].body).toBe(false);
+    // 其他欄位仍正常
+    expect(Array.isArray(fetchCalls[0].body.messages)).toBe(true);
+    expect(fetchCalls[0].body.stream).toBe(false);
+  });
+
+  test('model 為 undefined → 不 throw,且 request body 不含 model 欄位', async () => {
+    await translateBatch(['Hello'], makeSettings({ model: undefined }), null, null, null);
+    expect(fetchCalls.length).toBe(1);
+    expect('model' in fetchCalls[0].body).toBe(false);
   });
 });
 
