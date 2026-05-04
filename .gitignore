@@ -29,5 +29,19 @@ CLAUDE-TEMPLATE-*.md
 .playwright-mcp/
 tools/probe-*.js
 
+# PDF layout snapshot baseline 純本機,內含對外不公開的內部素材切段 metadata
+# (PDF 在 docs/excluded/ 不進 repo,snapshot 就跟著留本機。Source code 公開,
+# 但開發過程的 layout 切點 know-how + 內部 PDF 結構快照不對外)
+test/regression/pdf-layout-snapshots/
+
+# PDF 翻譯功能開發計畫(內部 know-how 不對外;source code 公開,規劃文件留本機)
+PDF-TRANSLATION-PLAN.md
+
+# YouTube 字幕 _debugRender 欄位說明(內部 debug 工具 know-how,本機保留)
+DEBUG-BOARD.md
+
+# 開發過程的 probe / roadmap / 實作筆記(內部 know-how,本機保留)
+/reports/
+
 # Claude Code ScheduleWakeup transient lock（每次 wakeup 重生,不該進 commit）
 .claude/scheduled_tasks.lock
