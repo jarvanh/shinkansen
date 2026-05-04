@@ -587,9 +587,11 @@
   // 「文章開頭變中文」而不是「導覽列變中文」。本函式只重排 array 順序,
   // 不過濾任何單元——所有 unit 都還是會翻,只是時序不同。
   //
-  // tier 0:祖先含 <main>/<article> + readability score >= 5 → 文章核心(高信心)
-  // tier 1:祖先含 <main>/<article> + score < 5 → 工具列 / tab(GitHub UI、Wikipedia
-  //         閱讀工具切換等。框架把 chrome 也塞進語意 main 容器的常見問題)
+  // tier 0:祖先含 <main>/<article> + readability score >= 1(v1.8.40 起,原本 >=5)
+  //         → 文章核心 + 中等內文段(article 內幾乎所有非極短雜訊段)
+  // tier 1:祖先含 <main>/<article> + score < 1 → 極短雜訊(byline / metadata 一兩字)
+  //         舊版邊界 5 把中等 P 段(score 1-5)推到這層,造成 H tag +5 boost 讓 H 段
+  //         先翻、內文段後翻的「斷層」體感(詳見 prioritizeUnits 內 inline 註解)
   // tier 2:祖先無 main/article + 文字長度 ≥ 80 + 連結密度 < 0.5 → 一般內文段落
   // tier 3:其他 → 短連結 / nav / 補抓出來的零碎元素
   //
@@ -632,8 +634,16 @@
       }
 
       if (inMainOrArticle) {
-        // tier 0/1 細分:用 readability score 切「真內文」vs「main 內的工具列」
-        return readabilityScore(el) >= 5 ? 0 : 1;
+        // tier 0/1 細分:用 readability score 切「真內文」vs「main 內的雜訊」
+        // v1.7.2 起原邊界 score >= 5。但 v1.7.2 的 H tag +5 boost 讓所有 H1/H2/H3
+        // 自動 tier 0,而中等長度內文 P 段(textLen 100-300、commas 0-2)score 常常落在
+        // 1-5 之間 → 被推到 tier 1。實測 Medium 文章「In 1988, I was obsessed...」
+        // (score 3.15)被排到 prioIdx 28(原本 DOM idx 5),H3 副標卻在 prioIdx 2,
+        // 使用者體感「heading 先出現,內文後補」斷層大。
+        // v1.8.40 起降邊界到 score >= 1:article 內幾乎所有非極短雜訊段都 tier 0,
+        // stable sort 保持 DOM 順序;只把「Member-only story」之類短 byline(score < 1)
+        // 過濾到 tier 1。
+        return readabilityScore(el) >= 1 ? 0 : 1;
       }
 
       // 祖先沒 main/article:用文字長度 + 連結密度判斷
