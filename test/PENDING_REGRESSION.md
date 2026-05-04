@@ -17,30 +17,14 @@
 
 ## 條目
 
-### v1.8.42 — 2026-05-04 — non-ASR 雙語改走獨立 overlay + 字型 / 行距 / 動態 anchor
-- **症狀**:non-ASR 雙語舊路徑把譯文 innerHTML `<br>` 接在原生 `.ytp-caption-segment`
-  內,2 行英文字幕時譯文擠掉第二行視覺(image 7-8 系列)。修為走獨立
-  `<shinkansen-yt-overlay>`,native CC 整個藏掉,中英都搬到 overlay 同一塊黑底,
-  ASR 雙語也跟進統一架構。
-- **修在**:shinkansen/content-youtube.js
-  - `_setOverlayContent` 加 sourceText 顯示分支
-  - 新增 `_updateNonAsrBilingualOverlay` + `_updateOverlayAnchor` helper
-  - `_applyBilingualMode` truth table 改成「雙語都藏 native」
-  - `replaceSegmentEl` / `flushOnTheFly` cache hit 雙語分流
-  - `translateYouTubeSubtitles` 啟動時補一次 `_applyBilingualMode`(reload 後 captionsXHR 可能被 cache)
-  - shadow DOM 改成 `.cue-block > .src + .tgt` 共享黑底
-  - `_setAsrHidingMode` CSS 上推到 `.ytp-caption-window-container`
-- **為什麼還不能寫測試**:
-    fixture 要 mock 的 surface 太大——native YouTube `.caption-window` 動態建立
-    時序、`.ytp-caption-segment` 多行 layout、`captionsXHR` 攔截路徑、ResizeObserver
-    觸發點,全部影響 overlay anchor 與 srcBits 收集。最小可重現結構抽不出來
-    (踩過至少 5 輪修錯方向才靠 Chrome for Claude 真實站點 probe 找到根因)。
-- **真實頁面驗收**:Jimmy 在 https://www.youtube.com/watch?v=hkJUk6Lak_I
-  已驗證:non-ASR 雙語兩行英文 + 完整中文同框、純中文 multi-segment dedup 不殘留英文、
-  ASR 雙語也走同套 overlay 架構。
-- **何時清**:抽得出 minimal fixture 模擬「.caption-window 內含 2 個 segment + captionMap
-  其一 cached='' 一其 cached=trans」+「`_applyBilingualMode(true)` 後 player 加 hide
-  class」+「overlay shadow .src 寫入 srcBits.join('\n')」即可寫 spec。
+(目前沒有 pending 條目)
+
+<!-- v1.8.42 清空紀錄(2026-05-04):
+  - non-ASR 雙語改走獨立 overlay + multi-segment dedup → 已補 test/regression/youtube-bilingual-overlay.spec.js
+    (4 條 case:雙語不動 segment、雙語 dedup seg2 cached='' 也 push srcBits、純中文 dedup seg2 cached='' 清空 segment、_applyBilingualMode 加 hide class;case 3 已 SANITY 驗過)
+  - 同時新加 SK._applyBilingualMode export 給 spec 用
+-->
+
 
 <!-- v1.8.41 清空紀錄(2026-05-04):
   - v1.8.40 YouTube zh-Hant skip → 已補 test/regression/youtube-skip-already-zh-hant.spec.js
