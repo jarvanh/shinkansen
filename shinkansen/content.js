@@ -242,6 +242,36 @@
     const slotsList = serialized.map(s => s.slots);
     SK.sendLog('info', 'translate', 'milestone:tu_serialize_done', { t: Date.now() - tu_entry, units: total });
 
+    // ─── v1.8.39: 段落 hash dedup ──────────────────────────
+    // 同 text 內容的段(典型例子:Medium 文章 60 張圖每張的 alt 都是
+    // "Press enter or click to view image in full size")只送 1 段給 API,
+    // 翻完後 broadcast inject 到所有 dup 原始位置。slots 仍按各 dup 自己的
+    // (因為同 text 內容的 placeholder 結構必相同,只是綁的 DOM 元素不同)。
+    //
+    // 實作:把 packBatches 收到的 texts/units/slotsList 替換成 unique 子集,
+    // runBatch 內 inject 時透過 origIndicesByText 把譯文 broadcast 到所有 dup unit。
+    const origIndicesByText = new Map();  // text → [orig idx 0, orig idx 1, ...]
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i];
+      let arr = origIndicesByText.get(t);
+      if (!arr) { arr = []; origIndicesByText.set(t, arr); }
+      arr.push(i);
+    }
+    const uniqueIndices = Array.from(origIndicesByText.values()).map(arr => arr[0]);
+    uniqueIndices.sort((a, b) => a - b);  // 保持原順序,讓 partialMode「前 N 段」概念維持
+    const dedupSavedCount = total - uniqueIndices.length;
+    if (dedupSavedCount > 0) {
+      SK.sendLog('info', 'translate', 'milestone:dedup_done', {
+        t: Date.now() - tu_entry,
+        original: total,
+        unique: uniqueIndices.length,
+        saved: dedupSavedCount,
+      });
+    }
+    const dedupedTexts = uniqueIndices.map(i => texts[i]);
+    const dedupedUnits = uniqueIndices.map(i => units[i]);
+    const dedupedSlots = uniqueIndices.map(i => slotsList[i]);
+
     // v1.1.9: 合併讀取設定（減少 browser.storage.sync.get 呼叫次數）
     let maxConcurrent = SK.DEFAULT_MAX_CONCURRENT;
     let maxUnitsPerBatch = SK.DEFAULT_UNITS_PER_BATCH;
@@ -278,14 +308,24 @@
     // v1.8.8: ignorePartialMode 路徑(「翻譯剩餘段落」按鈕)走全頁翻譯,batch 0 用標準 BATCH0_UNITS
     const partialModeActive = partialMode.enabled && !ignorePartialMode;
     const firstBatchUnits = partialModeActive ? partialMode.maxUnits : SK.BATCH0_UNITS;
-    const jobs = packBatches(texts, units, slotsList, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
+    // v1.8.39: packBatches 收 deduped 版本(不含重複 text),減少 batch 數與 API token
+    const jobs = packBatches(dedupedTexts, dedupedUnits, dedupedSlots, maxUnitsPerBatch, maxCharsPerBatch, firstBatchUnits, SK.BATCH0_CHARS);
     SK.sendLog('info', 'translate', 'milestone:tu_packed', { t: Date.now() - tu_entry, batches: jobs.length });
     // v1.8.8 instrumentation: packBatches 詳情(每批 unit 數 / chars)
+    // v1.8.39: log 欄位改名強調「上限 vs 實際」差異——歷史命名 `firstBatchUnits` 容易被誤讀成
+    // 「batch 0 的實際段數」(其實是傳給 packBatches 的段數上限),曾跟 batch 0 stream start
+    // 的 units=23 對不上引發誤判。新欄位:
+    //   firstBatchUnitLimit / firstBatchCharLimit  → packBatches 切批時用的兩個上限
+    //   firstBatchActualUnits / firstBatchActualChars → jobs[0] 真正包到的數字
+    // 兩者差異(例如 limit=25, actual=23)代表 packBatches 在 char 上限提前 flush,屬正常 greedy 行為。
     SK.sendLog('info', 'translate', 'packBatches detail', {
       totalBatches: jobs.length,
       batchSizes: jobs.map((j, i) => ({ idx: i, units: j.texts.length, chars: j.chars })),
       partialMode,
-      firstBatchUnits,
+      firstBatchUnitLimit: firstBatchUnits,
+      firstBatchCharLimit: SK.BATCH0_CHARS,
+      firstBatchActualUnits: jobs[0]?.texts.length || 0,
+      firstBatchActualChars: jobs[0]?.chars || 0,
     });
     const failures = [];
     let rpdWarning = false;
@@ -327,8 +367,25 @@
         if (response.rpdExceeded) rpdWarning = true;
         if (response.hadMismatch) hadAnyMismatch = true;
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
-        translations.forEach((tr, j) => SK.injectTranslation(job.units[j], SK.sanitizeMarkers(tr), job.slots[j]));
-        done += job.texts.length;
+        // v1.8.39: dedup broadcast — 同一份譯文 broadcast 到所有 dup 原始位置,
+        // 讓 60 段重複的 image alt 只翻 1 次但 inject 60 個 element。
+        let injectedThisBatch = 0;
+        translations.forEach((tr, j) => {
+          const sanitized = SK.sanitizeMarkers(tr);
+          const uniqueText = job.texts[j];
+          const allOrigIndices = origIndicesByText.get(uniqueText);
+          if (allOrigIndices && allOrigIndices.length > 0) {
+            for (const origIdx of allOrigIndices) {
+              SK.injectTranslation(units[origIdx], sanitized, slotsList[origIdx]);
+              injectedThisBatch++;
+            }
+          } else {
+            // 防呆 fallback:dedup map 沒命中(理論上不會發生)→ 退回單次 inject
+            SK.injectTranslation(job.units[j], sanitized, job.slots[j]);
+            injectedThisBatch++;
+          }
+        });
+        done += injectedThisBatch;
         if (onProgress) onProgress(done, total, hadAnyMismatch);
       } catch (err) {
         const elapsed = Date.now() - t0;
@@ -390,8 +447,18 @@
           const tr = SK.sanitizeMarkers(message.payload.translation);
           if (typeof idx === 'number' && idx >= 0 && idx < job.texts.length && tr) {
             try {
-              SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
-              done += 1;
+              // v1.8.39: dedup broadcast(streaming 路徑)— 同 text 翻譯結果 broadcast 到所有 dup unit
+              const uniqueText = job.texts[idx];
+              const allOrigIndices = origIndicesByText.get(uniqueText);
+              if (allOrigIndices && allOrigIndices.length > 0) {
+                for (const origIdx of allOrigIndices) {
+                  SK.injectTranslation(units[origIdx], tr, slotsList[origIdx]);
+                  done += 1;
+                }
+              } else {
+                SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
+                done += 1;
+              }
               if (onProgress) onProgress(done, total, hadAnyMismatch);
               if (firstSegmentInjectedT === null) {
                 firstSegmentInjectedT = Date.now() - t0;

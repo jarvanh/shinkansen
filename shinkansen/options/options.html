@@ -800,6 +800,13 @@
         <p class="muted" id="usage-empty" hidden>此期間沒有翻譯紀錄</p>
       </div>
 
+      <!-- v1.8.39: 分頁(每頁 100 筆,避免 2K+ 筆一次塞 DOM 拖慢主執行緒) -->
+      <nav class="usage-pagination" id="usage-pagination" hidden aria-label="用量明細分頁">
+        <button id="usage-page-prev" class="secondary" type="button">上一頁</button>
+        <span class="usage-page-info muted" id="usage-page-info"></span>
+        <button id="usage-page-next" class="secondary" type="button">下一頁</button>
+      </nav>
+
       <!-- 操作按鈕 -->
       <div class="btn-row" style="margin-top: 16px;">
         <button id="usage-reload" class="secondary" title="重新從背景讀取最新用量紀錄（不需關閉設定頁）">重新載入</button>

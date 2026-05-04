@@ -757,8 +757,13 @@ const messageHandlers = {
         engine: payload.engine || 'gemini',
         model: resolvedModel,
       };
-      // v1.4.18: YouTube 字幕一支影片會分成多批翻譯，逐批寫入會變幾十筆。
-      // 改由 upsertYouTubeUsage 以 (videoId + model, 1 小時視窗) 合併成一筆；
+      // v1.8.39: 整頁本地 cache 全命中(沒打 API)的紀錄沒資訊價值,跳過寫入
+      // 避免塞滿使用者的用量列表。YouTube 走 upsert 路徑不適用此規則。
+      if (usageDB.shouldSkipUsageRecord(record)) {
+        return;
+      }
+      // v1.4.18: YouTube 字幕一支影片會分成多批翻譯,逐批寫入會變幾十筆。
+      // 改由 upsertYouTubeUsage 以 (videoId + model, 1 小時視窗) 合併成一筆;
       // 換模型或超過 1 小時才拆新筆。網頁翻譯仍走 logTranslation。
       if (record.source === 'youtube-subtitle' && record.videoId) {
         await usageDB.upsertYouTubeUsage(record);

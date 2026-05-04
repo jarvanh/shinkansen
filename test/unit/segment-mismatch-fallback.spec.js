@@ -101,8 +101,10 @@ test.describe('v0.78 明確分隔符規則', () => {
     expect(sys).not.toContain(SEP_RULE_MARKER);
   });
 
-  test('分隔符規則在 base 之後、其他規則之前', async () => {
-    // 多段 + 含 placeholder → 分隔符規則應在佔位符規則之前
+  // v1.8.39: 排序重排——分隔符規則(嵌入 literal N)推到最末端,讓所有 batch 共享前段 prefix。
+  // 原 v0.78 spec 期待「sep 在 base 之後、placeholder 之前」,新排法 sep 在所有規則之後。
+  test('分隔符規則在 base 之後、其他規則(包含佔位符)之後(v1.8.39 重排)', async () => {
+    // 多段 + 含 placeholder → 分隔符規則放最末,在佔位符規則之後
     pushResponse(`⟦0⟧你好⟦/0⟧${DELIMITER}早安`);
     await translateBatch(['⟦0⟧Hello⟦/0⟧', 'Good morning'], settings);
 
@@ -113,7 +115,9 @@ test.describe('v0.78 明確分隔符規則', () => {
 
     expect(basePos).toBe(0);
     expect(sepPos).toBeGreaterThan(basePos);
-    expect(phPos).toBeGreaterThan(sepPos);
+    // v1.8.39: phPos 改為在 sepPos 之前(分隔符推到最末)
+    expect(phPos).toBeGreaterThan(basePos);
+    expect(sepPos).toBeGreaterThan(phPos);
   });
 });
 
