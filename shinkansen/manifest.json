@@ -86,6 +86,15 @@
     "page": "options/options.html",
     "open_in_tab": true
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "translate-doc/*",
+        "lib/vendor/pdfjs/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "commands": {
     "translate-preset-0": {
       "suggested_key": {

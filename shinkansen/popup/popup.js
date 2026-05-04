@@ -87,7 +87,7 @@ async function refreshTranslateButton() {
       editBtn.hidden = true;
     }
   } catch {
-    // 頁面尚未注入 content script （例如 chrome:// 頁、剛 reload extension)
+    // 頁面尚未注入 content script （例如 chrome:// 頁、剛 reload extension）
     // 維持預設「翻譯本頁」即可
     btn.textContent = '翻譯本頁';
     btn.dataset.mode = 'translate';
@@ -173,8 +173,8 @@ async function init() {
       $('update-dot').hidden = false;
       $('welcome-banner').hidden = false;
       $('welcome-banner-title').textContent = `🎉 已升級至 v${welcomeNotice.version}`;
-      // AMO source review: RELEASE_HIGHLIGHTS 是 dev hardcoded 字串陣列（見 lib/release-highlights.js),
-      // highlightToHtml 是同檔案內的安全 markdown-to-html 轉換（只處理 **bold** → <strong>)，無 user input。
+      // AMO source review: RELEASE_HIGHLIGHTS 是 dev hardcoded 字串陣列（見 lib/release-highlights.js）,
+      // highlightToHtml 是同檔案內的安全 markdown-to-html 轉換（只處理 **bold** → <strong>），無 user input。
       $('welcome-bullets').innerHTML = RELEASE_HIGHLIGHTS
         .map(h => `<li>${highlightToHtml(h)}</li>`)
         .join('');
@@ -230,7 +230,7 @@ async function init() {
       $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
     }
     // commit 5a':Drive 影片 viewer toggle 共用 ytSubtitle.autoTranslate
-    // (user 不需要為 Drive 多做設定，跟 YouTube 字幕用同一個開關）
+    // （user 不需要為 Drive 多做設定，跟 YouTube 字幕用同一個開關）
     if (/^https:\/\/drive\.google\.com\/file\//.test(url)) {
       $('drive-subtitle-row').hidden = false;
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
@@ -258,7 +258,7 @@ async function init() {
 
 $('translate-btn').addEventListener('click', async () => {
   // v1.8.20: 雙擊防護——點擊期間 disable 按鈕，避免快速連按兩次導致第二次被
-  // content.js 解讀為 abort/restore(toggle 行為）
+  // content.js 解讀為 abort/restore（toggle 行為）
   const btn = $('translate-btn');
   if (btn.disabled) return;
   btn.disabled = true;
@@ -381,12 +381,18 @@ $('options-btn').addEventListener('click', async() => {
   }
 });
 
+$('translate-doc-btn').addEventListener('click', async () => {
+  const url = browser.runtime.getURL('translate-doc/index.html');
+  await browser.tabs.create({ url });
+  window.close();
+});
+
 // v1.6.23:popup 開著時 reactive sync ytSubtitle.autoTranslate（設定頁同步寫 storage 後立即反映）
 // popup 通常 click 外面就關閉，但 detached popup window 或極短時間視窗下這條 listener 確保一致
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync' || !changes.ytSubtitle) return;
   const newVal = changes.ytSubtitle.newValue || {};
-  // 同一個 ytSubtitle.autoTranslate 設定同步兩個 popup toggle(YouTube + Drive 共用）
+  // 同一個 ytSubtitle.autoTranslate 設定同步兩個 popup toggle（YouTube + Drive 共用）
   const enabled = newVal.autoTranslate !== false;
   $('yt-subtitle-toggle').checked = enabled;
   $('drive-subtitle-toggle').checked = enabled;
@@ -413,8 +419,8 @@ $('edit-btn').addEventListener('click', async () => {
   }
 });
 
-// v1.8.41:Firefox popup 內 native confirm() 會被視窗寬度卡住、按鈕被切掉看不見,
-// 改用 inline 確認 UI——點「清除快取」→ 隱藏按鈕,顯示「確定清除？是 / 否」確認列。
+// v1.8.41:Firefox popup 內 native confirm() 會被視窗寬度卡住、按鈕被切掉看不見，
+// 改用 inline 確認 UI——點「清除快取」→ 隱藏按鈕，顯示「確定清除？是 / 否」確認列。
 $('clear-cache-btn').addEventListener('click', () => {
   $('clear-cache-btn').hidden = true;
   $('clear-cache-confirm').hidden = false;

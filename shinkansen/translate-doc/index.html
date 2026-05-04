@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>翻譯文件 — Shinkansen</title>
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>
+      <img src="../icons/icon-128.png" alt="" class="app-icon">
+      <span>翻譯文件</span>
+    </h1>
+    <span class="app-subtitle">本機 PDF 翻譯成台灣繁體中文</span>
+  </header>
+
+  <main id="app-main">
+    <!-- 階段 1：上傳 -->
+    <section id="stage-upload" class="stage">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="拖放或選取 PDF 檔案">
+        <div class="dropzone-icon">📄</div>
+        <div class="dropzone-title">拖放 PDF 至此</div>
+        <div class="dropzone-hint">或點擊選取檔案</div>
+        <input type="file" id="file-input" accept="application/pdf,.pdf" hidden>
+      </div>
+
+      <div class="constraints">
+        <div class="constraint-item">
+          <span class="constraint-label">支援上限</span>
+          <span class="constraint-value">50 頁 / 10 MB</span>
+        </div>
+        <div class="constraint-item">
+          <span class="constraint-label">隱私</span>
+          <span class="constraint-value">PDF 不上傳，僅本機解析</span>
+        </div>
+      </div>
+
+      <div id="upload-error" class="error-banner" hidden></div>
+    </section>
+
+    <!-- 階段 2：解析（W1 階段先停在這——印 text run dump 到 console） -->
+    <section id="stage-parsing" class="stage" hidden>
+      <div class="parsing-status">
+        <div class="spinner-ring" aria-hidden="true"></div>
+        <div class="parsing-text">
+          <div id="parsing-title" class="parsing-title">解析 PDF 中</div>
+          <div id="parsing-detail" class="parsing-detail">讀取檔案結構…</div>
+        </div>
+      </div>
+      <button id="cancel-btn" class="secondary-btn" type="button">取消</button>
+    </section>
+
+    <!-- 階段 3：解析完成 dump（W2 暫用——展示版面 IR 摘要） -->
+    <section id="stage-result" class="stage" hidden>
+      <h2 class="result-title">解析完成</h2>
+      <div class="result-summary">
+        <div class="result-row"><span>檔名</span><span id="result-filename"></span></div>
+        <div class="result-row"><span>頁數</span><span id="result-pages"></span></div>
+        <div class="result-row"><span>text run 總數</span><span id="result-runs"></span></div>
+        <div class="result-row"><span>整份字數</span><span id="result-chars"></span></div>
+        <div class="result-row"><span>切出 block 數</span><span id="result-blocks"></span></div>
+      </div>
+      <p class="result-hint">完整版面 IR 已輸出至 DevTools Console（按 F12 / ⌥⌘I 查看）</p>
+      <div class="result-actions">
+        <button id="translate-btn" class="primary-btn" type="button">開始翻譯</button>
+        <button id="debug-btn" class="secondary-btn" type="button">查看版面 overlay</button>
+        <button id="reupload-btn" class="secondary-btn" type="button">重新上傳</button>
+      </div>
+    </section>
+
+    <!-- 階段 4.5:翻譯中(W3) -->
+    <section id="stage-translating" class="stage" hidden>
+      <h2 class="result-title">翻譯中</h2>
+      <div class="translate-progress-wrap">
+        <div class="translate-progress-bar"><div id="translate-progress-fill" class="translate-progress-fill"></div></div>
+        <div class="translate-progress-meta">
+          <span id="translate-progress-count">0 / 0</span>
+          <span id="translate-progress-eta"></span>
+          <span id="translate-progress-cost"></span>
+        </div>
+        <div id="translate-progress-failed" class="translate-progress-failed" hidden></div>
+      </div>
+      <div class="result-actions">
+        <button id="translate-cancel-btn" class="secondary-btn" type="button">取消</button>
+      </div>
+    </section>
+
+    <!-- 階段 6:翻譯完成簡短摘要(W4 起改用閱讀器顯示對照) -->
+    <section id="stage-translated" class="stage" hidden>
+      <h2 class="result-title">翻譯完成</h2>
+      <div class="result-summary">
+        <div class="result-row"><span>已翻譯段落</span><span id="translated-count"></span></div>
+        <div class="result-row"><span>翻譯失敗</span><span id="translated-failed"></span></div>
+        <div class="result-row"><span>快取命中</span><span id="translated-cache-hits"></span></div>
+        <div class="result-row"><span>輸入 token</span><span id="translated-input-tokens"></span></div>
+        <div class="result-row"><span>輸出 token</span><span id="translated-output-tokens"></span></div>
+        <div class="result-row"><span>累計費用</span><span id="translated-cost"></span></div>
+      </div>
+      <div class="result-actions">
+        <button id="translated-open-reader-btn" class="primary-btn" type="button">開啟雙頁閱讀器</button>
+        <button id="translated-view-overlay-btn" class="secondary-btn" type="button">查看版面 overlay</button>
+        <button id="translated-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
+      </div>
+    </section>
+
+    <!-- 階段 7:雙頁並排閱讀器(W4) -->
+    <section id="stage-reader" class="stage" hidden>
+      <div class="reader-toolbar">
+        <span id="reader-title" class="reader-title"></span>
+        <span class="debug-toolbar-spacer"></span>
+        <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿">複製譯文</button>
+        <button id="reader-back-overlay-btn" class="secondary-btn" type="button">查看版面 overlay</button>
+        <button id="reader-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
+      </div>
+      <div class="reader-grid">
+        <div class="reader-col reader-col-original" id="reader-col-original"></div>
+        <div class="reader-col reader-col-translated" id="reader-col-translated"></div>
+      </div>
+    </section>
+
+    <!-- 階段 4：debug overlay（W2-iter1 視覺化先行——疊 SVG 在 PDF.js canvas 上） -->
+    <section id="stage-debug" class="stage" hidden>
+      <div class="debug-toolbar">
+        <button id="debug-prev" class="secondary-btn" type="button">←</button>
+        <span id="debug-page-indicator" class="debug-page-indicator">第 1 / 1 頁</span>
+        <button id="debug-next" class="secondary-btn" type="button">→</button>
+        <span class="debug-toolbar-spacer"></span>
+        <label class="debug-toolbar-toggle">
+          <input type="checkbox" id="debug-show-bbox" checked>
+          顯示 bbox
+        </label>
+        <label class="debug-toolbar-toggle">
+          <input type="checkbox" id="debug-show-order" checked>
+          顯示 reading order
+        </label>
+        <span class="debug-isolate-row">
+          只看 #
+          <input type="number" id="debug-isolate-input" min="0" placeholder="全部">
+        </span>
+        <span class="debug-toolbar-toggle">
+          上色:
+          <select id="debug-color-mode" class="debug-color-select">
+            <option value="type" selected>依類型</option>
+            <option value="order">依 reading order</option>
+          </select>
+        </span>
+        <button id="debug-copy-json-btn" class="secondary-btn" type="button" title="複製整份 layout doc 序列化結果到剪貼簿(供回報 / debug 用)">複製 JSON</button>
+        <button id="debug-back-btn" class="secondary-btn" type="button">關閉</button>
+      </div>
+
+      <div class="debug-stats">
+        <span id="debug-page-stats"></span>
+      </div>
+
+      <div class="debug-type-legend" id="debug-type-legend"></div>
+
+      <!-- detail 放在 viewport 上方 + sticky,讓使用者 hover 時不需要 scroll
+           就能看到原文/譯文(bbox / canvas 高可達 1100+ px,放下面看不到) -->
+      <div class="debug-detail" id="debug-detail">
+        <span class="debug-detail-empty">把游標移到 bbox 上看該 block 的 plainText / 譯文</span>
+      </div>
+
+      <div class="debug-viewport-wrap">
+        <div class="debug-viewport" id="debug-viewport">
+          <canvas id="debug-canvas"></canvas>
+          <svg id="debug-svg" class="debug-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span class="footer-version" id="footer-version"></span>
+  </footer>
+
+  <script type="module" src="index.js"></script>
+</body>
+</html>

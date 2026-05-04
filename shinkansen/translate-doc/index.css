@@ -1,0 +1,691 @@
+/* Shinkansen — translate-doc 頁面樣式
+ * 視覺基調對齊 options.css / popup.css（深灰白底、紅點主色 #cf3a2c） */
+
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f7f8;
+  --bg-zone: #fbfbfc;
+  --text: #1f2024;
+  --text-muted: #6a6f78;
+  --text-faint: #98a0ad;
+  --border: #e3e6eb;
+  --border-strong: #c8ced8;
+  --primary: #cf3a2c;
+  --primary-soft: rgba(207, 58, 44, 0.08);
+  --error-bg: #fbe9e7;
+  --error-text: #a32418;
+  --radius: 10px;
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --font: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  padding: 24px 40px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+.app-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.app-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.app-subtitle {
+  display: block;
+  margin-top: 4px;
+  margin-left: 44px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+#app-main {
+  flex: 1;
+  padding: 32px 40px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.stage[hidden] { display: none !important; }
+
+/* ----- 上傳區 ----- */
+
+.dropzone {
+  background: var(--bg-zone);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 56px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dropzone:hover,
+.dropzone:focus,
+.dropzone.dragover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  outline: none;
+}
+
+.dropzone-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.dropzone-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.dropzone-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.constraints {
+  display: flex;
+  gap: 16px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.constraint-item {
+  flex: 1 1 240px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.constraint-label {
+  color: var(--text-muted);
+}
+
+.constraint-value {
+  font-weight: 600;
+}
+
+.error-banner {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+
+/* ----- 解析中 ----- */
+
+#stage-parsing {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.parsing-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.spinner-ring {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.parsing-text {
+  text-align: left;
+}
+
+.parsing-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.parsing-detail {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ----- 解析完成 ----- */
+
+#stage-result {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+}
+
+.result-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.result-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-row:last-child {
+  border-bottom: none;
+}
+
+.result-row span:first-child {
+  color: var(--text-muted);
+}
+
+.result-row span:last-child {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-hint {
+  margin: 12px 0 20px;
+  padding: 10px 14px;
+  background: var(--primary-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.result-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ----- 按鈕 ----- */
+
+.primary-btn,
+.secondary-btn {
+  display: inline-block;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.primary-btn {
+  background: var(--primary);
+  color: #fff;
+}
+
+.primary-btn:hover {
+  background: #b73022;
+}
+
+.secondary-btn {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.secondary-btn:hover {
+  background: var(--bg-soft);
+}
+
+/* ----- 翻譯中(W3) ----- */
+
+#stage-translating {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+}
+
+.translate-progress-wrap {
+  margin: 16px 0 20px;
+}
+
+.translate-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.translate-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  width: 0;
+  transition: width 0.3s;
+}
+
+.translate-progress-meta {
+  display: flex;
+  gap: 18px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.translate-progress-failed {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ----- 雙頁並排閱讀器(W4) ----- */
+
+#app-main:has(#stage-reader:not([hidden])) {
+  max-width: 100%;
+  padding: 0;
+}
+
+#stage-reader {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 100px);
+  /* app-header 約 80px + footer 12px + padding ≈ 100,留滿視窗給閱讀器 */
+}
+
+.reader-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.reader-title {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+.reader-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  min-height: 0;
+}
+
+.reader-col {
+  overflow-y: auto;
+  background: var(--bg-soft);
+  padding: 16px;
+}
+
+.reader-col-original {
+  border-right: 1px solid var(--border);
+}
+
+.reader-page {
+  background: #fff;
+  margin: 0 auto 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  position: relative;
+}
+
+.reader-page-original {
+  /* 由 reader.js 設 width / height,保持原 PDF 比例 */
+  line-height: 0;
+}
+
+.reader-page-original canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.reader-page-translated {
+  /* 譯文 page 的 width 對齊左欄 canvas,height 由 flow content 決定 + minHeight 對齊左欄
+     高度。內部 block 順序排列(flow),不再 absolute,避免譯文長過原 bbox 撞到下一段 */
+  padding: 32px 28px;
+  box-sizing: border-box;
+}
+
+.reader-block {
+  font-family: var(--font);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.7;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  margin-bottom: 12px;
+}
+
+.reader-block:last-child {
+  margin-bottom: 0;
+}
+
+.reader-block-heading {
+  font-weight: 700;
+  color: #18171c;
+  font-size: 17px;
+  margin-top: 18px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.reader-block-heading:first-child {
+  margin-top: 0;
+}
+
+.reader-block-list-item {
+  padding-left: 16px;
+  text-indent: -16px;
+}
+
+.reader-block-footnote,
+.reader-block-page-number {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.reader-block-table,
+.reader-block-formula,
+.reader-block-figure {
+  /* 不送翻譯的 type:右欄保留原文 + 灰底提示「未翻譯」 */
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.reader-block-failed {
+  /* 翻譯失敗:顯示原文 + 紅色虛線下劃線 */
+  text-decoration: underline dashed var(--error-text);
+  text-underline-offset: 3px;
+}
+
+.reader-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* ----- debug overlay（W2 視覺化先行） ----- */
+
+#stage-debug {
+  /* debug 階段不被 #app-main 的 max-width: 720px 限制——overlay 要對著 canvas
+     原始尺寸顯示,寬大頁(A4 横放、雜誌)需要更寬視口。提升 main 的 max-width。 */
+  max-width: 100%;
+}
+
+#app-main:has(#stage-debug:not([hidden])) {
+  max-width: 1280px;
+}
+
+.debug-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.debug-toolbar-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.debug-toolbar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.debug-toolbar-toggle input {
+  margin: 0;
+}
+
+.debug-page-indicator {
+  font-size: 13px;
+  color: var(--text-muted);
+  min-width: 110px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+#debug-prev,
+#debug-next {
+  padding: 4px 12px;
+  font-size: 14px;
+  min-width: 40px;
+}
+
+#debug-prev:disabled,
+#debug-next:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.debug-stats {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-viewport-wrap {
+  display: flex;
+  justify-content: center;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  overflow: auto;
+  max-height: calc(100vh - 240px);
+}
+
+.debug-viewport {
+  position: relative;
+  display: inline-block;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  line-height: 0;
+}
+
+.debug-viewport canvas {
+  display: block;
+}
+
+.debug-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.debug-block-group {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.debug-block-rect {
+  fill-opacity: 0.12;
+  stroke-width: 1.5;
+  transition: fill-opacity 0.1s, stroke-width 0.1s;
+}
+
+.debug-block-group:hover .debug-block-rect,
+.debug-block-group.is-active .debug-block-rect {
+  fill-opacity: 0.22;
+  stroke-width: 2;
+}
+
+.debug-block-label-bg {
+  stroke-width: 0.6;
+}
+
+.debug-block-label {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.debug-detail {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text);
+  min-height: 60px;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.55;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.debug-detail-empty {
+  color: var(--text-faint);
+}
+
+.debug-detail-id {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+
+.debug-detail-meta {
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.debug-isolate-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+#debug-isolate-input {
+  width: 56px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug-color-select {
+  padding: 2px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.debug-type-legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.debug-type-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.debug-type-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+}
+
+/* ----- footer ----- */
+
+.app-footer {
+  padding: 12px 40px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: right;
+}

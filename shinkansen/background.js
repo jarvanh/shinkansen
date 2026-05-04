@@ -542,6 +542,20 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt'),
   },
+  // W3:文件翻譯(translate-doc/index.js)專用批次。沿用 TRANSLATE_BATCH 流程,
+  // cacheTag '_doc' 區隔 — 既有網頁翻譯('') / 字幕('_yt') / Google MT('_gt')
+  // 不互相污染。SPEC §17.5.3 規定的 blockType / fontSize 桶位精修留 W3-iter2;
+  // 第一版以 plainText + modelOverride + glossary 為 hash 變數,跟既有網頁翻譯邏輯一致。
+  //
+  // payload: { texts: string[], modelOverride?: string, glossary?: [{source,target}] }
+  // 回應:{ result: string[], usage: {...}, rpdExceeded, hadMismatch }
+  TRANSLATE_DOC_BATCH: {
+    async: true,
+    handler: (payload, sender) => {
+      const overrides = payload?.modelOverride ? { model: payload.modelOverride } : {};
+      return handleTranslate(payload, sender, overrides, null, '_doc');
+    },
+  },
   // commit 5b:Drive 影片字幕走 Google Translate 路徑（獨立 cache key '_gt_drive' 避免跟
   // 一般網頁 GT 翻譯（'_gt'）互打）。input texts = raw segments 的 text array，逐段翻。
   TRANSLATE_DRIVE_BATCH_GOOGLE: {

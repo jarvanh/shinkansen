@@ -54,7 +54,7 @@ button.secondary:hover { background: #f0f4ff; }
   margin-top: 14px;
   font-size: 13px;
 }
-/* v1.6.23:同 .update-dot / .update-banner 的 hidden 覆寫修法——
+/* v1.6.23：同 .update-dot / .update-banner 的 hidden 覆寫修法——
    .row 上面顯式 display:flex 覆蓋了 user agent 的 [hidden] { display: none },
    讓 yt-subtitle-row 在非 YouTube 頁面也錯誤顯示。明確列 .row[hidden] 才能蓋住。 */
 .row[hidden] { display: none !important; }
@@ -143,9 +143,9 @@ button.link {
 button.link.small { font-size: 12px; }
 button.link.small:hover { text-decoration: underline; }
 
-/* v1.8.41:清除快取 inline 確認列。Firefox 的 popup 內 confirm() native dialog
-   會被 popup 視窗寬度卡住、按鈕看不到,改用 inline 確認 UI 兩個瀏覽器都一致。
-   用 :not([hidden]) 而非裸 selector,避免 display: inline-flex 蓋掉 [hidden] 的 display:none。 */
+/* v1.8.41：清除快取 inline 確認列。Firefox 的 popup 內 confirm() native dialog
+   會被 popup 視窗寬度卡住、按鈕看不到，改用 inline 確認 UI 兩個瀏覽器都一致。
+   用 :not([hidden]) 而非裸 selector，避免 display: inline-flex 蓋掉 [hidden] 的 display:none。 */
 .clear-cache-confirm:not([hidden]) {
   display: inline-flex;
   align-items: center;
@@ -167,7 +167,7 @@ button.link.small:hover { text-decoration: underline; }
   font-size: 0;
 }
 /* v1.6.23: 同 .update-banner 的 hidden 覆寫修法——上面 .update-dot 顯式
-   display:inline-block 會覆蓋 user agent 的 [hidden] { display: none } 規則,
+   display:inline-block 會覆蓋 user agent 的 [hidden] { display: none } 規則，
    讓 hidden=true 的紅點仍渲染。明確列 .update-dot[hidden] 才能蓋住。 */
 .update-dot[hidden] { display: none !important; }
 .update-banner {
