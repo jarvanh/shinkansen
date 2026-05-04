@@ -178,6 +178,8 @@ async function load() {
   $('cp-baseUrl').value = cp.baseUrl || '';
   // v1.8.41:initial check Firefox HTTPS-Only Mode 警告
   refreshFirefoxHttpsWarn();
+  // v1.8.44:initial check Firefox 快捷鍵衝突警告(Alt+S/A/D 被 Firefox 內建或第三方擴充攔截)
+  refreshFirefoxShortcutWarn();
   $('cp-model').value = cp.model || '';
   $('cp-systemPrompt').value = cp.systemPrompt || '';
   $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : 0.7;
@@ -346,6 +348,16 @@ function refreshFirefoxHttpsWarn() {
   const url = ($('cp-baseUrl')?.value || '').trim().toLowerCase();
   const shouldWarn = url.startsWith('http://') && isFirefoxUserAgent();
   warn.hidden = !shouldWarn;
+}
+
+// v1.8.44:Firefox 預設快捷鍵衝突警告——Alt+S/A/D 在 Firefox 會被瀏覽器或第三方擴充攔截
+// (Alt+S = 歷史 menu mnemonic、Alt+D = 地址列焦點、Alt+A 容易被 Save Page WE 等擴充攔截),
+// Chrome 沒此問題。manifest 的 commands 是跨瀏覽器共用,不能針對 Firefox 覆寫,
+// 只能引導使用者自行去 about:addons 改快捷鍵。
+function refreshFirefoxShortcutWarn() {
+  const warn = document.getElementById('shortcut-firefox-warn');
+  if (!warn) return;
+  warn.hidden = !isFirefoxUserAgent();
 }
 
 // v1.8.41：讀取目前選中的幣值 radio

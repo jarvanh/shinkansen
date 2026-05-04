@@ -57,10 +57,20 @@
     <section>
       <h2>翻譯快速鍵</h2>
       <p class="muted">
-        三組可自訂的翻譯預設，對應三個快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
-        已翻譯狀態下按任一快速鍵都會還原原文；翻譯中按任一快速鍵則取消翻譯。
+        三組可自訂的翻譯預設,對應三個快速鍵。依網頁內容選擇不同引擎或模型(例如文學性強用最強模型、一般網頁用最省錢)。
+        已翻譯狀態下按任一快速鍵都會還原原文;翻譯中按任一快速鍵則取消翻譯。
         鍵位可至 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> 變更
       </p>
+      <!-- v1.8.44:Firefox 偵測警告。Alt+S/A/D 在 Firefox 會被瀏覽器或第三方擴充功能搶走
+           (Alt+S = 歷史 menu mnemonic、Alt+D = 地址列焦點、Alt+A 容易被 Save Page WE 等擴充攔截),
+           Chrome 沒此問題。manifest 的 commands 是跨瀏覽器共用，不能針對 Firefox 覆寫，
+           只能引導使用者自行改快捷鍵。 -->
+      <small id="shortcut-firefox-warn" class="muted firefox-https-warn" hidden>
+        ⚠ <strong>Firefox 使用者注意</strong>:Firefox 的 <code>Alt+S</code> 會展開「歷史」選單、
+        <code>Alt+D</code> 會切到地址列，<code>Alt+A</code> 也常被其他擴充功能(例如 Save Page WE)攔截。
+        Chrome 沒這個衝突，但 Firefox 環境下三組預設快捷鍵可能無法觸發翻譯。
+        請到 <code>about:addons</code> → 設定圖示(齒輪)→「管理擴充功能快捷鍵」改成不衝突的組合(例如 <code>Ctrl+Shift+S</code>)
+      </small>
       <div class="preset-cards">
         <div class="preset-card preset-card-primary" data-slot="2">
           <div class="preset-card-header">

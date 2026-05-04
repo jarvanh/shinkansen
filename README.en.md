@@ -59,6 +59,8 @@ Go to the [Chrome Web Store listing](https://chromewebstore.google.com/detail/sh
 
 Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shinkansen/) and click "Add to Firefox".
 
+> ⚠ **Firefox users**: the default shortcuts `Alt+S` / `Alt+A` / `Alt+D` are intercepted by Firefox or other extensions (Firefox uses `Alt+S` for the History menu, `Alt+D` to focus the address bar; `Alt+A` is commonly grabbed by extensions like Save Page WE). Chrome has no such conflict, but on Firefox these defaults likely won't trigger translation. Go to `about:addons` → gear icon → "Manage Extension Shortcuts" and rebind Shinkansen's three shortcuts to non-conflicting combinations (e.g., `Ctrl+Shift+S`). The "Translation shortcuts" section in settings will also display this warning when running on Firefox.
+
 **Developer build (load unpacked)**
 
 1. Open Chrome, go to `chrome://extensions/`
@@ -293,7 +295,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.8.43 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.8.44 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 
