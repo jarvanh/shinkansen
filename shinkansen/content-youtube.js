@@ -1259,6 +1259,8 @@
       });
     }
   }
+  // 暴露給 spec 用(youtube-bilingual-overlay 路徑 A regression)
+  SK._applyBilingualMode = _applyBilingualMode;
 
   // 讀 YouTube 原生字幕字體大小(已套用使用者字幕設定 + player size 自適應比例)。
   // 多重 fallback:首選 caption-segment、退而 caption-window、最後用 video 高度 4.5%。
