@@ -272,3 +272,156 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   }
   return { parts, usage: chunkUsage, hadMismatch: false };
 }
+
+/**
+ * 術語表擷取 — 對齊 lib/gemini.js 的 extractGlossary,介面相同(同一 background
+ * dispatch path 下兩條 engine 都能 plug-in)。
+ *
+ * 走 chat.completions:system = settings.glossary.prompt、user = compressedText。
+ * 不走 buildEffectiveSystemInstruction(那會插入翻譯特化規則:SEP 分隔符 / «N»
+ * 段序號 / 段內換行 / 佔位符 / 自動 glossary / 固定術語表 / 黑名單),術語抽取不需要。
+ *
+ * model:沿用 customProvider.model;為空(llama.cpp / Ollama 預設)時不送 model 欄位。
+ * fetch timeout 用 settings.glossary.fetchTimeoutMs(預設 55s,跟 Gemini 對齊)。
+ *
+ * 回傳格式跟 lib/gemini.js extractGlossary 完全一致,讓 background.js handler
+ * 不必 if-else 兩條結構。
+ *
+ * @param {string} compressedText
+ * @param {object} settings 完整設定。會讀 customProvider.* + glossary.*。
+ * @returns {Promise<{ glossary: Array<{source:string,target:string}>, usage: {inputTokens:number,outputTokens:number,cachedTokens:number}, fromCache?: boolean, _diag?: string|null }>}
+ */
+export async function extractGlossary(compressedText, settings) {
+  const cp = settings.customProvider || {};
+  const { baseUrl, model, apiKey } = cp;
+  if (!baseUrl) {
+    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: 'customProvider.baseUrl 未設定' };
+  }
+  const gc = settings.glossary || {};
+  const glossaryPrompt = gc.prompt || '';
+  const temperature = gc.temperature ?? 0.1;
+  const maxTerms = gc.maxTerms ?? 200;
+  const fetchTimeoutMs = gc.fetchTimeoutMs ?? 55_000;
+
+  const body = {
+    messages: [
+      { role: 'system', content: glossaryPrompt },
+      { role: 'user', content: compressedText },
+    ],
+    temperature,
+    stream: false,
+  };
+  // v1.8.41 對齊:model 為空(llama.cpp / Ollama)時不送 model 欄位
+  if (model) body.model = model;
+
+  const url = resolveChatCompletionsUrl(baseUrl);
+  const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
+
+  await debugLog('info', 'glossary', 'openai-compat glossary extraction request', {
+    baseUrl, model, chars: compressedText.length, fetchTimeoutMs,
+  });
+
+  const t0 = Date.now();
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), fetchTimeoutMs);
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(abortTimer);
+    const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';
+    await debugLog('error', 'glossary', `openai-compat glossary extraction failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
+    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `${reason}: ${err.message}` };
+  }
+  clearTimeout(abortTimer);
+
+  let json;
+  try {
+    json = await resp.json();
+  } catch (parseErr) {
+    await debugLog('error', 'glossary', 'openai-compat glossary response body parse failed', { status: resp.status, error: parseErr.message });
+    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `resp.json() failed: ${parseErr.message}` };
+  }
+  const ms = Date.now() - t0;
+  const u = json?.usage || {};
+  const usage = {
+    inputTokens: u.prompt_tokens || 0,
+    outputTokens: u.completion_tokens || 0,
+    cachedTokens: u.prompt_tokens_details?.cached_tokens || u.cached_tokens || 0,
+  };
+
+  if (!resp.ok) {
+    const errMsg = json?.error?.message || `HTTP ${resp.status}`;
+    await debugLog('error', 'glossary', 'openai-compat glossary extraction failed (API)', { status: resp.status, error: errMsg, elapsed: ms });
+    return { glossary: [], usage, _diag: `API error ${resp.status}: ${errMsg}` };
+  }
+
+  const choice = json?.choices?.[0];
+  const finishReason = choice?.finish_reason || 'unknown';
+  const rawText = choice?.message?.content || '';
+  await debugLog('info', 'glossary', 'openai-compat glossary extraction response', {
+    elapsed: ms, usage: u, rawChars: rawText.length, finishReason,
+  });
+
+  // JSON 解析容錯邏輯跟 lib/gemini.js extractGlossary 同(見該檔 v0.72 註解)。
+  // 兩邊 inline 重複是有意識的選擇:gemini.js 用 candidates[0].content.parts[0].text,
+  // openai-compat.js 用 choices[0].message.content,API 結構不同 — 強行抽 helper 介面
+  // 反而要傳 rawText + 兩邊各自 usage/finishReason,helper 變成「只 parse string」價值有限。
+  // 未來若兩邊都需要新增容錯邏輯(例如 partial JSON),再評估是否抽出。
+  let jsonStr = rawText.trim();
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim();
+  } else {
+    const firstBracket = jsonStr.search(/[\[{]/);
+    const lastBracket = Math.max(jsonStr.lastIndexOf(']'), jsonStr.lastIndexOf('}'));
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
+    }
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (parseErr) {
+    await debugLog('warn', 'glossary', 'openai-compat glossary JSON parse failed', {
+      error: parseErr.message, finishReason, preview: rawText.slice(0, 500),
+    });
+    return { glossary: [], usage, _diag: `JSON parse error (finishReason=${finishReason}): ${parseErr.message}, preview: ${rawText.slice(0, 300)}` };
+  }
+
+  let entries;
+  if (Array.isArray(parsed)) {
+    entries = parsed;
+  } else if (parsed && typeof parsed === 'object') {
+    const arrKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
+    entries = arrKey ? parsed[arrKey] : null;
+  }
+
+  if (!entries) {
+    return { glossary: [], usage, _diag: `no array in response (rawText first 500): ${rawText.slice(0, 500)}` };
+  }
+  if (entries.length === 0) {
+    return { glossary: [], usage, _diag: `entries array is empty (rawText first 500): ${rawText.slice(0, 500)}` };
+  }
+
+  const glossary = entries
+    .filter(e => e && typeof e.source === 'string' && typeof e.target === 'string' && e.source && e.target)
+    .slice(0, maxTerms);
+
+  if (entries.length > 0 && glossary.length === 0) {
+    const sampleDiag = JSON.stringify(entries.slice(0, 3)).slice(0, 500);
+    return { glossary: [], usage, _diag: `entries=${entries.length} but 0 valid (missing source/target?). samples: ${sampleDiag}` };
+  }
+
+  await debugLog('info', 'glossary', 'openai-compat glossary extraction done', {
+    totalEntries: entries.length, validTerms: glossary.length, elapsed: ms, finishReason,
+  });
+
+  return { glossary, usage, fromCache: false, _diag: null };
+}

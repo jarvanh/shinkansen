@@ -3,7 +3,7 @@
 
 import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
-import { translateBatch as translateBatchCustom } from './lib/openai-compat.js'; // v1.5.7
+import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
@@ -605,6 +605,24 @@ const messageHandlers = {
         yt.applyForbiddenTerms === true);
     },
   },
+  // YouTube ASR 自動字幕走自訂 Provider 時的入口。沿用 customProvider 的
+  // baseUrl / model / apiKey / pricing / thinking 等設定，但 systemPrompt 強制覆寫成
+  // DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT(JSON timestamp 模式跟一般逐條字幕規則不同，
+  // 不讀使用者自訂的 ytSubtitle.systemPrompt — 跟 Gemini 路徑 _handleAsrSubtitleBatch 對齊)。
+  // cache key '_oc_yt_asr' 區隔：跟 Gemini ASR('_yt_asr')/ 自訂一般字幕('_oc_yt')互不污染。
+  // 同樣不套用固定術語表 / 黑名單(ASR prompt 已內含禁用詞規則，且 JSON 包裝術語注入麻煩)。
+  TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM: {
+    async: true,
+    handler: async (payload, sender) => {
+      const s = await getSettings();
+      const yt = s.ytSubtitle || {};
+      const overrides = {
+        systemPrompt: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
+        temperature: yt.temperature ?? 0.1,
+      };
+      return handleTranslateCustom(payload, sender, '_oc_yt_asr', overrides, false, false);
+    },
+  },
   // v1.6.1: 使用者點 toast 內「下載」連結或「×」時，標記今日已顯示更新提示（每日節流）
   UPDATE_NOTICE_DISMISSED: {
     async: true,
@@ -651,6 +669,13 @@ const messageHandlers = {
   EXTRACT_GLOSSARY: {
     async: true,
     handler: (payload, sender) => handleExtractGlossary(payload, sender),
+  },
+  // 自訂 Provider(openai-compat)走 chat.completions 抽術語表;不需要 Gemini API Key。
+  // content.js 依 engine 透過 SK.getGlossaryExtractType 路由到這裡。回傳格式跟
+  // EXTRACT_GLOSSARY 對齊(同 _diag / usage / glossary / fromCache 結構)。
+  EXTRACT_GLOSSARY_CUSTOM: {
+    async: true,
+    handler: (payload, sender) => handleExtractGlossaryCustomProvider(payload, sender),
   },
   CLEAR_CACHE: {
     async: true,
@@ -1465,9 +1490,11 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   // v1.5.8: cpOverrides 給字幕路徑覆蓋特定欄位（例如 systemPrompt 改用字幕專屬），
   // 其他欄位（baseUrl / model / apiKey / 計價）仍走「自訂模型」分頁主設定。
   const cp = { ...(settings.customProvider || {}), ...(cpOverrides || {}) };
-  // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key）；商用後端漏填會自然 401
+  // v1.6.7: API Key 允許為空(本機 llama.cpp / Ollama 等不需要 key);商用後端漏填會自然 401
+  // v1.8.41 對齊:Model 也允許為空(llama.cpp / Ollama 啟動時鎖 model,adapter 不送
+  // model 欄位讓 server 用啟動 model)— lib/openai-compat.js translateChunk 本來就支援,
+  // 之前在這裡提早擋下會讓 local server 配置失敗(空 model 行為應跟 adapter 一致)。
   if (!cp.baseUrl) throw new Error('尚未設定自訂 Provider 的 Base URL。');
-  if (!cp.model) throw new Error('尚未設定自訂 Provider 的模型 ID。');
 
   const texts = payload.texts;
   const glossary = payload.glossary || null;
@@ -1745,6 +1772,59 @@ async function handleExtractGlossary(payload, sender) {
     terms: glossary.length,
     inputHash,
     tabUrl: sender?.tab?.url,
+  });
+
+  return { glossary, usage, fromCache: false, _diag: _diag || null };
+}
+
+// 自訂 Provider 路徑術語表抽取。跟 handleExtractGlossary(Gemini)結構對齊:
+// 先查快取 → API call → 寫快取 → 累計用量。差別只在 API endpoint(走
+// lib/openai-compat.js extractGlossary)、不檢查 Gemini API Key(自訂 Provider
+// 可不填 key,例如本機 llama.cpp / Ollama)。
+async function handleExtractGlossaryCustomProvider(payload, sender) {
+  debugLog('info', 'glossary', 'openai-compat glossary extraction start', {
+    inputHash: payload.inputHash, chars: payload.compressedText?.length,
+  });
+  const settings = await getSettings();
+  const cp = settings.customProvider || {};
+  if (!cp.baseUrl) {
+    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: '尚未設定自訂 Provider 的 Base URL。' };
+  }
+  const { compressedText, inputHash } = payload;
+
+  // 1. 先查術語表快取(共用 cache.getGlossary;_diag 內含 baseUrl/model/engine 影響的話
+  //    可在 inputHash 計算時考量,目前 hash 只看 compressedText 跟 Gemini 路徑共享
+  //    符合「同一份原文不同 engine 抽出的術語應該等價」假設)
+  const cached = await cache.getGlossary(inputHash);
+  if (cached) {
+    debugLog('info', 'glossary', 'openai-compat glossary cache hit', { inputHash, terms: cached.length });
+    return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
+  }
+
+  // 2. 呼叫自訂 Provider 抽術語表(extractGlossary 內部 best-effort,失敗回空陣列 + _diag)
+  const result = await extractGlossaryCustom(compressedText, settings);
+  const { glossary, usage, _diag } = result;
+  debugLog('info', 'glossary', 'openai-compat returned glossary', { terms: glossary.length, usage, diag: _diag || null });
+
+  // 3. 寫入快取(只快取有內容的)
+  if (glossary.length > 0) {
+    await cache.setGlossary(inputHash, glossary);
+  }
+
+  // 4. 累計用量(自訂 Provider 用 customProvider.inputPerMTok / outputPerMTok 計價)
+  if (usage.inputTokens > 0 || usage.outputTokens > 0) {
+    const billedInput = Math.max(0, Math.round(usage.inputTokens - (usage.cachedTokens || 0) * 0.75));
+    const cpPricing = (cp.inputPerMTok || cp.outputPerMTok)
+      ? { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 }
+      : null;
+    const billedCost = computeBilledCostUSD(
+      usage.inputTokens, usage.cachedTokens || 0, usage.outputTokens, cpPricing,
+    );
+    await addUsage(billedInput, usage.outputTokens, billedCost);
+  }
+
+  debugLog('info', 'glossary', 'openai-compat glossary extraction complete', {
+    terms: glossary.length, inputHash, tabUrl: sender?.tab?.url,
   });
 
   return { glossary, usage, fromCache: false, _diag: _diag || null };

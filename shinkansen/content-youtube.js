@@ -1488,8 +1488,11 @@
     });
     const inputJson = JSON.stringify(inputArr);
 
+    // 依 ytSubtitle.engine 路由：openai-compat → CUSTOM，其餘(含 google，因 Google MT
+    // 不支援 JSON timestamp 模式) → Gemini ASR handler
+    const _asrMsgType = SK.getSubtitleBatchType(SK.YT.config?.engine, true);
     const res = await SK.safeSendMessage({
-      type: 'TRANSLATE_ASR_SUBTITLE_BATCH',
+      type: _asrMsgType,
       payload: { texts: [inputJson], glossary: null },
     });
     const elapsed = Date.now() - _t0Window;
@@ -1607,8 +1610,9 @@
   //   3. adaptive batch 0(lead-time)+ batch 1+ allSettled streaming
   //   4. 各批 .then 立刻寫 captionMap + replaceSegmentEl
   //
-  // 跟非 ASR 路徑共用 TRANSLATE_SUBTITLE_BATCH 訊息(因為翻譯單位已經是「英文整句」,
-  // 跟人工字幕一樣的形態,不用 ASR 專用的 JSON timestamp prompt)。
+  // 跟非 ASR 路徑共用「一般字幕」訊息(因為翻譯單位已經是「英文整句」，跟人工字幕
+  // 一樣形態，不用 ASR 專用的 JSON timestamp prompt)。實際訊息類型依 engine 由
+  // SK.getSubtitleBatchType 路由：google → _GOOGLE / openai-compat → _CUSTOM / 其餘 → Gemini。
   async function _runAsrHeuristicWindow(windowSegs, windowStartMs) {
     const YT = SK.YT;
     if (!YT.active) return;
@@ -1651,9 +1655,12 @@
     const _t0 = Date.now();
     const _batchApiMs = new Array(batches.length).fill(0);
 
+    // 依 ytSubtitle.engine 路由(同非 ASR 字幕，單元已是英文整句不走 ASR JSON 模式)
+    const _heuristicMsgType = SK.getSubtitleBatchType(SK.YT.config?.engine, false);
+
     const _runBatch = (batchUnits, b) =>
       SK.safeSendMessage({
-        type: 'TRANSLATE_SUBTITLE_BATCH',
+        type: _heuristicMsgType,
         payload: { texts: batchUnits.map(u => u.text), glossary: null },
       }).then(res => {
         const elapsed = Date.now() - _t0;
@@ -1874,13 +1881,11 @@
         // 避免多視窗並行翻譯時互相覆蓋共用陣列。進行中各批次顯示 '…'，完成後顯示實際 ms。
         const _batchApiMs = new Array(batches.length).fill(0);
 
-        // 批次處理器（每批完成後立刻注入 captionMap 並替換 DOM 字幕）
-        // v1.4.0: 依 config.engine 路由到對應的翻譯 handler
-        // v1.5.8: 加 'openai-compat' 第三引擎，走自訂模型 / customProvider 共用設定
-        const _subtitleMsgType =
-          config.engine === 'google'        ? 'TRANSLATE_SUBTITLE_BATCH_GOOGLE' :
-          config.engine === 'openai-compat' ? 'TRANSLATE_SUBTITLE_BATCH_CUSTOM' :
-                                              'TRANSLATE_SUBTITLE_BATCH';
+        // 批次處理器(每批完成後立刻注入 captionMap 並替換 DOM 字幕)
+        // 依 config.engine 路由到對應的翻譯 handler:
+        //   google → _GOOGLE / openai-compat → _CUSTOM / 其餘 → Gemini
+        // (v1.4.0 引入 google,v1.5.8 引入 openai-compat,routing 統一收斂到 SK.getSubtitleBatchType)
+        const _subtitleMsgType = SK.getSubtitleBatchType(config.engine, false);
 
         const _injectBatchResult = (batchUnits, results, b, elapsed) => {
           for (let j = 0; j < batchUnits.length; j++) {
@@ -2440,12 +2445,14 @@
     }
 
     try {
+      // 依 ytSubtitle.engine 路由(on-the-fly 用人工字幕資料，跟非 ASR 字幕同性質)
+      const _onTheFlyMsgType = SK.getSubtitleBatchType(YT.config?.engine, false);
       const res = await SK.safeSendMessage({
-        type: 'TRANSLATE_SUBTITLE_BATCH',
+        type: _onTheFlyMsgType,
         payload: { texts, glossary: null },
       });
       if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
-      // v1.8.20: await 後再次檢查 active——stop 在 await 期間發生時放棄寫入,
+      // v1.8.20: await 後再次檢查 active——stop 在 await 期間發生時放棄寫入，
       // 否則寫進已被 stopYouTubeTranslation 重置的新 captionMap 污染下個 session。
       if (!SK.YT.active) {
         YT.flushing = false;

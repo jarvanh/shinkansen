@@ -220,6 +220,32 @@ if (window.__shinkansen_loaded) {
   SK.BRACKET_ALIASES_OPEN = ['\u2770'];  // ❰
   SK.BRACKET_ALIASES_CLOSE = ['\u2771']; // ❱
 
+  // 字幕翻譯訊息類型路由 — engine + ASR 兩維對應 background handler。
+  // 統一在這裡定義,避免 content-youtube.js 多處 inline 三元式 drift(同一份事實多路徑)。
+  // - 非 ASR(人工字幕 / heuristic 整句字幕):google / openai-compat / Gemini 三路
+  // - ASR LLM(JSON timestamp 模式):Google MT 不支援 JSON 包裝,只有 Gemini / openai-compat
+  //   兩路;engine='google' 在 ASR LLM 下走 Gemini fallback
+  SK.getSubtitleBatchType = function getSubtitleBatchType(engine, asr) {
+    if (asr) {
+      if (engine === 'openai-compat') return 'TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM';
+      return 'TRANSLATE_ASR_SUBTITLE_BATCH';
+    }
+    if (engine === 'google')        return 'TRANSLATE_SUBTITLE_BATCH_GOOGLE';
+    if (engine === 'openai-compat') return 'TRANSLATE_SUBTITLE_BATCH_CUSTOM';
+    return 'TRANSLATE_SUBTITLE_BATCH';
+  };
+
+  // 術語表抽取訊息類型路由 — 對齊字幕路由的單一資料源原則。
+  // engine='openai-compat' 走 EXTRACT_GLOSSARY_CUSTOM(自訂 Provider chat.completions);
+  // 其餘(含 google,因為術語表抽取是 LLM 任務,Google MT 不適用)走 EXTRACT_GLOSSARY(Gemini)。
+  // engine='google' 走 Gemini 路徑會吃 settings.apiKey,使用者沒填時 background 會回
+  // _diag 提示;這是已知 trade-off — 翻譯主路徑用 Google MT 但仍想要 LLM 抽術語表的
+  // 使用者必須額外填 Gemini Key。
+  SK.getGlossaryExtractType = function getGlossaryExtractType(engine) {
+    if (engine === 'openai-compat') return 'EXTRACT_GLOSSARY_CUSTOM';
+    return 'EXTRACT_GLOSSARY';
+  };
+
   // v1.8.10: 防禦式清理 LLM 沒照規則回時殘留的多段協定標記。
   // 規格參見 lib/system-instruction.js DELIMITER 與 «N» 序號 prefix:
   //   - <<<SHINKANSEN_SEP>>>:多段譯文之間的分隔符

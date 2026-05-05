@@ -854,12 +854,15 @@
       const inputHash = await SK.sha1(compressedText);
       SK.sendLog('info', 'glossary', 'glossary preprocessing', { batchCount, mode: batchCount > blockingThreshold ? 'blocking' : 'fire-and-forget', compressedChars: compressedText.length, hash: inputHash.slice(0, 8) });
 
+      // 依 options.engine 路由(openai-compat → CUSTOM,其餘走 Gemini)。同字幕路徑由
+      // SK.getSubtitleBatchType 收斂單一資料源,術語表也對齊不重複 inline 三元式。
+      const _glossaryMsgType = SK.getGlossaryExtractType(options?.engine);
       if (batchCount > blockingThreshold) {
         SK.showToast('loading', '建立術語表⋯', { progress: 0, startTimer: true });
         try {
           const glossaryResult = await Promise.race([
             SK.safeSendMessage({
-              type: 'EXTRACT_GLOSSARY',
+              type: _glossaryMsgType,
               payload: { compressedText, inputHash },
             }),
             new Promise((_, reject) =>
@@ -879,7 +882,7 @@
         }
       } else {
         const glossaryPromise = SK.safeSendMessage({
-          type: 'EXTRACT_GLOSSARY',
+          type: _glossaryMsgType,
           payload: { compressedText, inputHash },
         }).then(res => {
           if (res?.ok && res.glossary?.length > 0) {
