@@ -150,6 +150,10 @@ async function load() {
   }
   updateDualDemoMark(savedMark);
 
+  // v1.8.52: 雙語強調色 — sanitize 後同步 swatch / picker / hex input + demo
+  currentDualAccent = sanitizeDualAccent(s.dualAccentColor);
+  refreshDualAccentUI();
+
   // v1.8.41：金額顯示幣值
   const validCurrencies = ['USD', 'TWD'];
   const savedCurrency = validCurrencies.includes(s.displayCurrency) ? s.displayCurrency : 'TWD';
@@ -332,6 +336,84 @@ function getSelectedMarkStyle() {
   const checked = document.querySelector('input[name="markStyle"]:checked');
   const v = checked?.value;
   return ['tint', 'bar', 'dashed', 'none'].includes(v) ? v : 'tint';
+}
+
+// v1.8.52: 雙語強調色 — 與 content-ns.js 的 SK.DUAL_ACCENT_* 常數同步
+const DUAL_ACCENT_TOKENS = ['auto', 'blue', 'green', 'yellow', 'orange', 'red', 'purple', 'pink'];
+const DUAL_ACCENT_HEX_MAP = {
+  blue: '#3B82F6', green: '#10B981', yellow: '#F59E0B', orange: '#F97316',
+  red: '#EF4444', purple: '#A855F7', pink: '#EC4899',
+};
+const DUAL_ACCENT_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+function sanitizeDualAccent(value) {
+  if (typeof value !== 'string') return 'auto';
+  const v = value.trim();
+  if (DUAL_ACCENT_TOKENS.includes(v)) return v;
+  if (DUAL_ACCENT_HEX_RE.test(v)) return v.toUpperCase();
+  return 'auto';
+}
+
+function dualAccentToHex(value) {
+  const norm = sanitizeDualAccent(value);
+  if (norm === 'auto') return null;
+  return DUAL_ACCENT_HEX_MAP[norm] || norm;
+}
+
+function dualAccentToRgbString(value) {
+  const hex = dualAccentToHex(value);
+  if (!hex) return null;
+  const n = parseInt(hex.slice(1), 16);
+  return `${(n >> 16) & 0xff} ${(n >> 8) & 0xff} ${n & 0xff}`;
+}
+
+// 目前 UI 上選中的強調色（'auto' / token / #RRGGBB）— 由 swatch / hex input 維護
+let currentDualAccent = 'auto';
+
+// 套到 light/dark 兩個 demo wrapper:auto 清屬性走預設,其餘寫 data-sk-accent + inline style
+function applyDualAccentToDemo(value) {
+  const norm = sanitizeDualAccent(value);
+  const rgbStr = dualAccentToRgbString(norm);
+  ['dual-demo-wrapper-light', 'dual-demo-wrapper-dark'].forEach(id => {
+    const w = document.getElementById(id);
+    if (!w) return;
+    if (rgbStr) {
+      w.setAttribute('data-sk-accent', 'custom');
+      w.style.setProperty('--sk-accent-rgb', rgbStr);
+    } else {
+      w.removeAttribute('data-sk-accent');
+      w.style.removeProperty('--sk-accent-rgb');
+    }
+  });
+}
+
+// 同步 swatch active 狀態 + hex input 顯示。
+// hex input 顯示原則:auto → 空、token → 對照 hex、自訂 hex → 該 hex
+function refreshDualAccentUI() {
+  const norm = currentDualAccent;
+  for (const btn of document.querySelectorAll('.dual-accent-swatch')) {
+    btn.classList.toggle('is-active', btn.dataset.token === norm);
+  }
+  const hexInput = document.getElementById('dualAccentHexInput');
+  const picker = document.getElementById('dualAccentColorPicker');
+  const hex = dualAccentToHex(norm);
+  if (hexInput) {
+    if (norm === 'auto') {
+      hexInput.value = '';
+      hexInput.removeAttribute('aria-invalid');
+    } else {
+      hexInput.value = hex || '';
+      hexInput.removeAttribute('aria-invalid');
+    }
+  }
+  if (picker && hex) picker.value = hex;
+  applyDualAccentToDemo(norm);
+}
+
+function setDualAccent(value) {
+  currentDualAccent = sanitizeDualAccent(value);
+  refreshDualAccentUI();
+  if (typeof markDirty === 'function') markDirty();
 }
 
 // v1.8.41：Firefox HTTPS-Only Mode 偵測——baseUrl 是 http:// + UA 是 Firefox 才顯示警告。
@@ -625,6 +707,8 @@ async function _saveImpl() {
     showProgressToast: $('showProgressToast').checked,
     // v1.5.0: 雙語對照視覺標記
     translationMarkStyle: getSelectedMarkStyle(),
+    // v1.8.52: 雙語強調色（已在 setDualAccent 時 sanitize 過,直接寫）
+    dualAccentColor: currentDualAccent,
     // v1.8.41：金額顯示幣值
     displayCurrency: getSelectedCurrency(),
     // v1.0.21: 頁面層級繁中偵測開關
@@ -1051,6 +1135,34 @@ $('toastPosition').addEventListener('change', markDirty);
 // v1.5.0: 雙語視覺標記 radio 切換 → 即時更新 demo wrapper
 for (const r of document.querySelectorAll('input[name="markStyle"]')) {
   r.addEventListener('change', () => updateDualDemoMark(getSelectedMarkStyle()));
+}
+
+// v1.8.52: 強調色 swatch 點擊 / 自訂 hex 輸入 / color picker 切色
+for (const btn of document.querySelectorAll('.dual-accent-swatch')) {
+  btn.addEventListener('click', () => setDualAccent(btn.dataset.token));
+}
+{
+  const picker = document.getElementById('dualAccentColorPicker');
+  const hexInput = document.getElementById('dualAccentHexInput');
+  if (picker) {
+    // input 事件:拖曳 native picker 即時預覽（不等 change 關閉視窗）
+    picker.addEventListener('input', () => setDualAccent(picker.value));
+  }
+  if (hexInput) {
+    // 一邊輸入一邊驗,六碼通過才套色;不通過顯示紅框但保留輸入內容
+    hexInput.addEventListener('input', () => {
+      const v = hexInput.value.trim();
+      if (DUAL_ACCENT_HEX_RE.test(v)) {
+        setDualAccent(v);
+      } else if (v === '') {
+        setDualAccent('auto');
+      } else {
+        hexInput.setAttribute('aria-invalid', 'true');
+      }
+    });
+    // blur 時若仍無效,還原為當前 currentDualAccent 對應 hex（不留下半成品）
+    hexInput.addEventListener('blur', () => refreshDualAccentUI());
+  }
 }
 
 $('reset-defaults').addEventListener('click', async () => {

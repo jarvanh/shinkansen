@@ -302,6 +302,50 @@ if (window.__shinkansen_loaded) {
   SK.DEFAULT_MARK_STYLE = 'tint';
   // 視覺標記合法值（options 頁 radio + content.js sanitize）
   SK.VALID_MARK_STYLES = new Set(['tint', 'bar', 'dashed', 'none']);
+
+  // ─── v1.8.52 雙語對照強調色常數 ─────────────────────
+  // auto = 維持各 mark 預設配色;其餘 7 token 套單一色到三種 mark
+  // 注意:token 清單與 hex 對照表要跟 options.js / docs 同步。
+  SK.DUAL_ACCENT_DEFAULT = 'auto';
+  SK.DUAL_ACCENT_TOKENS = ['auto', 'blue', 'green', 'yellow', 'orange', 'red', 'purple', 'pink'];
+  SK.DUAL_ACCENT_HEX_MAP = {
+    blue:   '#3B82F6',
+    green:  '#10B981',
+    yellow: '#F59E0B',
+    orange: '#F97316',
+    red:    '#EF4444',
+    purple: '#A855F7',
+    pink:   '#EC4899',
+  };
+  SK.DUAL_ACCENT_HEX_RE = /^#[0-9a-fA-F]{6}$/;
+  /**
+   * 把使用者設定值正規化:
+   *   - 'auto' 或非字串 / 不認得 → 'auto'
+   *   - 已知 token → 原樣回傳
+   *   - 6 碼 hex(去頭尾空白後通過 re）→ 統一回大寫(避免 cache key 漂移）
+   */
+  SK.sanitizeDualAccent = function sanitizeDualAccent(value) {
+    if (typeof value !== 'string') return 'auto';
+    const v = value.trim();
+    if (SK.DUAL_ACCENT_TOKENS.includes(v)) return v;
+    if (SK.DUAL_ACCENT_HEX_RE.test(v)) return v.toUpperCase();
+    return 'auto';
+  };
+  /**
+   * 把 accent 值解析為 RGB triplet(供 inline style 用 CSS rgb() 函式套色）。
+   * - 'auto' 回傳 null(呼叫端不寫 inline style，走原 CSS 預設）
+   * - 認得的 token 走 hex map
+   * - 自訂 hex 直接 parse
+   * 解不開回 null。
+   */
+  SK.dualAccentToRgb = function dualAccentToRgb(value) {
+    const norm = SK.sanitizeDualAccent(value);
+    if (norm === 'auto') return null;
+    const hex = SK.DUAL_ACCENT_HEX_MAP[norm] || norm;
+    if (!SK.DUAL_ACCENT_HEX_RE.test(hex)) return null;
+    const n = parseInt(hex.slice(1), 16);
+    return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+  };
   // 顯示模式合法值
   SK.VALID_DISPLAY_MODES = new Set(['single', 'dual']);
   // 計算「最近的 block 祖先」用的 display 值（雙語模式 inline 段落 wrapper 用）

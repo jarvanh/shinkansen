@@ -900,15 +900,20 @@ shinkansen-translation {
   box-sizing: border-box;
 }
 :where(h1, h2, h3, h4, h5, h6) + shinkansen-translation { margin-top: 0.5em; }
-/* light (default) */
+/* light (default / auto) */
 shinkansen-translation[data-sk-mark="tint"]   { background-color: #FFF8E1; padding: 4px 8px; border-radius: 4px; }
-shinkansen-translation[data-sk-mark="bar"]    { border-left: 2px solid #9CA3AF; padding-left: 8px; }
+shinkansen-translation[data-sk-mark="bar"]    { border-left: 3px solid #9CA3AF; padding-left: 8px; }
 shinkansen-translation[data-sk-mark="dashed"] { text-decoration: underline wavy #C7CDD3; text-decoration-thickness: 1px; text-underline-offset: 4px; }
 shinkansen-translation[data-sk-mark="none"]   {}
-/* dark */
-shinkansen-translation[data-sk-mark="tint"][data-sk-theme="dark"]   { background-color: rgba(255, 255, 255, 0.08); }
-shinkansen-translation[data-sk-mark="bar"][data-sk-theme="dark"]    { border-left-color: #9CA3AF; }
-shinkansen-translation[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decoration-color: #9CA3AF; }
+/* dark (default / auto) — v1.8.52 加強對比解 issue #35 */
+shinkansen-translation[data-sk-mark="tint"][data-sk-theme="dark"]   { background-color: rgba(255, 255, 255, 0.14); }
+shinkansen-translation[data-sk-mark="bar"][data-sk-theme="dark"]    { border-left-color: #B7BDC4; }
+shinkansen-translation[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decoration-color: #B7BDC4; }
+/* v1.8.52: 自訂強調色(token / hex)— inline style 提供 --sk-accent-rgb */
+shinkansen-translation[data-sk-accent="custom"][data-sk-mark="tint"]   { background-color: rgb(var(--sk-accent-rgb) / 0.15); }
+shinkansen-translation[data-sk-accent="custom"][data-sk-mark="tint"][data-sk-theme="dark"] { background-color: rgb(var(--sk-accent-rgb) / 0.22); }
+shinkansen-translation[data-sk-accent="custom"][data-sk-mark="bar"]    { border-left-color: rgb(var(--sk-accent-rgb)); }
+shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-decoration-color: rgb(var(--sk-accent-rgb)); }
 
 .dual-mark-options {
   display: flex;
@@ -926,6 +931,79 @@ shinkansen-translation[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decor
 }
 .dual-mark-options input[type="radio"] {
   margin: 0;
+}
+
+/* v1.8.52: 強調色 swatch row + 自訂 hex
+   active 樣式用 2px ring(box-shadow，不疊在色塊裡)— CLAUDE.md UI 指引
+   要求 WYSIWYG 按鈕群 active 不填色,色塊本身就是預覽。 */
+.dual-accent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  margin-bottom: 10px;
+}
+.dual-accent-row .accent-label {
+  font-size: 13px;
+  color: #1d1d1f;
+  margin-right: 4px;
+}
+.dual-accent-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid #d2d2d7;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: box-shadow 0.12s;
+  flex: 0 0 auto;
+}
+.dual-accent-swatch:focus { outline: none; }
+.dual-accent-swatch:focus-visible,
+.dual-accent-swatch.is-active {
+  box-shadow: 0 0 0 2px #0071e3;
+}
+.dual-accent-swatch[data-token="auto"] {
+  background:
+    linear-gradient(135deg,
+      #FFF8E1 0%, #FFF8E1 33%,
+      #C7CDD3 33%, #C7CDD3 66%,
+      #9CA3AF 66%, #9CA3AF 100%);
+}
+.dual-accent-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* 不另加 margin-left,讓 swatch row 自身的 gap(10px)定中間距,避免雙重間距 */
+}
+.dual-accent-custom-label {
+  font-size: 12px;
+  color: #6e6e73;
+}
+.dual-accent-custom input[type="color"] {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #d2d2d7;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.dual-accent-custom input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.dual-accent-custom input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+.dual-accent-custom input[type="text"] {
+  width: 84px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  padding: 4px 6px;
+  border: 1px solid #d2d2d7;
+  border-radius: 4px;
+}
+.dual-accent-custom input[type="text"][aria-invalid="true"] {
+  border-color: #ff3b30;
 }
 
 /* v1.8.41：金額顯示幣值 radio */

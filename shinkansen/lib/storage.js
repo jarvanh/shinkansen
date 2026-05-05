@@ -311,6 +311,11 @@ export const DEFAULT_SETTINGS = {
   displayCurrency: 'TWD',
   // v1.5.0: 雙語模式下的視覺標記樣式（'tint' 淡底色 / 'bar' 左邊細條 / 'dashed' 波浪底線 / 'none'）
   translationMarkStyle: 'tint',
+  // v1.8.52: 雙語模式譯文強調色。'auto' = 維持各 mark 預設配色（tint 米黃、bar/dashed 灰）;
+  // 預設色 token = ['blue','green','yellow','orange','red','purple','pink'] 任一,三種 mark 共用同色;
+  // 自訂 hex = #RRGGBB(6 碼,大小寫不拘）。其他值會在 content-script 端 fallback 回 'auto'。
+  // 同色經 alpha 套到 tint(深淺底色），原色套到 bar(實心邊條）與 dashed(波浪底線）。
+  dualAccentColor: 'auto',
   // v1.4.12: 三組翻譯預設對應 Alt+A / Alt+S / Alt+D 三個快速鍵。
   // engine='gemini' 時 model 覆蓋 geminiConfig.model，其他欄位（prompt、temperature、glossary）沿用全域；
   // engine='google' 時走 Google Translate 路徑，不需 model。

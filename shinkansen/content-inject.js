@@ -592,6 +592,12 @@
     // v1.8.31: 依注入位置的實際頁面亮度決定 dark/light 配色,避免 tint 米色底在
     // dark mode 頁面跟淺灰文字對比破裂。
     wrapper.setAttribute('data-sk-theme', detectThemeForElement(original));
+    // v1.8.52: 自訂強調色(token 或 hex)套到三種 mark。auto 不寫屬性,走預設 CSS
+    const rgb = SK.dualAccentToRgb?.(SK.currentDualAccent);
+    if (rgb) {
+      wrapper.setAttribute('data-sk-accent', 'custom');
+      wrapper.style.setProperty('--sk-accent-rgb', `${rgb.r} ${rgb.g} ${rgb.b}`);
+    }
     wrapper.appendChild(inner);
 
     // v1.5.3: copy 原段落的水平 layout 屬性到 wrapper。
@@ -695,18 +701,29 @@
     // marginTop:標題後拉開 0.5em(原 0.25em 太小,大字級標題 line-height 會把
     // 它吃光);其他元素維持 0.25em。原段落若有 paddingBottom,injectDual 會在
     // wrapper 上設 inline marginTop 負值覆蓋這條 CSS 預設。
+    // v1.8.52:
+    //   - dark auto 對比加強(tint 0.08 → 0.14、bar/dashed 灰色 → #B7BDC4)解決
+    //     issue #35 強調色看不清的回報
+    //   - bar 統一 2px → 3px(細邊在淺灰底色站點本來就不夠醒目)
+    //   - 加 [data-sk-accent="custom"] 配色:三種 mark 共用 inline `--sk-accent-rgb`
+    //     變數套色;tint 走 alpha,bar/dashed 走實心色
     style.textContent =
       `${tag} { display: block; margin-top: 0.25em; box-sizing: border-box; }\n` +
       `:where(h1, h2, h3, h4, h5, h6) + ${tag} { margin-top: 0.5em; }\n` +
-      // light (default)
+      // light (default / auto)
       `${tag}[data-sk-mark="tint"]   { background-color: #FFF8E1; padding: 4px 8px; border-radius: 4px; }\n` +
-      `${tag}[data-sk-mark="bar"]    { border-left: 2px solid #9CA3AF; padding-left: 8px; }\n` +
+      `${tag}[data-sk-mark="bar"]    { border-left: 3px solid #9CA3AF; padding-left: 8px; }\n` +
       `${tag}[data-sk-mark="dashed"] { text-decoration: underline wavy #C7CDD3; text-decoration-thickness: 1px; text-underline-offset: 4px; }\n` +
       `${tag}[data-sk-mark="none"]   {}\n` +
-      // dark
-      `${tag}[data-sk-mark="tint"][data-sk-theme="dark"]   { background-color: rgba(255, 255, 255, 0.08); }\n` +
-      `${tag}[data-sk-mark="bar"][data-sk-theme="dark"]    { border-left-color: #9CA3AF; }\n` +
-      `${tag}[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decoration-color: #9CA3AF; }\n`;
+      // dark (default / auto)
+      `${tag}[data-sk-mark="tint"][data-sk-theme="dark"]   { background-color: rgba(255, 255, 255, 0.14); }\n` +
+      `${tag}[data-sk-mark="bar"][data-sk-theme="dark"]    { border-left-color: #B7BDC4; }\n` +
+      `${tag}[data-sk-mark="dashed"][data-sk-theme="dark"] { text-decoration-color: #B7BDC4; }\n` +
+      // custom accent(token 或 hex 經 sanitize 套到三種 mark）
+      `${tag}[data-sk-accent="custom"][data-sk-mark="tint"]   { background-color: rgb(var(--sk-accent-rgb) / 0.15); }\n` +
+      `${tag}[data-sk-accent="custom"][data-sk-mark="tint"][data-sk-theme="dark"] { background-color: rgb(var(--sk-accent-rgb) / 0.22); }\n` +
+      `${tag}[data-sk-accent="custom"][data-sk-mark="bar"]    { border-left-color: rgb(var(--sk-accent-rgb)); }\n` +
+      `${tag}[data-sk-accent="custom"][data-sk-mark="dashed"] { text-decoration-color: rgb(var(--sk-accent-rgb)); }\n`;
     (document.head || document.documentElement).appendChild(style);
   };
 

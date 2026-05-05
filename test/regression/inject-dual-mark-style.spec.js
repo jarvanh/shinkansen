@@ -10,6 +10,9 @@
 //      還原後 pass。
 //   2. 把 SK.ensureDualWrapperStyle 改為 no-op，computed style 全部變
 //      browser default，spec fail；還原後 pass。
+//
+// v1.8.52: bar 邊條從 2px 加粗到 3px(issue #35,深色頁面細灰邊與背景對比不足）。
+// 同步把斷言從 '2px' 改為 '3px';dashed / tint 視覺色尺寸維持不變。
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
@@ -83,9 +86,9 @@ test('dual-mark-style: 4 種 mark 各自 attribute + 對應 CSS 生效', async (
   expect(after.tint?.borderRadius).toBe('4px');
   expect(after.tint?.boxSizing).toBe('border-box');
 
-  // bar：左邊細條 solid 2px
+  // bar：左邊細條 solid 3px(v1.8.52 從 2px 加粗）
   expect(after.bar?.borderLeftStyle).toBe('solid');
-  expect(after.bar?.borderLeftWidth).toBe('2px');
+  expect(after.bar?.borderLeftWidth).toBe('3px');
 
   // dashed：v1.5.3 起改為波浪底線 wavy（從 v1.5.0 的 border-bottom dashed 換）
   expect(after.dashed?.textDecorationLine).toBe('underline');

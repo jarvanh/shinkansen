@@ -57,19 +57,19 @@
     <section>
       <h2>翻譯快速鍵</h2>
       <p class="muted">
-        三組可自訂的翻譯預設,對應三個快速鍵。依網頁內容選擇不同引擎或模型(例如文學性強用最強模型、一般網頁用最省錢)。
+        三組可自訂的翻譯預設,對應三個快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
         已翻譯狀態下按任一快速鍵都會還原原文;翻譯中按任一快速鍵則取消翻譯。
         鍵位可至 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> 變更
       </p>
       <!-- v1.8.44:Firefox 偵測警告。Alt+S/A/D 在 Firefox 會被瀏覽器或第三方擴充功能搶走
-           (Alt+S = 歷史 menu mnemonic、Alt+D = 地址列焦點、Alt+A 容易被 Save Page WE 等擴充攔截),
+           （Alt+S = 歷史 menu mnemonic、Alt+D = 地址列焦點、Alt+A 容易被 Save Page WE 等擴充攔截）,
            Chrome 沒此問題。manifest 的 commands 是跨瀏覽器共用，不能針對 Firefox 覆寫，
            只能引導使用者自行改快捷鍵。 -->
       <small id="shortcut-firefox-warn" class="muted firefox-https-warn" hidden>
         ⚠ <strong>Firefox 使用者注意</strong>:Firefox 的 <code>Alt+S</code> 會展開「歷史」選單、
-        <code>Alt+D</code> 會切到地址列，<code>Alt+A</code> 也常被其他擴充功能(例如 Save Page WE)攔截。
+        <code>Alt+D</code> 會切到地址列，<code>Alt+A</code> 也常被其他擴充功能（例如 Save Page WE）攔截。
         Chrome 沒這個衝突，但 Firefox 環境下三組預設快捷鍵可能無法觸發翻譯。
-        請到 <code>about:addons</code> → 設定圖示(齒輪)→「管理擴充功能快捷鍵」改成不衝突的組合(例如 <code>Ctrl+Shift+S</code>)
+        請到 <code>about:addons</code> → 設定圖示（齒輪）→「管理擴充功能快捷鍵」改成不衝突的組合（例如 <code>Ctrl+Shift+S</code>）
       </small>
       <div class="preset-cards">
         <div class="preset-card preset-card-primary" data-slot="2">
@@ -224,6 +224,24 @@
         <label><input type="radio" name="markStyle" value="dashed">波浪底線</label>
         <label><input type="radio" name="markStyle" value="none">無標記</label>
       </div>
+      <!-- v1.8.52: 強調色（三種 mark 共用一色） — 預設 auto = 維持原配色 -->
+      <div class="dual-accent-row" id="dual-accent-row">
+        <span class="accent-label">強調色</span>
+        <button type="button" class="dual-accent-swatch" data-token="auto"   title="預設（各 mark 原色）"></button>
+        <button type="button" class="dual-accent-swatch" data-token="blue"   style="background:#3B82F6" title="藍"></button>
+        <button type="button" class="dual-accent-swatch" data-token="green"  style="background:#10B981" title="綠"></button>
+        <button type="button" class="dual-accent-swatch" data-token="yellow" style="background:#F59E0B" title="黃"></button>
+        <button type="button" class="dual-accent-swatch" data-token="orange" style="background:#F97316" title="橘"></button>
+        <button type="button" class="dual-accent-swatch" data-token="red"    style="background:#EF4444" title="紅"></button>
+        <button type="button" class="dual-accent-swatch" data-token="purple" style="background:#A855F7" title="紫"></button>
+        <button type="button" class="dual-accent-swatch" data-token="pink"   style="background:#EC4899" title="粉"></button>
+        <span class="dual-accent-custom">
+          <span class="dual-accent-custom-label">自訂</span>
+          <input type="color" id="dualAccentColorPicker" value="#3B82F6">
+          <input type="text" id="dualAccentHexInput" maxlength="7" placeholder="#RRGGBB" autocomplete="off" spellcheck="false">
+        </span>
+      </div>
+      <small class="muted">深色頁面預設灰色看不清時，可選一個強調色；三種視覺標記會共用同一色（tint 套淡底，bar / dashed 套實線色）</small>
     </section>
 
     <section>
@@ -631,7 +649,7 @@
         <input type="text" id="cp-model" placeholder="例如：anthropic/claude-sonnet-4-5（llama.cpp / Ollama 可留空）">
         <small class="muted">
           OpenRouter 的 model ID 格式為 <code>provider/model</code>（如
-          <code>anthropic/claude-sonnet-4-5</code>、<code>google/gemini-2.5-flash</code>、
+          <code>anthropic/claude-sonnet-4-5</code>、<code>google/gemini-3-flash</code>、
           <code>deepseek/deepseek-chat</code>）；其他端點直接填 model 名稱。
           本機 server（llama.cpp / Ollama）啟動時若已鎖定 model 可留空，request 不送此欄位即用 server 預設
         </small>

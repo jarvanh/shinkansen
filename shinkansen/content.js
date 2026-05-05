@@ -712,6 +712,8 @@
       // 雙語視覺標記樣式
       const ms = settings.translationMarkStyle;
       SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
+      // v1.8.52: 強調色(token / hex / 'auto'），sanitize 後給 injectDual 套到 wrapper
+      SK.currentDualAccent = SK.sanitizeDualAccent?.(settings.dualAccentColor) ?? 'auto';
       // 雙語模式才注入 wrapper CSS（單語模式不需要）
       if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
     }
@@ -1284,6 +1286,7 @@
       STATE.displayMode = STATE.translatedMode;
       const ms = settings.translationMarkStyle;
       SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
+      SK.currentDualAccent = SK.sanitizeDualAccent?.(settings.dualAccentColor) ?? 'auto';
       if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
     }
 
@@ -1616,7 +1619,7 @@
       SK.injectTranslation(unit, translation, slots);
       return { sourceText: text, slotCount: slots.length };
     },
-    // v1.5.0: 雙語注入測試入口。可選 markStyle 覆蓋預設。
+    // v1.5.0: 雙語注入測試入口。可選 markStyle / dualAccentColor 覆蓋預設。
     testInjectDual(el, translation, opts) {
       if (!el || el.nodeType !== Node.ELEMENT_NODE) {
         throw new Error('testInjectDual: el must be an Element');
@@ -1626,6 +1629,12 @@
         SK.currentMarkStyle = opts.markStyle;
       } else if (!SK.currentMarkStyle) {
         SK.currentMarkStyle = SK.DEFAULT_MARK_STYLE;
+      }
+      // v1.8.52: 強調色入口（'auto' / token / hex；無覆蓋時保留前一輪設定或回 auto）
+      if (opts && 'dualAccentColor' in opts) {
+        SK.currentDualAccent = SK.sanitizeDualAccent?.(opts.dualAccentColor) ?? 'auto';
+      } else if (!SK.currentDualAccent) {
+        SK.currentDualAccent = 'auto';
       }
       const { text, slots } = SK.serializeWithPlaceholders(el);
       const unit = { kind: 'element', el };
