@@ -74,10 +74,48 @@ const TABLE_MIN_LINES = 4;
 const TABLE_MAX_AVG_CHARS = 35;
 
 // list-item sub-split：當 block 內 ≥ LIST_SUBSPLIT_MIN_LINES 行 + 多數行起首是 list
-// marker 時，按 marker 切多個 block。處理「60 行 spec list 整段一個 block」場景。
-const LIST_SUBSPLIT_MIN_LINES = 5;
+// marker 時，按 marker 切多個 block。處理「2-N 行 list 整段一個 block」場景。
+// (從 5 降到 2 — 報價單 Note 區「1. ... 2. ...」常 2 行就是 list,5 行門檻太高)
+const LIST_SUBSPLIT_MIN_LINES = 2;
 const LIST_SUBSPLIT_MARKER_RATIO = 0.6; // 多數行起首必須是 marker 才切
 const LIST_MARKER_RE = /^\s*(?:[-•·*–—]|\d+[.)]|\([a-zA-Z0-9]+\))\s/;
+
+// narrow-multi-line sub-split：多行 block 但 max line right edge 距離 column right edge
+// 太遠 → 那些換行不是 word-wrap、是顯式換行(典型場景:聯絡資訊區「姓名 / 職稱 / 電話 /
+// email」、spec sheet diagram 浮動標籤、circuit pin label 群)。每行各自一個 block。
+//
+// 訊號設計:wrap 段落的非末行因為「下個字塞不下」才換行,所以非末行 right edge 必然
+// 接近 column right edge。整 block max line right 都離 column right 很遠,代表這 block
+// 的換行是 PDF 內顯式 \n,不是 wrap。
+//
+// 跨 4 份對照 PDF(Plano news / LD750 spec / 3M VHB / 3M ALCF)收集 220+ 個多行 block
+// 的 ratio 分布:真 prose paragraph 最低 ratio 90%(絕大多數 ≥97%);ratio < 25% 的
+// 樣本全部都是該被切的 short label / 聯絡資訊。0.25 留 65 個百分點 safety margin。
+const NARROW_BLOCK_MAX_RIGHT_RATIO = 0.25;
+
+// form-row merge:report / 報價單 / form 文件常出現「label_x_left ... value_x_right」同 y
+// 結構,PDF.js 抽出後會被視為兩 line(因為 SAME_LINE_MAX_X_GAP_FACTOR=4 太嚴),
+// 後續又因 left 跳躍被誤判 table 而不送翻譯。groupIntoLines 後合併「同 y + 左 line
+// 結尾為 : 或 : (label-shape)」的 label-value pair 成單一 line,讓後續 type 分類
+// 看到一致 left 不再誤判 table
+const FORM_ROW_MAX_X_GAP_FACTOR = 12; // 跨 col 的 gap 通常 > 此值,只 merge 同 col 內
+
+// form sub-split:多行 block 多數行為 label-shape → 每行各自 block(配 narrow-multi-line
+// 風格,讓每個 label-value pair 各自送翻、render 在原 row)
+const FORM_SUBSPLIT_MIN_LINES = 2;
+const FORM_SUBSPLIT_LABEL_RATIO = 0.4;
+const FORM_LABEL_RE = /[:：]\s*$|^[A-Za-z一-鿿][\w\s一-鿿]{0,30}?[:：]\s*\S/;
+
+// table row cell split:lineCount=1 block 內若 ≥ 3 runs + 相鄰 runs bbox gap >
+// medianLH × TABLE_CELL_GAP_FACTOR → 視為「同 row 多 cell 被 PDF.js merge 成一段」,
+// 每個「runs cluster」一個 sub-block,各自送翻 + 渲染在自己的 cell bbox。
+// runs ≥ 3 是為了避開 form merged「label : value」的 2-run 場景(form 已由
+// mergeLabelValueRows 處理,這條對 form 不該誤觸發)
+const TABLE_CELL_MIN_RUNS = 3;
+// gap factor 1.2 = 對 medianLH 8.4pt PDF 約 10pt 閾值。Quotation 表頭 QTY|UC gap 11pt
+// 要切;一般 inline space (font 與 font 間隔通常 < 8pt) 不切。
+// 之前 1.5 (≈12.6pt) 對 11pt gap 不切 → b32 兩 cell 合一,mask 蓋掉中間邊線
+const TABLE_CELL_GAP_FACTOR = 1.2;
 
 /**
  * 主入口：接受 W1 parsePdf 的 raw doc，回傳版面 IR doc。
@@ -118,8 +156,12 @@ function analyzePage(rawPage) {
   out.medianLineHeight = medianLineHeight;
 
   // 2) 同視覺行 merge → lines(用 medianLineHeight 算 same-line max x gap)
-  const lines = groupIntoLines(runs, medianLineHeight);
-  if (lines.length === 0) return out;
+  const initialLines = groupIntoLines(runs, medianLineHeight);
+  if (initialLines.length === 0) return out;
+
+  // 2.1) form-row merge:同 y 的「label : value」pair 合一 line(報價單 / 送貨
+  //      單 / 申請表這類 form 結構;label 結尾 : 是訊號)
+  const lines = mergeLabelValueRows(initialLines, medianLineHeight);
 
   // 2.5) 標「同一視覺行」的兄弟 line — same-line x gap 太大被切散的多條 line(典型:
   //      News Release 第一行「For Immediate Release ............ February 12, 2024」
@@ -150,10 +192,42 @@ function analyzePage(rawPage) {
   }
 
   // 4.5b) list-item sub-split：大 block 內若多數行起首是 list marker，按 marker 切多個 block
-  const blocks = [];
+  const afterListSplit = [];
   for (const b of afterHeadingSplit) {
     const subBlocks = maybeSubsplitListBlock(b);
-    blocks.push(...subBlocks);
+    afterListSplit.push(...subBlocks);
+  }
+
+  // 4.5c) narrow-multi-line sub-split:多行 block 但所有 line 的 max right edge 距 column
+  //       right edge 太遠 → 視為顯式 \n,每行各自一個 block。需要先用 lines 算出 colLeft /
+  //       colRight per column(用 lines 而非 blocks 算,確保「整欄都是窄內容」case 也能算
+  //       到該欄真實左右邊界)
+  const colLefts = new Array(columnAssignments.columnCount).fill(Infinity);
+  const colRights = new Array(columnAssignments.columnCount).fill(-Infinity);
+  for (let i = 0; i < lines.length; i++) {
+    const c = columnAssignments.assignment[i];
+    if (lines[i].bbox[0] < colLefts[c]) colLefts[c] = lines[i].bbox[0];
+    if (lines[i].bbox[2] > colRights[c]) colRights[c] = lines[i].bbox[2];
+  }
+  const afterNarrowSplit = [];
+  for (const b of afterListSplit) {
+    afterNarrowSplit.push(...maybeSplitNarrowMultilineBlock(b, colLefts, colRights));
+  }
+
+  // 4.5d) form sub-split:多行 block 多數行為 label-shape → 每行各自 block。
+  //       配合 form-row merge,讓報價單 metadata 區「TO: / ATTN: / email: ...」
+  //       不被誤判 table 不翻,而是各自獨立翻譯保留 form 結構
+  const afterFormSplit = [];
+  for (const b of afterNarrowSplit) {
+    afterFormSplit.push(...maybeSubsplitFormBlock(b));
+  }
+
+  // 4.5e) table-row cell split:lineCount=1 + ≥ 3 runs + runs 之間 large bbox gap →
+  //       切多個 cell block(報價單 / spec sheet 表格 row 的 4-cell 內容被 PDF.js
+  //       merge 成 single textRun 群,需要拆回各自 cell)
+  const blocks = [];
+  for (const b of afterFormSplit) {
+    blocks.push(...maybeSubsplitTableRowCells(b, medianLineHeight));
   }
 
   // 5) reading order：跨欄按 column 升序、同欄按 top 升序(視覺由上往下)
@@ -850,6 +924,142 @@ function maybeSubsplitListBlock(block) {
     return subBlock;
   });
 }
+
+// form-row merge:groupIntoLines 後同 y 的「label : value」pair 合一 line。
+// 觸發:同 y_top tolerance 內 + 左 line 結尾 : (label-shape) + x gap 在合理範圍內(
+// 不跨 column,< FORM_ROW_MAX_X_GAP_FACTOR × medianLineHeight)
+function mergeLabelValueRows(lines, medianLineHeight) {
+  if (lines.length < 2) return lines;
+  const maxXGap = FORM_ROW_MAX_X_GAP_FACTOR * (medianLineHeight || 12);
+  const sortedIdx = lines.map((_, i) => i).sort((a, b) => {
+    const dy = lines[a].bbox[1] - lines[b].bbox[1];
+    if (Math.abs(dy) > SAME_LINE_Y_TOLERANCE) return dy;
+    return lines[a].bbox[0] - lines[b].bbox[0];
+  });
+  const consumed = new Set();
+  const out = [];
+  for (let i = 0; i < sortedIdx.length; i++) {
+    const ai = sortedIdx[i];
+    if (consumed.has(ai)) continue;
+    const a = lines[ai];
+    const aText = (a.plainText || '').trim();
+    // 只有左 line 結尾 : 才考慮 merge 右側 value
+    if (/[:：]\s*$/.test(aText)) {
+      // 找同 y 的下一條 line(右側 value)
+      for (let j = i + 1; j < sortedIdx.length; j++) {
+        const bi = sortedIdx[j];
+        if (consumed.has(bi)) continue;
+        const b = lines[bi];
+        if (Math.abs(b.bbox[1] - a.bbox[1]) > SAME_LINE_Y_TOLERANCE) break;
+        const xGap = b.bbox[0] - a.bbox[2];
+        if (xGap < 0 || xGap > maxXGap) continue;
+        // merge:plainText 接 + runs 接 + bbox union + dominantFontName 重算
+        a.plainText = aText + ' ' + (b.plainText || '');
+        a.runs = [...(a.runs || []), ...(b.runs || [])];
+        a.bbox = unionBBox(a.bbox, b.bbox);
+        // fontSize / dominantFontName:沿用 a(label 那段);若需精確可加權平均,
+        // 但對 form metadata 影響小
+        consumed.add(bi);
+        break;
+      }
+    }
+    out.push(a);
+  }
+  return out;
+}
+
+// 多行 block 多數行為 label-shape → 每行各自 block。觸發 form metadata 區
+// (報價單 / 送貨單)的「TO: / ATTN: / email: ...」雙欄 form 不被誤判成 table 不翻
+function maybeSubsplitFormBlock(block) {
+  const lines = block._lines || [];
+  if (lines.length < FORM_SUBSPLIT_MIN_LINES) return [block];
+  const labelLines = lines.filter((l) => FORM_LABEL_RE.test(l.plainText || ''));
+  if (labelLines.length < lines.length * FORM_SUBSPLIT_LABEL_RATIO) return [block];
+  return lines.map((l) => buildBlockFromLines([{
+    bbox: l.bbox,
+    runs: l.runs || [],
+    fontSize: l.fontSize,
+    plainText: l.plainText,
+    dominantFontName: l.dominantFontName,
+  }], block.column));
+}
+
+// table-row cell split:lineCount=1 + ≥ 3 runs + 相鄰 runs gap > medianLH × 1.5
+// → 視為同 row 多 cell,每個 cell cluster 各自一個 block。
+// 觸發條件 ≥ 3 runs 是為了避開 form merged 「label : value」(2 runs 場景)。
+function maybeSubsplitTableRowCells(block, medianLineHeight) {
+  if (block.lineCount !== 1) return [block];
+  const lines = block._lines || [];
+  if (lines.length !== 1) return [block];
+  const line = lines[0];
+  const runs = (line.runs || []).slice();
+  if (runs.length < TABLE_CELL_MIN_RUNS) return [block];
+
+  runs.sort((a, b) => a.bbox[0] - b.bbox[0]);
+  const gapThreshold = (medianLineHeight || 12) * TABLE_CELL_GAP_FACTOR;
+
+  // 按 large gap 切 group
+  const groups = [[runs[0]]];
+  for (let i = 1; i < runs.length; i++) {
+    const prev = runs[i - 1];
+    const cur = runs[i];
+    const gap = cur.bbox[0] - prev.bbox[2];
+    if (gap > gapThreshold) {
+      groups.push([cur]);
+    } else {
+      groups[groups.length - 1].push(cur);
+    }
+  }
+  if (groups.length < 2) return [block];
+
+  // 每 group 一個 sub-block,bbox 涵蓋 group 內所有 runs(縮成 cell 尺寸而非整 row)。
+  // 標 _isCellBlock = true 給 pdf-renderer fitSegmentsToBox 用——cell-sized block
+  // 不該擴 box(會推到相鄰 cell 邊界蓋掉表格垂直邊線),改成只走 scale 縮字
+  return groups.map((group) => {
+    let bbox = group[0].bbox.slice();
+    for (let i = 1; i < group.length; i++) bbox = unionBBox(bbox, group[i].bbox);
+    const text = group.map((r) => r.text).join('');
+    const lineLikes = [{
+      bbox,
+      runs: group,
+      fontSize: line.fontSize,
+      plainText: text,
+      dominantFontName: line.dominantFontName,
+    }];
+    const sub = buildBlockFromLines(lineLikes, block.column);
+    sub._isCellBlock = true;
+    return sub;
+  });
+}
+
+// 多行 block 但所有 line 的 max right edge 距 column right edge 太遠 → 視為顯式 \n,
+// 每行各自一個 block。詳見 NARROW_BLOCK_MAX_RIGHT_RATIO 註解。
+function maybeSplitNarrowMultilineBlock(block, colLefts, colRights) {
+  const lines = block._lines || [];
+  if (lines.length < 2) return [block];
+  const colLeft = colLefts[block.column];
+  const colRight = colRights[block.column];
+  const colWidth = colRight - colLeft;
+  if (!isFinite(colWidth) || colWidth <= 0) return [block];
+
+  let maxLineRight = -Infinity;
+  for (const l of lines) {
+    if (l.bbox[2] > maxLineRight) maxLineRight = l.bbox[2];
+  }
+  const ratio = (maxLineRight - colLeft) / colWidth;
+  if (ratio >= NARROW_BLOCK_MAX_RIGHT_RATIO) return [block];
+
+  return lines.map((l) => buildBlockFromLines([{
+    bbox: l.bbox,
+    runs: l.runs || [],
+    fontSize: l.fontSize,
+    plainText: l.plainText,
+    dominantFontName: l.dominantFontName,
+  }], block.column));
+}
+
+// W7-iter:export 給 unit spec 驗 narrow-multi-line split 路徑
+export { maybeSplitNarrowMultilineBlock, mergeLabelValueRows, maybeSubsplitFormBlock, maybeSubsplitTableRowCells };
 
 function unionBBox(a, b) {
   return [

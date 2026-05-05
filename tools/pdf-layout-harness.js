@@ -43,6 +43,12 @@ const RUN_TRANSLATE = process.argv.includes('--translate');
 const PARSE_TIMEOUT_MS = 60_000;
 const TRANSLATE_TIMEOUT_MS = 10 * 60_000;
 
+// 讀本機 ~/.shinkansen-test-key(`.gitignore` 不收;放使用者 home 下)。--translate
+// 時若檔案存在,自動 navigate options 注入 chrome.storage.local.apiKey,跳過手動填表
+const KEY_PATH = path.join(os.homedir(), '.shinkansen-test-key');
+const HAS_TEST_KEY = fs.existsSync(KEY_PATH);
+const TEST_KEY = HAS_TEST_KEY ? fs.readFileSync(KEY_PATH, 'utf8').trim() : '';
+
 if (!PDF_PATH) {
   console.error('錯誤:請設定 PDF_PATH 環境變數,例:');
   console.error('  PDF_PATH=/Users/you/sample.pdf node tools/pdf-layout-harness.js');
@@ -94,6 +100,23 @@ async function main() {
     }
   });
   page.on('pageerror', (err) => console.log('PAGE[error]>', err.message));
+
+  // --translate + 有 ~/.shinkansen-test-key:先 navigate 任一 extension page 把
+  // apiKey 注入 chrome.storage.local,翻譯時 background 才有 key
+  if (RUN_TRANSLATE && TEST_KEY) {
+    const optionsUrl = `chrome-extension://${extensionId}/options/options.html`;
+    console.log(`[harness] 注入 apiKey 到 chrome.storage.local…`);
+    await page.goto(optionsUrl, { waitUntil: 'domcontentloaded' });
+    await page.evaluate((apiKey) => new Promise((resolve, reject) => {
+      try {
+        chrome.storage.local.set({ apiKey }, () => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve();
+        });
+      } catch (err) { reject(err); }
+    }), TEST_KEY);
+    console.log(`[harness] apiKey 已注入(${TEST_KEY.length} chars)`);
+  }
 
   const url = `chrome-extension://${extensionId}/translate-doc/index.html`;
   console.log(`[harness] navigate ${url}`);
@@ -161,14 +184,63 @@ async function main() {
   // 但 fresh profile 跑不了。實際翻譯 e2e 驗請手動操作 popup → 翻譯文件,或設
   // SHINKANSEN_HEADED=1 在 launch chromium 後手動進 options 填 apiKey 再上傳。
   if (RUN_TRANSLATE) {
-    console.log('[harness] --translate 啟動翻譯(需要環境內已設 apiKey,否則會失敗)');
+    if (TEST_KEY) {
+      console.log('[harness] --translate 啟動翻譯(用 ~/.shinkansen-test-key)');
+    } else {
+      console.log('[harness] --translate 啟動翻譯(無 ~/.shinkansen-test-key,需環境內已設 apiKey)');
+    }
     await page.click('#translate-btn');
     try {
-      await page.waitForSelector('#stage-translated:not([hidden])', { timeout: TRANSLATE_TIMEOUT_MS });
+      await page.waitForSelector('#stage-reader:not([hidden])', { timeout: TRANSLATE_TIMEOUT_MS });
       const translatedDump = await page.evaluate(() => window.__skLayoutDoc || null);
       if (translatedDump) {
         fs.writeFileSync(DUMP_PATH, JSON.stringify(translatedDump, null, 2), 'utf-8');
         console.log(`[harness] 翻譯後 layout 已覆寫 dump (${(fs.statSync(DUMP_PATH).size / 1024).toFixed(1)} KB)`);
+      }
+      // 譯文每頁截圖,給 Claude 視覺驗收。直接抓 canvas 內部完整 raster(toDataURL),
+      // 不靠 viewport screenshot(會被 reader scroll 區裁切)
+      try {
+        await page.waitForSelector('.reader-page-translated canvas', { timeout: 30_000 });
+        // 等所有譯文頁的 reader-page 設好 dataset.baseHeight + canvas 尺寸 > 100x100
+        // (reader.js render 完成才寫 baseHeight),避免 PDF.js 還沒 render 完就抓 0x0 canvas
+        await page.waitForFunction(() => {
+          const ps = Array.from(document.querySelectorAll('.reader-page-translated'));
+          if (ps.length === 0) return false;
+          return ps.every((p) => {
+            const c = p.querySelector('canvas');
+            return c && c.width > 100 && c.height > 100 && p.dataset.baseHeight;
+          });
+        }, { timeout: 60_000 });
+        const both = await page.evaluate(() => {
+          const tr = Array.from(document.querySelectorAll('.reader-page-translated canvas')).map((c) => c.toDataURL('image/png'));
+          const og = Array.from(document.querySelectorAll('.reader-page-original canvas')).map((c) => c.toDataURL('image/png'));
+          return { tr, og };
+        });
+        for (let i = 0; i < both.tr.length; i++) {
+          const b64 = both.tr[i].replace(/^data:image\/png;base64,/, '');
+          const shotPath = path.join(OUT_DIR, `pdf-translated-page-${i}.png`);
+          fs.writeFileSync(shotPath, Buffer.from(b64, 'base64'));
+          console.log(`[harness] 譯文第 ${i + 1} 頁截圖 → ${path.relative(REPO_ROOT, shotPath)}`);
+        }
+        for (let i = 0; i < both.og.length; i++) {
+          const b64 = both.og[i].replace(/^data:image\/png;base64,/, '');
+          const shotPath = path.join(OUT_DIR, `pdf-original-page-${i}.png`);
+          fs.writeFileSync(shotPath, Buffer.from(b64, 'base64'));
+          console.log(`[harness] 原稿第 ${i + 1} 頁截圖 → ${path.relative(REPO_ROOT, shotPath)}`);
+        }
+      } catch (err) {
+        console.warn('[harness] 譯文截圖失敗(reader canvas 還沒 ready?):', err.message);
+      }
+      // 也用 reader「下載譯文 PDF」按鈕觸發下載,把 PDF bytes 寫到 .playwright-mcp
+      try {
+        const downloadPromise = page.waitForEvent('download', { timeout: 60_000 });
+        await page.click('#reader-download-pdf-btn');
+        const download = await downloadPromise;
+        const pdfPath = path.join(OUT_DIR, 'pdf-translated.pdf');
+        await download.saveAs(pdfPath);
+        console.log(`[harness] 譯文 PDF 下載到 ${path.relative(REPO_ROOT, pdfPath)}`);
+      } catch (err) {
+        console.warn('[harness] 譯文 PDF 下載失敗:', err.message);
       }
     } catch (err) {
       console.error('[harness] 翻譯流程超時 / 失敗:', err.message);

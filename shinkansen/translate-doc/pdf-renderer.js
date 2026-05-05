@@ -193,10 +193,19 @@ const UNDERLINE_THICKNESS_RATIO = 0.06;
 //
 // @returns {Array<{ url: string, rect: [number,number,number,number] }>}
 //          回傳譯文 link piece 對應的 PDF y-up rect,給 addLinkAnnotations 用
-function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, items) {
+export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, items) {
   const { rgb } = window.PDFLib;
   const pageH = layoutPage.viewport.height;
   const translatedLinkRects = [];
+
+  // 兩階段 render:先把所有 block 的 mask + fit 結果算完並一次畫白底,再 loop
+  // drawText。
+  // Why two-pass:單階段 loop(mask → drawText 交替)在「sub-block 緊貼」時會
+  // 出 bug——後一 block 的 mask(padding ≈ fontSize × 0.3)會蓋住前一 block 已畫
+  // 的字身底部。觸發場景:layout-analyzer narrow-multi-line split 切出的緊貼
+  // sub-block 群(聯絡資訊區、spec sheet diagram label 群)。本 fix 不限該場景,
+  // 任何相鄰 mask 重疊處都受惠
+  const prepared = [];
   for (const block of layoutPage.blocks) {
     if (!TRANSLATABLE_TYPES.has(block.type)) continue;
     if (!block.translation || block.translation.trim().length === 0) continue;
@@ -209,32 +218,70 @@ function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, items) {
       ? block.translationSegments
       : [{ text: block.translation, isBold: false, isItalic: false, linkUrl: null }];
 
-    // 1) fit-to-box:從 scale 1.0 起步,塞不下時依序試縮 + 擴 box,回傳最終 box +
-    //    字級 + 行(每行帶 pieces 陣列)
-    const { fontSize, lineHeight, lines, finalBox } = fitSegmentsToBox(
+    // fit-to-box:從 scale 1.0 起步,塞不下時依序試縮 + 擴 box,回傳最終 box +
+    // 字級 + 行(每行帶 pieces 陣列)
+    const fit = fitSegmentsToBox(
       segs, fontRegular, fontBold, block.fontSize, block, layoutPage,
     );
+    prepared.push({ block, fit });
+  }
 
-    // 2) 蓋白底 — mask box 取 finalBox 跟「該 block 在 PDF 實際 text item bbox
-    //    union」的聯集,padding 用字級 30%(link underline / hanging 標點 / ascent
-    //    略超出 line bbox 等情況)
-    const padding = Math.max(2, (block.fontSize || 12) * 0.3);
-    const maskBox = expandBoxToCoverItems(finalBox, block, items);
-    const { x0: mx0, y0: my0, x1: mx1, y1: my1 } = maskBox;
-    const pdfMaskBottom = pageH - my1;
-    page.drawRectangle({
-      x: mx0 - padding,
-      y: pdfMaskBottom - padding,
-      width: (mx1 - mx0) + padding * 2,
-      height: (my1 - my0) + padding * 2,
-      color: rgb(1, 1, 1),
-      borderWidth: 0,
-    });
+  // Pass 1: 把所有 block 的 mask 一次畫完。
+  // mask box = expandBoxToCoverItems(finalBox, block, items)(clamp 到 block.bbox)
+  // + 底部 padding (descender)。
+  // padBottom 涵蓋原文字身 descender 殘影(PDF.js textRun bbox 不一定完整包到字身底)。
+  // 對非 cell-block 用 fontSize × 0.3(原行為);對 cell-block 限制較小,因為 cell.y1
+  // 跟下方 row 邊線距離通常 3-4pt。
+  // cell-block buffer:cell-split sub-block 的 block.bbox 邊界跟原 PDF 表格邊線
+  // 重合(cell.x0 = 垂直邊線 x、cell.y0 = 水平邊線 y),mask 從 cell.bbox 邊開始
+  // 會蓋邊線。對 cell-block 上左右各收 0.5pt buffer 留邊線(中文沒突出 ascender 寬,
+  // 0.5pt 不會留明顯殘影)
+  for (const { block, fit } of prepared) {
+    const isCellBlock = block._isCellBlock === true;
+    if (isCellBlock) {
+      // cell-block:mask = cell.bbox 各邊內縮 1pt 留 PDF 表格邊線 buffer。
+      // cell.bbox 邊界通常跟原 PDF 表格邊線位置重合(cell.x0 = 垂直邊線 x、
+      // cell.y0 = 水平邊線 y),邊線粗度可能 0.5-1pt,需要 1pt buffer 完全避開。
+      // 不擴 padBottom:cell 緊鄰 row 邊線,擴下方一定蓋邊線。
+      // 殘影 trade-off:cell 字身底 descender 可能殘留 1-2pt,但中文無 descender、
+      // 表格 cell 內容多為短英數字,殘影風險低
+      const [bx0, by0, bx1, by1] = block.bbox;
+      const buf = 1;
+      const pdfMaskBottom = pageH - (by1 - buf);
+      page.drawRectangle({
+        x: bx0 + buf,
+        y: pdfMaskBottom,
+        width: (bx1 - bx0) - buf * 2,
+        height: (by1 - by0) - buf * 2,
+        color: rgb(1, 1, 1),
+        borderWidth: 0,
+      });
+    } else {
+      // non-cell-block:mask = expandBoxToCoverItems(...,clamp 到 block.bbox)+
+      // padBottom = fontSize × 0.3(蓋 link underline / 標點 / ascent 殘影)。
+      // 非 cell-block 通常不在表格內,padBottom 不會蓋表格邊線
+      const maskBox = expandBoxToCoverItems(fit.finalBox, block, items);
+      const padBottom = Math.max(2, (block.fontSize || 12) * 0.3);
+      const { x0: mx0, y0: my0, x1: mx1, y1: my1 } = maskBox;
+      const pdfMaskBottom = pageH - (my1 + padBottom);
+      page.drawRectangle({
+        x: mx0,
+        y: pdfMaskBottom,
+        width: mx1 - mx0,
+        height: (my1 - my0) + padBottom,
+        color: rgb(1, 1, 1),
+        borderWidth: 0,
+      });
+    }
+  }
+
+  // Pass 2: 把所有 block 的譯文 drawText
+  for (const { block, fit } of prepared) {
+    const { fontSize, lineHeight, lines, finalBox } = fit;
     const { x0, y0, y1 } = finalBox;
     const pdfTop = pageH - y0;
     const pdfBottom = pageH - y1;
 
-    // 3) drawText piece-by-piece
     let cy = pdfTop - fontSize; // baseline 起點(PDF y-up)
     for (const line of lines) {
       if (cy < pdfBottom - lineHeight) break;
@@ -299,6 +346,14 @@ const MIN_SCALE = 0.5;
 const PHASE_A_SCALES = [1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7];
 const PHASE_D_SCALES = [0.65, 0.55, 0.5];
 const FIRST_LINE_VISUAL_RATIO = 1.21;
+// 1-line block 的 requiredH 放寬:容許 descender 略超 box(ratio 1.0 而非 1.21)。
+// Why:heading 類短 block 的原 PDF bbox 高度往往只 = fontSize × 1.0(英文 ascent +
+// descent 加總略 < 1.0 塞得下);中文 Noto Sans TC ascent 0.88 + descent 0.21 = 1.09
+// 略 > 1.0,用 1.21 標準會讓 1-line heading 永遠塞不下,phase B 擴下又被緊鄰下方
+// block 擋住 → 走 phase A scale 縮字 → heading 比內文小。
+// 安全性:two-pass mask render 保證所有 mask 先畫完才 drawText,descender 略超 box
+// 不會被下個 block mask 蓋掉;且原文字身也是同樣 ratio,視覺對等
+const SINGLE_LINE_VISUAL_RATIO = 1.0;
 
 // W7:segment-aware 版本。input 接 styleSegments + 兩種 font(regular/bold),
 // 內部用 wrapSegmentsToWidth 取代 wrapTextToWidth。回傳 lines 結構也變
@@ -319,33 +374,65 @@ function fitSegmentsToBox(segments, fontRegular, fontBold, originalFontSize, cur
     const blockH = b.y1 - b.y0;
     if (blockW <= 0 || blockH <= 0) return null;
     const lines = wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, blockW);
-    const requiredH = fontSize * FIRST_LINE_VISUAL_RATIO + (lines.length - 1) * lineHeight;
+    const visualRatio = lines.length === 1 ? SINGLE_LINE_VISUAL_RATIO : FIRST_LINE_VISUAL_RATIO;
+    const requiredH = fontSize * visualRatio + (lines.length - 1) * lineHeight;
     if (requiredH <= blockH + 1) return { fontSize, lineHeight, lines, finalBox: b };
     return null;
   }
 
-  // Phase A: 原 box,scale 1.0 → 0.7
+  // cell-split sub-block 不該擴 box(會推到相鄰 cell 邊界,蓋掉表格垂直邊線)。
+  // 改成只走 scale 縮字路徑(phase A + D),跳過 phase 0 / B / C 擴 box variant。
+  const isCellBlock = currentBlock._isCellBlock === true;
+
+  // 先算所有可用的 box variant(擴右 / 擴下 / 擴雙),供 Phase 0 / B / C 共用
+  const expandedRight = isCellBlock ? -Infinity : getMaxRightX(currentBlock, layoutPage);
+  const expandedBottom = isCellBlock ? -Infinity : getMaxBottomY(currentBlock, layoutPage);
+  const canExpandRight = expandedRight > box.x1 + 0.5;
+  const canExpandDown = expandedBottom > box.y1 + 0.5;
+  const variants = [box];
+  if (canExpandRight) variants.push({ ...box, x1: expandedRight });
+  if (canExpandDown) variants.push({ ...box, y1: expandedBottom });
+  if (canExpandRight && canExpandDown) {
+    variants.push({ x0: box.x0, y0: box.y0, x1: expandedRight, y1: expandedBottom });
+  }
+
+  // Phase 0:scale 1.0 優先試所有 box variant — 「擴 box」比「縮字」優先
+  // Why:之前 phase A 從 scale 1.0 試到 0.7 後才走 phase B/C 擴 box,但 1-line
+  // heading 在中文 wrap 後若 scale 0.95 已 fit 就直接接受,fontSize 縮 5-10% →
+  // heading 比內文小(About Plano 9pt 內文 9pt,但譯文「關於普萊諾市」變 8.1pt)。
+  // 改成 scale 1.0 先全試擴 box variant,fontSize 100% 沒副作用優先
+  for (const v of variants) {
+    const r = tryFit(v, 1.0);
+    if (r) {
+      // 接受擴後 box 給之後 phase 用(fallback 路徑會用)
+      if (v !== box) box = v;
+      return r;
+    }
+  }
+
+  // Phase A: 原 box,scale 0.95 → 0.7(scale 1.0 已在 Phase 0 試過)
   for (const scale of PHASE_A_SCALES) {
+    if (scale === 1.0) continue;
     const r = tryFit(box, scale);
     if (r) return r;
   }
 
-  // Phase B: 擴 box 往下
-  const expandedBottom = getMaxBottomY(currentBlock, layoutPage);
-  if (expandedBottom > box.y1 + 0.5) {
+  // Phase B: 擴 box 往下,scale 0.95 → 0.7
+  if (canExpandDown) {
     const expanded = { ...box, y1: expandedBottom };
     for (const scale of PHASE_A_SCALES) {
+      if (scale === 1.0) continue;
       const r = tryFit(expanded, scale);
       if (r) return r;
     }
     box = expanded;
   }
 
-  // Phase C: 擴 box 往右
-  const expandedRight = getMaxRightX(currentBlock, layoutPage);
-  if (expandedRight > box.x1 + 0.5) {
+  // Phase C: 擴 box 往右,scale 0.95 → 0.7
+  if (canExpandRight) {
     const expanded = { ...box, x1: expandedRight };
     for (const scale of PHASE_A_SCALES) {
+      if (scale === 1.0) continue;
       const r = tryFit(expanded, scale);
       if (r) return r;
     }
@@ -420,12 +507,15 @@ function expandBoxToCoverItems(finalBox, block, items) {
   let { x0, y0, x1, y1 } = finalBox;
   for (const it of items) {
     const [ix0, iy0, ix1, iy1] = it.bbox;
-    // 任意 bbox 交集即算屬於本 block
     if (ix1 < bx0 || ix0 > bx1 || iy1 < by0 || iy0 > by1) continue;
-    if (ix0 < x0) x0 = ix0;
-    if (iy0 < y0) y0 = iy0;
-    if (ix1 > x1) x1 = ix1;
-    if (iy1 > y1) y1 = iy1;
+    // 擴 mask 到 item bbox,但 clamp 到 block.bbox 內(避免跨 cell 蓋邊線)。
+    // 對 cell-split sub-block,block.bbox 已是 cell-sized,clamp 確保 mask 不擴
+    // 到相鄰 cell。對非 cell-split block,block.bbox 大致等於 textRun union,
+    // clamp 是 no-op
+    if (Math.max(ix0, bx0) < x0) x0 = Math.max(ix0, bx0);
+    if (Math.max(iy0, by0) < y0) y0 = Math.max(iy0, by0);
+    if (Math.min(ix1, bx1) > x1) x1 = Math.min(ix1, bx1);
+    if (Math.min(iy1, by1) > y1) y1 = Math.min(iy1, by1);
   }
   return { x0, y0, x1, y1 };
 }
