@@ -169,7 +169,12 @@ if (window.__shinkansen_loaded) {
   SK.SEMANTIC_CONTAINER_EXCLUDE_TAGS = new Set(['FOOTER']);
 
   // ARIA role 排除
-  SK.EXCLUDE_ROLES = new Set(['banner', 'contentinfo', 'search', 'grid']);
+  // 'tree' / 'treeitem' 是 W3C ARIA 階層 widget 語意(file tree / 分類選擇器 /
+  // taxonomy navigator)。本質載的是識別字 listing,不是 prose——典型場景:
+  // GitHub 新版 Files sidebar、IDE 檔案瀏覽器、cloud storage UI。誤翻會把檔名
+  // 翻成中文+ 連帶 SVG icon 因 innerHTML clean-slate 一併消失。結構性通則,
+  // 不依賴站點 class。
+  SK.EXCLUDE_ROLES = new Set(['banner', 'contentinfo', 'search', 'grid', 'tree', 'treeitem']);
 
   // 豁免 isInteractiveWidgetContainer 檢查的標籤
   SK.WIDGET_CHECK_EXEMPT_TAGS = new Set([
@@ -353,6 +358,11 @@ if (window.__shinkansen_loaded) {
     const all = el.getElementsByTagName('*');
     for (let i = 0; i < all.length; i++) {
       const n = all[i];
+      // Inline <code>(非 PRE 內)算需要保留——CODE 在 HARD_EXCLUDE_TAGS 是給 walker
+      // 擋整個 code 區塊用,但段落內 inline <code> 必須當 atomic slot 保留(否則
+      // serializer 後面會跳過整顆,grey background 一併消失)。必須先於 HARD_EXCLUDE。
+      if (n.tagName === 'CODE'
+          && !(n.parentElement && n.parentElement.tagName === 'PRE')) return true;
       if (SK.HARD_EXCLUDE_TAGS.has(n.tagName)) continue;
       if (SK.isAtomicPreserve(n)) return true;
       if (SK.isPreservableInline(n)) return true;

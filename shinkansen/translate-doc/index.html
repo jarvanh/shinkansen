@@ -17,9 +17,9 @@
   <main id="app-main">
     <!-- 階段 1：上傳 -->
     <section id="stage-upload" class="stage">
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="拖放或選取 PDF 檔案">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="拖放或選取文件">
         <div class="dropzone-icon">📄</div>
-        <div class="dropzone-title">拖放 PDF 至此</div>
+        <div class="dropzone-title">拖放文件至此</div>
         <div class="dropzone-hint">或點擊選取檔案</div>
         <input type="file" id="file-input" accept="application/pdf,.pdf" hidden>
       </div>
@@ -32,8 +32,8 @@
       </div>
 
       <div class="privacy-note">
-        <div class="privacy-note-title">PDF 檔案不離開你的瀏覽器</div>
-        <div class="privacy-note-detail">整份 PDF 全程在本機解析，不會上傳任何雲端、伺服器或第三方服務。只有擷取出來的純文字會送往你自己設定的 Gemini API 進行翻譯</div>
+        <div class="privacy-note-title">文件不離開你的瀏覽器</div>
+        <div class="privacy-note-detail">整份文件全程在本機解析，不會上傳任何雲端、伺服器或第三方服務。只有擷取出來的純文字會送往你自己設定的 Gemini API 進行翻譯</div>
       </div>
 
       <div id="upload-error" class="error-banner" hidden></div>
@@ -44,7 +44,7 @@
       <div class="parsing-status">
         <div class="spinner-ring" aria-hidden="true"></div>
         <div class="parsing-text">
-          <div id="parsing-title" class="parsing-title">解析 PDF 中</div>
+          <div id="parsing-title" class="parsing-title">解析文件中</div>
           <div id="parsing-detail" class="parsing-detail">讀取檔案結構…</div>
         </div>
       </div>
@@ -96,7 +96,7 @@
         <div class="settings-label">本篇翻譯記憶</div>
         <button id="settings-clear-doc-cache-btn" class="secondary-btn" type="button">清除本篇翻譯記憶</button>
         <span id="settings-clear-doc-cache-status" class="settings-hint" style="margin-left:8px"></span>
-        <p class="settings-hint">只清掉這份 PDF 的翻譯記憶（其他 PDF / 網頁 / 字幕不影響）。清除後下次翻這份會重新呼叫 AI 翻譯。適合「覺得譯文有錯想重來」「想換個翻譯指令重試」的情境</p>
+        <p class="settings-hint">只清掉這份文件的翻譯記憶（其他文件 / 網頁 / 字幕不影響）。清除後下次翻這份會重新呼叫 AI 翻譯。適合「覺得譯文有錯想重來」「想換個翻譯指令重試」的情境</p>
       </div>
       <!-- W7：深設定（翻譯指令 / 預設選項 / 清除所有文件翻譯記憶）在獨立 page，不擠進 modal -->
       <div class="settings-section">
@@ -147,7 +147,7 @@
         <button id="reader-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
         <button id="reader-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
         <span class="reader-toolbar-spacer"></span>
-        <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照 PDF（每張原頁後接一張譯文頁）">下載譯文 PDF</button>
+        <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照譯文（每張原頁後接一張譯文頁）">下載譯文</button>
       </div>
       <div class="reader-grid">
         <div class="reader-col reader-col-original" id="reader-col-original"></div>

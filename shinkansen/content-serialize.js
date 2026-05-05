@@ -66,6 +66,18 @@
         if (child.nodeType === Node.TEXT_NODE) {
           out += child.nodeValue;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
+          // Inline <code> 在 HARD_EXCLUDE_TAGS 是給 walker 擋整個 code 區塊用的,
+          // 但段落內 inline <code> 走到 serialize 已是另一條路徑,必須當 atomic
+          // slot 保留(否則 GitHub PR description / 技術文章內的 <code>identifier</code>
+          // 會被丟掉,grey background 樣式跟著消失)。必須先於 HARD_EXCLUDE 檢查。
+          // PRE+code 仍然 continue(那是 code 區塊,跟 inline 不同)。
+          if (child.tagName === 'CODE'
+              && !(child.parentElement && child.parentElement.tagName === 'PRE')) {
+            const idx = slots.length;
+            slots.push({ atomic: true, node: child.cloneNode(true) });
+            out += '【*' + idx + '】';
+            continue;
+          }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
           if (child.tagName === 'BR') { out += '\u0001'; continue; }
           // Atomic 元素（footnote sup 等）→ 單一標記，不翻內容
@@ -146,6 +158,18 @@
         if (child.nodeType === Node.TEXT_NODE) {
           out += child.nodeValue;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
+          // Inline <code> 在 HARD_EXCLUDE_TAGS 是給 walker 擋整個 code 區塊用的,
+          // 但段落內 inline <code> 走到 serialize 已是另一條路徑,必須當 atomic
+          // slot 保留(否則 GitHub PR description / 技術文章內的 <code>identifier</code>
+          // 會被丟掉,grey background 樣式跟著消失)。必須先於 HARD_EXCLUDE 檢查。
+          // PRE+code 仍然 continue(那是 code 區塊,跟 inline 不同)。
+          if (child.tagName === 'CODE'
+              && !(child.parentElement && child.parentElement.tagName === 'PRE')) {
+            const idx = slots.length;
+            slots.push({ atomic: true, node: child.cloneNode(true) });
+            out += PH_OPEN + '*' + idx + PH_CLOSE;
+            continue;
+          }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
           if (child.tagName === 'PRE' && child.querySelector('code')) continue;
           if (child.tagName === 'BR') {

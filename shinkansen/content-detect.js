@@ -72,6 +72,28 @@
     return false;
   }
 
+  // 結構性 code 容器偵測:祖先 computed font-family 含等寬字眼且 white-space 為
+  // pre 系列。這是所有 code rendering 共通的物理特徵(GitHub 新版 React 檔案瀏覽
+  // 器 / GitLab / Bitbucket / VSCode Web / CodeMirror / Monaco / Prism / highlight.js
+  // 都通用),不依賴任何站點 class / id,符合硬規則 §6 / §8。
+  // 兩條都成立才 reject——只 monospace 沒 pre 可能是 inline `<code>` 風格的小品味,
+  // 一般文章正文不會兩條同時成立。
+  const _MONOSPACE_FONT_RE = /(?:^|[\s,'"])(monospace|Menlo|Consolas|Monaco|Courier|Fira(?:\s+Code|\s+Mono)?|Source\s+Code|JetBrains|Cascadia|Roboto\s+Mono|SFMono|SF\s+Mono|ui-monospace)(?:[\s,'"]|$)/i;
+  function isCodeContainer(el) {
+    if (!el || el.nodeType !== 1) return false;
+    // <pre> 有專屬規則(pre+code→skip,pre 單獨→當文字段落,例如 Medium 留言),
+    // 不能被結構性 monospace 規則覆蓋。<pre> 的 UA 預設 white-space:pre + monospace
+    // 字型剛好命中下面條件,但其語意應由 acceptNode 內 PRE+code 路徑(content-detect.js
+    // 第 ~265 行)決定,不在此處判斷。
+    if (el.tagName === 'PRE') return false;
+    const cs = window.getComputedStyle(el);
+    if (!cs) return false;
+    const ws = cs.whiteSpace || '';
+    if (ws !== 'pre' && ws !== 'pre-wrap' && ws !== 'break-spaces') return false;
+    const ff = cs.fontFamily || '';
+    return _MONOSPACE_FONT_RE.test(ff);
+  }
+
   // v1.6.9: 加入 memo 參數做 per-call cache。原版每次從 el 走到 body
   // 是 O(depth)，在 walker acceptNode + 三條 querySelectorAll 補抓路徑被
   // 重複呼叫,實測同一個祖先鏈會被走過數百次。Map<el, bool> 把每個祖先
@@ -101,6 +123,10 @@
       // 但 leaf content div/span / anchor / grid td 三條補抓路徑用
       // querySelectorAll 繞過 TreeWalker,必須在這裡再擋一次。
       if (tag === 'SHINKANSEN-TRANSLATION') { result = true; break; }
+      // 結構性 code 容器排除(monospace + white-space:pre 系)。詳見 isCodeContainer
+      // 註解。放在 SEMANTIC / SHINKANSEN 之後是因為較貴(getComputedStyle),先讓
+      // 便宜的 tag-based 比對短路。
+      if (isCodeContainer(cur)) { result = true; break; }
       const role = cur.getAttribute && cur.getAttribute('role');
       if (role && SK.EXCLUDE_ROLES.has(role)) { result = true; break; }
       if (tag === 'HEADER' && role === 'banner') { result = true; break; }

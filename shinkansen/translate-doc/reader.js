@@ -49,7 +49,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
   translatedCol.innerHTML = '';
 
   if (!doc || !originalPdfDoc || !originalArrayBuffer) {
-    originalCol.innerHTML = '<div class="reader-empty">尚未上傳 PDF</div>';
+    originalCol.innerHTML = '<div class="reader-empty">尚未上傳文件</div>';
     translatedCol.innerHTML = '<div class="reader-empty">尚未翻譯</div>';
     return null;
   }

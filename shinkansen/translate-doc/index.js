@@ -125,7 +125,7 @@ async function handleFile(file) {
           setParsingDetail('讀取檔案內容…');
           break;
         case 'opening':
-          setParsingDetail('開啟 PDF 文件…');
+          setParsingDetail('開啟文件…');
           break;
         case 'page':
           setParsingDetail(`抽取第 ${progress.current} / ${progress.total} 頁的文字…`);
@@ -1201,7 +1201,7 @@ function bindSettingsDialogUI() {
     const status = $('settings-clear-doc-cache-status');
     if (btn.disabled) return;
     if (!currentDoc) {
-      status.textContent = '尚未載入 PDF';
+      status.textContent = '尚未載入文件';
       setTimeout(() => { status.textContent = ''; }, 3000);
       return;
     }
@@ -1383,7 +1383,7 @@ function bindReaderUI() {
           prebuiltBytes: cachedBytes,
         });
       } else {
-        btn.textContent = '產生 PDF 中…';
+        btn.textContent = '產生譯文中…';
         result = await downloadBilingualPdf(currentOriginalArrayBuffer, currentDoc, {
           onProgress: (p) => {
             if (p.stage === 'page') {

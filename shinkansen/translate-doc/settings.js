@@ -88,7 +88,7 @@ $('td-reset-prompt').addEventListener('click', () => {
 });
 
 $('td-clear-all-cache-btn').addEventListener('click', async () => {
-  if (!confirm('確定要清掉所有文件翻譯記憶嗎？\n\n清除後,之前翻過的 PDF 下次再翻會重新呼叫 AI（也會重新計費）。\n\n網頁翻譯、字幕翻譯不受影響。')) return;
+  if (!confirm('確定要清掉所有文件翻譯記憶嗎？\n\n清除後,之前翻過的文件下次再翻會重新呼叫 AI（也會重新計費）。\n\n網頁翻譯、字幕翻譯不受影響。')) return;
   const status = $('td-clear-cache-status');
   try {
     const cleared = await cache.clearDocTranslationCache();
