@@ -100,6 +100,12 @@
         </label>
         <p class="settings-hint">翻譯前先掃整份 PDF 由 LLM 萃取專有名詞 / 人名對照表,再套到所有 batch。長文(尤其人名眾多)各段譯名一致。會多一次 LLM 呼叫(~ 1-3 秒、~ $0.001)</p>
       </div>
+      <div class="settings-section">
+        <div class="settings-label">本篇翻譯快取</div>
+        <button id="settings-clear-doc-cache-btn" class="secondary-btn" type="button">清除本篇翻譯快取</button>
+        <span id="settings-clear-doc-cache-status" class="settings-hint" style="margin-left:8px"></span>
+        <p class="settings-hint">只清除目前這份 PDF 各段落對應的譯文快取(不動其他 PDF / 網頁 / 字幕快取)。清除後下次翻譯這份 PDF 將重新呼叫 LLM。適合「想換 model 之外條件重翻、看到譯文有錯想重翻」的場景</p>
+      </div>
       <div class="result-actions">
         <button id="translate-settings-save-btn" class="primary-btn" type="button">儲存</button>
         <button id="translate-settings-cancel-btn" class="secondary-btn" type="button">取消</button>

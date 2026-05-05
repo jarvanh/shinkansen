@@ -23,12 +23,16 @@ Shinkansen 整合下列第三方軟體與字型，本檔列出來源、授權與
 - **授權**:MIT License
 - **授權檔**:`shinkansen/lib/vendor/pdf-lib/LICENSE-pdf-lib.md`
 
-### fontkit (@pdf-lib/fontkit)
+### fontkit (pdf-fontkit)
 
 - **用途**:pdf-lib 透過 fontkit 解析 OpenType 字型 + 做字型 subset(只 embed
-  譯文實際用到的字)
-- **檔案**:`shinkansen/lib/vendor/pdf-lib/fontkit.umd.min.js`
-- **來源**:Devon Govett 原作 / Hopding fork(npm @pdf-lib/fontkit)
+  譯文實際用到的字,典型 7MB CJK 字型 subset 後降到 100-300KB)
+- **檔案**:`shinkansen/lib/vendor/pdf-lib/fontkit.umd.min.js`(npm `pdf-fontkit`
+  1.8.9,Devon Govett 原作 fontkit / Hopding fork @pdf-lib/fontkit / znacloud
+  進一步 fork 修 CJK subset bug。@pdf-lib/fontkit 1.1.x 對 CJK TTF subset 後
+  glyph advance 寫錯,Chrome / PDF.js render 會字符散落破碎,實測在 Plano
+  / Trimble 等所有測試 PDF 都炸,換 pdf-fontkit 後完整 fix)
+- **來源**:znacloud(github.com/znacloud/fontkit)
 - **授權**:MIT License
 - **授權檔**:`shinkansen/lib/vendor/pdf-lib/LICENSE-fontkit`
 

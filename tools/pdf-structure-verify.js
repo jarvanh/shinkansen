@@ -163,39 +163,23 @@ async function main() {
       result.injected = inject;
       console.log(`  injected ${inject.translatableCount} translatable blocks`);
 
-      // 4) 生成 PDF + 重 parse 驗證
-      const verifyResult = await page.evaluate(
+      // 4) 加強版核對:bold preservation + link preservation + overflow
+      const enhanced = await page.evaluate(
         () => Promise.race([
-          window.__skVerify.generateAndVerifyPdf(),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('verify-timeout-page')), 230_000)),
+          window.__skVerify.runEnhancedVerify(),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('enhanced-verify-timeout')), 230_000)),
         ]),
       ).catch((err) => ({ ok: false, error: (err && err.message) || String(err) }));
 
-      result.pdf = verifyResult;
-      if (!verifyResult.ok) {
-        console.log(`  [pdf-fail] ${verifyResult.error}`);
+      result.enhanced = enhanced;
+      if (!enhanced.ok) {
+        console.log(`  [enhanced-fail] ${enhanced.error}`);
       } else {
-        const r = verifyResult.reparsed;
-        if (r) {
-          const totalReparsedRuns = r.pages.reduce((s, p) => s + p.runCount, 0);
-          console.log(`  pdf=${(verifyResult.byteLength / 1024).toFixed(0)}KB elapsed=${verifyResult.elapsedMs}ms reparse: pages=${r.numPages} runs=${totalReparsedRuns}`);
-          // 頁數核對
-          if (r.numPages !== docMeta.pageCount) {
-            result.pdfPageMismatch = `expected ${docMeta.pageCount}, got ${r.numPages}`;
-            console.log(`    [WARN] page count mismatch: expected ${docMeta.pageCount}, got ${r.numPages}`);
-          }
-          // 每頁不該完全沒文字(原 PDF 該頁如果有文字,生成 PDF 也該有)
-          const emptyPages = [];
-          for (const reparsedPage of r.pages) {
-            if (reparsedPage.runCount === 0) emptyPages.push(reparsedPage.pageIndex);
-          }
-          if (emptyPages.length > 0) {
-            result.pdfEmptyPages = emptyPages;
-            console.log(`    [INFO] reparsed pages with 0 runs: ${emptyPages.join(',')}`);
-          }
-        } else {
-          console.log(`  [pdf-reparse-fail] ${verifyResult.reparseError}`);
-        }
+        console.log(`  pdf=${(enhanced.generatedByteLength / 1024).toFixed(0)}KB`);
+        console.log(`  bold: ${enhanced.bold.preservedCount}/${enhanced.bold.totalBoldBlocks} preserved (${enhanced.bold.lostCount} lost)`);
+        console.log(`  links: ${enhanced.links.preservedCount}/${enhanced.links.totalLinks} preserved (${enhanced.links.lostCount} lost)`);
+        console.log(`  overflow risk: ${enhanced.overflow.riskCount}/${enhanced.overflow.totalChecked} blocks (en=${enhanced.overflow.englishOverflowCount} cjk=${enhanced.overflow.cjkOverflowCount} tight=${enhanced.overflow.tightHeightCount})`);
+        console.log(`  actual overflow: ${enhanced.overflow.actualOverflowCount}/${enhanced.overflow.totalChecked} blocks render past bbox`);
       }
 
       // 5) 蒐集 console errors(過濾掉 favicon 噪音)
@@ -224,13 +208,15 @@ async function main() {
   console.log(`\n[report] ${path.relative(REPO_ROOT, REPORT_PATH)}`);
   console.log(`[raw]    ${path.relative(REPO_ROOT, RAW_PATH)}`);
 
-  // exit code:有任何 structure issue 或 pdf-fail / pdf-page-mismatch 就 1
+  // exit code:任何 structure issue / enhanced fail / bold-lost / link-lost / overflow > 0 → 1
   let bad = 0;
   for (const r of results) {
     if (r.status !== 'ok') bad++;
     else if (r.structure?.issueCount > 0) bad++;
-    else if (r.pdf && !r.pdf.ok) bad++;
-    else if (r.pdfPageMismatch) bad++;
+    else if (r.enhanced && !r.enhanced.ok) bad++;
+    else if (r.enhanced?.bold?.lostCount > 0) bad++;
+    else if (r.enhanced?.links?.lostCount > 0) bad++;
+    else if (r.enhanced?.overflow?.actualOverflowCount > 0) bad++;
   }
   if (bad > 0) {
     console.log(`\n${bad} / ${results.length} PDF(s) have issues. See report.`);
@@ -272,25 +258,20 @@ function buildReport(results) {
   // Summary table
   lines.push('## Summary');
   lines.push('');
-  lines.push('| File | Status | Pages | Blocks | Inject | Issues | PDF | Reparse |');
-  lines.push('|------|--------|-------|--------|--------|--------|-----|---------|');
+  lines.push('| File | Status | Pages | Blocks | Issues | PDF | Bold lost | Links lost | Overflow |');
+  lines.push('|------|--------|-------|--------|--------|-----|-----------|------------|----------|');
   for (const r of results) {
     const status = r.status;
     const pages = r.doc?.pageCount ?? '-';
     const blocks = r.doc?.totalBlocks ?? '-';
-    const inject = r.injected?.translatableCount ?? '-';
     const issues = r.structure?.issueCount ?? '-';
-    const pdf = r.pdf?.ok ? `${(r.pdf.byteLength / 1024).toFixed(0)}KB` : (r.pdf?.error ? `FAIL: ${r.pdf.error.slice(0, 30)}` : '-');
-    let reparse = '-';
-    if (r.pdf?.reparsed) {
-      const runs = r.pdf.reparsed.pages.reduce((s, p) => s + p.runCount, 0);
-      reparse = `${r.pdf.reparsed.numPages}p / ${runs}r`;
-      if (r.pdfPageMismatch) reparse += ` MISMATCH`;
-    } else if (r.pdf?.reparseError) {
-      reparse = `FAIL: ${r.pdf.reparseError.slice(0, 20)}`;
-    }
-    const fname = r.filename.length > 50 ? r.filename.slice(0, 47) + '...' : r.filename;
-    lines.push(`| ${fname.replace(/\|/g, '\\|')} | ${status} | ${pages} | ${blocks} | ${inject} | ${issues} | ${pdf} | ${reparse} |`);
+    const e = r.enhanced;
+    const pdf = e?.ok ? `${(e.generatedByteLength / 1024).toFixed(0)}KB` : (e?.error ? `FAIL: ${e.error.slice(0, 30)}` : '-');
+    const boldLost = e?.bold ? `${e.bold.lostCount}/${e.bold.totalBoldBlocks}` : '-';
+    const linksLost = e?.links ? `${e.links.lostCount}/${e.links.totalLinks}` : '-';
+    const overflow = e?.overflow ? `${e.overflow.riskCount}/${e.overflow.totalChecked} (act=${e.overflow.actualOverflowCount})` : '-';
+    const fname = r.filename.length > 45 ? r.filename.slice(0, 42) + '...' : r.filename;
+    lines.push(`| ${fname.replace(/\|/g, '\\|')} | ${status} | ${pages} | ${blocks} | ${issues} | ${pdf} | ${boldLost} | ${linksLost} | ${overflow} |`);
   }
   lines.push('');
 
@@ -330,19 +311,48 @@ function buildReport(results) {
     } else if (r.structure) {
       lines.push(`- structure: clean`);
     }
-    if (r.pdf) {
-      if (r.pdf.ok) {
-        lines.push(`- pdf: ${(r.pdf.byteLength / 1024).toFixed(0)}KB, elapsed ${r.pdf.elapsedMs}ms`);
-        if (r.pdf.reparsed) {
-          const totalRuns = r.pdf.reparsed.pages.reduce((s, p) => s + p.runCount, 0);
-          lines.push(`- reparsed: ${r.pdf.reparsed.numPages} pages, ${totalRuns} text runs total`);
-          if (r.pdfPageMismatch) lines.push(`  - **PAGE COUNT MISMATCH**: ${r.pdfPageMismatch}`);
-          if (r.pdfEmptyPages) lines.push(`  - empty pages (0 runs): ${r.pdfEmptyPages.join(', ')}`);
-        } else if (r.pdf.reparseError) {
-          lines.push(`- reparse FAILED: ${r.pdf.reparseError}`);
-        }
+    if (r.enhanced) {
+      const e = r.enhanced;
+      if (!e.ok) {
+        lines.push(`- enhanced verify FAILED: ${e.error}`);
       } else {
-        lines.push(`- pdf FAILED: ${r.pdf.error}`);
+        lines.push(`- pdf: ${(e.generatedByteLength / 1024).toFixed(0)}KB, ${e.totalBlocks} blocks analysed`);
+        // Bold
+        lines.push(`- bold preservation: ${e.bold.preservedCount} / ${e.bold.totalBoldBlocks} preserved (${e.bold.lostCount} lost)`);
+        if (e.bold.lostCount > 0) {
+          for (const b of e.bold.lostBlocks.slice(0, 8)) {
+            lines.push(`    - p${b.pageIndex} ${b.blockId} ${b.type} fs=${b.fontSize} origBoldRatio=${b.originalBoldRatio} overlayBoldRatio=${b.overlayBoldRatio} (overlayChars=${b.overlayChars}): "${b.plainTextPreview.replace(/[\r\n]/g, ' ')}"`);
+          }
+          if (e.bold.lostCount > 8) lines.push(`    ...${e.bold.lostCount - 8} more`);
+        }
+        // Links
+        lines.push(`- link preservation: ${e.links.preservedCount} / ${e.links.totalLinks} preserved (${e.links.lostCount} lost)`);
+        if (e.links.lostCount > 0) {
+          for (const L of e.links.lostLinks.slice(0, 8)) {
+            lines.push(`    - p${L.pageIndex} url=${L.url || '(dest)'} rect=[${L.rect.map((n) => n.toFixed(1)).join(',')}]`);
+          }
+          if (e.links.lostCount > 8) lines.push(`    ...${e.links.lostCount - 8} more`);
+        }
+        // Overflow risk(靜態:若 pdf-renderer 不縮字會炸的 block)
+        lines.push(`- overflow risk(static): ${e.overflow.riskCount} / ${e.overflow.totalChecked} blocks (en=${e.overflow.englishOverflowCount} cjk=${e.overflow.cjkOverflowCount} tight=${e.overflow.tightHeightCount})`);
+        if (e.overflow.riskCount > 0) {
+          for (const o of e.overflow.worstRisk.slice(0, 5)) {
+            const tags = [];
+            if (o.englishOverflow > 1) tags.push(`en+${o.englishOverflow}`);
+            if (o.cjkOverflow > 1) tags.push(`cjk+${o.cjkOverflow}`);
+            if (o.isTightHeight) tags.push('tight');
+            lines.push(`    - p${o.pageIndex} ${o.blockId} ${o.type} fs=${o.fontSize} blockH=${o.blockH} blockW=${o.blockW} enLines=${o.englishLines} cjkLines=${o.cjkLines} [${tags.join(',')}]`);
+          }
+          if (e.overflow.riskCount > 5) lines.push(`    ...${e.overflow.riskCount - 5} more`);
+        }
+        // Actual overflow(動態:實際 render 後 overlay 真的超出 block bbox)
+        lines.push(`- overflow actual(render): ${e.overflow.actualOverflowCount} / ${e.overflow.totalChecked} blocks render past bbox`);
+        if (e.overflow.actualOverflowCount > 0) {
+          for (const o of e.overflow.actualOverflowSamples.slice(0, 5)) {
+            lines.push(`    - p${o.pageIndex} ${o.blockId} ${o.type} fs=${o.fontSize} blockH=${o.blockH} maxBottom=${o.maxBottom} +${o.actualOverflow}pt overlayChars=${o.overlayChars}`);
+          }
+          if (e.overflow.actualOverflowCount > 5) lines.push(`    ...${e.overflow.actualOverflowCount - 5} more`);
+        }
       }
     }
     if (r.consoleErrors && r.consoleErrors.length > 0) {

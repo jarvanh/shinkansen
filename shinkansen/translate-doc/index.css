@@ -535,85 +535,10 @@ body:has(#stage-reader:not([hidden])) .app-footer {
   height: 100%;
 }
 
-.reader-translated-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none; /* 不擋下層 canvas 文字選取(雖 canvas 本身不可選) */
-}
-
-.reader-block {
-  position: absolute;
-  background: #fff; /* 完全不透白底蓋原文(0.97 會讓深色英文 3% 透出) */
-  color: var(--text);
-  font-family: var(--font);
-  line-height: 1.35;
-  word-wrap: break-word;
-  overflow-wrap: anywhere;
-  pointer-events: auto;
-  padding: 1px 3px;
-  box-sizing: border-box;
-  /* box-shadow 4px 外擴白底，蓋掉 bbox 邊界外的 ascender / descender 殘影
-     (PDF.js bbox 不含字型 ascender / descender margin,bbox 邊緣可能差 2-4px) */
-  box-shadow: 0 0 0 4px #fff;
-}
-
-.reader-block-heading {
-  font-weight: 700;
-  color: #18171c;
-}
-
-.reader-block-list-item {
-  /* plainText 已含 marker;flow 用 text-indent 不適用於 absolute，留樣式空 */
-}
-
-.reader-block-footnote {
-  color: var(--text-muted);
-}
-
-.reader-block-page-number {
-  color: var(--text-muted);
-}
-
-/* 不可翻譯 type(table / formula / figure)在新模型下不蓋 overlay，所以這些 class
-   不再生效 — 留樣式空避免 CSS warning */
-
-.reader-block-retry {
-  /* failed block 的 ↻ 按鈕，absolute 定位在 bbox 右上角(由 inline style 設位置) */
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--error-text);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--error-text);
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  line-height: 1;
-  pointer-events: auto;
-}
-
-.reader-block-retry:hover {
-  background: var(--error-bg);
-  border-color: var(--error-text);
-}
-
-.reader-block-retry:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
-
-.reader-block-translating {
-  /* retry 中：顯示 spinner-like 效果 + 灰底 */
-  background: rgba(0, 113, 227, 0.05);
-  color: var(--text-muted);
-}
+/* WYSIWYG mode (2026-05-05 起):右欄改用 PDF.js render 譯文 PDF 到 canvas,
+   不再走 HTML overlay。原 .reader-translated-overlay / .reader-block / 各
+   block-type / .reader-block-retry / .reader-block-translating 等 class
+   全部移除 */
 
 .reader-empty {
   padding: 40px 20px;
