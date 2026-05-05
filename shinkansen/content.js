@@ -31,6 +31,10 @@
     } else if (action === 'CLEAR_LOGS') {
       forwardToBackground('CLEAR_LOGS');
     } else if (action === 'CLEAR_CACHE') {
+      // v1.8.53: forward 給 background 清 storage 之外,也 reset YT in-memory state,
+      // 讓「清快取後拖進度條」name + behavior 一致(translatedWindows / captionMap /
+      // displayCues 不清的話 onSeeked guard 會擋住「翻譯中…」status + 重翻 API)
+      try { SK.YT?._resetTranslationStateForCacheClear?.(); } catch (_) {}
       forwardToBackground('CLEAR_CACHE');
     } else if (action === 'TRANSLATE') {
       respond({ ok: true, triggered: true });
@@ -82,6 +86,15 @@
         onTheFlyKeys:     onTheFlyKeys,
         translatedUpToMs: YT.translatedUpToMs,
         ytConfig:         YT.config,
+        // v1.8.53 debug:看哪條 guard 擋住 onSeeked → translateWindowFrom
+        ccPaused:                  YT.ccPaused,
+        translatingWindowsSize:    YT.translatingWindows?.size ?? -1,
+        translatingWindowsArray:   YT.translatingWindows ? Array.from(YT.translatingWindows) : [],
+        translatedWindowsSize:     YT.translatedWindows?.size ?? -1,
+        translatedWindowsArray:    YT.translatedWindows ? Array.from(YT.translatedWindows).slice(0, 10) : [],
+        displayCuesLen:            YT.displayCues?.length ?? -1,
+        captionLang:               YT.captionLang,
+        isAsr:                     YT.isAsr,
       });
     } else {
       respond({ ok: false, error: 'unknown action: ' + action });
@@ -1500,6 +1513,12 @@
     if (msg?.type === 'GET_SUBTITLE_STATE') {
       sendResponse({ ok: true, active: SK.YT?.active ?? false });
       return true;
+    }
+    // v1.8.53: background CLEAR_CACHE 完成後 broadcast,清 YT in-memory 翻譯狀態
+    // (popup「清除翻譯快取」按鈕走這條,bypass 了 Debug Bridge)。idempotent。
+    if (msg?.type === 'YT_RESET_AFTER_CACHE_CLEAR') {
+      try { SK.YT?._resetTranslationStateForCacheClear?.(); } catch (_) {}
+      return;
     }
     // v1.4.0: Google Translate 快捷鍵（Opt+G）
     if (msg?.type === 'TOGGLE_TRANSLATE_GOOGLE') {

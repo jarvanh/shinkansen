@@ -679,7 +679,22 @@ const messageHandlers = {
   },
   CLEAR_CACHE: {
     async: true,
-    handler: () => cache.clearAll().then(removed => ({ removed })),
+    handler: () => cache.clearAll().then(async (removed) => {
+      // v1.8.53: storage 清完後 broadcast 給所有 tabs,讓 content script reset
+      // YT in-memory state(captionMap / translatedWindows / displayCues)。
+      // 否則使用者「清快取後拖進度條」會被 onSeeked 內 translatedWindows.has guard
+      // 擋住「翻譯中…」+ translateWindowFrom 重發 API。詳見 content-youtube.js
+      // _resetTranslationStateForCacheClear 註解。
+      try {
+        const tabs = await browser.tabs.query({});
+        for (const tab of tabs) {
+          if (!tab.id) continue;
+          browser.tabs.sendMessage(tab.id, { type: 'YT_RESET_AFTER_CACHE_CLEAR' })
+            .catch(() => {}); // 沒 content script 的 tab 會 error,silent
+        }
+      } catch (_) {}
+      return { removed };
+    }),
   },
   CACHE_STATS: {
     async: true,

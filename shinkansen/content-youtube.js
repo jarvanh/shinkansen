@@ -582,7 +582,7 @@
       const windowSizeMs = (config.windowSizeS || 30) * 1000;
       const windowStartMs = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
       _debugUpdate(`XHR 攔截 ${segments.length} 條字幕（至 ${Math.round(lastMs / 1000)}s），開始翻譯`);
-      if (!_hasVisibleChineseCaption()) showCaptionStatus('翻譯中…');
+      if (_shouldShowTranslatingStatus()) showCaptionStatus('翻譯中…');
       translateWindowFrom(windowStartMs);
     }
   });
@@ -1149,15 +1149,20 @@
     // .ytp-caption-segment 的 computed font-size 當作 overlay 字體基準。
     // pointer-events:none 避免使用者誤點(雖然 absolute positioned 沒互動性)。
     style.textContent = `
+      /* v1.8.53: 不對 .ytp-caption-window-container 自身設 visibility:hidden + opacity:0—
+         我們自家的 #__sk-yt-caption-status append 在它內部,父層 opacity:0 會
+         compound 到整個子樹的 visual rendering(opacity 不繼承,但 rendering 上
+         child_visual_opacity = child × parent),導致 status 設 visibility:visible +
+         opacity:1 仍看不到(getComputedStyle 看 child 自己的值,反映不出父層 fade)。
+         改成只對真正要藏的子元素(.caption-window / .ytp-caption-window-rollup)個別設,
+         container 本身只保留 pointer-events: none 防誤點。 */
       .${_ASR_PLAYER_CLASS} .ytp-caption-window-container,
-      .${_ASR_PLAYER_CLASS} .caption-window,
-      .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
-      .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
-        visibility: hidden !important;
-        opacity: 0 !important;
+      .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-container {
         pointer-events: none !important;
       }
-      .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-container,
+      .${_ASR_PLAYER_CLASS} .caption-window,
+      .${_ASR_PLAYER_CLASS} .ytp-caption-window-rollup,
+      .${_ASR_PLAYER_CLASS} .ytp-caption-window-container .caption-window,
       .${_CC_PAUSED_PLAYER_CLASS} .caption-window,
       .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-rollup,
       .${_CC_PAUSED_PLAYER_CLASS} .ytp-caption-window-container .caption-window {
@@ -1738,6 +1743,15 @@
     return SK.YT.captionLang && SKIP_TRANSLATE_LANGS_TW.has(SK.YT.captionLang);
   }
 
+  // v1.8.53: 字幕已是繁中(skip 路徑)時根本不會送 API,captionMap 永遠空,
+  // replaceSegmentEl 的 cached 永遠 undefined → hideCaptionStatus 永不觸發,
+  // 「翻譯中…」status 永遠殘留。在 show 觸發點預先擋掉。
+  function _shouldShowTranslatingStatus() {
+    if (_shouldSkipBecauseAlreadyTraditionalChinese()) return false;
+    if (_hasVisibleChineseCaption()) return false;
+    return true;
+  }
+
   async function translateWindowFrom(windowStartMs) {
     const YT = SK.YT;
     if (YT.translatingWindows.has(windowStartMs)) return;  // v1.2.54: per-window 防重入
@@ -1751,6 +1765,9 @@
         });
         YT._skipLoggedForLang = true;
       }
+      // v1.8.53: 防 race—captionsXHR / activate 比 captionLang 設定早走過 show 路徑時,
+      // 走到這裡已知 skip,主動清掉殘留 status
+      hideCaptionStatus();
       return;
     }
 
@@ -2231,7 +2248,8 @@
     // v1.2.57: 若跳到尚未翻譯的視窗，立刻顯示「翻譯中…」提示
     // （translateWindowFrom 內部有防重入，已翻視窗會直接 return，不需要提示）
     // v1.8.16: 若當前畫面已有中文字幕,跳過提示避免打擾
-    if (!YT.translatedWindows.has(newWindowStart) && !_hasVisibleChineseCaption()) {
+    // v1.8.53: 字幕原文已是繁中(skip translate 路徑)也跳過,避免 status 永遠殘留
+    if (!YT.translatedWindows.has(newWindowStart) && _shouldShowTranslatingStatus()) {
       showCaptionStatus('翻譯中…');
     }
     // v1.2.54: translateWindowFrom 內部用 translatingWindows Set 防重入，無需外部 guard
@@ -2426,6 +2444,57 @@
 
   // 暴露給 spec 用(直接驗 cache-hit 路徑,不必走 translateYouTubeSubtitles 全流程)
   SK._replaceSegmentEl = replaceSegmentEl;
+
+  // v1.8.53: CLEAR_CACHE 連帶清 in-memory 翻譯狀態。
+  // Why:CLEAR_CACHE 原本只清 chrome.storage.local,但 captionMap / translatedWindows /
+  //   displayCues 是 in-memory state。使用者「清快取後拖進度條」期待全部重來,實際:
+  //     - translatedWindows.has(window) 仍 true → onSeeked guard 擋住「翻譯中…」status
+  //     - 同 Set 也擋 translateWindowFrom 重發 API
+  //     - captionMap 仍有 stale 譯文(但 storage 已清,下次 reload 會 cache miss)
+  //   結果使用者拖到任意位置:看不到翻譯中、也不會重翻。
+  // 不清 rawSegments / active / sessionUsage / translatingWindows—讓當前 session 延續,
+  // in-flight 的 API call 完成後寫進新 Map / Set 也合法(reference 替換不影響 await 後的 .set/.add)。
+  SK.YT._resetTranslationStateForCacheClear = function _resetTranslationStateForCacheClear() {
+    const YT = SK.YT;
+    if (!YT) return;
+    YT.captionMap                = new Map();
+    YT.translatedWindows         = new Set();
+    YT.displayCues               = [];
+    YT.translatedUpToMs          = 0;
+    YT.captionMapCoverageUpToMs  = 0;
+    YT._firstCacheHitLogged      = false;
+    hideCaptionStatus();
+    // ASR overlay 內可能殘留中文 cue 文字(displayCues 已清,但渲染還在)
+    if (YT.isAsr) {
+      const overlay = document.querySelector(_OVERLAY_TAG);
+      if (overlay && overlay.shadowRoot) {
+        const win = overlay.shadowRoot.querySelector('.window');
+        if (win) win.textContent = '';
+      }
+    }
+    // sync ccPaused 從 CC button 當下 aria-pressed,避免 stale 旗標擋住後續
+    // onVideoTimeUpdate / onVideoSeeked(_observeCcButton 的 MutationObserver 偶爾 race)
+    const ccBtn = document.querySelector('.ytp-subtitles-button');
+    if (ccBtn) YT.ccPaused = ccBtn.getAttribute('aria-pressed') !== 'true';
+    SK.sendLog('info', 'youtube', 'CLEAR_CACHE: in-memory translation state reset', {
+      videoId: YT.videoId,
+      ccPaused: YT.ccPaused,
+    });
+    // 立刻從當前位置重啟翻譯—使用者「清快取重看」期待立刻看到「翻譯中…」+ 譯文,
+    // 不該等 onVideoTimeUpdate 250ms tick(且 lookahead 邏輯在 translatedUpToMs=0 時
+    // 行為微妙,直接以 currentTime 為起點最直觀)。
+    if (YT.active && YT.rawSegments.length > 0 && !YT.ccPaused) {
+      const video = YT.videoEl || document.querySelector('video');
+      const config = YT.config || DEFAULT_YT_CONFIG;
+      const windowSizeMs = (config.windowSizeS || 30) * 1000;
+      const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
+      const windowStartMs = Math.floor(currentMs / windowSizeMs) * windowSizeMs;
+      YT.translatedUpToMs = windowStartMs;
+      if (_shouldShowTranslatingStatus()) showCaptionStatus('翻譯中…');
+      // 不 await—讓 reset call site 立刻回返;翻譯流程在背景跑
+      translateWindowFrom(windowStartMs);
+    }
+  };
 
   async function flushOnTheFly() {
     const YT = SK.YT;
@@ -2679,7 +2748,7 @@
     if (YT.rawSegments.length > 0) {
       // 已有快取（interceptor 在 activate 之前就攔截到了）→ 直接開始翻譯
       _debugUpdate(`已有 ${YT.rawSegments.length} 條字幕，開始翻譯`);
-      if (!_hasVisibleChineseCaption()) showCaptionStatus('翻譯中…');
+      if (_shouldShowTranslatingStatus()) showCaptionStatus('翻譯中…');
       const video = document.querySelector('video');
       const currentMs = video ? Math.floor(video.currentTime * 1000) : 0;
       const windowSizeMs = (config.windowSizeS || 30) * 1000;

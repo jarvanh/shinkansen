@@ -21,6 +21,12 @@
 //   把 _shouldSkipBecauseAlreadyTraditionalChinese 改成永遠回 false → 即使
 //   captionLang=zh-Hant,translateWindowFrom 仍會跑 → TRANSLATE_SUBTITLE_BATCH
 //   被呼叫 → spec fail。還原後 pass。
+//
+// v1.8.53 補:鎖「翻譯中…」status 不殘留(原 bug:skip 路徑不寫 captionMap,
+//   replaceSegmentEl 永遠拿不到 cached → hideCaptionStatus 永不觸發,
+//   「翻譯中…」永久殘留)。SANITY(已驗證 2026-05-05):
+//   把 _shouldShowTranslatingStatus 改成永遠回 true + 移掉 skip 路徑的
+//   hideCaptionStatus → status case fail。還原後 pass。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -89,6 +95,19 @@ test.describe('youtube-skip-already-zh-hant', () => {
       const captionLang = await evaluate(`window.__SK.YT.captionLang`);
       expect(captionLang, `YT.captionLang 應為 '${lang}'`).toBe(lang);
 
+      // v1.8.53: 「翻譯中…」status 不該殘留
+      // (原 bug:show 觸發但 skip 路徑不寫 captionMap → hideCaptionStatus 永不觸發)
+      const statusEl = await evaluate(`
+        (() => {
+          const el = document.getElementById('__sk-yt-caption-status');
+          return el ? el.textContent : null;
+        })()
+      `);
+      expect(
+        statusEl,
+        `captionLang=${lang} skip 翻譯時「翻譯中…」status 不該殘留,實際 textContent=${JSON.stringify(statusEl)}`,
+      ).toBeNull();
+
       await page.close();
     });
   }
@@ -142,6 +161,19 @@ test.describe('youtube-skip-already-zh-hant', () => {
       calls,
       `captionLang=en 應送 TRANSLATE_SUBTITLE_BATCH,實際 ${calls} 次`,
     ).toBeGreaterThan(0);
+
+    // v1.8.53: 確保英文路徑「翻譯中…」status 仍會顯示
+    // (防 _shouldShowTranslatingStatus 的 guard 把非繁中也誤擋)
+    const statusText = await evaluate(`
+      (() => {
+        const el = document.getElementById('__sk-yt-caption-status');
+        return el ? el.textContent : null;
+      })()
+    `);
+    expect(
+      statusText,
+      `captionLang=en 應顯示「翻譯中…」status,實際 ${JSON.stringify(statusText)}`,
+    ).toBe('翻譯中…');
 
     await page.close();
   });
