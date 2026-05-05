@@ -664,12 +664,11 @@ async function handleFile(file) {
     }
     console.groupEnd();
 
-    // UI 摘要
+    // UI 摘要(W7:工程術語 text run 總數 / 切出 block 數對 user 無意義已移除,
+    // 只保留檔名 / 頁數 / 文件字數三項)
     $('result-filename').textContent = doc.meta.filename || '（未命名）';
     $('result-pages').textContent = `${doc.meta.pageCount} 頁`;
-    $('result-runs').textContent = doc.stats.totalRuns.toLocaleString('en-US');
     $('result-chars').textContent = doc.stats.totalChars.toLocaleString('en-US');
-    $('result-blocks').textContent = totalBlocks.toLocaleString('en-US');
 
     if (doc.warnings.length > 0) {
       const warnEl = $('upload-error');
@@ -819,6 +818,10 @@ async function renderDebugPage() {
     console.error('[Shinkansen] render page 失敗', err);
     return;
   }
+  // canvas internal bitmap 是 scale × DPR(retina 銳化),但顯示尺寸要鎖回
+  // scale 基準的 CSS pixel,SVG overlay 才對得上(SVG 走 renderInfo.width / .height)
+  canvas.style.width = `${renderInfo.width}px`;
+  canvas.style.height = `${renderInfo.height}px`;
 
   // SVG overlay 對齊 canvas 像素尺寸
   const svg = $('debug-svg');
@@ -1137,21 +1140,34 @@ async function loadCurrentPresetSlot() {
   }
 }
 
+// 對齊 options.html「翻譯快速鍵」分頁的 label / shortcut / 順序(slot 2 排最前 為主要預設):
+//   slot 2 = 主要預設 (⌥S / Alt+S)
+//   slot 1 = 預設 2  (⌥A / Alt+A)
+//   slot 3 = 預設 3  (⌥D / Alt+D)
+const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || '');
+const PRESET_DISPLAY = [
+  { slot: 2, name: '主要預設', shortcut: IS_MAC ? '⌥S' : 'Alt+S' },
+  { slot: 1, name: '預設 2',   shortcut: IS_MAC ? '⌥A' : 'Alt+A' },
+  { slot: 3, name: '預設 3',   shortcut: IS_MAC ? '⌥D' : 'Alt+D' },
+];
+
 async function openSettingsDialog() {
   const presets = await loadPresets();
   const dlg = $('translate-settings-dialog');
   $('settings-apply-glossary').checked = currentApplyGlossary;
   const list = $('settings-preset-list');
   list.innerHTML = '';
-  for (let i = 0; i < 3; i++) {
-    const p = presets[i] || { slot: i + 1, engine: 'gemini', model: null, label: `Slot ${i + 1}` };
-    const slot = i + 1;
+  for (const { slot, name, shortcut } of PRESET_DISPLAY) {
+    const p = presets.find((x) => x && x.slot === slot) || { engine: 'gemini', model: null, label: '' };
     const row = document.createElement('label');
     row.className = 'settings-preset-row' + (slot === currentPresetSlot ? ' is-selected' : '');
+    const engineLabel = p.engine === 'gemini' ? (p.model || 'gemini')
+      : p.engine === 'google' ? 'Google MT'
+      : p.engine;
     row.innerHTML = `
       <input type="radio" name="preset-slot" value="${slot}" ${slot === currentPresetSlot ? 'checked' : ''}>
-      <span class="preset-label">Slot ${slot} · ${p.label || '(未命名)'}</span>
-      <span class="preset-engine">${p.engine === 'gemini' ? (p.model || 'gemini') : (p.engine === 'google' ? 'Google MT' : p.engine)}</span>
+      <span class="preset-label">${name}（${shortcut}）· ${p.label || '(未命名)'}</span>
+      <span class="preset-engine">${engineLabel}</span>
     `;
     row.addEventListener('click', () => {
       list.querySelectorAll('.settings-preset-row').forEach((el) => el.classList.remove('is-selected'));
@@ -1209,6 +1225,14 @@ function bindSettingsDialogUI() {
   // stage-result + reader-toolbar 兩個按鈕都開同一個 dialog
   $('result-settings-btn').addEventListener('click', () => openSettingsDialog());
   $('reader-settings-btn').addEventListener('click', () => openSettingsDialog());
+
+  // W7:modal 內「進階設定 →」按鈕,開新 tab 進獨立 settings page。
+  // 為將來擴充 Office 翻譯做好結構,深設定(systemPrompt / 預設術語表 /
+  // 清除所有文件快取)在 translate-doc/settings.html 集中
+  $('settings-open-doc-options-btn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('translate-doc/settings.html') });
+    dlg.close();
+  });
 }
 
 // 清除本篇 PDF 對應的所有譯文快取(prefix tc_<sha1> match,不限 suffix)。
@@ -1373,6 +1397,10 @@ function bindReaderUI() {
 async function openReader() {
   if (!currentDoc || !currentPdfDoc || !currentOriginalArrayBuffer) return;
   showStage('reader');
+  // 進 reader 前先 reset retry-all 按鈕為隱藏(避免上次 session 留下 visible 狀態,
+  // 在 emitFailedCount 觸發前看到「重試失敗 (0)」)
+  $('reader-retry-all-btn').hidden = true;
+  $('reader-failed-count').textContent = '0';
   // 等 stage 切換 + layout 確定後再 render(canvas size 才對)
   await new Promise((r) => requestAnimationFrame(r));
   if (currentReaderHandle) {

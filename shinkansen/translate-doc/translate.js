@@ -77,7 +77,9 @@ export async function translateDocument(doc, options = {}) {
     }
 
     const chunk = queue.slice(start, start + DOC_CHUNK_SIZE);
-    const texts = chunk.map((b) => b.plainText);
+    // W7:送 LLM 的文字含 inline style marker(⟦b⟧/⟦i⟧/⟦l:N⟧)。fallback:
+    // 沒 styleSegments 的 block(舊 fixture / parser 失敗等)用 plainText。
+    const texts = chunk.map((b) => buildMarkedText(b));
 
     chunk.forEach((b) => { b.translationStatus = 'translating'; });
     emit();
@@ -137,10 +139,17 @@ export async function translateDocument(doc, options = {}) {
       const b = chunk[i];
       const tr = response.result[i];
       if (typeof tr === 'string' && tr.length > 0) {
-        b.translation = tr;
+        // W7:譯文 parse 出 inline segments,寫回 block.translationSegments。
+        // parser 失敗(marker 對不齊)會 fallback 整段 plain regular,不破渲染。
+        // block.translation 保留為「parser 還原後的純文字」(複製譯文用),
+        // 不留 marker(避免使用者複製到帶 ⟦…⟧ 標記)
+        const parsed = parseMarkedTranslation(tr, b.linkUrls || []);
+        b.translationSegments = parsed.segments;
+        b.translation = parsed.plainText;
         b.translationStatus = 'done';
       } else {
         b.translation = null;
+        b.translationSegments = null;
         b.translationStatus = 'failed';
         b.translationError = 'empty translation';
         failedBlocks++;
@@ -249,7 +258,8 @@ export async function translateSingleBlock(block, options = {}) {
   try {
     response = await chrome.runtime.sendMessage({
       type: 'TRANSLATE_DOC_BATCH',
-      payload: { texts: [block.plainText], modelOverride, glossary },
+      // W7:retry 也走 marker 路徑,確保跟主翻譯流程一致
+      payload: { texts: [buildMarkedText(block)], modelOverride, glossary },
     });
   } catch (err) {
     const msg = (err && err.message) || String(err);
@@ -293,18 +303,146 @@ export async function translateSingleBlock(block, options = {}) {
 
   const tr = response.result[0];
   if (typeof tr === 'string' && tr.length > 0) {
-    block.translation = tr;
+    const parsed = parseMarkedTranslation(tr, block.linkUrls || []);
+    block.translationSegments = parsed.segments;
+    block.translation = parsed.plainText;
     block.translationStatus = 'done';
     block.translationError = null;
-    console.log('[Shinkansen] retry block done', block.blockId, 'tr=', tr.slice(0, 40));
+    console.log('[Shinkansen] retry block done', block.blockId, 'tr=', parsed.plainText.slice(0, 40));
     return { ok: true };
   } else {
     block.translation = null;
+    block.translationSegments = null;
     block.translationStatus = 'failed';
     block.translationError = 'empty translation';
     console.warn('[Shinkansen] retry empty translation', block.blockId);
     return { ok: false, error: 'empty translation' };
   }
+}
+
+// ============================================================================
+// W7 inline rich text marker 協定
+// ============================================================================
+//
+// marker 設計(沿用既有段落佔位符 ⟦…⟧ 格式,LLM 已熟悉):
+//   ⟦b⟧粗體段⟦/b⟧
+//   ⟦i⟧斜體段⟦/i⟧
+//   ⟦l:N⟧連結文字⟦/l⟧   N = block.linkUrls 內的 1-based index
+//
+// 巢狀順序(由外到內):bold → italic → link
+// 例:**Editor's Note:** *Go to [Plano.gov](url) for ...*
+// →  ⟦b⟧Editor's Note:⟦/b⟧ ⟦i⟧Go to ⟦l:1⟧Plano.gov⟦/l⟧ for ...⟦/i⟧
+//
+// link 在最內層的理由:link 是錨點,跨樣式邊界比連續性重要;bold/italic 純樣式
+// 可被 wrap 邏輯切散。
+//
+// parser 失敗策略:tag 不成對 / 巢狀錯誤 / link index 越界 → 整 block 退回 plain
+// regular(translationSegments 為單一 piece),不破渲染。
+
+const MARKER_TAG_RE = /⟦(?:b|i|l:\d+|\/b|\/i|\/l)⟧/g;
+
+/**
+ * 從 block.styleSegments 構出帶 marker 的字串送 LLM。
+ * 沒 styleSegments 的 block(舊資料 / fallback)直接回傳 plainText。
+ *
+ * @param {LayoutBlock} block
+ * @returns {string}
+ */
+export function buildMarkedText(block) {
+  if (!block) return '';
+  const segs = block.styleSegments;
+  const linkUrls = block.linkUrls || [];
+  if (!Array.isArray(segs) || segs.length === 0) {
+    return block.plainText || '';
+  }
+  let out = '';
+  for (const s of segs) {
+    let t = s.text;
+    if (s.linkUrl) {
+      const idx = linkUrls.indexOf(s.linkUrl) + 1;
+      if (idx > 0) t = `⟦l:${idx}⟧${t}⟦/l⟧`;
+    }
+    if (s.isItalic) t = `⟦i⟧${t}⟦/i⟧`;
+    if (s.isBold) t = `⟦b⟧${t}⟦/b⟧`;
+    out += t;
+  }
+  return out;
+}
+
+/**
+ * 解 LLM 回的 marker 字串成 segments 陣列 + 純文字。
+ * 走簡化 stack 解法:遇 ⟦b⟧/⟦i⟧/⟦l:N⟧ push、遇 ⟦/b⟧/⟦/i⟧/⟦/l⟧ pop。
+ * 任一錯誤(tag 不成對 / link 編號越界)→ fallback 整段 plain regular。
+ *
+ * @param {string}   text
+ * @param {string[]} linkUrls — 對應 block.linkUrls
+ * @returns {{ segments: StyleSegment[], plainText: string }}
+ */
+export function parseMarkedTranslation(text, linkUrls) {
+  const fallback = () => {
+    const cleaned = (text || '').replace(MARKER_TAG_RE, '');
+    return {
+      segments: [{ text: cleaned, isBold: false, isItalic: false, linkUrl: null }],
+      plainText: cleaned,
+    };
+  };
+  if (typeof text !== 'string' || text.length === 0) {
+    return { segments: [], plainText: '' };
+  }
+
+  const stack = []; // entries: 'b' | 'i' | { type: 'l', url }
+  const segments = [];
+  const tagRe = /⟦(\/?[bi]|l:(\d+)|\/l)⟧/g;
+  let lastIndex = 0;
+
+  function flushPlain(plain) {
+    if (!plain) return;
+    let isBold = false, isItalic = false, linkUrl = null;
+    for (const e of stack) {
+      if (e === 'b') isBold = true;
+      else if (e === 'i') isItalic = true;
+      else if (e && e.type === 'l') linkUrl = e.url;
+    }
+    // 同 style 連續 segment 合一(LLM 譯文可能在同 style 內多次切 segment)
+    const last = segments[segments.length - 1];
+    if (last && last.isBold === isBold && last.isItalic === isItalic && last.linkUrl === linkUrl) {
+      last.text += plain;
+    } else {
+      segments.push({ text: plain, isBold, isItalic, linkUrl });
+    }
+  }
+
+  let m;
+  while ((m = tagRe.exec(text)) !== null) {
+    const plain = text.slice(lastIndex, m.index);
+    flushPlain(plain);
+    lastIndex = tagRe.lastIndex;
+    const tag = m[1];
+    if (tag === 'b' || tag === 'i') {
+      stack.push(tag);
+    } else if (tag === '/b' || tag === '/i') {
+      const want = tag === '/b' ? 'b' : 'i';
+      const top = stack[stack.length - 1];
+      if (top !== want) return fallback();
+      stack.pop();
+    } else if (m[2] !== undefined) {
+      // ⟦l:N⟧
+      const idx = parseInt(m[2], 10) - 1;
+      if (idx < 0 || idx >= linkUrls.length) return fallback();
+      stack.push({ type: 'l', url: linkUrls[idx] });
+    } else if (tag === '/l') {
+      const top = stack[stack.length - 1];
+      if (!top || top.type !== 'l') return fallback();
+      stack.pop();
+    }
+  }
+  flushPlain(text.slice(lastIndex));
+  if (stack.length !== 0) return fallback();
+
+  return {
+    segments,
+    plainText: segments.map((s) => s.text).join(''),
+  };
 }
 
 /**

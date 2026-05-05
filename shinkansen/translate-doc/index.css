@@ -1,5 +1,5 @@
 /* Shinkansen — translate-doc 頁面樣式
- * 視覺基調對齊 options.css / popup.css（深灰白底、紅點主色 #cf3a2c） */
+ * 視覺基調對齊 options.css / popup.css（深灰白底、Apple 藍主色 #0071e3） */
 
 :root {
   --bg: #ffffff;
@@ -10,8 +10,8 @@
   --text-faint: #98a0ad;
   --border: #e3e6eb;
   --border-strong: #c8ced8;
-  --primary: #cf3a2c;
-  --primary-soft: rgba(207, 58, 44, 0.08);
+  --primary: #0071e3;
+  --primary-soft: rgba(0, 113, 227, 0.08);
   --error-bg: #fbe9e7;
   --error-text: #a32418;
   --radius: 10px;
@@ -272,7 +272,7 @@ body {
 }
 
 .primary-btn:hover {
-  background: #b73022;
+  background: #0077ed;
 }
 
 .secondary-btn {
@@ -457,6 +457,9 @@ body:has(#stage-reader:not([hidden])) .app-footer {
   font-size: 13px;
   flex-shrink: 0;
 }
+
+/* 兩端 spacer 把中間元素群推置中,download PDF 在 spacer 後保持最右 */
+.reader-toolbar-spacer { flex: 1; }
 
 /* reader-toolbar 內 button 變窄一些，工具欄高度縮小 */
 .reader-toolbar .primary-btn,

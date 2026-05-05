@@ -402,6 +402,46 @@ export async function stats() {
 }
 
 /**
+ * W7:清除所有文件翻譯快取(cacheTag '_doc' 的 entries),不影響網頁 / 字幕 /
+ * 術語表快取。translate-doc/settings.html「進階」區塊用。
+ *
+ * cache key 結構:tc_<sha1>_<glossarySuffix>_doc_m<model>
+ * 用 regex `/_doc(_m|$)/` 比對,精準分出文件路徑寫的 entries
+ *
+ * @returns {Promise<number>} 清除的 entry 數
+ */
+export async function clearDocTranslationCache() {
+  const all = await browser.storage.local.get(null);
+  const docKeys = Object.keys(all).filter((k) => k.startsWith(KEY_PREFIX) && /_doc(_m|$)/.test(k));
+  if (docKeys.length > 0) {
+    await browser.storage.local.remove(docKeys);
+  }
+  return docKeys.length;
+}
+
+/**
+ * 一次性 migration:清掉所有 tc_* 翻譯 cache(不含 glossary_*)。
+ * flagKey 在 storage.local 設過後不再清,確保 onInstalled / onStartup 兩處
+ * 都呼叫也只跑一次。W7(PDF inline rich text marker)用此清掉舊 plainText
+ * sha1 對應的 cache,讓所有 PDF 重新打 API。網頁 cache 共用 tc_ 前綴無法精準
+ * 分,一併清掉是 W7 prompt 變動的代價。
+ *
+ * @param {string} flagKey 例 '__shinkansen_w7_cache_migrated'
+ * @returns {Promise<{ cleared: number, ranMigration: boolean }>}
+ */
+export async function migrateClearTranslationCacheOnce(flagKey) {
+  const flagged = await browser.storage.local.get(flagKey);
+  if (flagged[flagKey]) return { cleared: 0, ranMigration: false };
+  const all = await browser.storage.local.get(null);
+  const tcKeys = Object.keys(all).filter((k) => k.startsWith(KEY_PREFIX));
+  if (tcKeys.length > 0) {
+    await browser.storage.local.remove(tcKeys);
+  }
+  await browser.storage.local.set({ [flagKey]: true });
+  return { cleared: tcKeys.length, ranMigration: true };
+}
+
+/**
  * 比對 manifest 版本與儲存版本,版本變更時更新標記。
  *
  * v1.8.45 起改成「不清快取」:過去版本變更會 clearAll(),理由是 prompt / cache

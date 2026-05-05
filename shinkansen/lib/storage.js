@@ -32,6 +32,37 @@ export const DEFAULT_SYSTEM_PROMPT = `<role_definition>
 5. 年份格式：完整的四位數西元年份保留阿拉伯數字，並在後方加上「年」（例如：1975 年）。縮寫年份（如 '90s）不在此限。
 </formatting_and_typography>`;
 
+// W7:文件翻譯 user-editable prompt 預設 = 跟網頁翻譯同款 DEFAULT_SYSTEM_PROMPT。
+// **通用於 PDF 與未來各 Office 格式**(.docx / .xlsx / .pptx),format-specific
+// 設定未來各自加 translateDoc.docx / .xlsx sub-key。
+//
+// inline marker 協定(⟦b⟧/⟦i⟧/⟦l:N⟧)的指示獨立成 DOC_INLINE_MARKER_INSTRUCTION
+// 常數,由 background.js TRANSLATE_DOC_BATCH 在送 LLM 前自動 append 到 user
+// prompt 後,user 編輯不到也看不到 — 避免改壞 marker 解析的核心邏輯。
+export const DEFAULT_DOC_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT;
+
+// W7 inline marker 協定指示(內部常數,**不暴露給 user 編輯**)。
+// background.js 送 LLM 前 append 到 user 編輯的 systemPrompt 後。
+// 變動內容 → 影響 LLM 對 marker 的對齊 → 既有 cache 不一定回得回對的 segments,
+// 但 cache key sha1 不變(input plainText 不含此區塊,只 LLM 看到),所以實質
+// 只影響 cache miss 那批的譯文品質。修改建議搭配 cache 清空 release。
+export const DOC_INLINE_MARKER_INSTRUCTION = `
+
+<inline_style_markers>
+PDF 文件翻譯時,文字可能含 inline 樣式邊界標記:
+  ⟦b⟧...⟦/b⟧ — 粗體段
+  ⟦i⟧...⟦/i⟧ — 斜體段
+  ⟦l:N⟧...⟦/l⟧ — 超連結(N 為連結編號,直接保留)
+
+翻譯規則:
+1. 標記必成對:⟦b⟧ 必對應 ⟦/b⟧、⟦i⟧ 對 ⟦/i⟧、⟦l:N⟧ 對 ⟦/l⟧,絕不可單邊。
+2. 標記內中文字界可前後微調幾字以對應正確語意片段,但須維持「該段被包裹」的整體性。
+   範例:⟦b⟧Editor's Note:⟦/b⟧ → ⟦b⟧編輯附註:⟦/b⟧
+3. 連結文字可翻譯,連結編號 N 不可變動。
+4. 標記可巢狀(如 ⟦b⟧⟦i⟧粗斜體⟦/i⟧⟦/b⟧),翻譯後須維持結構;不可交叉(⟦b⟧⟦i⟧X⟦/b⟧⟦/i⟧ 是錯的)。
+5. 若原文無標記,譯文也不要無中生有加標記。
+</inline_style_markers>`;
+
 // v1.0.2: 術語表擷取用的預設 prompt（結構化重寫，強化排除規則與輸出格式約束）
 export const DEFAULT_GLOSSARY_PROMPT = `<role_definition>
 你是一位專業的翻譯術語擷取助理。你的任務是從使用者提供的文章或摘要中，精準擷取需要統一翻譯的專有名詞，建立符合台灣在地化語境的英中對照術語表。
@@ -179,6 +210,18 @@ export const DEFAULT_SETTINGS = {
   domainRules: { whitelist: [] },
   autoTranslate: false,
   debugLog: false,
+  // W7:文件翻譯設定 group。獨立 settings page (translate-doc/settings.html)
+  // 編輯。為將來擴充各 Office 格式(.docx / .xlsx / .pptx)做好結構 — systemPrompt
+  // 通用(inline marker 協定相同),格式特別設定未來加 translateDoc.docx / .xlsx
+  // sub-key,不影響 systemPrompt 共用。改變 systemPrompt 會影響譯文 cache key sha1。
+  translateDoc: {
+    systemPrompt: DEFAULT_DOC_SYSTEM_PROMPT,
+    applyGlossary: false, // 預設術語表一致化(stage-result modal 內每次仍可 override)
+    // 獨立 temperature,跟主 geminiConfig.temperature 區隔。文件翻譯多為合約 / 技術文件,
+    // 預設 0.5 偏保守(穩定譯名、用詞不亂跑);散文 / 文章可調到 1.0+。改變後 cache key
+    // 也會跟著變(suffix 加 _t<temp>),立即生效。
+    temperature: 0.5,
+  },
   // v1.2.11: YouTube 字幕翻譯設定
   ytSubtitle: {
     autoTranslate: true,         // 偵測到 YouTube 影片時自動翻譯字幕

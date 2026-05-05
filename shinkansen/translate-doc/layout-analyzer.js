@@ -603,8 +603,16 @@ function buildBlockFromLines(lines, columnIdx) {
   let bbox = lines[0].bbox.slice();
   for (let i = 1; i < lines.length; i++) bbox = unionBBox(bbox, lines[i].bbox);
 
-  // plainText:line 之間以 ASCII space 銜接，收斂多重空白
-  const plainText = lines.map((l) => l.plainText).join(' ').replace(/\s+/g, ' ').trim();
+  // W7:styleSegments — 對所有 lines 內 runs 跑「同 style tuple (isBold, isItalic,
+  // linkUrl) 連續合併」。跨 line 但 style 相同也合一(inline style 是字符屬性,
+  // 不該被換行強切)。line 之間接 ASCII space 算進當前 segment;同 line 內 runs
+  // 之間有 bbox gap 也補 space(W7 修:pdf-engine 階段純空白 run 已被丟,inline
+  // style 切換邊界的視覺空白訊息靠 bbox gap 推)
+  const { styleSegments, linkUrls } = buildStyleSegments(lines);
+
+  // plainText 從 styleSegments 重建(讓 W7 bbox gap 補空白也貫穿 plainText)。
+  // 收斂多重空白
+  const plainText = styleSegments.map((s) => s.text).join('').replace(/\s+/g, ' ').trim();
 
   // fontSize：對 line 的 fontSize 取平均(line 內已先做過平均)
   const fs = lines.map((l) => l.fontSize).filter((s) => s > 0);
@@ -620,6 +628,9 @@ function buildBlockFromLines(lines, columnIdx) {
     // 構造 lineLikes 時若漏傳 dominantFontName，這裡 fallback 為 ''——但實作上 sub-split
     // 拿 _lines 元素已含 dominantFontName，正常 path 會保留
     dominantFontName: l.dominantFontName || '',
+    // W7:保留 runs 給 sub-split path 重建 styleSegments 用(若漏 runs,sub-split
+    // 出來的 block.styleSegments 會空)
+    runs: l.runs || [],
   }));
 
   return {
@@ -629,6 +640,8 @@ function buildBlockFromLines(lines, columnIdx) {
     column: columnIdx,
     readingOrder: 0,
     plainText,
+    styleSegments,
+    linkUrls,
     fontSize,
     lineCount: lines.length,
     runCount,
@@ -637,6 +650,69 @@ function buildBlockFromLines(lines, columnIdx) {
     // dev probe alias(harness summary 用，W3 移除)
     _devLines: internalLines.map((l) => ({ bbox: l.bbox, text: l.plainText.slice(0, 60) })),
   };
+}
+
+// W7:export 給 unit spec 驗
+export { buildStyleSegments };
+// W7:把 lines 內的 runs 合成 styleSegments 陣列。
+//   - 同 (isBold, isItalic, linkUrl) tuple 連續合一
+//   - 跨 line 但 style 相同也合一(換行不強切 segment)
+//   - line 之間以 ASCII space 接續算進當前 segment(同既有 plainText 規則)
+//   - 收斂多重空白 + trim 首尾
+//   - 收集 linkUrls 去重保 order(marker 用 index 引用)
+function buildStyleSegments(lines) {
+  const segments = [];
+  let cur = null;
+  let prevRun = null;
+  for (let li = 0; li < lines.length; li++) {
+    const runs = (lines[li] && lines[li].runs) || [];
+    for (const r of runs) {
+      if (!r || !r.text) continue;
+      // W7-fix:同 line 內 runs 之間若 bbox 有水平 gap、兩端皆無空白字元
+      // → 補 ASCII space。pdf-engine 階段為防 cross-column spacer 黏欄丟掉純
+      // 空白 run,同行 inline 切換處(常是 fontFamily 變動點)的視覺空白訊息
+      // 只剩 bbox gap 可推,否則 plainText / 送 LLM 的 marked text 會在
+      // bold→italic 邊界缺空白(觀察:Plano「Editor's Note:Go to」)。
+      if (cur && prevRun && Array.isArray(r.bbox) && Array.isArray(prevRun.bbox)) {
+        const gap = r.bbox[0] - prevRun.bbox[2];
+        const fontSize = r.fontSize || prevRun.fontSize || 12;
+        const prevEnd = cur.text.slice(-1);
+        const curStart = r.text[0];
+        if (gap > fontSize * 0.1 && !/\s/.test(prevEnd) && !/\s/.test(curStart)) {
+          cur.text += ' ';
+        }
+      }
+      const isBold = !!r.isBold;
+      const isItalic = !!r.isItalic;
+      const linkUrl = r.linkUrl || null;
+      if (
+        cur && cur.isBold === isBold && cur.isItalic === isItalic && cur.linkUrl === linkUrl
+      ) {
+        cur.text += r.text;
+      } else {
+        if (cur) segments.push(cur);
+        cur = { text: r.text, isBold, isItalic, linkUrl };
+      }
+      prevRun = r;
+    }
+    // line 之間接 ASCII space — 算進當前 segment(不另開,以保 style 連續性)
+    if (li < lines.length - 1 && cur) cur.text += ' ';
+    prevRun = null; // 跨 line 不算 gap(line 之間已有上面的 ' ' 接續)
+  }
+  if (cur) segments.push(cur);
+  // collapse 多重空白
+  for (const s of segments) s.text = s.text.replace(/\s+/g, ' ');
+  // trim 首尾
+  if (segments.length > 0) {
+    segments[0].text = segments[0].text.replace(/^\s+/, '');
+    segments[segments.length - 1].text = segments[segments.length - 1].text.replace(/\s+$/, '');
+  }
+  const filtered = segments.filter((s) => s.text.length > 0);
+  const linkUrls = [];
+  for (const s of filtered) {
+    if (s.linkUrl && !linkUrls.includes(s.linkUrl)) linkUrls.push(s.linkUrl);
+  }
+  return { styleSegments: filtered, linkUrls };
 }
 
 // block 第一行若是「heading-shaped」(字數短 + dominantFontName 跟餘段 majority 不同)
@@ -718,7 +794,9 @@ function maybeSplitHeadingsAcrossBlock(block, medianLineHeight) {
       buildBlockFromLines(
         seg.map((l) => ({
           bbox: l.bbox,
-          runs: [],
+          // W7:把 _lines 帶下來的 runs 傳回 buildBlockFromLines,讓
+          // styleSegments 能正確重建。原本傳 [] 會導致 sub-split heading 無 inline style
+          runs: l.runs || [],
           fontSize: l.fontSize,
           plainText: l.plainText,
           dominantFontName: l.dominantFontName,
@@ -755,20 +833,19 @@ function maybeSubsplitListBlock(block) {
 
   if (groups.length < 2) return [block];
 
-  // 每個 group 變獨立 block。sub-block 的 runs 不重新構建(原 raw run 資料已
-  // 在 plainText 裡),runCount 從 parent 平均分配。
+  // 每個 group 變獨立 block。runs 從 _lines 帶下來(W7 起 styleSegments 需要),
+  // runCount 從 parent 按 line 比例攤分(僅 stats / harness summary 顯示用)
   const totalLines = lines.length;
   const parentRunCount = block.runCount || 0;
   return groups.map((g) => {
     const lineLikes = g.map((l) => ({
       bbox: l.bbox,
-      runs: [],
+      runs: l.runs || [],
       fontSize: l.fontSize,
       plainText: l.plainText,
       dominantFontName: l.dominantFontName,
     }));
     const subBlock = buildBlockFromLines(lineLikes, block.column);
-    // 按 line 比例攤分 runCount(僅供 stats / harness summary 顯示用)
     subBlock.runCount = Math.round(parentRunCount * (g.length / totalLines));
     return subBlock;
   });
@@ -784,6 +861,12 @@ function unionBBox(a, b) {
 }
 
 /**
+ * @typedef {Object} StyleSegment
+ * @property {string}  text
+ * @property {boolean} isBold
+ * @property {boolean} isItalic
+ * @property {string|null} linkUrl
+ *
  * @typedef {Object} LayoutBlock
  * @property {string} blockId
  * @property {string} type
@@ -791,6 +874,8 @@ function unionBBox(a, b) {
  * @property {number} column
  * @property {number} readingOrder
  * @property {string} plainText
+ * @property {StyleSegment[]} styleSegments  W7:inline rich text 切段
+ * @property {string[]} linkUrls             W7:去重保 order 的 link url 表(marker 用 1-based index 引用)
  * @property {number} fontSize
  * @property {number} lineCount
  * @property {number} runCount

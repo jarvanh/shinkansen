@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>文件翻譯設定 — Shinkansen</title>
+  <link rel="stylesheet" href="../options/options.css">
+  <style>
+    /* settings 頁簡單版面；options.css 既有 .container/section/label 樣式直接沿用 */
+    .container { max-width: 880px; }
+    .danger-zone {
+      border: 1px solid #fbbf24; background: #fffbeb; padding: 14px 16px;
+      border-radius: 6px; margin-top: 10px;
+    }
+    .danger-zone button { margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div id="save-bar" class="save-bar" hidden></div>
+
+  <div class="container">
+    <h1><img src="../icons/icon-128.png" alt="" class="page-title-icon">文件翻譯設定</h1>
+
+    <section>
+      <h2>翻譯品質</h2>
+      <label class="checkbox-label">
+        <input type="checkbox" id="td-applyGlossary">
+        翻譯前先建立術語對照表（讓人名 / 專有名詞前後一致）
+      </label>
+      <small class="muted" style="display:block;margin-top:4px">開啟後，系統會在開始翻譯前先快速掃過整份文件，把人名、品牌、專有名詞統一成同一種譯法，避免同一個 Trump 一段翻成「川普」、另一段翻成「特朗普」。長文（尤其人名很多的新聞、論文）很有用。代價是多花約 1-3 秒跟一點點費用（約新台幣 $0.03）。預設關閉，需要時再開</small>
+    </section>
+
+    <section>
+      <h2>翻譯指令</h2>
+      <p class="muted">這是給 AI 的翻譯指令（system prompt）。可以自訂翻譯風格、用語偏好、強調規則 — 例如「請以新聞稿口吻翻譯」「保留所有英文公司名」。<strong>只影響文件翻譯，不會動到網頁翻譯</strong>。一般使用者不用改</p>
+      <label>
+        <textarea id="td-systemPrompt" rows="14" style="font-family: monospace; font-size: 12px;"></textarea>
+      </label>
+      <button type="button" id="td-reset-prompt" class="secondary">重置為預設值</button>
+    </section>
+
+    <section>
+      <h2>進階</h2>
+
+      <label>
+        翻譯創意度（temperature）
+        <input type="number" id="td-temperature" step="0.05" min="0" max="2" style="max-width:120px">
+      </label>
+      <small class="muted" style="display:block;margin-top:4px;margin-bottom:14px">數字越低翻譯越穩定（人名 / 術語前後一致、用詞保守），越高越有創意（行文流暢但可能跑掉）。範圍 0–2，預設 0.5。合約 / 技術文件適合 0.3–0.5；散文 / 文章可調到 1 左右。改數字後再翻同一份文件會自動重翻（不會用舊的）</small>
+
+      <div class="danger-zone">
+        <strong>清除所有文件翻譯記憶</strong>
+        <p class="muted" style="margin-top:4px">系統會把每次翻譯結果記在本機，下次翻同一段文字直接用，不重複收費。按下這個按鈕會清掉所有 PDF / 之後 Office 文件的翻譯記憶 — 下次翻舊文件會重新呼叫 AI（也會重新計費）。<br>適用情境：換了上面的「翻譯指令」想全部重翻試試；或覺得舊翻譯品質不好想重來。<br><strong>不影響網頁翻譯、字幕翻譯、術語表的記憶</strong></p>
+        <button type="button" id="td-clear-all-cache-btn" class="secondary">清除所有文件翻譯記憶</button>
+        <span id="td-clear-cache-status" class="muted" style="margin-left:10px"></span>
+      </div>
+    </section>
+
+    <div class="btn-row" style="margin-top:24px">
+      <button id="td-save-btn" class="primary" type="button">儲存設定</button>
+    </div>
+  </div>
+
+  <script type="module" src="settings.js"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@ import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
-import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT } from './lib/storage.js';
+import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -552,8 +552,24 @@ const messageHandlers = {
   // 回應:{ result: string[], usage: {...}, rpdExceeded, hadMismatch }
   TRANSLATE_DOC_BATCH: {
     async: true,
-    handler: (payload, sender) => {
-      const overrides = payload?.modelOverride ? { model: payload.modelOverride } : {};
+    handler: async (payload, sender) => {
+      // W7:文件翻譯路徑用 settings.translateDoc.systemPrompt(空 fallback 到
+      // DEFAULT_DOC_SYSTEM_PROMPT),不污染網頁翻譯 prompt。通用於 PDF + 未來
+      // 各 Office 格式。透過 geminiOverrides.systemInstruction 覆蓋 geminiConfig。
+      //
+      // append DOC_INLINE_MARKER_INSTRUCTION:這段 inline marker 協定 user 編輯
+      // 不到也看不到(避免改壞 marker 解析核心邏輯),由 background 自動補在 user
+      // prompt 後送 LLM。即便 user 把 systemPrompt 改成完全不同的翻譯 prompt,
+      // marker 規則仍然生效
+      const s = await getSettings();
+      const td = s.translateDoc || {};
+      const userPrompt = (td.systemPrompt && td.systemPrompt.trim()) || DEFAULT_DOC_SYSTEM_PROMPT;
+      const effectivePrompt = userPrompt + DOC_INLINE_MARKER_INSTRUCTION;
+      const overrides = { systemInstruction: effectivePrompt };
+      if (typeof td.temperature === 'number' && Number.isFinite(td.temperature)) {
+        overrides.temperature = td.temperature;
+      }
+      if (payload?.modelOverride) overrides.model = payload.modelOverride;
       return handleTranslate(payload, sender, overrides, null, '_doc');
     },
   },
@@ -1222,6 +1238,15 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   // （例如先按 Alt+A 走 Flash Lite 翻過，再按 Alt+S 走 Flash 應該重新打 API，不該命中 Flash Lite 的舊譯文）。
   const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
   glossaryKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
+  // W7:文件翻譯路徑(_doc)cache key 加 temperature,讓使用者在 settings page 改
+  // 文件翻譯獨立 temperature 後立即生效(不會 cache hit 拿到舊 temp 的譯文)。
+  // 網頁 / 字幕路徑沒獨立 temperature 設定,不加(避免 cache 多分裂)
+  if (cacheTag === '_doc') {
+    const tdTemp = effectiveSettings.geminiConfig?.temperature;
+    if (typeof tdTemp === 'number' && Number.isFinite(tdTemp)) {
+      glossaryKeySuffix += '_t' + tdTemp.toFixed(2);
+    }
+  }
 
   // 1. 先撈快取
   const cached = await cache.getBatch(texts, glossaryKeySuffix);
@@ -1741,6 +1766,24 @@ browser.commands.onCommand.addListener(async (command) => {
 });
 
 // ─── 安裝/更新事件 ─────────────────────────────────────────
+// W7:一次性清 tc_* 翻譯 cache(PDF inline marker 協定變動 → 舊 sha1 全部失效)。
+// flagKey 在 storage.local 設過後不再清,onInstalled + onStartup 兩處都呼叫只
+// 會跑一次。網頁 cache 一併清是 PDF 路徑 prompt 變動的代價,使用者下次翻譯重打
+// API,新譯文跟舊版本一致(只是費用)。Glossary 不在此清,因為術語表 prompt 沒變動。
+const W7_CACHE_MIGRATION_FLAG = '__shinkansen_w7_cache_migrated';
+async function runW7CacheMigration(triggerLabel) {
+  try {
+    const r = await cache.migrateClearTranslationCacheOnce(W7_CACHE_MIGRATION_FLAG);
+    if (r.ranMigration) {
+      debugLog('info', 'cache', `W7 migration cleared tc_* (${triggerLabel})`, { cleared: r.cleared });
+    }
+  } catch (err) {
+    debugLog('warn', 'cache', 'W7 migration failed', { error: err && err.message, trigger: triggerLabel });
+  }
+}
+browser.runtime.onStartup?.addListener(() => { runW7CacheMigration('onStartup'); });
+runW7CacheMigration('sw-init'); // SW 冷啟動也跑一次(防 onStartup 沒觸發的 case,如更新 install)
+
 browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   debugLog('info', 'system', `extension ${reason}`, {
     version: browser.runtime.getManifest().version,
@@ -1749,6 +1792,7 @@ browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   // 安裝/更新時也檢查一次版本（雙重保險，SW 啟動時已經跑過一次）
   const currentVersion = browser.runtime.getManifest().version;
   await cache.checkVersionAndClear(currentVersion);
+  await runW7CacheMigration('onInstalled');
 
   // v1.6.5: CWS 自動更新到 major / minor 新版時，寫 welcomeNotice 讓使用者下次
   // 開 popup 或翻譯成功 toast 時看到「🎉 已升級至 vX.Y」+ 重大更新清單。

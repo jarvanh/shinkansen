@@ -796,6 +796,7 @@ $('yt-reset-prompt').addEventListener('click', () => {
   $('ytSystemPrompt').value = DEFAULT_SUBTITLE_SYSTEM_PROMPT;
   markDirty(); // 值已變更，標記為未儲存
 });
+// W7:文件翻譯設定已搬到 translate-doc/settings.html(獨立 page),不在 options 內
 // v1.5.8: 自訂模型「重置為預設 Prompt」按鈕——把 textarea 重設為 Gemini 同款 DEFAULT_SYSTEM_PROMPT
 $('cp-reset-prompt')?.addEventListener('click', () => {
   $('cp-systemPrompt').value = DEFAULT_SYSTEM_PROMPT;
@@ -1153,6 +1154,21 @@ function sanitizeImport(raw) {
       gcClean[key] = v;
     }
     if (Object.keys(gcClean).length > 0) clean.geminiConfig = gcClean;
+  }
+
+  // W7:translateDoc 子物件
+  if (raw.translateDoc && typeof raw.translateDoc === 'object') {
+    const td = raw.translateDoc;
+    const tdClean = {};
+    if (typeof td.systemPrompt === 'string') tdClean.systemPrompt = td.systemPrompt;
+    else if ('systemPrompt' in td) warnings.push('translateDoc.systemPrompt:型別錯誤,已略過');
+    if (typeof td.applyGlossary === 'boolean') tdClean.applyGlossary = td.applyGlossary;
+    else if ('applyGlossary' in td) warnings.push('translateDoc.applyGlossary:型別錯誤,已略過');
+    if (typeof td.temperature === 'number' && Number.isFinite(td.temperature)
+        && td.temperature >= 0 && td.temperature <= 2) {
+      tdClean.temperature = td.temperature;
+    } else if ('temperature' in td) warnings.push('translateDoc.temperature:超出 0-2 範圍,已略過');
+    if (Object.keys(tdClean).length > 0) clean.translateDoc = tdClean;
   }
 
   // pricing 子物件

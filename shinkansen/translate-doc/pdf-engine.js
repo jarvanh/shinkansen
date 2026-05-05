@@ -153,6 +153,67 @@ export async function parsePdf(file, onProgress = () => {}) {
       continue;
     }
 
+    // W7:per-run linkUrl — 抽 link annotations,把 PDF y-up rect 轉成 canvas
+    // y-down rect,後面對每個 textRun bbox 中心點落入即標 linkUrl
+    let linkRectsCanvas = [];
+    try {
+      const annotations = await page.getAnnotations();
+      for (const a of annotations) {
+        if (a.subtype !== 'Link') continue;
+        const url = a.url || a.unsafeUrl || null;
+        if (!url || !Array.isArray(a.rect) || a.rect.length !== 4) continue;
+        // PDFviewer.convertToViewportRectangle 把 PDF rect [x1,y1,x2,y2] (y-up)
+        // 轉成 canvas [x1',y1',x2',y2'] (y-down,範圍可能 y2' < y1' 或反之,
+        // 標準化成 left/top/right/bottom)
+        const r = viewport.convertToViewportRectangle(a.rect);
+        const left = Math.min(r[0], r[2]);
+        const right = Math.max(r[0], r[2]);
+        const top = Math.min(r[1], r[3]);
+        const bottom = Math.max(r[1], r[3]);
+        linkRectsCanvas.push({ left, top, right, bottom, url });
+      }
+    } catch (_) {
+      // link 抽失敗不影響正常翻譯,降級成「沒 link」
+    }
+
+    // W7:per-run isItalic + isBold — 從 textContent.styles + commonObjs 推
+    // PDF.js textContent.styles 沒提供 italic / bold flag,要從 fontFamily 或
+    // 真實 font 物件的 .italic/.bold/name 反推。先用 family regex 蓋大宗
+    // (family 常含 "Italic"/"Bold"/"-It"),沒命中再用 commonObjs 反查
+    const ITALIC_RE = /Italic|Oblique|-It\b|-Obl\b/i;
+    const BOLD_RE = /Bold|Black|Heavy|Demi|Semi/i;
+    const styleIsItalic = {};
+    const styleIsBold = {};
+    if (textContent.styles) {
+      for (const fn of Object.keys(textContent.styles)) {
+        const s = textContent.styles[fn];
+        const family = (s && s.fontFamily) || '';
+        styleIsItalic[fn] = ITALIC_RE.test(family);
+        styleIsBold[fn] = BOLD_RE.test(family);
+      }
+    }
+    // 用 commonObjs 反查字型物件補完(family 沒 keyword 但 font.italic/.bold)
+    try {
+      await page.getOperatorList(); // 觸發 worker font load
+      for (const fn of Object.keys(styleIsItalic)) {
+        if (styleIsItalic[fn] && styleIsBold[fn]) continue;
+        try {
+          const font = await new Promise((resolve) => page.commonObjs.get(fn, resolve));
+          const name = (font && font.name) || '';
+          if (!styleIsItalic[fn]) {
+            styleIsItalic[fn] = (font && font.italic === true) || ITALIC_RE.test(name);
+          }
+          if (!styleIsBold[fn]) {
+            styleIsBold[fn] = (font && font.bold === true) || BOLD_RE.test(name);
+          }
+        } catch {
+          // 拿不到 font 物件 → 維持 false
+        }
+      }
+    } catch (_) {
+      // operatorList 失敗不影響其他
+    }
+
     const textRuns = [];
     let droppedOutsideViewport = 0;
     for (const item of textContent.items) {
@@ -198,6 +259,22 @@ export async function parsePdf(file, onProgress = () => {}) {
       const ascent = styleEntry && typeof styleEntry.ascent === 'number' ? styleEntry.ascent : null;
       const descent = styleEntry && typeof styleEntry.descent === 'number' ? styleEntry.descent : null;
 
+      // W7:linkUrl — 中心點落入哪個 link rect 就標哪個 url
+      let linkUrl = null;
+      if (linkRectsCanvas.length > 0) {
+        const cx = (left + right) / 2;
+        const cy = (top + bottom) / 2;
+        for (const lr of linkRectsCanvas) {
+          if (cx >= lr.left && cx <= lr.right && cy >= lr.top && cy <= lr.bottom) {
+            linkUrl = lr.url;
+            break;
+          }
+        }
+      }
+      // W7:isItalic / isBold — 用 styleIsItalic/Bold 表查
+      const isItalic = !!styleIsItalic[item.fontName];
+      const isBold = !!styleIsBold[item.fontName];
+
       textRuns.push({
         text: item.str,
         // canvas 座標(y 由上往下),bbox = [left, top, right, bottom]
@@ -209,6 +286,9 @@ export async function parsePdf(file, onProgress = () => {}) {
         descent,
         hasEOL: !!item.hasEOL,
         dir: item.dir || 'ltr',
+        isItalic,
+        isBold,
+        linkUrl,
       });
 
       totalChars += item.str.length;
@@ -274,6 +354,12 @@ export async function parsePdf(file, onProgress = () => {}) {
  * 把指定頁 render 到 canvas（給 debug overlay / 線上閱讀器用）。
  * scale 預設 1.5——比螢幕原生稍大讓文字邊緣銳利,過大會讓 SVG overlay 變慢。
  *
+ * 對 HiDPI / Retina 螢幕(DPR > 1),canvas internal bitmap 用 `scale × DPR` 算,
+ * 讓一個 device pixel 對映一個 canvas pixel,文字邊緣不會被瀏覽器 upscale 模糊。
+ * 回傳的 width / height 仍以 `scale` 為基準(CSS pixels),caller 拿來算 layout
+ * (reader 的 zoom / debug overlay 的 SVG viewBox)時不變。canvas CSS 顯示尺寸
+ * 走 `width: 100%` 跟著 parent,parent 用 baseW(=回傳 width)× zoom 設置。
+ *
  * @param {object} pdfDoc            PDF.js 的 PDFDocumentProxy
  * @param {number} pageIndex         0-based
  * @param {HTMLCanvasElement} canvas 目標 canvas
@@ -282,13 +368,15 @@ export async function parsePdf(file, onProgress = () => {}) {
  */
 export async function renderPageToCanvas(pdfDoc, pageIndex, canvas, scale = 1.5) {
   const page = await pdfDoc.getPage(pageIndex + 1);
-  const viewport = page.getViewport({ scale });
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
+  const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  const cssViewport = page.getViewport({ scale });
+  const renderViewport = page.getViewport({ scale: scale * dpr });
+  canvas.width = Math.ceil(renderViewport.width);
+  canvas.height = Math.ceil(renderViewport.height);
   const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
   page.cleanup();
-  return { width: viewport.width, height: viewport.height, scale };
+  return { width: cssViewport.width, height: cssViewport.height, scale };
 }
 
 /**
@@ -311,6 +399,9 @@ export function closeDocument(pdfDoc) {
  * @property {number|null} descent
  * @property {boolean} hasEOL
  * @property {string} dir            'ltr' / 'rtl' / 'ttb'
+ * @property {boolean} isItalic      W7:從 fontFamily / commonObjs.font.italic 推
+ * @property {boolean} isBold        W7:從 fontFamily / commonObjs.font.bold 推
+ * @property {string|null} linkUrl   W7:bbox 中心點落入 link annotation 的 url
  *
  * @typedef {Object} RawPdfPage
  * @property {number} pageIndex

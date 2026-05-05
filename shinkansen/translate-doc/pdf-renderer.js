@@ -112,10 +112,15 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
     // 創新頁 + 把原 page 嵌進去當底層(裝飾 / 圖 / 不可翻譯區留；譯文 overlay 在上)
     const newPage = newDoc.addPage([pageW, pageH]);
     newPage.drawPage(embeddedPages[i], { x: 0, y: 0, width: pageW, height: pageH });
-    // 上層蓋譯文(白底 + 中文，只對 translatable block + 有 translation 才蓋)
-    drawTranslatedOverlay(newPage, layoutPage, cjkFontRegular, cjkFontBold, meta.items);
-    // 還原原 PDF 的 Link annotations(URL 可點)
-    addLinkAnnotations(newDoc, newPage, meta.links);
+    // 上層蓋譯文(白底 + 中文，只對 translatable block + 有 translation 才蓋)。
+    // W7:回傳譯文 link piece 對應的 device rect(PDF y-up),addLinkAnnotations
+    // 用譯文 rect 而非原 PDF rect(譯文長度跟原文不同,原 rect 對不到譯文位置)。
+    // 沒對應到譯文的 link(原 PDF link 在 non-translatable 區 / translation 失敗)
+    // fallback 用原 PDF rect 保留 click hit
+    const translatedLinkRects = drawTranslatedOverlay(newPage, layoutPage, cjkFontRegular, cjkFontBold, meta.items);
+    const coveredUrls = new Set(translatedLinkRects.map((l) => l.url));
+    const fallbackLinks = meta.links.filter((l) => !coveredUrls.has(l.url));
+    addLinkAnnotations(newDoc, newPage, [...translatedLinkRects, ...fallbackLinks]);
   }
 
   onProgress({ stage: 'saving' });
@@ -164,16 +169,34 @@ export async function downloadBilingualPdf(originalArrayBuffer, layoutDoc, optio
 
 const TRANSLATABLE_TYPES = new Set(['paragraph', 'heading', 'list-item', 'caption', 'footnote']);
 
+// W7:italic 用 pdf-lib drawText `matrix` 做 12° skew transform(業界標準做法,
+// CSS font-synthesis-style 預設 14°、FontForge -10°~-15°,折衷 12°)。matrix 走
+// PDF text rendering matrix 規格,skew x 軸:[1, 0, tan(12°), 1, tx, ty]
+const ITALIC_SKEW = Math.tan(12 * Math.PI / 180);
+// 連結色 = 接近 #00468C 的偏深藍,跟黑字有對比但不過度螢光
+const LINK_RGB = [0, 0.27, 0.55];
+// link underline:baseline 下 fontSize × 0.12 處,thickness fontSize × 0.06
+const UNDERLINE_OFFSET_RATIO = 0.12;
+const UNDERLINE_THICKNESS_RATIO = 0.06;
+
 // 對每個 translatable + has translation 的 block 在新 page 上蓋白底 + 寫譯文。
 // 不可翻譯 type(table / formula / figure / page-number)/ failed block / pending →
 // 不蓋(讓底層 embeddedPage 的原 PDF 文字 visible)，跟 reader overlay 模式一致。
 //
-// items:從 PDF.js 抽出的 textContent items(canvas 座標),每個帶 isBold flag
-// (從 commonObjs.get(fontName).bold / name regex 推得)。對每個 layout block 判斷
-// bold 字符是否多數佔(≥ 50%),是則用 fontBold 寫譯文
+// W7:走 piece-by-piece 渲染:每個 block 的 translationSegments 切成 wrap line,
+// 每 line 內走 piece 列表逐個 drawText。bold piece 用 fontBold、italic piece 用
+// matrix skew、link piece 藍色 + drawLine underline + 收集譯文 device rect 給
+// addLinkAnnotations。
+//
+// items:從 PDF.js 抽出的 textContent items(canvas 座標),只用於 expandBoxToCoverItems
+// 算 mask box(W7 起 isBold 從 styleSegments 走,不再用 items 反推 block-level bold)
+//
+// @returns {Array<{ url: string, rect: [number,number,number,number] }>}
+//          回傳譯文 link piece 對應的 PDF y-up rect,給 addLinkAnnotations 用
 function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, items) {
   const { rgb } = window.PDFLib;
   const pageH = layoutPage.viewport.height;
+  const translatedLinkRects = [];
   for (const block of layoutPage.blocks) {
     if (!TRANSLATABLE_TYPES.has(block.type)) continue;
     if (!block.translation || block.translation.trim().length === 0) continue;
@@ -181,44 +204,83 @@ function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, items) {
     const [origX0, origY0, origX1, origY1] = block.bbox;
     if (origX1 <= origX0 || origY1 <= origY0) continue;
 
-    // 1) 判該 block 在原 PDF 是否多數 bold → 選對應字型
-    const useBold = isBlockBold(block, items);
-    const font = useBold ? fontBold : fontRegular;
+    // W7:取 translationSegments(parser 失敗 / 舊資料 → fallback 整段 plain regular)
+    let segs = Array.isArray(block.translationSegments) && block.translationSegments.length > 0
+      ? block.translationSegments
+      : [{ text: block.translation, isBold: false, isItalic: false, linkUrl: null }];
 
-    // 2) fit-to-box:從 scale 1.0 起步,塞不下時依序試 (a) 縮 scale 到 0.7
-    //    (b) 擴 box 往下 (c) 擴 box 往右 (d) 繼續縮到 0.5。回傳最終 box + 字級 + 行
-    const { fontSize, lineHeight, lines, finalBox } = fitTextToBox(
-      block.translation, font, block.fontSize, block, layoutPage,
+    // 1) fit-to-box:從 scale 1.0 起步,塞不下時依序試縮 + 擴 box,回傳最終 box +
+    //    字級 + 行(每行帶 pieces 陣列)
+    const { fontSize, lineHeight, lines, finalBox } = fitSegmentsToBox(
+      segs, fontRegular, fontBold, block.fontSize, block, layoutPage,
     );
 
-    // 3) 蓋白底 — 用 finalBox(可能比原 block bbox 大,蓋住擴展空間的原 PDF 字)
-    const padding = 2;
-    const { x0, y0, x1, y1 } = finalBox;
-    const finalW = x1 - x0;
-    const finalH = y1 - y0;
-    const pdfTop = pageH - y0;
-    const pdfBottom = pageH - y1;
+    // 2) 蓋白底 — mask box 取 finalBox 跟「該 block 在 PDF 實際 text item bbox
+    //    union」的聯集,padding 用字級 30%(link underline / hanging 標點 / ascent
+    //    略超出 line bbox 等情況)
+    const padding = Math.max(2, (block.fontSize || 12) * 0.3);
+    const maskBox = expandBoxToCoverItems(finalBox, block, items);
+    const { x0: mx0, y0: my0, x1: mx1, y1: my1 } = maskBox;
+    const pdfMaskBottom = pageH - my1;
     page.drawRectangle({
-      x: x0 - padding,
-      y: pdfBottom - padding,
-      width: finalW + padding * 2,
-      height: finalH + padding * 2,
+      x: mx0 - padding,
+      y: pdfMaskBottom - padding,
+      width: (mx1 - mx0) + padding * 2,
+      height: (my1 - my0) + padding * 2,
       color: rgb(1, 1, 1),
       borderWidth: 0,
     });
+    const { x0, y0, y1 } = finalBox;
+    const pdfTop = pageH - y0;
+    const pdfBottom = pageH - y1;
 
-    // 4) drawText
+    // 3) drawText piece-by-piece
     let cy = pdfTop - fontSize; // baseline 起點(PDF y-up)
     for (const line of lines) {
-      if (cy < pdfBottom - lineHeight) break; // 防 fallback 場景跑進下個 block
-      try {
-        page.drawText(line, { x: x0, y: cy, font, size: fontSize });
-      } catch (err) {
-        console.warn('[Shinkansen] drawText 跳過：', line.slice(0, 30), err.message);
+      if (cy < pdfBottom - lineHeight) break;
+      let cx = x0;
+      for (const piece of line.pieces) {
+        if (!piece.text) continue;
+        const pieceFont = piece.isBold ? fontBold : fontRegular;
+        const color = piece.linkUrl ? rgb(LINK_RGB[0], LINK_RGB[1], LINK_RGB[2]) : rgb(0, 0, 0);
+        const opts = { font: pieceFont, size: fontSize, color };
+        if (piece.isItalic) {
+          // pdf-lib drawText 接 matrix 後會用 matrix 取代 x/y,把 cx/cy 寫進 matrix.tx/ty
+          opts.matrix = [1, 0, ITALIC_SKEW, 1, cx, cy];
+        } else {
+          opts.x = cx;
+          opts.y = cy;
+        }
+        try {
+          page.drawText(piece.text, opts);
+        } catch (err) {
+          console.warn('[Shinkansen] drawText 跳過：', piece.text.slice(0, 30), err.message);
+        }
+        const pieceWidth = pieceFont.widthOfTextAtSize(piece.text, fontSize);
+        if (piece.linkUrl) {
+          // underline:baseline 下方
+          const underlineY = cy - fontSize * UNDERLINE_OFFSET_RATIO;
+          try {
+            page.drawLine({
+              start: { x: cx, y: underlineY },
+              end: { x: cx + pieceWidth, y: underlineY },
+              thickness: fontSize * UNDERLINE_THICKNESS_RATIO,
+              color: rgb(LINK_RGB[0], LINK_RGB[1], LINK_RGB[2]),
+            });
+          } catch (_) { /* underline 失敗不破整體 */ }
+          // 收集譯文 link rect(PDF y-up,給 addLinkAnnotations 用)。rect 涵蓋
+          // baseline 上下幾 pt 讓點擊 hit area 寬鬆些
+          translatedLinkRects.push({
+            url: piece.linkUrl,
+            rect: [cx, cy - fontSize * 0.2, cx + pieceWidth, cy + fontSize * 0.9],
+          });
+        }
+        cx += pieceWidth;
       }
       cy -= lineHeight;
     }
   }
+  return translatedLinkRects;
 }
 
 // fit-to-box(港 BabelDOC `_find_optimal_scale_and_layout` 演算法到 JS):
@@ -238,8 +300,14 @@ const PHASE_A_SCALES = [1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7];
 const PHASE_D_SCALES = [0.65, 0.55, 0.5];
 const FIRST_LINE_VISUAL_RATIO = 1.21;
 
-function fitTextToBox(text, font, originalFontSize, currentBlock, layoutPage) {
-  const isCJKText = hasCJK(text);
+// W7:segment-aware 版本。input 接 styleSegments + 兩種 font(regular/bold),
+// 內部用 wrapSegmentsToWidth 取代 wrapTextToWidth。回傳 lines 結構也變
+// [{ pieces: [{ text, isBold, isItalic, linkUrl }] }] 給 drawTranslatedOverlay
+// piece-by-piece drawText 用。
+function fitSegmentsToBox(segments, fontRegular, fontBold, originalFontSize, currentBlock, layoutPage) {
+  // 全段 text 拼起來判斷 CJK(影響 line_skip)
+  const fullText = segments.map((s) => s.text).join('');
+  const isCJKText = hasCJK(fullText);
   const lineSkipRatio = isCJKText ? 1.5 : 1.3;
   const [origX0, origY0, origX1, origY1] = currentBlock.bbox;
   let box = { x0: origX0, y0: origY0, x1: origX1, y1: origY1 };
@@ -250,7 +318,7 @@ function fitTextToBox(text, font, originalFontSize, currentBlock, layoutPage) {
     const blockW = b.x1 - b.x0;
     const blockH = b.y1 - b.y0;
     if (blockW <= 0 || blockH <= 0) return null;
-    const lines = wrapTextToWidth(text, font, fontSize, blockW);
+    const lines = wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, blockW);
     const requiredH = fontSize * FIRST_LINE_VISUAL_RATIO + (lines.length - 1) * lineHeight;
     if (requiredH <= blockH + 1) return { fontSize, lineHeight, lines, finalBox: b };
     return null;
@@ -293,7 +361,7 @@ function fitTextToBox(text, font, originalFontSize, currentBlock, layoutPage) {
   // fallback:用 MIN_SCALE 算一次,可能仍 overflow,讓 drawText loop 自己擋
   const fontSize = Math.max(MIN_FONT_SIZE, originalFontSize * MIN_SCALE);
   const lineHeight = fontSize * lineSkipRatio;
-  const lines = wrapTextToWidth(text, font, fontSize, box.x1 - box.x0);
+  const lines = wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, box.x1 - box.x0);
   return { fontSize, lineHeight, lines, finalBox: box };
 }
 
@@ -339,6 +407,27 @@ function getMaxRightX(currentBlock, layoutPage) {
     if (bx0 < minBlockerX0) minBlockerX0 = bx0;
   }
   return Math.max(cx1, minBlockerX0 - 5);
+}
+
+// 對「bbox 跟 block.bbox 有重疊」的 text items 算 union bbox,跟 finalBox 聯集回傳。
+// 用於擴展白底 mask 範圍,確保原 PDF text 的 ascent / descent / inline 標點
+// 不會在 block.bbox 邊緣漏出。中心點判定會漏掉 block 邊緣的 item(中心點略出
+// block.bbox 但大半字身仍在 block 內),改用 bbox overlap 判定才包得到。
+// 沒命中任何 item 直接回傳 finalBox。
+function expandBoxToCoverItems(finalBox, block, items) {
+  if (!items || items.length === 0) return finalBox;
+  const [bx0, by0, bx1, by1] = block.bbox;
+  let { x0, y0, x1, y1 } = finalBox;
+  for (const it of items) {
+    const [ix0, iy0, ix1, iy1] = it.bbox;
+    // 任意 bbox 交集即算屬於本 block
+    if (ix1 < bx0 || ix0 > bx1 || iy1 < by0 || iy0 > by1) continue;
+    if (ix0 < x0) x0 = ix0;
+    if (iy0 < y0) y0 = iy0;
+    if (ix1 > x1) x1 = ix1;
+    if (iy1 > y1) y1 = iy1;
+  }
+  return { x0, y0, x1, y1 };
 }
 
 // 判斷 block 在原 PDF 是否「多數 bold」(字符數加權,bold ratio ≥ 0.5)。
@@ -488,6 +577,133 @@ function applyCJKPunctuationRules(lines) {
     if (!moved) break;
   }
   return out.filter((l) => l.length > 0);
+}
+
+// W7:segment-aware wrap。對每 styleSegment 切 chunks(同 wrapTextToWidth 的
+// CJK 逐字 / ASCII 詞 / 空白獨立 切法),chunks 帶 segment 的 style;累加 chunk
+// 寬超過 maxWidth 就斷新行。同 line 內合併連續同 style chunks 成 piece。
+//
+// @returns {Array<{ pieces: Array<{ text, isBold, isItalic, linkUrl }> }>}
+export function wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, maxWidth) {
+  if (!Array.isArray(segments) || segments.length === 0) return [];
+
+  // 1) 對每 segment 切 chunks(每個 chunk 是 CJK 單字 / ASCII 詞 / 空白)
+  // chunks: [{ text, isBold, isItalic, linkUrl, isWS }]
+  const chunks = [];
+  for (const seg of segments) {
+    if (!seg || !seg.text) continue;
+    let buf = '';
+    const flushBuf = () => {
+      if (buf) {
+        chunks.push({
+          text: buf,
+          isBold: !!seg.isBold,
+          isItalic: !!seg.isItalic,
+          linkUrl: seg.linkUrl || null,
+          isWS: false,
+        });
+        buf = '';
+      }
+    };
+    for (const ch of seg.text) {
+      const cp = ch.codePointAt(0);
+      const isCJK =
+        (cp >= 0x3000 && cp <= 0x9FFF) ||
+        (cp >= 0x3400 && cp <= 0x4DBF) ||
+        (cp >= 0xFF00 && cp <= 0xFFEF);
+      const isWS = /\s/.test(ch);
+      if (isCJK || isWS) {
+        flushBuf();
+        chunks.push({
+          text: ch,
+          isBold: !!seg.isBold,
+          isItalic: !!seg.isItalic,
+          linkUrl: seg.linkUrl || null,
+          isWS,
+        });
+      } else {
+        buf += ch;
+      }
+    }
+    flushBuf();
+  }
+
+  function fontFor(c) { return c.isBold ? fontBold : fontRegular; }
+  function widthOf(c) {
+    try { return fontFor(c).widthOfTextAtSize(c.text, fontSize); }
+    catch { return c.text.length * fontSize * 0.5; }
+  }
+
+  // 2) wrap chunks 成 lines(lineChunks: chunks[],尚未合併成 pieces)
+  const lineChunks = [];
+  let current = [];
+  let currentWidth = 0;
+  for (const c of chunks) {
+    const w = widthOf(c);
+    if (current.length === 0 && c.isWS) continue; // 跳新行開頭的純空白
+    if (currentWidth + w > maxWidth && current.length > 0) {
+      lineChunks.push(current);
+      current = c.isWS ? [] : [c];
+      currentWidth = c.isWS ? 0 : w;
+    } else {
+      current.push(c);
+      currentWidth += w;
+    }
+  }
+  if (current.length > 0) lineChunks.push(current);
+
+  // 3) 合併連續同 style 的 chunks 成 pieces;CJK 標點規則(跨 piece)
+  const lines = lineChunks.map((cs) => ({ pieces: mergeChunksToPieces(cs) }));
+  return applyCJKPunctuationRulesPieces(lines);
+}
+
+// 把 chunks 陣列合併成 pieces:連續同 (isBold, isItalic, linkUrl) 合一段
+function mergeChunksToPieces(chunks) {
+  const pieces = [];
+  for (const c of chunks) {
+    const last = pieces[pieces.length - 1];
+    if (last && last.isBold === c.isBold && last.isItalic === c.isItalic && last.linkUrl === c.linkUrl) {
+      last.text += c.text;
+    } else {
+      pieces.push({ text: c.text, isBold: c.isBold, isItalic: c.isItalic, linkUrl: c.linkUrl });
+    }
+  }
+  return pieces;
+}
+
+// piece 版的 CJK 標點規則:每行第一個 piece 第一個 char 違規 → 挪到上行最後
+// piece 末尾(若同 style 合一,不同 style 則插個新 piece 保 style)
+function applyCJKPunctuationRulesPieces(lines) {
+  if (!lines || lines.length < 2) return lines;
+  const out = lines.map((l) => ({ pieces: l.pieces.map((p) => ({ ...p })) }));
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = false;
+    for (let i = 1; i < out.length; i++) {
+      const line = out[i];
+      const firstP = line.pieces[0];
+      if (!firstP || !firstP.text) continue;
+      const firstCh = firstP.text[0];
+      if (!FORBIDDEN_LINE_START.includes(firstCh)) continue;
+      // 移到上一行
+      const prevLine = out[i - 1];
+      const prevLast = prevLine.pieces[prevLine.pieces.length - 1];
+      if (prevLast && prevLast.isBold === firstP.isBold && prevLast.isItalic === firstP.isItalic && prevLast.linkUrl === firstP.linkUrl) {
+        prevLast.text += firstCh;
+      } else {
+        prevLine.pieces.push({
+          text: firstCh, isBold: firstP.isBold, isItalic: firstP.isItalic, linkUrl: firstP.linkUrl,
+        });
+      }
+      firstP.text = firstP.text.slice(1);
+      if (firstP.text.length === 0) line.pieces.shift();
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  // 過濾空 line + 空 piece
+  return out
+    .map((l) => ({ pieces: l.pieces.filter((p) => p.text.length > 0) }))
+    .filter((l) => l.pieces.length > 0);
 }
 
 // 中文按字斷，英文按詞斷，累加字寬超過 maxWidth 即斷行

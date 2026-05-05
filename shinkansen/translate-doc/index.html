@@ -10,7 +10,7 @@
   <header class="app-header">
     <h1>
       <img src="../icons/icon-128.png" alt="" class="app-icon">
-      <span>翻譯文件(beta)</span>
+      <span>翻譯文件（beta）</span>
     </h1>
     <span class="app-subtitle">PDF 檔翻譯</span>
   </header>
@@ -57,9 +57,7 @@
       <div class="result-summary">
         <div class="result-row"><span>檔名</span><span id="result-filename"></span></div>
         <div class="result-row"><span>頁數</span><span id="result-pages"></span></div>
-        <div class="result-row"><span>text run 總數</span><span id="result-runs"></span></div>
-        <div class="result-row"><span>整份字數</span><span id="result-chars"></span></div>
-        <div class="result-row"><span>切出 block 數</span><span id="result-blocks"></span></div>
+        <div class="result-row"><span>文件字數</span><span id="result-chars"></span></div>
       </div>
       <div class="result-actions">
         <button id="translate-btn" class="primary-btn" type="button">開始翻譯</button>
@@ -68,7 +66,7 @@
       </div>
     </section>
 
-    <!-- 階段 4.5：翻譯中(W3) -->
+    <!-- 階段 4.5：翻譯中（W3） -->
     <section id="stage-translating" class="stage" hidden>
       <h2 class="result-title">翻譯中</h2>
       <div class="translate-progress-wrap">
@@ -85,26 +83,31 @@
       </div>
     </section>
 
-    <!-- 翻譯設定 modal(stage-result / reader-toolbar 各一個按鈕都開這個) -->
+    <!-- 翻譯設定 modal（stage-result / reader-toolbar 各一個按鈕都開這個） -->
     <dialog id="translate-settings-dialog" class="summary-dialog">
       <h2 class="result-title">翻譯設定</h2>
       <div class="settings-section">
-        <div class="settings-label">使用模型 preset</div>
+        <div class="settings-label">使用哪組預設</div>
         <div id="settings-preset-list" class="settings-preset-list"></div>
-        <p class="settings-hint">三組 preset 內容(引擎 / 模型 / 標籤)在 popup → 設定 → 翻譯快速鍵 自訂</p>
+        <p class="settings-hint">三組預設的引擎、模型、標籤在「設定 → 翻譯快速鍵」分頁自訂</p>
       </div>
       <div class="settings-section">
         <label class="settings-checkbox-row">
           <input type="checkbox" id="settings-apply-glossary">
-          <span>術語表一致化</span>
+          <span>翻譯前先建立術語對照表</span>
         </label>
-        <p class="settings-hint">翻譯前先掃整份 PDF 由 LLM 萃取專有名詞 / 人名對照表,再套到所有 batch。長文(尤其人名眾多)各段譯名一致。會多一次 LLM 呼叫(~ 1-3 秒、~ $0.001)</p>
+        <p class="settings-hint">勾選後，系統會在開始翻譯前先快速掃過整份文件，把人名、專有名詞統一譯法，避免同一個名字前後譯得不一樣。長文很有用，會多花約 1-3 秒跟一點點費用</p>
       </div>
       <div class="settings-section">
-        <div class="settings-label">本篇翻譯快取</div>
-        <button id="settings-clear-doc-cache-btn" class="secondary-btn" type="button">清除本篇翻譯快取</button>
+        <div class="settings-label">本篇翻譯記憶</div>
+        <button id="settings-clear-doc-cache-btn" class="secondary-btn" type="button">清除本篇翻譯記憶</button>
         <span id="settings-clear-doc-cache-status" class="settings-hint" style="margin-left:8px"></span>
-        <p class="settings-hint">只清除目前這份 PDF 各段落對應的譯文快取(不動其他 PDF / 網頁 / 字幕快取)。清除後下次翻譯這份 PDF 將重新呼叫 LLM。適合「想換 model 之外條件重翻、看到譯文有錯想重翻」的場景</p>
+        <p class="settings-hint">只清掉這份 PDF 的翻譯記憶（其他 PDF / 網頁 / 字幕不影響）。清除後下次翻這份會重新呼叫 AI 翻譯。適合「覺得譯文有錯想重來」「想換個翻譯指令重試」的情境</p>
+      </div>
+      <!-- W7：深設定（翻譯指令 / 預設選項 / 清除所有文件翻譯記憶）在獨立 page，不擠進 modal -->
+      <div class="settings-section">
+        <button id="settings-open-doc-options-btn" class="secondary-btn" type="button">進階設定 →</button>
+        <p class="settings-hint">開啟「文件翻譯設定」分頁，可自訂翻譯指令、調整預設選項、清除翻譯記憶</p>
       </div>
       <div class="result-actions">
         <button id="translate-settings-save-btn" class="primary-btn" type="button">儲存</button>
@@ -112,7 +115,7 @@
       </div>
     </dialog>
 
-    <!-- 翻譯紀錄 modal(從工具欄「翻譯紀錄」按鈕開啟) -->
+    <!-- 翻譯紀錄 modal（從工具欄「翻譯紀錄」按鈕開啟） -->
     <dialog id="translate-summary-dialog" class="summary-dialog">
       <h2 class="result-title">翻譯紀錄</h2>
       <div class="result-summary">
@@ -130,10 +133,11 @@
       </div>
     </dialog>
 
-    <!-- 階段 6：雙頁並排閱讀器(W4) -->
+    <!-- 階段 6：雙頁並排閱讀器（W4） -->
     <section id="stage-reader" class="stage" hidden>
       <div class="reader-toolbar">
-        <span class="reader-zoom-group" title="調整顯示大小(50%-200%，用 CSS 縮放，canvas 解析度不變)">
+        <span class="reader-toolbar-spacer"></span>
+        <span class="reader-zoom-group" title="調整顯示大小（50%-200%，用 CSS 縮放，canvas 解析度不變）">
           <button id="reader-zoom-out" class="secondary-btn" type="button">−</button>
           <span id="reader-zoom-level" class="reader-zoom-level">100%</span>
           <button id="reader-zoom-in" class="secondary-btn" type="button">+</button>
@@ -143,11 +147,12 @@
           同步捲動
         </label>
         <button id="reader-retry-all-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗段落">重試失敗 (<span id="reader-failed-count">0</span>)</button>
-        <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照 PDF(每張原頁後接一張譯文頁)">下載譯文 PDF</button>
         <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿">複製譯文</button>
-        <button id="reader-summary-btn" class="secondary-btn" type="button" title="查看翻譯紀錄(已翻段數 / 失敗 / 快取命中 / token / 費用)+ 開啟版面 overlay">翻譯紀錄</button>
+        <button id="reader-summary-btn" class="secondary-btn" type="button" title="查看翻譯紀錄（已翻段數 / 失敗 / 快取命中 / token / 費用）+ 開啟版面 overlay">翻譯紀錄</button>
         <button id="reader-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
         <button id="reader-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
+        <span class="reader-toolbar-spacer"></span>
+        <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照 PDF（每張原頁後接一張譯文頁）">下載譯文 PDF</button>
       </div>
       <div class="reader-grid">
         <div class="reader-col reader-col-original" id="reader-col-original"></div>
@@ -181,7 +186,7 @@
             <option value="order">依 reading order</option>
           </select>
         </span>
-        <button id="debug-copy-json-btn" class="secondary-btn" type="button" title="複製整份 layout doc 序列化結果到剪貼簿(供回報 / debug 用)">複製 JSON</button>
+        <button id="debug-copy-json-btn" class="secondary-btn" type="button" title="複製整份 layout doc 序列化結果到剪貼簿（供回報 / debug 用）">複製 JSON</button>
         <button id="debug-back-btn" class="secondary-btn" type="button">關閉</button>
       </div>
 
@@ -192,7 +197,7 @@
       <div class="debug-type-legend" id="debug-type-legend"></div>
 
       <!-- detail 放在 viewport 上方 + sticky，讓使用者 hover 時不需要 scroll
-           就能看到原文/譯文(bbox / canvas 高可達 1100+ px，放下面看不到) -->
+           就能看到原文/譯文（bbox / canvas 高可達 1100+ px，放下面看不到） -->
       <div class="debug-detail" id="debug-detail">
         <span class="debug-detail-empty">把游標移到 bbox 上看該 block 的 plainText / 譯文</span>
       </div>
@@ -210,7 +215,7 @@
     <span class="footer-version" id="footer-version"></span>
   </footer>
 
-  <!-- pdf-lib + fontkit UMD bundles(W6 譯文 PDF 下載用)
+  <!-- pdf-lib + fontkit UMD bundles（W6 譯文 PDF 下載用）
        — 載成 window.PDFLib / window.fontkit globals，給 pdf-renderer.js 用 -->
   <script src="../lib/vendor/pdf-lib/pdf-lib.min.js"></script>
   <script src="../lib/vendor/pdf-lib/fontkit.umd.min.js"></script>
