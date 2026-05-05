@@ -6,7 +6,7 @@
 
 import { parsePdf, preflightFile, renderPageToCanvas, closeDocument, PdfParseError } from './pdf-engine.js';
 import { analyzeLayout } from './layout-analyzer.js';
-import { translateDocument } from './translate.js';
+import { translateDocument, segmentsToMarkdown, markdownToSegments } from './translate.js';
 import { renderReader, buildPlainTextDump } from './reader.js';
 import { downloadBilingualPdf } from './pdf-renderer.js';
 import { formatMoney } from '../lib/format.js';
@@ -23,6 +23,8 @@ const stages = {
   result: $('stage-result'),
   translating: $('stage-translating'),
   reader: $('stage-reader'),
+  edit: $('stage-edit'),
+  glossary: $('stage-glossary'),
   debug: $('stage-debug'),
 };
 
@@ -39,7 +41,12 @@ let lastTranslateSummary = null;       // 翻譯紀錄 modal 顯示用
 // 預設 1。對應 storage.sync.translatePresets[slot - 1] 的 model 當 modelOverride
 let currentPresetSlot = 1;
 let cachedPresets = null;
-let currentApplyGlossary = false;
+// v1.8.49:文章術語表(取代既有 applyGlossary 黑箱 toggle)。
+// null = 還沒建;[] = 建過但空(等同沒術語表);[{source, target, note?}] = 有效術語表。
+// 不持久化(reupload 即清),持久靠使用者自行匯出 / 匯入 JSON。
+let currentArticleGlossary = null;
+// 記錄打開 glossary editor 的來源 stage,cancel / 翻譯後決定回哪個 stage
+let glossaryEntryStage = 'result';
 
 function showStage(name) {
   for (const [key, el] of Object.entries(stages)) {
@@ -87,6 +94,7 @@ function releaseCurrentDoc() {
   currentModelOverride = null;
   currentOriginalArrayBuffer = null;
   lastTranslateSummary = null;
+  currentArticleGlossary = null;
   if (window.__skLayoutDoc) delete window.__skLayoutDoc;
 }
 
@@ -1129,14 +1137,12 @@ async function loadPresets() {
 
 async function loadCurrentPresetSlot() {
   try {
-    const r = await chrome.storage.local.get(['translateDocPresetSlot', 'translateDocApplyGlossary']);
+    const r = await chrome.storage.local.get(['translateDocPresetSlot']);
     const slot = parseInt(r.translateDocPresetSlot, 10);
     if (slot >= 1 && slot <= 3) currentPresetSlot = slot;
     else currentPresetSlot = 1;
-    currentApplyGlossary = r.translateDocApplyGlossary === true;
   } catch (err) {
     currentPresetSlot = 1;
-    currentApplyGlossary = false;
   }
 }
 
@@ -1154,7 +1160,6 @@ const PRESET_DISPLAY = [
 async function openSettingsDialog() {
   const presets = await loadPresets();
   const dlg = $('translate-settings-dialog');
-  $('settings-apply-glossary').checked = currentApplyGlossary;
   const list = $('settings-preset-list');
   list.innerHTML = '';
   for (const { slot, name, shortcut } of PRESET_DISPLAY) {
@@ -1185,14 +1190,9 @@ function bindSettingsDialogUI() {
   $('translate-settings-save-btn').addEventListener('click', async () => {
     const checked = dlg.querySelector('input[name="preset-slot"]:checked');
     const slot = checked ? parseInt(checked.value, 10) : currentPresetSlot;
-    const applyGlossary = $('settings-apply-glossary').checked;
     currentPresetSlot = slot;
-    currentApplyGlossary = applyGlossary;
     try {
-      await chrome.storage.local.set({
-        translateDocPresetSlot: slot,
-        translateDocApplyGlossary: applyGlossary,
-      });
+      await chrome.storage.local.set({ translateDocPresetSlot: slot });
     } catch (_) { /* ignore */ }
     dlg.close();
   });
@@ -1293,13 +1293,46 @@ function bindSummaryDialogUI() {
     showStage('debug');
     renderDebugPage();
   });
+  // 重試失敗段落:走 currentReaderHandle.retryAllFailed,內部會 regenerate 譯文 PDF
+  // + rerender 右欄。完成後刷新 dialog 顯示。
+  $('summary-retry-btn').addEventListener('click', async () => {
+    if (!currentReaderHandle) return;
+    const btn = $('summary-retry-btn');
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '重試中…';
+    try {
+      const r = await currentReaderHandle.retryAllFailed();
+      btn.textContent = `${r.success}/${r.total} 成功`;
+    } catch (err) {
+      console.error('[Shinkansen] retryAll 失敗', err);
+      btn.textContent = '重試失敗';
+    }
+    setTimeout(() => {
+      btn.textContent = orig;
+      // 重新計算失敗段數刷新 dialog 顯示(retry 後可能 0 或剩幾段)
+      refreshSummaryFailedDisplay();
+    }, 1500);
+  });
   // 點 backdrop(對話框外)關閉
   dlg.addEventListener('click', (e) => {
     if (e.target === dlg) dlg.close();
   });
 }
 
+// 用實際當前 doc 的失敗計數刷新「翻譯失敗」row + 控 retry 按鈕顯示
+// + 同步刷新 reader toolbar 上的「翻譯紀錄」按鈕視覺提示
+function refreshSummaryFailedDisplay() {
+  const failed = countCurrentFailedBlocks();
+  $('translated-failed').textContent = failed > 0 ? `${failed} 段` : '0';
+  const btn = $('summary-retry-btn');
+  btn.hidden = failed === 0;
+  btn.disabled = false;
+  refreshSummaryButtonAlert();
+}
+
 function bindReaderUI() {
+  $('reader-edit-btn').addEventListener('click', () => openEditor());
   $('reader-reupload-btn').addEventListener('click', () => {
     releaseCurrentDoc();
     showStage('upload');
@@ -1374,33 +1407,11 @@ function bindReaderUI() {
       btn.disabled = false;
     }, 3000);
   });
-  $('reader-retry-all-btn').addEventListener('click', async () => {
-    if (!currentReaderHandle) return;
-    const btn = $('reader-retry-all-btn');
-    btn.disabled = true;
-    const origText = btn.textContent;
-    btn.textContent = '重試中…';
-    try {
-      const r = await currentReaderHandle.retryAllFailed();
-      btn.textContent = `${r.success}/${r.total} 成功`;
-    } catch (err) {
-      console.error('retryAll 失敗', err);
-      btn.textContent = '重試失敗';
-    }
-    setTimeout(() => {
-      btn.textContent = origText;
-      // updateRetryAllUI 會在 onAfterRetry 內被呼叫，這裡不用手動 reset hidden
-    }, 2500);
-  });
 }
 
 async function openReader() {
   if (!currentDoc || !currentPdfDoc || !currentOriginalArrayBuffer) return;
   showStage('reader');
-  // 進 reader 前先 reset retry-all 按鈕為隱藏(避免上次 session 留下 visible 狀態,
-  // 在 emitFailedCount 觸發前看到「重試失敗 (0)」)
-  $('reader-retry-all-btn').hidden = true;
-  $('reader-failed-count').textContent = '0';
   // 等 stage 切換 + layout 確定後再 render(canvas size 才對)
   await new Promise((r) => requestAnimationFrame(r));
   if (currentReaderHandle) {
@@ -1415,7 +1426,8 @@ async function openReader() {
     $('reader-col-translated'),
     {
       modelOverride: currentModelOverride,
-      onFailedCountChange: updateRetryAllUI,
+      // v1.8.49 起「重試失敗」按鈕搬進「翻譯紀錄」modal,reader toolbar 不再顯示
+      // 失敗段數;onFailedCountChange 用 reader.js 的 default no-op
     },
   );
   // 套用 sync toggle + 重設 zoom 顯示
@@ -1423,13 +1435,32 @@ async function openReader() {
     currentReaderHandle.setSyncEnabled($('reader-sync-toggle').checked);
     $('reader-zoom-level').textContent = `${Math.round(currentReaderHandle.getZoom() * 100)}%`;
   }
+  refreshSummaryButtonAlert();
 }
 
-function updateRetryAllUI(failedCount) {
-  const btn = $('reader-retry-all-btn');
-  $('reader-failed-count').textContent = String(failedCount);
-  btn.hidden = failedCount === 0;
-  btn.disabled = false;
+// 從 currentDoc 算當前實際失敗段數(不依賴 lastTranslateSummary,因為使用者可能
+// 在編輯頁手動填過失敗段 → 已 done,實際失敗數 < 原始 summary)
+function countCurrentFailedBlocks() {
+  if (!currentDoc) return 0;
+  let n = 0;
+  for (const page of currentDoc.pages) {
+    for (const block of page.blocks) {
+      if (TRANSLATABLE_TYPES_SET.has(block.type) && block.translationStatus === 'failed') n++;
+    }
+  }
+  return n;
+}
+
+// 「翻譯紀錄」按鈕視覺提示:有失敗段時加橘邊強調,讓使用者知道要進去查 / 重試。
+// 呼叫點:openReader 完成、saveEdits 完成、retry 完成、translate 完成
+function refreshSummaryButtonAlert() {
+  const btn = $('reader-summary-btn');
+  if (!btn) return;
+  const failed = countCurrentFailedBlocks();
+  btn.classList.toggle('has-failed-alert', failed > 0);
+  btn.title = failed > 0
+    ? `有 ${failed} 段翻譯失敗，點開查看詳情並重試`
+    : '查看翻譯紀錄（已翻段數 / 失敗 / 快取命中 / token / 費用）+ 開啟版面 overlay';
 }
 
 function stepZoom(delta) {
@@ -1515,10 +1546,410 @@ function init() {
   bindSummaryDialogUI();
   bindSettingsDialogUI();
   bindReaderUI();
+  bindEditUI();
+  bindGlossaryUI();
   bindDebugUI();
   // 啟動讀使用者選定的 preset slot
   loadCurrentPresetSlot();
   showStage('upload');
+}
+
+// ---------- 譯文編輯（v1.8.49）----------
+//
+// 設計參考 CLAUDE.md §15(single mode 必須注入回原 element):這裡譯文最終仍寫回
+// block.translation / block.translationSegments,buildBilingualPdf 走原本路徑,
+// 不額外加 sibling overlay。編輯只發生在 layout doc 上,不持久(reupload 即失效)。
+//
+// markdown 協定見 translate.js segmentsToMarkdown / markdownToSegments 註解。
+
+function openEditor() {
+  if (!currentDoc) return;
+  const list = $('edit-list');
+  list.innerHTML = '';
+  for (const page of currentDoc.pages) {
+    const header = document.createElement('div');
+    header.className = 'edit-page-header';
+    header.textContent = `第 ${page.pageIndex + 1} 頁`;
+    list.appendChild(header);
+
+    let translatableInPage = 0;
+    for (const block of page.blocks) {
+      if (!TRANSLATABLE_TYPES_SET.has(block.type)) continue;
+      if (!block.plainText || !block.plainText.trim()) continue;
+      translatableInPage++;
+
+      const row = document.createElement('div');
+      row.className = 'edit-block';
+      row.dataset.blockId = block.blockId;
+      if (block.translationStatus === 'failed') row.classList.add('edit-block--failed');
+
+      const original = document.createElement('div');
+      original.className = 'edit-original';
+      original.textContent = block.plainText;
+      row.appendChild(original);
+
+      // textarea + overlay 雙層結構,overlay 在底層墊高亮 mark,textarea 在上層保持
+      // 編輯能力。CSS 兩者 padding/font/line-height/word-wrap 完全對齊。scroll 由 JS 同步。
+      const wrap = document.createElement('div');
+      wrap.className = 'edit-translation-wrap';
+
+      const overlay = document.createElement('div');
+      overlay.className = 'edit-highlight-overlay';
+      overlay.setAttribute('aria-hidden', 'true');
+      wrap.appendChild(overlay);
+
+      const initialMd = (Array.isArray(block.translationSegments) && block.translationSegments.length > 0)
+        ? segmentsToMarkdown(block.translationSegments)
+        : (block.translation || '');
+
+      const textarea = document.createElement('textarea');
+      textarea.className = 'edit-translation';
+      // 用譯文 markdown 長度估 rows(中文密度 ~25 字/行,textarea ~45 字/行 × 2/3 安全
+      // 係數);max 30 避免極長段落炸太高;openEditor 末尾還會跑一次 autoFit 用實際
+      // scrollHeight 微調(見 fitTextareaHeight)
+      textarea.rows = Math.max(3, Math.min(30, Math.ceil((initialMd.length || 1) / 25)));
+      textarea.value = initialMd;
+      if (block.translationStatus === 'failed') {
+        textarea.placeholder = '（原翻譯失敗，請手動填寫譯文，或留空保留原文）';
+      }
+      // 同步 overlay scroll(scrollbar 由 textarea 顯示;overlay overflow:hidden)
+      textarea.addEventListener('scroll', () => {
+        overlay.scrollTop = textarea.scrollTop;
+        overlay.scrollLeft = textarea.scrollLeft;
+      });
+      // textarea 內容變動 → 重算 matches + 更新所有 overlays
+      // (input event 對 user 打字 / 程式 setValue 都會觸發)
+      textarea.addEventListener('input', () => {
+        if ($('edit-find-input') && !$('edit-find-bar').hidden) {
+          recomputeFindMatches({ keepIndex: true });
+        }
+      });
+      wrap.appendChild(textarea);
+
+      row.appendChild(wrap);
+
+      list.appendChild(row);
+    }
+
+    if (translatableInPage === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'edit-empty';
+      empty.textContent = '（本頁無可翻譯段落）';
+      list.appendChild(empty);
+    }
+  }
+  showStage('edit');
+  list.scrollTop = 0;
+  // showStage 後 textarea 才有實際 layout,此時 scrollHeight 才正確。一次 loop 把
+  // 所有 textarea 高度貼合內容(避免內容溢出產生 internal scroll)。read scrollHeight
+  // 會 force layout,200 段約 50-150ms blocking,只在 openEditor 一次,可接受
+  requestAnimationFrame(() => {
+    for (const ta of list.querySelectorAll('.edit-translation')) {
+      fitTextareaHeight(ta);
+    }
+  });
+}
+
+// 把 textarea 高度設成貼合內容(無 internal scroll)。caller 在 user 看不見的時機
+// 呼叫(初始 render / saveEdits 後)避免閃動。重設 height='auto' 讓 scrollHeight 反
+// 映 natural 高度,再寫回 px。最低 60px 對齊 CSS min-height。
+function fitTextareaHeight(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(60, ta.scrollHeight) + 'px';
+}
+
+async function saveEdits() {
+  if (!currentDoc) return;
+  const blockMap = new Map();
+  for (const page of currentDoc.pages) {
+    for (const block of page.blocks) blockMap.set(block.blockId, block);
+  }
+  const rows = $('edit-list').querySelectorAll('.edit-block');
+  for (const row of rows) {
+    const block = blockMap.get(row.dataset.blockId);
+    if (!block) continue;
+    const text = row.querySelector('textarea').value;
+    if (!text.trim()) {
+      block.translation = '';
+      block.translationSegments = [];
+    } else {
+      const { segments, linkUrls } = markdownToSegments(text);
+      block.translationSegments = segments;
+      block.translation = segments.map((s) => s.text).join('');
+      // 保守 union linkUrls:user 新加的 + 原本有的（給其他依賴 block.linkUrls 的路徑用）
+      if (linkUrls.length > 0) {
+        const existing = new Set(Array.isArray(block.linkUrls) ? block.linkUrls : []);
+        for (const u of linkUrls) existing.add(u);
+        block.linkUrls = [...existing];
+      }
+    }
+    block.translationStatus = 'done';
+    block.translationError = null;
+    block.userEdited = true; // 預留 flag,將來 retry / re-translate 路徑可跳過
+  }
+  // 重 render reader（renderReader 內部會 regenerateTranslatedPdf）
+  await openReader();
+}
+
+function bindEditUI() {
+  $('edit-cancel-btn').addEventListener('click', () => {
+    if (currentDoc && currentReaderHandle) showStage('reader');
+    else showStage('upload');
+  });
+  $('edit-save-btn').addEventListener('click', async () => {
+    const btn = $('edit-save-btn');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '產生中…';
+    try {
+      await saveEdits();
+    } catch (err) {
+      console.error('[Shinkansen] saveEdits 失敗', err);
+      btn.textContent = '失敗，看 console';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500);
+      return;
+    }
+    btn.textContent = orig;
+    btn.disabled = false;
+  });
+  bindFindReplaceUI();
+  // 編輯頁鍵盤捷徑(只在 stage-edit 顯示時生效,不影響其他 stage):
+  //   ⌘F / Ctrl+F:喚出 find bar(攔截瀏覽器原生搜尋——textarea 多區搜尋體驗差)
+  //   ⌘G / Ctrl+G / F3:find bar 開啟時找下一個(focus 已經跳到 textarea 也能繼續走)
+  //   ⇧⌘G / Shift+F3:找上一個
+  //   Esc:關閉 find bar(若已開啟)
+  document.addEventListener('keydown', (e) => {
+    if (stages.edit.hidden) return;
+    const findBarOpen = !$('edit-find-bar').hidden;
+    if (e.key === 'Escape' && findBarOpen) {
+      e.preventDefault();
+      closeFindBar();
+      return;
+    }
+    const isFindShortcut = (e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F');
+    if (isFindShortcut) {
+      e.preventDefault();
+      openFindBar();
+      return;
+    }
+    const isFindNext = e.key === 'F3' || ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G'));
+    if (isFindNext && findBarOpen && findMatches.length > 0) {
+      e.preventDefault();
+      findStep(e.shiftKey ? -1 : 1);
+    }
+  });
+}
+
+// ---------- Find & Replace（編輯頁，v1.8.49）----------
+//
+// 範圍:只搜「譯文 textarea」,不搜原文。case sensitive,不躲 markdown 標記
+// (user 搜 `bold` 會在 `**bold**` 內命中——MVP 取捨,help bar 文檔有提)。
+// matches 算法:每次 input 變化或值改變後 recompute,線性掃所有 textarea.value
+// 用 indexOf 收集 [{ textarea, start, end }]。currentIndex 在 matches 內走。
+//
+// 替換策略:replaceCurrent 取代當前 match 後重算 matches、停留在「同 index」
+// (等同自動跳到下一個未取代的 match);replaceAll 一次掃完所有 textarea,
+// counter 暫時顯示「已取代 N 處」2 秒後恢復。
+
+let findMatches = [];     // [{ textarea, start, end }]
+let findCurrentIndex = -1;
+
+function getEditTextareas() {
+  return Array.from($('edit-list').querySelectorAll('.edit-translation'));
+}
+
+function recomputeFindMatches({ keepIndex = false } = {}) {
+  const findStr = $('edit-find-input').value;
+  const oldIdx = findCurrentIndex;
+  findMatches = [];
+  if (!findStr) {
+    findCurrentIndex = -1;
+    clearMatchHighlight();
+    updateFindCounter();
+    return;
+  }
+  for (const ta of getEditTextareas()) {
+    const v = ta.value;
+    let i = 0;
+    while ((i = v.indexOf(findStr, i)) !== -1) {
+      findMatches.push({ textarea: ta, start: i, end: i + findStr.length });
+      i += findStr.length;
+    }
+  }
+  if (findMatches.length === 0) {
+    findCurrentIndex = -1;
+  } else if (keepIndex && oldIdx >= 0) {
+    findCurrentIndex = Math.min(oldIdx, findMatches.length - 1);
+  } else {
+    findCurrentIndex = 0;
+  }
+  updateFindCounter();
+  if (findCurrentIndex >= 0) markMatch(findCurrentIndex);
+  else clearMatchHighlight();
+}
+
+function updateFindCounter() {
+  const total = findMatches.length;
+  const cur = findCurrentIndex >= 0 ? findCurrentIndex + 1 : 0;
+  $('edit-find-count').textContent = `${cur} / ${total}`;
+  const empty = total === 0;
+  $('edit-find-prev-btn').disabled = empty;
+  $('edit-find-next-btn').disabled = empty;
+  $('edit-replace-btn').disabled = empty;
+  $('edit-replace-all-btn').disabled = !$('edit-find-input').value;
+}
+
+function clearMatchHighlight() {
+  for (const ta of getEditTextareas()) {
+    const wrap = ta.parentElement;
+    if (wrap) wrap.classList.remove('edit-translation-wrap--current');
+    const overlay = wrap && wrap.querySelector('.edit-highlight-overlay');
+    if (overlay) overlay.innerHTML = '';
+  }
+}
+
+// HTML escape(避免 user 譯文含 < > & 破 overlay 渲染)
+function escapeOverlayHTML(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// 從文字 + match 區段產出 overlay innerHTML(transparent 文字 + <mark> 高亮)
+function buildOverlayHTML(text, marks) {
+  if (!text) return '';
+  if (!marks || marks.length === 0) return escapeOverlayHTML(text);
+  let out = '';
+  let cursor = 0;
+  for (const m of marks) {
+    if (m.start > cursor) out += escapeOverlayHTML(text.slice(cursor, m.start));
+    out += `<mark${m.isCurrent ? ' class="is-current"' : ''}>${escapeOverlayHTML(text.slice(m.start, m.end))}</mark>`;
+    cursor = m.end;
+  }
+  if (cursor < text.length) out += escapeOverlayHTML(text.slice(cursor));
+  // 結尾換行 browser 渲染會吞掉,加 zero-width space 撐住高度避免最後一行對不齊
+  if (text.endsWith('\n')) out += '​';
+  return out;
+}
+
+// 重新渲染所有 textarea 的 overlay(根據當前 findMatches + findCurrentIndex)
+function renderAllOverlays() {
+  // 把 findMatches 按 textarea 分組,記每筆全域 index 用來標 isCurrent
+  const byTa = new Map();
+  findMatches.forEach((m, gi) => {
+    if (!byTa.has(m.textarea)) byTa.set(m.textarea, []);
+    byTa.get(m.textarea).push({ start: m.start, end: m.end, isCurrent: gi === findCurrentIndex });
+  });
+  for (const ta of getEditTextareas()) {
+    const wrap = ta.parentElement;
+    if (!wrap) continue;
+    const overlay = wrap.querySelector('.edit-highlight-overlay');
+    if (!overlay) continue;
+    const marks = byTa.get(ta) || [];
+    overlay.innerHTML = buildOverlayHTML(ta.value, marks);
+    overlay.scrollTop = ta.scrollTop;
+    overlay.scrollLeft = ta.scrollLeft;
+  }
+}
+
+// 標示當前 match:wrap 加 ring class + scroll into view + 設 textarea selection
+// (失焦時不可見,user click 進 textarea 才看到)。focus 不搶,find input 保留焦點。
+function markMatch(idx) {
+  const m = findMatches[idx];
+  if (!m) return;
+  for (const ta of getEditTextareas()) {
+    const wrap = ta.parentElement;
+    if (wrap) wrap.classList.remove('edit-translation-wrap--current');
+  }
+  const wrap = m.textarea.parentElement;
+  if (wrap) wrap.classList.add('edit-translation-wrap--current');
+  m.textarea.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  try { m.textarea.setSelectionRange(m.start, m.end); } catch (_) { /* 失焦時某些 browser 會丟 */ }
+  renderAllOverlays();
+}
+
+function findStep(direction) {
+  if (findMatches.length === 0) return;
+  findCurrentIndex = (findCurrentIndex + direction + findMatches.length) % findMatches.length;
+  updateFindCounter();
+  markMatch(findCurrentIndex);
+}
+
+function replaceCurrent() {
+  if (findCurrentIndex < 0 || findMatches.length === 0) return;
+  const m = findMatches[findCurrentIndex];
+  if (!m) return;
+  const replaceStr = $('edit-replace-input').value;
+  const v = m.textarea.value;
+  m.textarea.value = v.slice(0, m.start) + replaceStr + v.slice(m.end);
+  // 取代後重算,停在同 index → 自然跳到下一個未取代的 match
+  recomputeFindMatches({ keepIndex: true });
+}
+
+function replaceAll() {
+  const findStr = $('edit-find-input').value;
+  const replaceStr = $('edit-replace-input').value;
+  if (!findStr) return;
+  let total = 0;
+  for (const ta of getEditTextareas()) {
+    const v = ta.value;
+    if (!v.includes(findStr)) continue;
+    let c = 0;
+    let i = 0;
+    while ((i = v.indexOf(findStr, i)) !== -1) {
+      c++;
+      i += findStr.length;
+    }
+    if (c > 0) {
+      ta.value = v.split(findStr).join(replaceStr);
+      total += c;
+    }
+  }
+  // counter 暫時顯示取代結果,2 秒後重算
+  $('edit-find-count').textContent = `已取代 ${total} 處`;
+  clearMatchHighlight();
+  setTimeout(() => recomputeFindMatches(), 2000);
+}
+
+function openFindBar() {
+  const bar = $('edit-find-bar');
+  bar.hidden = false;
+  const input = $('edit-find-input');
+  input.focus();
+  input.select();
+  recomputeFindMatches();
+}
+
+function closeFindBar() {
+  $('edit-find-bar').hidden = true;
+  findMatches = [];
+  findCurrentIndex = -1;
+  clearMatchHighlight();
+}
+
+function bindFindReplaceUI() {
+  $('edit-find-input').addEventListener('input', () => recomputeFindMatches());
+  $('edit-find-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      findStep(e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeFindBar();
+    }
+  });
+  $('edit-replace-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      replaceCurrent();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeFindBar();
+    }
+  });
+  $('edit-find-prev-btn').addEventListener('click', () => findStep(-1));
+  $('edit-find-next-btn').addEventListener('click', () => findStep(1));
+  $('edit-replace-btn').addEventListener('click', replaceCurrent);
+  $('edit-replace-all-btn').addEventListener('click', replaceAll);
+  $('edit-find-close-btn').addEventListener('click', closeFindBar);
 }
 
 // ---------- 翻譯流程(W3) ----------
@@ -1541,16 +1972,13 @@ async function startTranslate() {
     cumulativeCostUSD: 0,
   });
 
-  // 術語表一致化:翻譯前先送整份 PDF 給 background 的 EXTRACT_GLOSSARY,拿 [{source, target}]
-  // 對照表後傳進 translateDocument,每個 chunk 都帶 glossary 進 prompt 確保各段譯名一致
-  let glossary = null;
-  if (currentApplyGlossary) {
-    setParsingDetail('術語表一致化:萃取對照表中…');
-    $('translate-progress-count').textContent = '建立術語表中…';
-    glossary = await extractGlossaryForDoc(currentDoc);
-    if (glossary) {
-      console.log('[Shinkansen] glossary extracted:', glossary.length, 'terms');
-    }
+  // v1.8.49:文章術語表來源是使用者編輯後的 currentArticleGlossary(取代既有
+  // applyGlossary 黑箱 toggle)。沒術語表(null / 空)就不送,等同沒術語表
+  const glossary = (Array.isArray(currentArticleGlossary) && currentArticleGlossary.length > 0)
+    ? currentArticleGlossary
+    : null;
+  if (glossary) {
+    console.log('[Shinkansen] using article glossary:', glossary.length, 'terms');
   }
 
   translateAbortController = new AbortController();
@@ -1589,12 +2017,225 @@ async function startTranslate() {
   await openReader();
 }
 
+// ---------- 文章術語表編輯（v1.8.49）----------
+//
+// state:currentArticleGlossary — null = 還沒建,[] = 建過但空,[{source,target,note?}] = 有效
+// 入口:
+//   1. stage-result「先建立文章術語表」按鈕 → openGlossaryEditor()(若 null 自動 extract)
+//   2. reader「翻譯紀錄」dialog 內「編輯文章術語表」按鈕 → openGlossaryEditor()(同上)
+// 出口:
+//   1.「用此術語表翻譯」→ 寫回 currentArticleGlossary → startTranslate()
+//      (從 reader 進來時會 confirm「會重打 API」)
+//   2.「取消」→ 回 reader / result stage,currentArticleGlossary 不動
+// 持久化:無。靠 user 自行匯出 / 匯入 JSON 跨次保存
+
+async function openGlossaryEditor(fromStage = 'result') {
+  if (!currentDoc) return;
+  glossaryEntryStage = fromStage;
+  showStage('glossary');
+  // 若還沒建術語表(null)→ 顯 loading + 自動跑 EXTRACT_GLOSSARY 拿初始值。
+  // 若已有(包含空 [])→ 直接 show table 讓使用者編輯
+  if (currentArticleGlossary === null) {
+    setGlossaryState('抽取中…（1-3 秒）', 'is-loading');
+    try {
+      const extracted = await extractGlossaryForDoc(currentDoc);
+      currentArticleGlossary = Array.isArray(extracted) ? extracted : [];
+    } catch (err) {
+      console.warn('[Shinkansen] glossary extract failed', err && err.message);
+      currentArticleGlossary = [];
+    }
+  }
+  buildGlossaryTable(currentArticleGlossary);
+}
+
+// grid 內 loading / empty placeholder(跨整列;append 新 row 時清掉)
+function setGlossaryState(text, modifier = 'is-empty') {
+  clearGlossaryEntries();
+  const div = document.createElement('div');
+  div.className = `glossary-state ${modifier}`;
+  div.textContent = text;
+  $('glossary-grid').appendChild(div);
+  $('glossary-count').textContent = '0 條';
+}
+
+function clearGlossaryEntries() {
+  // 保留 g-header,移除 entry inputs / buttons / state placeholder
+  const grid = $('glossary-grid');
+  for (const el of [...grid.children]) {
+    if (!el.classList.contains('g-header')) el.remove();
+  }
+}
+
+function buildGlossaryTable(entries) {
+  clearGlossaryEntries();
+  if (!entries || entries.length === 0) {
+    setGlossaryState('沒有術語。可手動加列、匯入 JSON、或點「重新抽取」', 'is-empty');
+    return;
+  }
+  for (const e of entries) appendGlossaryRow(e, { skipUpdateCount: true });
+  updateGlossaryCount();
+}
+
+function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount = false } = {}) {
+  const grid = $('glossary-grid');
+  // 第一次加入 entry 時可能還在 placeholder state,先清掉
+  const placeholder = grid.querySelector('.glossary-state');
+  if (placeholder) placeholder.remove();
+
+  const sourceInput = document.createElement('input');
+  sourceInput.type = 'text';
+  sourceInput.className = 'g-source';
+  sourceInput.placeholder = '原文（如 Trump）';
+  sourceInput.value = entry.source || '';
+
+  const targetInput = document.createElement('input');
+  targetInput.type = 'text';
+  targetInput.className = 'g-target';
+  targetInput.placeholder = '譯文（如 川普）';
+  targetInput.value = entry.target || '';
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'glossary-row-delete';
+  delBtn.textContent = '刪除';
+
+  // 三個元素為一組 entry,delete 時一起拔
+  delBtn.addEventListener('click', () => {
+    sourceInput.remove();
+    targetInput.remove();
+    delBtn.remove();
+    // 若清空到沒任何 entry,顯示 empty state
+    if (!grid.querySelector('.g-source')) setGlossaryState('沒有術語。可手動加列、匯入 JSON、或點「重新抽取」', 'is-empty');
+    else updateGlossaryCount();
+  });
+  sourceInput.addEventListener('input', updateGlossaryCount);
+  targetInput.addEventListener('input', updateGlossaryCount);
+
+  grid.append(sourceInput, targetInput, delBtn);
+  if (!skipUpdateCount) updateGlossaryCount();
+}
+
+function readGlossaryTable() {
+  const out = [];
+  // 每個 entry 在 grid 內是連續三 cell:source / target / delete-btn。
+  // 走 .g-source 即可,nextElementSibling 一定是對應的 .g-target
+  for (const sourceInput of $('glossary-grid').querySelectorAll('.g-source')) {
+    const source = sourceInput.value.trim();
+    const targetInput = sourceInput.nextElementSibling;
+    const target = (targetInput && targetInput.classList.contains('g-target'))
+      ? targetInput.value.trim() : '';
+    // source + target 都有值才當有效 entry(只填 source 沒譯名 / 只填譯名沒原文都丟)
+    if (source && target) out.push({ source, target });
+  }
+  return out;
+}
+
+function updateGlossaryCount() {
+  $('glossary-count').textContent = `${readGlossaryTable().length} 條`;
+}
+
+function exportGlossaryJSON() {
+  const entries = readGlossaryTable();
+  if (entries.length === 0) {
+    alert('術語表為空，沒東西可匯出');
+    return;
+  }
+  const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const baseName = (currentDoc?.meta?.filename || 'glossary').replace(/\.pdf$/i, '');
+  a.download = `${baseName}-glossary.json`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
+async function handleGlossaryFileImport(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!Array.isArray(data)) throw new Error('JSON 必須是 array');
+    const valid = data
+      .filter((e) => e && typeof e.source === 'string' && typeof e.target === 'string')
+      .map((e) => ({ source: e.source, target: e.target })); // 舊版 JSON 帶的 note 欄忽略
+    if (valid.length === 0) throw new Error('沒讀到任何 {source, target} 條目');
+    const existing = readGlossaryTable();
+    if (existing.length > 0) {
+      if (!confirm(`現有術語表（${existing.length} 條）將被覆蓋成匯入版本（${valid.length} 條），確定？`)) return;
+    }
+    buildGlossaryTable(valid);
+  } catch (err) {
+    alert(`匯入失敗：${err.message || err}`);
+  }
+}
+
+async function reextractGlossary() {
+  const existing = readGlossaryTable();
+  if (existing.length > 0) {
+    if (!confirm(`將重新請 AI 抽取，覆蓋現有 ${existing.length} 條，確定？`)) return;
+  }
+  const btn = $('glossary-reextract-btn');
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '抽取中…';
+  setGlossaryState('抽取中…（1-3 秒）', 'is-loading');
+  try {
+    const extracted = await extractGlossaryForDoc(currentDoc);
+    if (Array.isArray(extracted) && extracted.length > 0) {
+      buildGlossaryTable(extracted);
+    } else {
+      buildGlossaryTable([]);
+      alert('沒抽到任何術語（文字太短或失敗）');
+    }
+  } finally {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+}
+
+function bindGlossaryUI() {
+  $('extract-glossary-btn').addEventListener('click', () => openGlossaryEditor('result'));
+  $('edit-glossary-btn').addEventListener('click', () => openGlossaryEditor('edit'));
+  $('glossary-add-row-btn').addEventListener('click', () => appendGlossaryRow());
+  $('glossary-import-btn').addEventListener('click', () => {
+    const fileInput = $('glossary-import-file');
+    fileInput.value = '';
+    fileInput.click();
+  });
+  $('glossary-import-file').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    handleGlossaryFileImport(file);
+  });
+  $('glossary-export-btn').addEventListener('click', exportGlossaryJSON);
+  $('glossary-reextract-btn').addEventListener('click', reextractGlossary);
+  $('glossary-cancel-btn').addEventListener('click', () => {
+    // 回到打開 editor 的來源 stage(result / edit / reader)
+    if (glossaryEntryStage === 'edit' && currentReaderHandle) showStage('edit');
+    else if (glossaryEntryStage === 'reader' && currentReaderHandle) showStage('reader');
+    else showStage('result');
+  });
+  $('glossary-translate-btn').addEventListener('click', async () => {
+    currentArticleGlossary = readGlossaryTable();
+    // 從 result 第一次翻譯不需要 confirm;從 edit / reader 進來都是「已翻過要重翻」要警告
+    if (glossaryEntryStage === 'edit') {
+      if (!confirm('將以新術語表重新呼叫 AI 翻譯整份文件，您在編輯譯文頁面尚未儲存的修改會被覆蓋，會產生費用，確定？')) return;
+    } else if (currentReaderHandle) {
+      if (!confirm('將以新術語表重新呼叫 AI 翻譯整份文件，會產生費用，確定？')) return;
+    }
+    await startTranslate();
+  });
+}
+
 async function fillSummaryDialog(summary) {
   if (!summary) return;
   const filename = (currentDoc && currentDoc.meta && currentDoc.meta.filename) || '(未命名)';
   $('translated-filename').textContent = filename;
   $('translated-count').textContent = `${summary.translatedBlocks - summary.failedBlocks} / ${summary.totalBlocks}`;
-  $('translated-failed').textContent = summary.failedBlocks ? `${summary.failedBlocks} 段` : '0';
+  // 翻譯失敗用「當前 doc 的實際失敗段數」(使用者可能已在編輯頁手動修過,
+  // 跟 summary.failedBlocks 不同),同時控制 retry 按鈕顯隱
+  refreshSummaryFailedDisplay();
   const cacheHits = summary.cacheHits || 0;
   $('translated-cache-hits').textContent = cacheHits > 0 && summary.totalBlocks > 0
     ? `${cacheHits} 段(${((cacheHits / summary.totalBlocks) * 100).toFixed(0)}%)`

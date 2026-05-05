@@ -12,7 +12,6 @@
       <img src="../icons/icon-128.png" alt="" class="app-icon">
       <span>翻譯文件（beta）</span>
     </h1>
-    <span class="app-subtitle">PDF 檔翻譯</span>
   </header>
 
   <main id="app-main">
@@ -30,10 +29,11 @@
           <span class="constraint-label">支援上限</span>
           <span class="constraint-value">50 頁 / 10 MB</span>
         </div>
-        <div class="constraint-item">
-          <span class="constraint-label">隱私</span>
-          <span class="constraint-value">PDF 不上傳，僅本機解析</span>
-        </div>
+      </div>
+
+      <div class="privacy-note">
+        <div class="privacy-note-title">PDF 檔案不離開你的瀏覽器</div>
+        <div class="privacy-note-detail">整份 PDF 全程在本機解析，不會上傳任何雲端、伺服器或第三方服務。只有擷取出來的純文字會送往你自己設定的 Gemini API 進行翻譯</div>
       </div>
 
       <div id="upload-error" class="error-banner" hidden></div>
@@ -61,6 +61,7 @@
       </div>
       <div class="result-actions">
         <button id="translate-btn" class="primary-btn" type="button">開始翻譯</button>
+        <button id="extract-glossary-btn" class="secondary-btn" type="button" title="先用 AI 抽出文章內專有名詞 / 人名對照表，編輯確認後再翻譯，確保譯名前後一致">先建立文章術語表</button>
         <button id="result-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
         <button id="reupload-btn" class="secondary-btn" type="button">重新上傳</button>
       </div>
@@ -92,13 +93,6 @@
         <p class="settings-hint">三組預設的引擎、模型、標籤在「設定 → 翻譯快速鍵」分頁自訂</p>
       </div>
       <div class="settings-section">
-        <label class="settings-checkbox-row">
-          <input type="checkbox" id="settings-apply-glossary">
-          <span>翻譯前先建立術語對照表</span>
-        </label>
-        <p class="settings-hint">勾選後，系統會在開始翻譯前先快速掃過整份文件，把人名、專有名詞統一譯法，避免同一個名字前後譯得不一樣。長文很有用，會多花約 1-3 秒跟一點點費用</p>
-      </div>
-      <div class="settings-section">
         <div class="settings-label">本篇翻譯記憶</div>
         <button id="settings-clear-doc-cache-btn" class="secondary-btn" type="button">清除本篇翻譯記憶</button>
         <span id="settings-clear-doc-cache-status" class="settings-hint" style="margin-left:8px"></span>
@@ -128,6 +122,7 @@
         <div class="result-row"><span>累計費用</span><span id="translated-cost"></span></div>
       </div>
       <div class="result-actions">
+        <button id="summary-retry-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗的段落">重試失敗段落</button>
         <button id="translate-summary-overlay-btn" class="secondary-btn" type="button">查看版面結構</button>
         <button id="translate-summary-close-btn" class="secondary-btn" type="button">關閉</button>
       </div>
@@ -146,7 +141,7 @@
           <input type="checkbox" id="reader-sync-toggle" checked>
           同步捲動
         </label>
-        <button id="reader-retry-all-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗段落">重試失敗 (<span id="reader-failed-count">0</span>)</button>
+        <button id="reader-edit-btn" class="secondary-btn" type="button" title="逐段編輯譯文（支援 markdown 標記），儲存後重新產生雙頁預覽">編輯譯文</button>
         <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿">複製譯文</button>
         <button id="reader-summary-btn" class="secondary-btn" type="button" title="查看翻譯紀錄（已翻段數 / 失敗 / 快取命中 / token / 費用）+ 開啟版面 overlay">翻譯紀錄</button>
         <button id="reader-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
@@ -158,6 +153,64 @@
         <div class="reader-col reader-col-original" id="reader-col-original"></div>
         <div class="reader-col reader-col-translated" id="reader-col-translated"></div>
       </div>
+    </section>
+
+    <!-- 階段 5：譯文編輯（v1.8.49）——逐段編輯譯文，儲存後重新產生雙頁預覽 -->
+    <section id="stage-edit" class="stage" hidden>
+      <div class="edit-toolbar">
+        <span class="edit-toolbar-title">編輯譯文</span>
+        <button id="edit-glossary-btn" class="secondary-btn" type="button" title="編輯文章術語表（沒建過會先自動抽取），編輯後會用新術語表重新翻譯整份文件">編輯文章術語表並重新翻譯</button>
+        <span class="edit-toolbar-spacer"></span>
+        <button id="edit-cancel-btn" class="secondary-btn" type="button">取消</button>
+        <button id="edit-save-btn" class="primary-btn" type="button">儲存並重新產生文件</button>
+      </div>
+      <div id="edit-find-bar" class="edit-find-bar" hidden>
+        <input type="text" id="edit-find-input" class="edit-find-input" placeholder="搜尋譯文">
+        <span id="edit-find-count" class="edit-find-count">0 / 0</span>
+        <button id="edit-find-prev-btn" class="secondary-btn" type="button" title="上一個 (Shift+Enter)">↑</button>
+        <button id="edit-find-next-btn" class="secondary-btn" type="button" title="下一個 (Enter)">↓</button>
+        <span class="edit-find-divider"></span>
+        <input type="text" id="edit-replace-input" class="edit-find-input" placeholder="取代為">
+        <button id="edit-replace-btn" class="secondary-btn" type="button" title="取代當前">取代</button>
+        <button id="edit-replace-all-btn" class="secondary-btn" type="button" title="全部取代">全部取代</button>
+        <span class="edit-toolbar-spacer"></span>
+        <button id="edit-find-close-btn" class="secondary-btn" type="button" title="關閉 (Esc)">×</button>
+      </div>
+      <div class="edit-help">
+        <strong>支援格式</strong>：<code>**粗體**</code>、<code>*斜體*</code>、<code>[連結文字](網址)</code>。其他字元當純文字。譯文留空表示不顯示譯文（保留原文）。儲存後會重新產生雙頁預覽，編輯結果不會跨次保存。<strong>搜尋取代</strong>：<code>⌘F</code> / <code>Ctrl+F</code> 開啟
+      </div>
+      <div id="edit-list" class="edit-list"></div>
+    </section>
+
+    <!-- 階段 6：文章術語表編輯（v1.8.49）——翻譯前 / reader 內都可進來編輯 -->
+    <section id="stage-glossary" class="stage" hidden>
+      <div class="glossary-toolbar">
+        <span class="glossary-toolbar-title">文章術語表</span>
+        <span id="glossary-count" class="glossary-count">0 條</span>
+        <span class="edit-toolbar-spacer"></span>
+        <button id="glossary-import-btn" class="secondary-btn" type="button" title="從 JSON 檔匯入術語表（覆蓋現有內容）">匯入 JSON</button>
+        <button id="glossary-export-btn" class="secondary-btn" type="button" title="把目前術語表存成 JSON 檔">匯出 JSON</button>
+        <button id="glossary-reextract-btn" class="secondary-btn" type="button" title="重新請 AI 抽取（覆蓋現有內容）">重新抽取</button>
+        <button id="glossary-cancel-btn" class="secondary-btn" type="button">取消</button>
+        <button id="glossary-translate-btn" class="primary-btn" type="button">用此術語表翻譯</button>
+      </div>
+      <div class="edit-help">
+        <strong>用途</strong>：翻譯時 AI 會把這份對照表當作必須遵守的譯名規則，確保人名 / 專有名詞前後譯法一致。文章術語表跟「設定 → 術語表」的固定術語表合併使用，<strong>同一個原文以文章術語表為準</strong>。從閱讀器進來編輯後按「用此術語表翻譯」會重新呼叫 AI 翻整份文件，會產生費用
+      </div>
+      <div class="glossary-table-wrap">
+        <div id="glossary-grid" class="glossary-grid">
+          <div class="g-header">原文</div>
+          <div class="g-header">譯文</div>
+          <div class="g-header g-header-action"></div>
+          <div class="g-header g-header-secondary">原文</div>
+          <div class="g-header g-header-secondary">譯文</div>
+          <div class="g-header g-header-action g-header-secondary"></div>
+        </div>
+        <div class="glossary-actions">
+          <button id="glossary-add-row-btn" class="secondary-btn" type="button">＋ 加一列</button>
+        </div>
+      </div>
+      <input type="file" id="glossary-import-file" accept="application/json,.json" hidden>
     </section>
 
     <!-- 階段 4：debug overlay（W2-iter1 視覺化先行——疊 SVG 在 PDF.js canvas 上） -->

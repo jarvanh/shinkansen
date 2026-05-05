@@ -89,7 +89,9 @@ export async function translateDocument(doc, options = {}) {
     try {
       response = await chrome.runtime.sendMessage({
         type: 'TRANSLATE_DOC_BATCH',
-        payload: { texts, modelOverride, glossary },
+        // v1.8.49: preferArticleGlossary 通知 background 用文章術語表 source 去 dedupe
+        // 固定術語表的同 source entry(article 覆蓋 fixed,只在 doc 路徑生效)
+        payload: { texts, modelOverride, glossary, preferArticleGlossary: true },
       });
     } catch (err) {
       // background 完全沒回應(extension reload / service worker crash 等)
@@ -259,7 +261,8 @@ export async function translateSingleBlock(block, options = {}) {
     response = await chrome.runtime.sendMessage({
       type: 'TRANSLATE_DOC_BATCH',
       // W7:retry 也走 marker 路徑,確保跟主翻譯流程一致
-      payload: { texts: [buildMarkedText(block)], modelOverride, glossary },
+      // v1.8.49:retry 也帶 preferArticleGlossary 讓 article glossary 覆蓋 fixed
+      payload: { texts: [buildMarkedText(block)], modelOverride, glossary, preferArticleGlossary: true },
     });
   } catch (err) {
     const msg = (err && err.message) || String(err);
@@ -443,6 +446,106 @@ export function parseMarkedTranslation(text, linkUrls) {
     segments,
     plainText: segments.map((s) => s.text).join(''),
   };
+}
+
+// ============================================================================
+// v1.8.49 譯文編輯頁:markdown ⇄ segments 互轉
+// ============================================================================
+//
+// 給編輯頁(stage-edit)使用的輕量 markdown 協定,跟 LLM 用的 ⟦…⟧ marker 區分:
+//   **粗體**          → segment.isBold = true
+//   *斜體*            → segment.isItalic = true
+//   [連結文字](url)   → segment.linkUrl = url
+//
+// 為什麼不直接重用 ⟦b⟧/⟦i⟧/⟦l:N⟧:那組是 LLM 友善的字面 marker,讓 user 直接看
+// 到很怪。markdown 直觀,user 改完一目了然。轉換點只有「載入編輯頁」與「儲存」
+// 兩處,segments 仍是 block 內部的 source of truth,renderer / cache 邏輯不動。
+//
+// 不支援 escape:user 譯文裡放字面 `**` / `*` / `[]()` 會被當成 markdown 解析。
+// 編輯頁底部 hint 會說明這個限制(MVP 取捨)。
+// 巢狀:bold > italic > link(對齊 buildMarkedText / parseMarkedTranslation 設計)。
+// 解析失敗一律 fallback 整段 plain regular,不 throw。
+
+/**
+ * Block.translationSegments → markdown 字串供編輯頁 textarea 顯示。
+ * @param {Array<{text:string, isBold:boolean, isItalic:boolean, linkUrl:string|null}>} segments
+ * @returns {string}
+ */
+export function segmentsToMarkdown(segments) {
+  if (!Array.isArray(segments) || segments.length === 0) return '';
+  return segments.map((s) => {
+    let t = s.text || '';
+    if (s.linkUrl) t = `[${t}](${s.linkUrl})`;
+    if (s.isItalic) t = `*${t}*`;
+    if (s.isBold) t = `**${t}**`;
+    return t;
+  }).join('');
+}
+
+/**
+ * 編輯頁 markdown → segments 陣列。失敗(罕見)fallback 整段 plain regular,不 throw。
+ * @param {string} text
+ * @returns {{ segments: Array<{text:string, isBold:boolean, isItalic:boolean, linkUrl:string|null}>, linkUrls: string[] }}
+ */
+export function markdownToSegments(text) {
+  if (typeof text !== 'string' || text.length === 0) {
+    return { segments: [], linkUrls: [] };
+  }
+  const segments = [];
+  const linkUrls = [];
+  let isBold = false;
+  let isItalic = false;
+  let buffer = '';
+  let i = 0;
+
+  function pushSeg(t, b, ital, url) {
+    if (!t) return;
+    const last = segments[segments.length - 1];
+    if (last && last.isBold === b && last.isItalic === ital && last.linkUrl === url) {
+      last.text += t;
+    } else {
+      segments.push({ text: t, isBold: b, isItalic: ital, linkUrl: url });
+    }
+  }
+  function flush() {
+    if (buffer.length === 0) return;
+    pushSeg(buffer, isBold, isItalic, null);
+    buffer = '';
+  }
+
+  while (i < text.length) {
+    if (text.slice(i, i + 2) === '**') {
+      flush();
+      isBold = !isBold;
+      i += 2;
+      continue;
+    }
+    if (text[i] === '*') {
+      flush();
+      isItalic = !isItalic;
+      i += 1;
+      continue;
+    }
+    if (text[i] === '[') {
+      const close = text.indexOf(']', i + 1);
+      if (close > i && text[close + 1] === '(') {
+        const closeP = text.indexOf(')', close + 2);
+        if (closeP > close + 1) {
+          flush();
+          const linkText = text.slice(i + 1, close);
+          const url = text.slice(close + 2, closeP);
+          pushSeg(linkText, isBold, isItalic, url);
+          if (!linkUrls.includes(url)) linkUrls.push(url);
+          i = closeP + 1;
+          continue;
+        }
+      }
+    }
+    buffer += text[i];
+    i += 1;
+  }
+  flush();
+  return { segments, linkUrls };
 }
 
 /**

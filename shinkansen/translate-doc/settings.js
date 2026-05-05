@@ -24,7 +24,8 @@ async function load() {
   const s = await getSettings();
   const td = s.translateDoc || DEFAULT_SETTINGS.translateDoc;
   $('td-systemPrompt').value = td.systemPrompt || DEFAULT_DOC_SYSTEM_PROMPT;
-  $('td-applyGlossary').checked = !!td.applyGlossary;
+  // applyFixedGlossary 預設 true(舊使用者 saved 沒 key 時走 default)
+  $('td-applyFixedGlossary').checked = td.applyFixedGlossary !== false;
   $('td-temperature').value = (typeof td.temperature === 'number' && Number.isFinite(td.temperature))
     ? td.temperature : DEFAULT_SETTINGS.translateDoc.temperature;
   // 載入完成標記乾淨狀態(避免 load 觸發 input event 把 save-bar 點起來)
@@ -43,7 +44,9 @@ async function save() {
   const merged = {
     ...td,
     systemPrompt: $('td-systemPrompt').value || DEFAULT_DOC_SYSTEM_PROMPT,
-    applyGlossary: $('td-applyGlossary').checked,
+    // v1.8.49: 移除 auto applyGlossary toggle(改走 stage-result「先建立文章術語表」按鈕);
+    // saved.applyGlossary 留在既有使用者 storage 但不再讀寫,無害 orphan
+    applyFixedGlossary: $('td-applyFixedGlossary').checked,
     temperature: tempClean,
   };
   await browser.storage.sync.set({ translateDoc: merged });

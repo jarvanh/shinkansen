@@ -570,7 +570,10 @@ const messageHandlers = {
         overrides.temperature = td.temperature;
       }
       if (payload?.modelOverride) overrides.model = payload.modelOverride;
-      return handleTranslate(payload, sender, overrides, null, '_doc');
+      // v1.8.49: 文件翻譯路徑「是否套用固定術語表」由設定控制(預設 true,沿用之前隱含行為)。
+      // fixedGlossary entries 仍從 settings.fixedGlossary.global 讀(跟主功能共用)。
+      const applyFixedGlossary = td.applyFixedGlossary !== false;
+      return handleTranslate(payload, sender, overrides, null, '_doc', applyFixedGlossary);
     },
   },
   // commit 5b:Drive 影片字幕走 Google Translate 路徑（獨立 cache key '_gt_drive' 避免跟
@@ -1206,6 +1209,18 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
       for (const e of domainEntries) merged.set(e.source, e.target); // 網域覆蓋全域
       fixedGlossaryEntries = [...merged.entries()].map(([source, target]) => ({ source, target }));
     }
+  }
+
+  // v1.8.49: preferArticleGlossary 時(文件翻譯 path 帶來),把跟文章術語表同 source 的
+  // fixed entry 從 fixedGlossary 移除,讓 article 完全 override fixed(不靠 LLM 判斷
+  // 優先級,直接從 prompt 拿掉避免衝突)
+  const payloadGlossary = payload?.glossary;
+  if (payload?.preferArticleGlossary
+      && Array.isArray(payloadGlossary) && payloadGlossary.length > 0
+      && fixedGlossaryEntries && fixedGlossaryEntries.length > 0) {
+    const articleSources = new Set(payloadGlossary.map((e) => e.source));
+    fixedGlossaryEntries = fixedGlossaryEntries.filter((e) => !articleSources.has(e.source));
+    if (fixedGlossaryEntries.length === 0) fixedGlossaryEntries = null;
   }
 
   // v1.5.6: 中國用語黑名單。從 settings 讀清單後一路傳到 translateBatch（注入到 systemInstruction），

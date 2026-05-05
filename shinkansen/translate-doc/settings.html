@@ -22,11 +22,13 @@
 
     <section>
       <h2>翻譯品質</h2>
-      <label class="checkbox-label">
-        <input type="checkbox" id="td-applyGlossary">
-        翻譯前先建立術語對照表（讓人名 / 專有名詞前後一致）
+      <p class="muted" style="margin-top:0">「翻譯前自動建立術語對照表」已升級為<strong>文章術語表</strong>功能（v1.8.49）：在文件翻譯主畫面點「先建立文章術語表」按鈕，可以讓 AI 抽出對照表、編輯、匯入匯出 JSON。每篇文章獨立、不持久化，靠匯出 JSON 跨次保存</p>
+
+      <label class="checkbox-label" style="margin-top:14px">
+        <input type="checkbox" id="td-applyFixedGlossary">
+        套用我自訂的固定術語表
       </label>
-      <small class="muted" style="display:block;margin-top:4px">開啟後，系統會在開始翻譯前先快速掃過整份文件，把人名、品牌、專有名詞統一成同一種譯法，避免同一個 Trump 一段翻成「川普」、另一段翻成「特朗普」。長文（尤其人名很多的新聞、論文）很有用。代價是多花約 1-3 秒跟一點點費用（約新台幣 $0.03）。預設關閉，需要時再開</small>
+      <small class="muted" style="display:block;margin-top:4px">使用「設定 → 術語表」分頁裡編輯的固定譯名對照（與網頁翻譯共用同一份）。例如指定 Tokyo→東京，每次翻 PDF 都會用這個譯名</small>
     </section>
 
     <section>

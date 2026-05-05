@@ -57,14 +57,6 @@ body {
   height: 32px;
 }
 
-.app-subtitle {
-  display: block;
-  margin-top: 4px;
-  margin-left: 44px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
 #app-main {
   flex: 1;
   padding: 32px 40px;
@@ -136,6 +128,27 @@ body {
 
 .constraint-value {
   font-weight: 600;
+}
+
+.privacy-note {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--primary-soft);
+  border: 1px solid rgba(0, 113, 227, 0.18);
+  border-radius: var(--radius);
+}
+
+.privacy-note-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+
+.privacy-note-detail {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
 }
 
 .error-banner {
@@ -357,6 +370,13 @@ body {
 .summary-dialog .result-actions {
   margin-top: 16px;
   justify-content: flex-end;
+  flex-wrap: wrap; /* dialog 寬度不夠時整個 button 換行,而不是文字內折行 */
+}
+
+/* dialog 內按鈕文字不可內部折行(wrap container 整顆換行可以) */
+.summary-dialog .result-actions button {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .settings-section {
@@ -466,6 +486,17 @@ body:has(#stage-reader:not([hidden])) .app-footer {
 .reader-toolbar .secondary-btn {
   padding: 5px 10px;
   font-size: 12px;
+}
+
+/* 「翻譯紀錄」按鈕在有失敗段時加橘邊 + 文字色強調,提醒使用者進去查看 / 重試 */
+#reader-summary-btn.has-failed-alert {
+  border-color: #f97316;
+  color: #c2410c;
+  background: #fff7ed;
+}
+
+#reader-summary-btn.has-failed-alert:hover {
+  background: #ffedd5;
 }
 
 .reader-grid {
@@ -761,6 +792,355 @@ body:has(#stage-reader:not([hidden])) .app-footer {
   border-radius: 2px;
   border: 1px solid currentColor;
 }
+
+/* ----- 階段 5：譯文編輯（v1.8.49）----- */
+
+body:has(#stage-edit:not([hidden])) .app-header,
+body:has(#stage-edit:not([hidden])) .app-footer {
+  display: none;
+}
+
+#stage-edit {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.edit-toolbar-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.edit-toolbar-spacer { flex: 1; }
+
+.edit-help {
+  padding: 8px 16px;
+  background: #fffbeb;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  flex-shrink: 0;
+  line-height: 1.6;
+}
+
+.edit-help code {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+  margin: 0 2px;
+}
+
+.edit-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 40px;
+  background: var(--bg);
+}
+
+.edit-page-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0.5px;
+  margin: 20px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.edit-page-header:first-child { margin-top: 0; }
+
+.edit-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.edit-block--failed .edit-translation-wrap {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.edit-original {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* textarea + overlay 雙層結構:wrap 控制邊框 / 圓角 / 背景,overlay 跟 textarea 共用
+ * 同 padding / font / line-height,文字內容必須一字不差(包含換行)overlay 才能對齊
+ * textarea 內字元位置。textarea 文字維持正常顯示,overlay 文字 transparent 只顯示
+ * <mark> 背景(高亮 match)。scroll 由 JS 同步 overlay.scrollTop = textarea.scrollTop */
+.edit-translation-wrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.edit-translation-wrap:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.edit-translation-wrap.edit-translation-wrap--current {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.edit-highlight-overlay {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 8px 10px;
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow: hidden;
+  pointer-events: none;
+  color: transparent;
+  z-index: 0;
+}
+
+.edit-highlight-overlay mark {
+  background: rgba(252, 211, 77, 0.5);
+  color: transparent;
+  padding: 0;
+  border-radius: 2px;
+}
+
+.edit-highlight-overlay mark.is-current {
+  background: rgba(251, 146, 60, 0.75);
+}
+
+.edit-translation {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.55;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+  color: var(--text);
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.edit-translation:focus { outline: none; }
+
+.edit-empty {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.edit-find-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap; /* 視窗太窄時換行,避免按鈕被擠扁 */
+}
+
+/* find-bar 內所有 button 不被 flex 擠壓,文字不換行 */
+.edit-find-bar button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.edit-find-input {
+  flex: 0 1 180px;
+  min-width: 100px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.edit-find-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.edit-find-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+  text-align: center;
+}
+
+.edit-find-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-strong);
+  margin: 0 4px;
+}
+
+/* v1.8.49 起 ring 改在 .edit-translation-wrap 上(雙層結構),此 class 保留向後相容但已停用 */
+
+/* ----- 階段 6：文章術語表編輯（v1.8.49）----- */
+
+#app-main:has(#stage-glossary:not([hidden])) {
+  max-width: 100%;
+  padding: 0;
+}
+
+body:has(#stage-glossary:not([hidden])) .app-header,
+body:has(#stage-glossary:not([hidden])) .app-footer {
+  display: none;
+}
+
+/* stage 自己當 scroll 容器(scrollbar 在最右,toolbar/help/table 三者右邊緣自然對齊),
+ * 不再 flex column + table-wrap 內部 scroll(那會讓 scrollbar 佔掉 table 右側 ~15px,
+ * 跟 toolbar / help-bar 邊緣對不齊) */
+#stage-glossary {
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.glossary-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  /* sticky 在 stage scroll 視口頂部,使用者捲動時 toolbar 不消失 */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* toolbar 內 button 不被 flex 擠壓,文字不內部折行(視窗極窄時 wrap 整顆) */
+.glossary-toolbar button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.glossary-toolbar-title { font-weight: 600; font-size: 14px; flex-shrink: 0; }
+
+.glossary-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.glossary-table-wrap {
+  /* 不再自己 scroll,scroll 由 #stage-glossary 統一處理(避免內部 scrollbar 偏移右邊緣) */
+  padding: 16px 16px 40px;
+}
+
+/* 1 entry per row(回退兩欄式 grid)。寬螢幕下 source / target 欄位變寬只是給長
+ * 術語更多顯示空間,不增加 entry 密度——使用者反映兩欄資訊太密 */
+.glossary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 70px;
+  column-gap: 12px;
+  row-gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.g-header {
+  font-weight: 600;
+  padding: 8px 4px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border-strong);
+  /* 不再 sticky:scroll 容器改成 #stage-glossary 後,sticky 會跟 toolbar 衝撞 top:0 */
+}
+
+.g-header-action { padding: 8px 0; }
+
+/* secondary header 是雙欄佈局時的右半 header,單欄佈局永遠隱藏 */
+.g-header-secondary { display: none; }
+
+.glossary-grid input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.glossary-grid input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.glossary-row-delete {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font);
+}
+
+.glossary-row-delete:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.glossary-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+/* loading / empty state 跨整列(grid auto rows 預設 fill all columns) */
+.glossary-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.glossary-state.is-empty { color: var(--text-faint); }
+.glossary-state.is-loading { font-style: italic; }
 
 /* ----- footer ----- */
 

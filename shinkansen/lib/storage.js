@@ -221,6 +221,12 @@ export const DEFAULT_SETTINGS = {
     // 預設 0.5 偏保守(穩定譯名、用詞不亂跑);散文 / 文章可調到 1.0+。改變後 cache key
     // 也會跟著變(suffix 加 _t<temp>),立即生效。
     temperature: 0.5,
+    // v1.8.49: 是否套用使用者級「固定術語表」(settings.fixedGlossary.global) 到文件翻譯。
+    // 跟主功能共用同一份術語表(術語表分頁編輯),這裡只是「文件翻譯路徑要不要套用」開關。
+    // 預設 true(沿用 v1.8.48 之前的隱含行為——TRANSLATE_DOC_BATCH 走 handleTranslate
+    // 預設帶 applyFixedGlossary=true)。關掉後 cache key 會因 fixedGlossary entries 從 prompt
+    // 移除而換新 hash,不主動清舊快取,使用者可在「進階設定 → 清除所有文件翻譯記憶」手動清。
+    applyFixedGlossary: true,
   },
   // v1.2.11: YouTube 字幕翻譯設定
   ytSubtitle: {
@@ -470,6 +476,9 @@ export async function getSettings() {
       : DEFAULT_SETTINGS.forbiddenTerms,
     // v1.5.7: customProvider 深層 merge（保留新欄位預設值）
     customProvider: { ...DEFAULT_SETTINGS.customProvider, ...(saved.customProvider || {}) },
+    // v1.8.49: translateDoc 深層 merge — 新增 applyFixedGlossary 後既有使用者
+    // saved.translateDoc 沒這個 key,深 merge 才能拿到預設 true(否則 undefined)。
+    translateDoc: { ...DEFAULT_SETTINGS.translateDoc, ...(saved.translateDoc || {}) },
   };
   merged.apiKey = apiKey;
   // v1.5.7: 從 storage.local 讀 customProvider apiKey 注入
