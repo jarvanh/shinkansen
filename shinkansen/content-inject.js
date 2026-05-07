@@ -10,8 +10,8 @@
   /**
    * 保證同一個 element 只快照一次原始 innerHTML。
    * 同時 snapshot textContent 給 SPA observer 的「detect-replacement」路徑用——
-   * 當框架(YouTube yt-attributed-string)整個 detach 譯後 element 再 add 一個英文
-   * 新 element 時,mutation callback 用 originalText 比對 addedNodes 找回對應段落。
+   * 當框架（YouTube yt-attributed-string）整個 detach 譯後 element 再 add 一個英文
+   * 新 element 時，mutation callback 用 originalText 比對 addedNodes 找回對應段落。
    */
   SK.snapshotOnce = function snapshotOnce(el) {
     if (!STATE.originalHTML.has(el)) {
@@ -23,7 +23,7 @@
   };
 
   /**
-   * 「注入目標解析」——回答「要把譯文寫到哪個元素?」
+   * 「注入目標解析」——回答「要把譯文寫到哪個元素？」
    * 預設值是 el 本身。唯一例外：el 自己 computed font-size 趨近 0（MJML 模板）。
    */
   function resolveWriteTarget(el) {
@@ -188,8 +188,8 @@
    * 僅處理 <a> slot；slot 文字必須完整出現在譯文中才做，否則 return null。
    *
    * 範例（Dhruv Team Picks）：
-   *   原文: "Dhruv's been having fun with this little ⟦0⟧Kodak Charmera⟦/0⟧ keychain."
-   *   LLM 回: "Dhruv 最近都在玩這個超可愛的 Kodak Charmera 鑰匙圈。"  (slot 丟掉)
+   *   原文： "Dhruv's been having fun with this little ⟦0⟧Kodak Charmera⟦/0⟧ keychain."
+   *   LLM 回： "Dhruv 最近都在玩這個超可愛的 Kodak Charmera 鑰匙圈。"  (slot 丟掉)
    *   → 找到 "Kodak Charmera" → frag: TEXT + A("Kodak Charmera") + TEXT
    */
   function tryRecoverLinkSlots(el, text, slots) {
@@ -328,9 +328,9 @@
       }
     }
 
-    // v1.6.19: endNode 可能在 collectParagraphs 與 inject 之間被外部重排,
+    // v1.6.19: endNode 可能在 collectParagraphs 與 inject 之間被外部重排，
     // 不再是 el 的直接 child。沿用 endNode.nextSibling 當 anchor 會把 newContent
-    // 加到 el 末尾(順序錯位)。anchor 必須是 el 的直接 child 才合法。
+    // 加到 el 末尾（順序錯位)。anchor 必須是 el 的直接 child 才合法。
     const anchor = (endNode && endNode.parentNode === el) ? endNode.nextSibling : null;
     const toRemove = [];
     let cur = startNode;
@@ -363,9 +363,47 @@
   //   3. 透過既有 deserializeWithPlaceholders 重建譯文 inline 結構（連結、行內樣式都會保留）
   //   4. Content Guard 用 STATE.translationCache 追蹤 original → { wrapper, mode } 對應
 
-  /** 找最近的 block 祖先（computed display ∈ BLOCK_DISPLAY_VALUES） */
+  /** 取 element 的「可見文字」：遞迴每個 text node，若其祖先含 sr-only / clip-hidden
+   * (`position:absolute` + 1×1 rect)/ `display:none` / `visibility:hidden` 則略過。
+   * 用於 dual mode B 比對，避免 a11y(svg aria-label 對應的 sr-only span）文字干擾
+   * 譯文 == 原文 的判定。 */
+  function getVisibleText(el) {
+    const win = el.ownerDocument?.defaultView;
+    if (!win) return el.textContent || '';
+    let text = '';
+    const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let n;
+    while ((n = walker.nextNode())) {
+      let p = n.parentElement;
+      let hidden = false;
+      while (p && p !== el.parentElement) {
+        const cs = win.getComputedStyle(p);
+        if (cs.display === 'none' || cs.visibility === 'hidden') { hidden = true; break; }
+        if (cs.position === 'absolute') {
+          const r = p.getBoundingClientRect();
+          if (r.width <= 1 && r.height <= 1) { hidden = true; break; }
+        }
+        // SVG `<desc>` / `<title>` 等 a11y metadata 元素 rect 是 0×0(瀏覽器
+        // 完全不渲染，只給 screen reader / accessibility tree 用)。Medium
+        // 文章按讚 / 留言計數 anchor 用 SVG `<desc>` 放 "A clap icon" 等說明
+        // 文字，影響 textContent 但對 sighted user 完全不可見。
+        const r2 = p.getBoundingClientRect();
+        if (r2.width === 0 && r2.height === 0) { hidden = true; break; }
+        p = p.parentElement;
+      }
+      if (!hidden) text += n.nodeValue || '';
+    }
+    return text;
+  }
+
+  /** 找最近的 block 祖先（computed display ∈ BLOCK_DISPLAY_VALUES）。
+   * 若 el 自身 computed display 已是 block-ish(例如 `<a style="display:flex">`,
+   * 常見於 release 卡片連結)，回傳 el 自身——讓 wrapper 緊貼 el 而不是被推到
+   * 上層大容器（避免 wrapper 與原段落距離過遠)。 */
   function findBlockAncestor(el) {
     const win = el.ownerDocument?.defaultView;
+    const selfCs = win?.getComputedStyle?.(el);
+    if (selfCs && SK.BLOCK_DISPLAY_VALUES.has(selfCs.display)) return el;
     let cur = el.parentElement;
     while (cur && cur !== el.ownerDocument.body) {
       const cs = win?.getComputedStyle?.(cur);
@@ -384,8 +422,12 @@
       innerTag = 'div';
     } else if (originalTag === 'LI' || originalTag === 'TD' || originalTag === 'TH') {
       innerTag = 'div';
+    } else if (originalTag === 'PRE') {
+      // PRE 原本帶 UA 預設 `white-space: pre`,inner 用 PRE 會讓中文譯文不換行衝出
+      // column(Medium 引用文字 case)。譯文是自然語言不是 code，改用 <div>。
+      innerTag = 'div';
     } else if (SK.BLOCK_TAGS_SET.has(originalTag) || originalTag === 'DIV' || originalTag === 'SECTION' || originalTag === 'ARTICLE' || originalTag === 'MAIN' || originalTag === 'ASIDE') {
-      // 一般 block：保留原 tag（P, BLOCKQUOTE, DD, DT, FIGCAPTION, CAPTION, SUMMARY, PRE, FOOTER, DIV 等）
+      // 一般 block：保留原 tag（P, BLOCKQUOTE, DD, DT, FIGCAPTION, CAPTION, SUMMARY, FOOTER, DIV 等）
       innerTag = originalTag.toLowerCase();
     } else {
       // Inline 段落（SPAN/A/EM 等被偵測為段落時）
@@ -404,7 +446,10 @@
     const win = originalEl.ownerDocument?.defaultView;
     const cs = win?.getComputedStyle?.(originalEl);
     if (cs) {
-      if (cs.fontFamily)    inner.style.fontFamily    = cs.fontFamily;
+      // PRE 通常 monospace，中文譯文在 monospace 字型下視覺擁擠難讀（Medium 引用
+      // 文字 case);PRE source 不 copy fontFamily，讓 inner 繼承 wrapper 父層
+      // (article body）字型。
+      if (cs.fontFamily && originalTag !== 'PRE') inner.style.fontFamily = cs.fontFamily;
       if (cs.fontSize)      inner.style.fontSize      = cs.fontSize;
       if (cs.fontWeight)    inner.style.fontWeight    = cs.fontWeight;
       if (cs.lineHeight)    inner.style.lineHeight    = cs.lineHeight;
@@ -413,11 +458,11 @@
     }
 
     // v1.8.31: inner reset padding/margin。
-    // inner 是 <p>/<div> 等真實 tag,會被站點的 `article p { padding-bottom: ... }`
-    // 之類規則套到——而 padding 算在 inner box 內,wrapper 的 background-color 會
+    // inner 是 <p>/<div> 等真實 tag，會被站點的 `article p { padding-bottom: ... }`
+    // 之類規則套到——而 padding 算在 inner box 內，wrapper 的 background-color 會
     // 跟著 inner padding 範圍一起延伸 → 視覺上「底色超出文字一大塊空白」。
-    // 砍掉 inner 的 padding/margin,讓底色只圍著文字本身;段落間距改由 wrapper
-    // 自己的 margin 控制(injectDual 內 mirror 原段落 padding-bottom + margin-bottom
+    // 砍掉 inner 的 padding/margin，讓底色只圍著文字本身；段落間距改由 wrapper
+    // 自己的 margin 控制（injectDual 內 mirror 原段落 padding-bottom + margin-bottom
     // 到 wrapper.style.marginBottom)。
     inner.style.padding = '0';
     inner.style.margin = '0';
@@ -495,13 +540,13 @@
   }
 
   /**
-   * v1.8.31: 偵測 wrapper 即將注入位置的「實際背景亮度」,回傳 'dark' | 'light'。
-   * 從 original 往上 walk,逐層讀 computed backgroundColor,第一層 alpha > 0.5 的
+   * v1.8.31: 偵測 wrapper 即將注入位置的「實際背景亮度」，回傳 'dark' | 'light'。
+   * 從 original 往上 walk，逐層讀 computed backgroundColor，第一層 alpha > 0.5 的
    * 色調拿來算 luma。全程透明追到 html 還是透明就 fallback 'light'(HTML 預設白底)。
    *
-   * Why:dual mode 的 tint 標記寫死 #FFF8E1 米色底,假設「父層文字偏深」;dark mode
-   * 頁面父層文字本來就是淺灰,淺字疊米色塊對比破裂。改用 prefers-color-scheme 會誤判
-   * 「OS dark + 站點 light」混合情境,所以走「實際渲染色」路線最準。
+   * Why:dual mode 的 tint 標記寫死 #FFF8E1 米色底，假設「父層文字偏深」;dark mode
+   * 頁面父層文字本來就是淺灰，淺字疊米色塊對比破裂。改用 prefers-color-scheme 會誤判
+   * 「OS dark + 站點 light」混合情境，所以走「實際渲染色」路線最準。
    */
   function detectThemeForElement(el) {
     const win = el.ownerDocument?.defaultView;
@@ -521,7 +566,7 @@
       }
       node = node.parentElement;
     }
-    // 全程透明:看 documentElement 自己
+    // 全程透明：看 documentElement 自己
     const rootCs = win.getComputedStyle(el.ownerDocument.documentElement);
     const m2 = rootCs.backgroundColor && rootCs.backgroundColor.match(/rgba?\(([^)]+)\)/);
     if (m2) {
@@ -583,16 +628,74 @@
       return;
     }
 
+    // 譯文等於原文 → skip wrapper(視覺乾淨，不留純複製貼上的廢譯塊)。
+    // 補 detect 層 isPureIdentifierCell 漏的 case:
+    //   - LLM 對 "OK"/"TODO"/"v1.0" 之類短語照搬
+    //   - GitHub Languages 區塊 "TypeScript 90.9%" 英文名+數字
+    //   - <td><code>BASE_URL</code></td> 之類 atomic preserve(`⟦*0⟧`)
+    //
+    // 比對策略：
+    //   1. originalText 用「可見文字」(排除 sr-only / clip-hidden / display:none
+    //      子樹的文字)。Medium 文章 metadata anchor 結構為 `<a><svg/>+<span class=
+    //      "sr-only">A clap icon</span>2.4K<svg/>+sr-only 43</a>`,textContent 會把
+    //      sr-only 文字一起算進去，B 比對譯文 "2.4K43" 永遠不等於 source 的
+    //      "A clap icon2.4KA response icon43"。
+    //   2. translation 帶有 placeholder marker(`⟦N⟧`/`⟦*N⟧`）時，先 deserialize 再
+    //      取 fragment textContent —— atomic preserve 會把 slot 還原成原 element,
+    //      textContent 等於 slot 原 textContent，跟 originalText 自然相等。stripStray
+    //      Placeholder Markers 會把 `⟦*0⟧` 整段刪掉留空字串，單純比 stripped 永遠
+    //      不等於原文。
+    //   3. whitespace 規範化（layout 空白 vs LLM 單空白差異）後 strict `===` 比對
+    const normalizeWs = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const originalText = normalizeWs(getVisibleText(original));
+    let translationText;
+    if (slots && slots.length > 0 && translation) {
+      const dsResult = SK.deserializeWithPlaceholders(translation, slots);
+      translationText = dsResult.ok
+        ? (dsResult.frag.textContent || '')
+        : (SK.stripStrayPlaceholderMarkers ? SK.stripStrayPlaceholderMarkers(translation) : translation);
+    } else {
+      translationText = SK.stripStrayPlaceholderMarkers
+        ? SK.stripStrayPlaceholderMarkers(translation || '')
+        : (translation || '');
+    }
+    const translationStripped = normalizeWs(translationText);
+    if (originalText && translationStripped === originalText) {
+      original.setAttribute('data-shinkansen-dual-source', '1');
+      return;
+    }
+
+    // 純數字計量 metric:source 可見文字只剩數字 + K/M/B/%/逗號/小數點/空白等計量
+    // 符號（典型場景：Medium / Twitter / Reddit 等的 clap 數 / 留言數 / 觀看數
+    // metadata anchor)。LLM 即便把 "1.8K" 轉成 "1800" 也只是數字格式變化，沒翻譯
+    // 價值，wrapper 純粹是視覺垃圾。
+    const NUMERIC_METRIC_RE = /^[\d.\s,KMB%+\-]+$/;
+    if (originalText.length > 0 && originalText.length < 30 && NUMERIC_METRIC_RE.test(originalText)) {
+      original.setAttribute('data-shinkansen-dual-source', '1');
+      return;
+    }
+
+    // 譯文長度 sanity check：譯文遠長於原文（> 5×）時很可能是 LLM hallucination
+    //(觀察：`May 7, 2026` 11 字回傳 ~500 字 Microsoft 創辦故事)。中文一般比英文
+    // 緊湊，正常翻譯 ratio < 1;> 5× 幾乎必然異常。原文 < 5 字時不套（極短輸入翻譯
+    // 比例震盪大)、原文 > 200 字時也不套（長段譯文 5× 可能是合法擴張或合段問題，
+    // 不該硬擋顯示)。
+    if (originalText.length >= 5 && originalText.length <= 200
+        && translationStripped.length > originalText.length * 5) {
+      original.setAttribute('data-shinkansen-dual-source', '1');
+      return;
+    }
+
     const inner = buildDualInner(tag, original, translation, slots);
     const wrapper = original.ownerDocument.createElement(SK.TRANSLATION_WRAPPER_TAG);
     const mark = SK.currentMarkStyle && SK.VALID_MARK_STYLES.has(SK.currentMarkStyle)
       ? SK.currentMarkStyle
       : SK.DEFAULT_MARK_STYLE;
     wrapper.setAttribute('data-sk-mark', mark);
-    // v1.8.31: 依注入位置的實際頁面亮度決定 dark/light 配色,避免 tint 米色底在
+    // v1.8.31: 依注入位置的實際頁面亮度決定 dark/light 配色，避免 tint 米色底在
     // dark mode 頁面跟淺灰文字對比破裂。
     wrapper.setAttribute('data-sk-theme', detectThemeForElement(original));
-    // v1.8.52: 自訂強調色(token 或 hex)套到三種 mark。auto 不寫屬性,走預設 CSS
+    // v1.8.52: 自訂強調色（token 或 hex）套到三種 mark。auto 不寫屬性，走預設 CSS
     const rgb = SK.dualAccentToRgb?.(SK.currentDualAccent);
     if (rgb) {
       wrapper.setAttribute('data-sk-accent', 'custom');
@@ -609,7 +712,7 @@
     //
     // v1.8.31: 只 copy「非零值」——原段落 padding/margin 是 0px 時不該寫 inline
     // style 蓋掉 mark CSS(例如 tint mark 的 padding: 4px 8px 會被 inline padding:0
-    // 壓掉)。getComputedStyle 對沒設 padding 的元素回傳 '0px',是 truthy 字串。
+    // 壓掉)。getComputedStyle 對沒設 padding 的元素回傳 '0px'，是 truthy 字串。
     const winLayout = original.ownerDocument?.defaultView;
     const csLayout = winLayout?.getComputedStyle?.(original);
     const isNonZero = (v) => v && v !== '0px';
@@ -622,26 +725,34 @@
 
       // v1.8.31: 處理「譯文塊跟下一段段距」+「padding-bottom 撐空間造成的空白」。
       //
-      // marginBottom mirror:把原段落「下方該有的段距」搬到 wrapper marginBottom。
-      // 因為 inner 已 reset padding/margin = 0(底色不溢出),原段落「在 inner
-      // 裡」的下方空間消失了,要由 wrapper 自己的 marginBottom 補回去跟下一段
+      // marginBottom mirror：把原段落「下方該有的段距」搬到 wrapper marginBottom。
+      // 因為 inner 已 reset padding/margin = 0(底色不溢出)，原段落「在 inner
+      // 裡」的下方空間消失了，要由 wrapper 自己的 marginBottom 補回去跟下一段
       // 拉開。
       //
       // marginTop 抵消「原段落 paddingBottom」(不含 marginBottom):
       //   - paddingBottom 是「box 內下緣塞著的空白」,wrapper 在 afterend 會被
       //     推到這塊空白下方。抵消後 wrapper 上邊界對齊原文字下緣。
-      //   - marginBottom **不抵消**:它的物理意義是「跟下一個 sibling 的距離」,
-      //     可能是 list item 之間 12px 距離(抵消會讓譯文塊侵入兄弟空間 → 重疊),
-      //     也可能是 byline-to-list 60px 距離(理想是抵消,但無法跟前者區分)。
-      //     歷史教訓:v1.8.31 試過抵消 (pb+mb) 整體,Daring Fireball sidebar
-      //     `<a>` 段落走 afterend-block-ancestor 插到 `<li>` 後面,把 12px li
-      //     兄弟距離抵消後譯文塊跟 li 重疊;退回只抵消 pb。
-      //   - byline-to-list 60px 空白沒解(屬於需要動原段落 inline style 才能
-      //     乾淨解的 case,風險評估後暫不做)。
-      const pb = parseFloat(csLayout.paddingBottom) || 0;
-      const mb = parseFloat(csLayout.marginBottom)  || 0;
-      if (pb > 0) wrapper.style.marginTop = `-${pb}px`;
-      if (pb + mb > 0) wrapper.style.marginBottom = `${pb + mb}px`;
+      //   - marginBottom **不抵消**：它的物理意義是「跟下一個 sibling 的距離」,
+      //     可能是 list item 之間 12px 距離（抵消會讓譯文塊侵入兄弟空間 → 重疊),
+      //     也可能是 byline-to-list 60px 距離（理想是抵消，但無法跟前者區分)。
+      //     歷史教訓：v1.8.31 試過抵消 (pb+mb) 整體，Daring Fireball sidebar
+      //     `<a>` 段落走 afterend-block-ancestor 插到 `<li>` 後面，把 12px li
+      //     兄弟距離抵消後譯文塊跟 li 重疊；退回只抵消 pb。
+      //   - byline-to-list 60px 空白沒解（屬於需要動原段落 inline style 才能
+      //     乾淨解的 case，風險評估後暫不做)。
+      //
+      // 此邏輯只適用 sibling 插入模式（`afterend` / `afterend-block-ancestor`)。
+      // LI/TD/TH 的 `append` 模式 wrapper 是 child，負 marginTop 會把 wrapper 拉
+      // 進 cell 內部往上 overlap 原文字（zerobyte 環境變數描述 cell case);
+      // append 模式跳過 marginTop/marginBottom mirror 處理。
+      const isAppendMode = (tag === 'LI' || tag === 'TD' || tag === 'TH');
+      if (!isAppendMode) {
+        const pb = parseFloat(csLayout.paddingBottom) || 0;
+        const mb = parseFloat(csLayout.marginBottom)  || 0;
+        if (pb > 0) wrapper.style.marginTop = `-${pb}px`;
+        if (pb + mb > 0) wrapper.style.marginBottom = `${pb + mb}px`;
+      }
     }
 
     let insertMode;
@@ -692,24 +803,23 @@
     // 底線易混淆）改為「波浪底線」（每行字底下都有，跟連結直線底線視覺區分）。
     // mark value 保留 'dashed' 不改名，避免 storage migration 問題；只改視覺實作。
     // v1.8.31:
-    //   - dark variant 用 [data-sk-theme="dark"] 切配色(避免 tint 米色底在 dark
+    //   - dark variant 用 [data-sk-theme="dark"] 切配色（避免 tint 米色底在 dark
     //     mode 頁面跟淺灰文字對比破裂)
-    //   - tint 加 border-radius + 加大 padding,避免文字貼塊邊
-    //   - box-sizing: border-box 讓 padding 算進寬度內,不溢出原段落視覺寬
+    //   - tint 加 border-radius + 加大 padding，避免文字貼塊邊
+    //   - box-sizing: border-box 讓 padding 算進寬度內，不溢出原段落視覺寬
     //   - 標題後的 wrapper 拉大 margin-top(`<h1>` 等大字級 line-height 把 0.25em
-    //     吃光,標題與譯文視覺零間距)
-    // marginTop:標題後拉開 0.5em(原 0.25em 太小,大字級標題 line-height 會把
-    // 它吃光);其他元素維持 0.25em。原段落若有 paddingBottom,injectDual 會在
+    //     吃光，標題與譯文視覺零間距)
+    // marginTop：標題後拉開 0.5em(原 0.25em 太小，大字級標題 line-height 會把
+    // 它吃光)；其他元素維持 0.25em。原段落若有 paddingBottom,injectDual 會在
     // wrapper 上設 inline marginTop 負值覆蓋這條 CSS 預設。
     // v1.8.52:
-    //   - dark auto 對比加強(tint 0.08 → 0.14、bar/dashed 灰色 → #B7BDC4)解決
+    //   - dark auto 對比加強（tint 0.08 → 0.14、bar/dashed 灰色 → #B7BDC4）解決
     //     issue #35 強調色看不清的回報
     //   - bar 統一 2px → 3px(細邊在淺灰底色站點本來就不夠醒目)
-    //   - 加 [data-sk-accent="custom"] 配色:三種 mark 共用 inline `--sk-accent-rgb`
-    //     變數套色;tint 走 alpha,bar/dashed 走實心色
+    //   - 加 [data-sk-accent="custom"] 配色：三種 mark 共用 inline `--sk-accent-rgb`
+    //     變數套色；tint 走 alpha,bar/dashed 走實心色
     style.textContent =
-      `${tag} { display: block; margin-top: 0.25em; box-sizing: border-box; }\n` +
-      `:where(h1, h2, h3, h4, h5, h6) + ${tag} { margin-top: 0.5em; }\n` +
+      `${tag} { display: block; margin-top: 0.5em; margin-bottom: 0.5em; box-sizing: border-box; }\n` +
       // light (default / auto)
       `${tag}[data-sk-mark="tint"]   { background-color: #FFF8E1; padding: 4px 8px; border-radius: 4px; }\n` +
       `${tag}[data-sk-mark="bar"]    { border-left: 3px solid #9CA3AF; padding-left: 8px; }\n` +

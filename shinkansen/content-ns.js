@@ -63,10 +63,10 @@ if (window.__shinkansen_loaded) {
     translatedHTML: new Map(), // el → translatedHTML
     // 儲存 inject 前 element 的 textContent。當 SPA framework 把
     // 整個被翻譯的 element detach 換成新 element(例如 YouTube 的 yt-attributed-string
-    // 在 model 更新時整個 host span 被替換)時,onSpaObserverMutations 用 originalText
-    // 比對 mutation 的 addedNodes 找出對應的新 element,從 translatedHTML 拿譯文 re-apply。
-    // 沒這條 fallback 的話,新 element 不在 translatedHTML 也不在 originalHTML,
-    // Content Guard 完全認不出它,使用者捲動觸發 re-render 後譯文就永久消失。
+    // 在 model 更新時整個 host span 被替換）時，onSpaObserverMutations 用 originalText
+    // 比對 mutation 的 addedNodes 找出對應的新 element，從 translatedHTML 拿譯文 re-apply。
+    // 沒這條 fallback 的話，新 element 不在 translatedHTML 也不在 originalHTML,
+    // Content Guard 完全認不出它，使用者捲動觸發 re-render 後譯文就永久消失。
     originalText: new Map(), // el → snapshot 的 textContent.trim()
     // v1.0.23: 續翻模式
     stickyTranslate: false,
@@ -103,16 +103,16 @@ if (window.__shinkansen_loaded) {
   };
 
   // ─── v1.8.19: 安全版 runtime.sendMessage ─────────────────
-  // Extension reload / 更新時, 已載入頁面的 orphan content script 失去 extension
-  // 連線通道, 此後任何 chrome.runtime.* 呼叫會 SYNC throw "Extension context
-  // invalidated" — 不是 promise reject! 既有 caller 的 `.catch()` 接不到, 會洩漏
-  // uncaught error 到 chrome://extensions/ 錯誤面板, 污染真實 bug 的能見度。
+  // Extension reload / 更新時， 已載入頁面的 orphan content script 失去 extension
+  // 連線通道， 此後任何 chrome.runtime.* 呼叫會 SYNC throw "Extension context
+  // invalidated" — 不是 promise reject! 既有 caller 的 `.catch()` 接不到， 會洩漏
+  // uncaught error 到 chrome://extensions/ 錯誤面板， 污染真實 bug 的能見度。
   //
   // 此 helper 用三層防護把 sync throw 統一變 async resolve(undefined):
   //   1. chrome.runtime.id 在 context 死掉時變 undefined → fast path return
   //   2. 進入 sendMessage 前同步 try/catch 接住 sync throw
-  //   3. async reject 不主動吞(維持原 caller 的 .catch 行為), 讓真實業務錯誤
-  //      仍能被 caller 看到; 只把 invalidated 錯誤吞掉
+  //   3. async reject 不主動吞（維持原 caller 的 .catch 行為), 讓真實業務錯誤
+  //      仍能被 caller 看到； 只把 invalidated 錯誤吞掉
   //
   // caller 端 invalidated 時拿到 undefined, 配合 `if (!res?.ok)` 防禦即可。
   SK.safeSendMessage = function safeSendMessage(msg) {
@@ -169,10 +169,10 @@ if (window.__shinkansen_loaded) {
   SK.SEMANTIC_CONTAINER_EXCLUDE_TAGS = new Set(['FOOTER']);
 
   // ARIA role 排除
-  // 'tree' / 'treeitem' 是 W3C ARIA 階層 widget 語意(file tree / 分類選擇器 /
-  // taxonomy navigator)。本質載的是識別字 listing,不是 prose——典型場景:
+  // 'tree' / 'treeitem' 是 W3C ARIA 階層 widget 語意（file tree / 分類選擇器 /
+  // taxonomy navigator)。本質載的是識別字 listing，不是 prose——典型場景：
   // GitHub 新版 Files sidebar、IDE 檔案瀏覽器、cloud storage UI。誤翻會把檔名
-  // 翻成中文+ 連帶 SVG icon 因 innerHTML clean-slate 一併消失。結構性通則,
+  // 翻成中文+ 連帶 SVG icon 因 innerHTML clean-slate 一併消失。結構性通則，
   // 不依賴站點 class。
   SK.EXCLUDE_ROLES = new Set(['banner', 'contentinfo', 'search', 'grid', 'tree', 'treeitem']);
 
@@ -221,10 +221,10 @@ if (window.__shinkansen_loaded) {
   SK.BRACKET_ALIASES_CLOSE = ['\u2771']; // ❱
 
   // 字幕翻譯訊息類型路由 — engine + ASR 兩維對應 background handler。
-  // 統一在這裡定義,避免 content-youtube.js 多處 inline 三元式 drift(同一份事實多路徑)。
+  // 統一在這裡定義，避免 content-youtube.js 多處 inline 三元式 drift(同一份事實多路徑)。
   // - 非 ASR(人工字幕 / heuristic 整句字幕):google / openai-compat / Gemini 三路
-  // - ASR LLM(JSON timestamp 模式):Google MT 不支援 JSON 包裝,只有 Gemini / openai-compat
-  //   兩路;engine='google' 在 ASR LLM 下走 Gemini fallback
+  // - ASR LLM(JSON timestamp 模式):Google MT 不支援 JSON 包裝，只有 Gemini / openai-compat
+  //   兩路；engine='google' 在 ASR LLM 下走 Gemini fallback
   SK.getSubtitleBatchType = function getSubtitleBatchType(engine, asr) {
     if (asr) {
       if (engine === 'openai-compat') return 'TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM';
@@ -237,9 +237,9 @@ if (window.__shinkansen_loaded) {
 
   // 術語表抽取訊息類型路由 — 對齊字幕路由的單一資料源原則。
   // engine='openai-compat' 走 EXTRACT_GLOSSARY_CUSTOM(自訂 Provider chat.completions);
-  // 其餘(含 google,因為術語表抽取是 LLM 任務,Google MT 不適用)走 EXTRACT_GLOSSARY(Gemini)。
-  // engine='google' 走 Gemini 路徑會吃 settings.apiKey,使用者沒填時 background 會回
-  // _diag 提示;這是已知 trade-off — 翻譯主路徑用 Google MT 但仍想要 LLM 抽術語表的
+  // 其餘（含 google，因為術語表抽取是 LLM 任務，Google MT 不適用）走 EXTRACT_GLOSSARY(Gemini)。
+  // engine='google' 走 Gemini 路徑會吃 settings.apiKey，使用者沒填時 background 會回
+  // _diag 提示；這是已知 trade-off — 翻譯主路徑用 Google MT 但仍想要 LLM 抽術語表的
   // 使用者必須額外填 Gemini Key。
   SK.getGlossaryExtractType = function getGlossaryExtractType(engine) {
     if (engine === 'openai-compat') return 'EXTRACT_GLOSSARY_CUSTOM';
@@ -247,15 +247,15 @@ if (window.__shinkansen_loaded) {
   };
 
   // v1.8.10: 防禦式清理 LLM 沒照規則回時殘留的多段協定標記。
-  // 規格參見 lib/system-instruction.js 的 DELIMITER 與兩種序號標記格式:
-  //   - <<<SHINKANSEN_SEP>>>:多段譯文之間的分隔符
-  //   - «N»(N 為數字):COMPACT 格式段序號(Gemini 路徑用)
-  //   - <<<SHINKANSEN_SEG-N>>>:STRONG 格式段序號(自訂 OpenAI-compat 預設用、弱模型不誤翻)
-  // 正常情況下 adapter parser 已 split + 移除標記;但 LLM 偷懶把 N 段合併
-  // 成 1 段回傳時(hadMismatch=true 路徑),分隔符與內段序號會殘留進譯文 string。
-  // 寫入 captionMap / DOM 之前先清理,避免使用者看到刺眼的標記。
-  // 跟 hadMismatch retry(B 路徑)是分層防禦——這條當最後一道防線。
-  // 兩種格式都 strip:跨 engine 切換時的 cache race / 防禦式雙保險。
+  // 規格參見 lib/system-instruction.js 的 DELIMITER 與兩種序號標記格式：
+  //   - <<<SHINKANSEN_SEP>>>：多段譯文之間的分隔符
+  //   - «N»(N 為數字):COMPACT 格式段序號（Gemini 路徑用)
+  //   - <<<SHINKANSEN_SEG-N>>>:STRONG 格式段序號（自訂 OpenAI-compat 預設用、弱模型不誤翻)
+  // 正常情況下 adapter parser 已 split + 移除標記；但 LLM 偷懶把 N 段合併
+  // 成 1 段回傳時（hadMismatch=true 路徑)，分隔符與內段序號會殘留進譯文 string。
+  // 寫入 captionMap / DOM 之前先清理，避免使用者看到刺眼的標記。
+  // 跟 hadMismatch retry(B 路徑）是分層防禦——這條當最後一道防線。
+  // 兩種格式都 strip：跨 engine 切換時的 cache race / 防禦式雙保險。
   SK.sanitizeMarkers = function sanitizeMarkers(text) {
     if (text == null) return text;
     return String(text)
@@ -273,8 +273,8 @@ if (window.__shinkansen_loaded) {
   SK.DEFAULT_MAX_CONCURRENT = 10;
   SK.DEFAULT_MAX_TOTAL_UNITS = 1000;
   // v1.7.2: batch 0 專用較小 limit;batch 1+ 仍用 DEFAULT_*_PER_BATCH 維持並行吞吐。
-  // v1.8.0: streaming 路徑下 batch 0 size 不影響首字延遲(實測 10/20/30u 的 first_slot_close
-  // 都在 1.0-1.2 秒,差距 < 100ms)。擴大到 25 unit / 3700 chars 涵蓋更多文章開頭——
+  // v1.8.0: streaming 路徑下 batch 0 size 不影響首字延遲（實測 10/20/30u 的 first_slot_close
+  // 都在 1.0-1.2 秒，差距 < 100ms)。擴大到 25 unit / 3700 chars 涵蓋更多文章開頭——
   // 使用者首字看到的譯文範圍從「H1 + 副標 + 開頭幾段」變成「H1 + 副標 + 整段內文前 25 段」。
   // 完整實測見 reports/streaming-probe-2026-04-28.md §2-§5。
   SK.BATCH0_UNITS = 25;
@@ -287,8 +287,8 @@ if (window.__shinkansen_loaded) {
   SK.SPA_NAV_SETTLE_MS = 800;
 
   // 術語表常數
-  // v1.7.3: blockingThreshold 從 5 提高到 10——中等長度頁面(6-10 批)走 fire-and-forget
-  // 不阻塞首字,省下 EXTRACT_GLOSSARY 1.5-7.4 秒等待。長頁(>10 批)仍 blocking。
+  // v1.7.3: blockingThreshold 從 5 提高到 10——中等長度頁面（6-10 批）走 fire-and-forget
+  // 不阻塞首字，省下 EXTRACT_GLOSSARY 1.5-7.4 秒等待。長頁（>10 批）仍 blocking。
   // 必須跟 lib/storage.js DEFAULT_SETTINGS.glossary.blockingThreshold 同步。
   SK.GLOSSARY_SKIP_THRESHOLD_DEFAULT = 1;
   SK.GLOSSARY_BLOCKING_THRESHOLD_DEFAULT = 10;
@@ -307,8 +307,8 @@ if (window.__shinkansen_loaded) {
   SK.VALID_MARK_STYLES = new Set(['tint', 'bar', 'dashed', 'none']);
 
   // ─── v1.8.52 雙語對照強調色常數 ─────────────────────
-  // auto = 維持各 mark 預設配色;其餘 7 token 套單一色到三種 mark
-  // 注意:token 清單與 hex 對照表要跟 options.js / docs 同步。
+  // auto = 維持各 mark 預設配色；其餘 7 token 套單一色到三種 mark
+  // 注意：token 清單與 hex 對照表要跟 options.js / docs 同步。
   SK.DUAL_ACCENT_DEFAULT = 'auto';
   SK.DUAL_ACCENT_TOKENS = ['auto', 'blue', 'green', 'yellow', 'orange', 'red', 'purple', 'pink'];
   SK.DUAL_ACCENT_HEX_MAP = {
@@ -322,10 +322,10 @@ if (window.__shinkansen_loaded) {
   };
   SK.DUAL_ACCENT_HEX_RE = /^#[0-9a-fA-F]{6}$/;
   /**
-   * 把使用者設定值正規化:
+   * 把使用者設定值正規化：
    *   - 'auto' 或非字串 / 不認得 → 'auto'
    *   - 已知 token → 原樣回傳
-   *   - 6 碼 hex(去頭尾空白後通過 re）→ 統一回大寫(避免 cache key 漂移）
+   *   - 6 碼 hex(去頭尾空白後通過 re）→ 統一回大寫（避免 cache key 漂移）
    */
   SK.sanitizeDualAccent = function sanitizeDualAccent(value) {
     if (typeof value !== 'string') return 'auto';
@@ -371,13 +371,22 @@ if (window.__shinkansen_loaded) {
   SK.isVisible = function isVisible(el) {
     if (!el) return false;
     if (el.tagName === 'BODY') return true;
-    if (el.offsetParent === null) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return false;
-    }
     const style = el.ownerDocument?.defaultView?.getComputedStyle?.(el);
     if (style) {
       if (style.visibility === 'hidden' || style.display === 'none') return false;
+    }
+    let rect = null;
+    if (el.offsetParent === null) {
+      rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return false;
+    }
+    // sr-only / visually-hidden a11y pattern:`position:absolute` + 1×1 rect
+    //(藉 `clip: rect(0,0,0,0)` / `clip-path: inset(...)` 把可視範圍裁掉)。
+    // 對 sighted user 完全不可見，翻譯後 wrapper 不繼承裁切 → 反而暴露原本該隱
+    // 藏的譯文（zerobyte 截圖案例)，需擋掉。
+    if (style && style.position === 'absolute') {
+      if (!rect) rect = el.getBoundingClientRect();
+      if (rect.width <= 1 && rect.height <= 1) return false;
     }
     return true;
   };
@@ -406,7 +415,7 @@ if (window.__shinkansen_loaded) {
     return false;
   };
 
-  // SPAN 通常是樣式 hook,只在帶 class 或 inline style 時才保留
+  // SPAN 通常是樣式 hook，只在帶 class 或 inline style 時才保留
   SK.isPreservableInline = function isPreservableInline(el) {
     if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
     const tag = el.tagName;
@@ -431,9 +440,9 @@ if (window.__shinkansen_loaded) {
     const all = el.getElementsByTagName('*');
     for (let i = 0; i < all.length; i++) {
       const n = all[i];
-      // Inline <code>(非 PRE 內)算需要保留——CODE 在 HARD_EXCLUDE_TAGS 是給 walker
-      // 擋整個 code 區塊用,但段落內 inline <code> 必須當 atomic slot 保留(否則
-      // serializer 後面會跳過整顆,grey background 一併消失)。必須先於 HARD_EXCLUDE。
+      // Inline <code>(非 PRE 內）算需要保留——CODE 在 HARD_EXCLUDE_TAGS 是給 walker
+      // 擋整個 code 區塊用，但段落內 inline <code> 必須當 atomic slot 保留（否則
+      // serializer 後面會跳過整顆，grey background 一併消失)。必須先於 HARD_EXCLUDE。
       if (n.tagName === 'CODE'
           && !(n.parentElement && n.parentElement.tagName === 'PRE')) return true;
       if (SK.HARD_EXCLUDE_TAGS.has(n.tagName)) continue;

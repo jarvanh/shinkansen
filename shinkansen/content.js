@@ -31,8 +31,8 @@
     } else if (action === 'CLEAR_LOGS') {
       forwardToBackground('CLEAR_LOGS');
     } else if (action === 'CLEAR_CACHE') {
-      // v1.8.53: forward 給 background 清 storage 之外,也 reset YT in-memory state,
-      // 讓「清快取後拖進度條」name + behavior 一致(translatedWindows / captionMap /
+      // v1.8.53: forward 給 background 清 storage 之外，也 reset YT in-memory state,
+      // 讓「清快取後拖進度條」name + behavior 一致（translatedWindows / captionMap /
       // displayCues 不清的話 onSeeked guard 會擋住「翻譯中…」status + 重翻 API)
       try { SK.YT?._resetTranslationStateForCacheClear?.(); } catch (_) {}
       forwardToBackground('CLEAR_CACHE');
@@ -61,6 +61,11 @@
         translating: STATE.translating,
         segmentCount: STATE.originalHTML.size,
       });
+    } else if (action === 'RELOAD_EXTENSION') {
+      // DEBUG: hot reload extension(讀磁碟新 code),sendResponse 同步先回再讓
+      // background 重啟 SW；此 tab 的 content script 會變成 orphan，下次 navigate
+      // 重新注入新 code。
+      forwardToBackground('RELOAD_EXTENSION');
     } else if (action === 'GET_YT_DEBUG') {
       // 暴露 YT 字幕翻譯的內部狀態，供除錯比對用
       const YT = SK.YT;
@@ -86,7 +91,7 @@
         onTheFlyKeys:     onTheFlyKeys,
         translatedUpToMs: YT.translatedUpToMs,
         ytConfig:         YT.config,
-        // v1.8.53 debug:看哪條 guard 擋住 onSeeked → translateWindowFrom
+        // v1.8.53 debug：看哪條 guard 擋住 onSeeked → translateWindowFrom
         ccPaused:                  YT.ccPaused,
         translatingWindowsSize:    YT.translatingWindows?.size ?? -1,
         translatingWindowsArray:   YT.translatingWindows ? Array.from(YT.translatingWindows) : [],
@@ -725,7 +730,7 @@
       // 雙語視覺標記樣式
       const ms = settings.translationMarkStyle;
       SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
-      // v1.8.52: 強調色(token / hex / 'auto'），sanitize 後給 injectDual 套到 wrapper
+      // v1.8.52: 強調色（token / hex / 'auto'），sanitize 後給 injectDual 套到 wrapper
       SK.currentDualAccent = SK.sanitizeDualAccent?.(settings.dualAccentColor) ?? 'auto';
       // 雙語模式才注入 wrapper CSS（單語模式不需要）
       if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
@@ -869,8 +874,8 @@
       const inputHash = await SK.sha1(compressedText);
       SK.sendLog('info', 'glossary', 'glossary preprocessing', { batchCount, mode: batchCount > blockingThreshold ? 'blocking' : 'fire-and-forget', compressedChars: compressedText.length, hash: inputHash.slice(0, 8) });
 
-      // 依 options.engine 路由(openai-compat → CUSTOM,其餘走 Gemini)。同字幕路徑由
-      // SK.getSubtitleBatchType 收斂單一資料源,術語表也對齊不重複 inline 三元式。
+      // 依 options.engine 路由（openai-compat → CUSTOM，其餘走 Gemini)。同字幕路徑由
+      // SK.getSubtitleBatchType 收斂單一資料源，術語表也對齊不重複 inline 三元式。
       const _glossaryMsgType = SK.getGlossaryExtractType(options?.engine);
       if (batchCount > blockingThreshold) {
         SK.showToast('loading', '建立術語表⋯', { progress: 0, startTimer: true });
@@ -1514,8 +1519,8 @@
       sendResponse({ ok: true, active: SK.YT?.active ?? false });
       return true;
     }
-    // v1.8.53: background CLEAR_CACHE 完成後 broadcast,清 YT in-memory 翻譯狀態
-    // (popup「清除翻譯快取」按鈕走這條,bypass 了 Debug Bridge)。idempotent。
+    // v1.8.53: background CLEAR_CACHE 完成後 broadcast，清 YT in-memory 翻譯狀態
+    // (popup「清除翻譯快取」按鈕走這條，bypass 了 Debug Bridge)。idempotent。
     if (msg?.type === 'YT_RESET_AFTER_CACHE_CLEAR') {
       try { SK.YT?._resetTranslationStateForCacheClear?.(); } catch (_) {}
       return;

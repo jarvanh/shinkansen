@@ -11,10 +11,10 @@
 
 ### 翻譯引擎與模型
 
-- **v1.8.0** — **極速秒翻**:文章翻譯 batch 0 改走 Gemini streaming(SSE),按下翻譯 1 秒就看到頁面開始變中文(首字延遲 2.5-4.4 秒 → 1.0-1.2 秒);batch 0 size 從 10 unit 擴大到 25 unit,涵蓋整段內文前 25 段。僅限 Gemini 文章翻譯 batch 0,字幕 / 術語表 / Google MT / 自訂模型不動
+- **v1.8.0** — **極速秒翻**：文章翻譯 batch 0 改走 Gemini streaming(SSE)，按下翻譯 1 秒就看到頁面開始變中文（首字延遲 2.5-4.4 秒 → 1.0-1.2 秒);batch 0 size 從 10 unit 擴大到 25 unit，涵蓋整段內文前 25 段。僅限 Gemini 文章翻譯 batch 0，字幕 / 術語表 / Google MT / 自訂模型不動
 - **v1.6.19** — Code review 後修 5 條穩健性 bug:YouTube 字幕並行批次某批失敗不再拖累其他批字幕、跨 tab sticky 翻譯在 SW 喚醒當下連開多 tab 不再漏繼承、設定頁可正確輸入 0(不會被靜默改回預設)、fragment 注入遇到 DOM 重排不再 crash、batch timer 不再洩漏
-- **v1.6.18** — 自訂模型分頁加「思考強度」(自動 / 關閉 / 低 / 中 / 高)統一控制,涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking API 差異;另加「進階 JSON」逃生口給 power user 透傳 provider 專屬參數
-- **v1.6.12** — 修 Pro 模型(`gemini-3-pro-preview` / `gemini-2.5-pro` 等)翻譯失敗 bug,並升級到 Gemini 3 推薦的 `thinkingLevel` API
+- **v1.6.18** — 自訂模型分頁加「思考強度」(自動 / 關閉 / 低 / 中 / 高）統一控制，涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking API 差異；另加「進階 JSON」逃生口給 power user 透傳 provider 專屬參數
+- **v1.6.12** — 修 Pro 模型（`gemini-3-pro-preview` / `gemini-2.5-pro` 等）翻譯失敗 bug，並升級到 Gemini 3 推薦的 `thinkingLevel` API
 - **v1.6.7** — 自訂模型支援本機後端（llama.cpp / Ollama 等不需 API Key 的服務）
 - **v1.5.7** — 新增「自訂 OpenAI 相容模型」分頁，可接 OpenRouter / Together / DeepSeek / Groq / Fireworks / Ollama 等任何 OpenAI 相容端點
 
@@ -30,17 +30,17 @@
 
 ### 翻譯品質與術語管理
 
-- **v1.8.7** — 「**翻譯剩餘段落**」按鈕:partialMode 翻完開頭後 toast 顯示「已翻譯前 N 段(共 M 段)」+ 常駐按鈕,點按走完整翻譯,前段從本地快取 fast path 命中(0 token / 9ms),只後段打 API。「只翻文章開頭」UI 從「效能」section 獨立成「**節省模式**」section,搬到「配額」之前
-- **v1.8.3** — 新增「**只翻文章開頭(節省費用)**」選項。翻譯只跑前 N 段(範圍 5-50,預設 25),大幅減少 token 用量;適合先預覽再決定要不要看完整文章。預設關閉
-- **v1.7.1** — **翻譯優先級排序**:長網頁翻譯時最先看到的譯文從「導覽列 / cookie 同意書 / TOC」變成「文章標題 + 第一段內文」(`prioritizeUnits` 把 main / article 內段落排到 batch 0 + batch 0 序列化先跑)
+- **v1.8.7** — 「**翻譯剩餘段落**」按鈕：partialMode 翻完開頭後 toast 顯示「已翻譯前 N 段（共 M 段)」+ 常駐按鈕，點按走完整翻譯，前段從本地快取 fast path 命中（0 token / 9ms)，只後段打 API。「只翻文章開頭」UI 從「效能」section 獨立成「**節省模式**」section，搬到「配額」之前
+- **v1.8.3** — 新增「**只翻文章開頭（節省費用)**」選項。翻譯只跑前 N 段（範圍 5-50，預設 25)，大幅減少 token 用量；適合先預覽再決定要不要看完整文章。預設關閉
+- **v1.7.1** — **翻譯優先級排序**：長網頁翻譯時最先看到的譯文從「導覽列 / cookie 同意書 / TOC」變成「文章標題 + 第一段內文」(`prioritizeUnits` 把 main / article 內段落排到 batch 0 + batch 0 序列化先跑)
 - **v1.5.6** — 新增中國用語黑名單分頁（預設 25 條禁用詞，可編輯）
 
 ### YouTube 字幕翻譯
 
-- **v1.8.9** — YouTube **人工字幕**(非 ASR)batch 0 也走 streaming(SSE),首字延遲從整批 resolve 砍成 SSE 首段;非 ASR 字幕長譯文也比照 ASR 走 `_wrapTargetText` 切點 + `<br>` 注入,中文長句不再沖出 video 寬
-- **v1.8.2** — ASR 字幕 overlay 黑底 padding 縮緊,左右各省 7px,視覺比例對齊原生 YouTube 字幕(原本黑底比原生大很多)
-- **v1.7.0** — YouTube **自動產生字幕**(ASR)生產級體驗:**AI 智慧分句**(整批送 Gemini 依語意重組,中文字幕從「破碎的詞」變「完整句子」)、**混合模式預設**(預設分句先秒出、AI 分句結果回來後替換)、**字幕 overlay 整句穩定顯示**(完全旁路 YouTube 原生 caption-segment 一字一字跳的問題);UI 簡化為單一「AI 分句模式」toggle
-- **v1.6.20** — YouTube 自動產生字幕整套重做:三種分句模式可切換(預設分句 / AI 分句 / 混合模式)、字幕完全旁路原生跳動 + 整句穩定顯示、譯文過長依標點動態斷行(2 行為主)、字體 / 顏色 / 透明度 / 字型動態對齊原生英文字幕;勾「自動翻譯字幕」+ CC 未開時自動開啟 CC
+- **v1.8.9** — YouTube **人工字幕**(非 ASR)batch 0 也走 streaming(SSE)，首字延遲從整批 resolve 砍成 SSE 首段；非 ASR 字幕長譯文也比照 ASR 走 `_wrapTargetText` 切點 + `<br>` 注入，中文長句不再沖出 video 寬
+- **v1.8.2** — ASR 字幕 overlay 黑底 padding 縮緊，左右各省 7px，視覺比例對齊原生 YouTube 字幕（原本黑底比原生大很多)
+- **v1.7.0** — YouTube **自動產生字幕**(ASR）生產級體驗：**AI 智慧分句**(整批送 Gemini 依語意重組，中文字幕從「破碎的詞」變「完整句子」)、**混合模式預設**(預設分句先秒出、AI 分句結果回來後替換)、**字幕 overlay 整句穩定顯示**(完全旁路 YouTube 原生 caption-segment 一字一字跳的問題);UI 簡化為單一「AI 分句模式」toggle
+- **v1.6.20** — YouTube 自動產生字幕整套重做：三種分句模式可切換（預設分句 / AI 分句 / 混合模式)、字幕完全旁路原生跳動 + 整句穩定顯示、譯文過長依標點動態斷行（2 行為主)、字體 / 顏色 / 透明度 / 字型動態對齊原生英文字幕；勾「自動翻譯字幕」+ CC 未開時自動開啟 CC
 - **v1.6.0** — 字幕分頁 tab 移到「一般設定」右邊；section 重組為「自動翻譯 → 翻譯引擎 → Gemini 設定 → 進階 → 視窗設定 → Prompt」
 - **v1.6.0** — 字幕引擎新增「自訂模型」選項（與文章翻譯共用設定，prompt 可獨立）
 - **v1.6.0** — 字幕新增「字幕也套用『固定術語表』/『禁用詞清單』」兩個 toggle（預設關，省 token）
@@ -48,25 +48,25 @@
 
 ### 設定頁與用量紀錄
 
-- **v1.6.17** — 設定頁次按鈕視覺對齊主按鈕(高度/字級一致,主按鈕仍突出)
+- **v1.6.17** — 設定頁次按鈕視覺對齊主按鈕（高度/字級一致，主按鈕仍突出)
 - **v1.6.16** — 自訂模型分頁預填 OpenRouter DeepSeek V4 Pro(只剩 API Key 要填即可啟動);Gemini 分頁移除「後備路徑單價」UI;reset 按鈕補清空 v1.6.14 的計價覆蓋表
-- **v1.6.15** — Gemini 分頁移除「全域 Gemini 模型」下拉(後備路徑已不需要),Service Tier 搬到「LLM 參數微調」section
-- **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」(原預設 2 突顯為「主要預設」加藍邊框);Gemini 分頁加 per-model 計價覆蓋表(Google 改價時可手動更新)
-- **v1.6.13** — 自動翻譯白名單可指定使用哪一組預設(原本走 Gemini 全域模型,現在跟快速鍵行為一致);Gemini 分頁的「模型/計價」section 重新標示為「後備路徑專用」消除混淆
-- **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕(不需關閉設定頁也能看到最新紀錄)
+- **v1.6.15** — Gemini 分頁移除「全域 Gemini 模型」下拉（後備路徑已不需要),Service Tier 搬到「LLM 參數微調」section
+- **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」(原預設 2 突顯為「主要預設」加藍邊框);Gemini 分頁加 per-model 計價覆蓋表（Google 改價時可手動更新)
+- **v1.6.13** — 自動翻譯白名單可指定使用哪一組預設（原本走 Gemini 全域模型，現在跟快速鍵行為一致);Gemini 分頁的「模型/計價」section 重新標示為「後備路徑專用」消除混淆
+- **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕（不需關閉設定頁也能看到最新紀錄)
 - **v1.6.0** — 設定頁加入「重設所有參數」與「重置為預設 Prompt」按鈕；每批段數預設 12→20；用量紀錄時間 filter 改 24 小時制 + 「現在時間」按鈕
 - **v1.5.7** — 用量紀錄「模型」欄改顯示 preset 標籤；Google MT 同 URL 批次自動合併
 
 ### 效能與穩定性
 
-- **v1.8.10** — 修 LLM 偷懶把多段譯文合併成 1 段時,使用者看到字幕 / 文章顯示「«1» 中文 <<<SHINKANSEN_SEP>>> «2» 中文」殘留協定標記(YouTube 字幕 streaming 上特別常見)
+- **v1.8.10** — 修 LLM 偷懶把多段譯文合併成 1 段時，使用者看到字幕 / 文章顯示「«1» 中文 <<<SHINKANSEN_SEP>>> «2» 中文」殘留協定標記（YouTube 字幕 streaming 上特別常見)
 - **v1.8.8** — 修「翻譯剩餘段落」按鈕後 toast 立刻顯示完成、實際大部分內容沒翻的 bug
-- **v1.8.6** — 修「只翻文章開頭」中英夾雜的 bug(partialMode 改走純 DOM 順序,不再被 prioritizeUnits 重新排序造成 tier 1 真內文段被 truncate 掉)
+- **v1.8.6** — 修「只翻文章開頭」中英夾雜的 bug(partialMode 改走純 DOM 順序，不再被 prioritizeUnits 重新排序造成 tier 1 真內文段被 truncate 掉)
 - **v1.8.1** — 修 v1.8.0 streaming 路徑漏寫 cache,「翻譯 → 還原 → 重翻同一頁」回到 cache fast path(實測同頁 9 毫秒完成)
-- **v1.7.3** — Glossary 阻塞門檻動態調整(預設 5 → 10):中等長度頁面(6-10 批)從「先等術語表再翻」改為「術語表跟翻譯並行」,首字延遲省 1.5-7.4 秒(Verge -61% / GitHub -64%)
-- **v1.7.2** — 翻譯首字延遲再優化:batch 0 切小(10 unit / 1500 chars)、Readability tier 0 細分(GitHub repo / Wikipedia 等「main 包了 chrome」的網站 batch 0 排序更準)、glossary 抽取改用 Flash Lite。同組 10 個 URL 平均 -29%(NPR 11.7s → 5.1s 省 6.6 秒)
-- **v1.6.10** — 分頁切到背景時暫停 Content Guard 與 SPA URL 輪詢,降低背景分頁的 CPU 與電力消耗
-- **v1.6.9** — 段落偵測階段大幅優化,長頁（Wikipedia / 論壇 / 長 Medium）翻譯啟動明顯變快
+- **v1.7.3** — Glossary 阻塞門檻動態調整（預設 5 → 10)：中等長度頁面（6-10 批）從「先等術語表再翻」改為「術語表跟翻譯並行」，首字延遲省 1.5-7.4 秒（Verge -61% / GitHub -64%)
+- **v1.7.2** — 翻譯首字延遲再優化：batch 0 切小（10 unit / 1500 chars)、Readability tier 0 細分（GitHub repo / Wikipedia 等「main 包了 chrome」的網站 batch 0 排序更準)、glossary 抽取改用 Flash Lite。同組 10 個 URL 平均 -29%(NPR 11.7s → 5.1s 省 6.6 秒)
+- **v1.6.10** — 分頁切到背景時暫停 Content Guard 與 SPA URL 輪詢，降低背景分頁的 CPU 與電力消耗
+- **v1.6.9** — 段落偵測階段大幅優化，長頁（Wikipedia / 論壇 / 長 Medium）翻譯啟動明顯變快
 
 ### 通知與更新提示
 
@@ -78,6 +78,8 @@
 ---
 
 ## v1.8.x
+
+**v1.8.57** — GitHub / Medium 等複雜頁面雙語對照模式 15 條結構性修補（對應 issue #37)。**問題集**:GitHub 程式碼區塊被翻譯成色塊蓋住程式碼、檔名欄位廢譯撐爆 row、sr-only 標題譯文外露、`font-size: 0` 表頭撐出空白色塊條、雙語譯文塊負 marginTop 蓋到原文、tab strip / 表格 cell 譯文塊貼到框線、commit 日期觸發 hallucination 長文、code-block 容器內說明段沒翻、release 卡片連結譯文塊飄到頁面底端、Medium 引用文字譯文衝出 column、按讚 / 留言計數 anchor 廢譯。**改動 1(`<pre>` 語法高亮 hard exclude)**:`content-detect.js` PRE 路徑加結構判定：子元素全 `<span>` 且無 `A`/`EM`/`STRONG` 等 prose-inline → REJECT。涵蓋 GitHub PrettyLights / hljs / prism / shiki 等用 `<span>` 做 token 的語法高亮 `<pre>`,Medium 引用文字（含 `<a>`/`<em>`）維持可翻。**改動 2(純識別符 cell skip)**：新增 `isPureIdentifierCell` — TD/TH 文字符合 `^[\w./-]+$` + < 40 字 + (含 `./-` 或含 svg/img 子)→ REJECT。`.github` / `v0.5.24` / `feat-x` / `app`(有 folder icon）等檔案列表 filename 欄全擋，不送翻不建 wrapper。**改動 3(B 比對改用 deserialize + getVisibleText)**:`injectDual` 譯文 == 原文 skip 預檢從「stripStrayPlaceholderMarkers + textContent」改成「deserializeWithPlaceholders 後取 fragment textContent」對「getVisibleText(原段落)」。前者解 `<td><code>BASE_URL</code></td>` 的 atomic preserve(`⟦*0⟧` raw → 空字串）誤判；後者排除 SVG `<desc>` / sr-only `<span>` 等 a11y 文字干擾（Medium clap anchor 含 "A clap icon" / "A response icon" sr-only 文字)。**改動 4(sr-only / visually-hidden heading skip)**:`content-ns.js` `SK.isVisible` 加 `position:absolute` + rect ≤ 1×1 判定 → false，擋掉 `clip: rect(0,0,0,0)` 跟 `clip-path: inset(...)` 兩種 a11y pattern(GitHub「Folders and files」/「Repository files navigation」h2)。**改動 5(`font-size: 0` 元素 SKIP)**:`acceptNode` 加 computed font-size === '0px' → FILTER_SKIP。GitHub 檔案列表 THEAD 用此技法 + height: 8px 撐分隔線，wrapper 注入後變 8px pink 條。FILTER_SKIP 不收為 unit 但允許 walker 進子節點，不誤殺「父用 font-size:0 消 inline-block whitespace gap、子各自設字級」的合法用法。**改動 6(`marginTop=-pb` 限 sibling 模式)**:LI/TD/TH 的 append 模式 wrapper 是 child，負 marginTop 會把 wrapper 拉進 cell 內部蓋到原文（zerobyte 環境變數描述 cell)；改成只在 sibling 插入（`afterend` / `afterend-block-ancestor`）模式套，append 模式跳過。**改動 7+8(wrapper 預設 marginTop / marginBottom = 0.5em)**：從 0.25em 拉到 0.5em + 加 marginBottom 0.5em,nav tab 的 active underline / 表格 row 分隔線跟 wrapper 之間有像樣的呼吸空間。標題後 wrapper margin-top 0.5em 跟此預設一致，heading 後 wrapper 鎖原 0.5em 規則退場（等價)。**改動 9(date pattern → REJECT)**：加 `isDateLikeText`,GitHub commit 時間欄（`May 7, 2026` / `5 minutes ago` / `last month`）等格式直接 skip — LLM 對短日期串容易 hallucinate 出無關長文（觀察：`May 7, 2026` → 數百字創辦故事)。**改動 10(譯文長度 sanity check)**:`injectDual` 加防禦線：譯文 > 原文 × 5 倍且原文在 5–200 字之間 → skip wrapper(中文一般比英文緊湊，> 5× 幾乎必然是 hallucination)。**改動 11(code-block utility button 不算 widget)**:`isInteractiveWidgetContainer` 加結構判定：button 從往上 walk，任一層 sibling 含 `<pre>` → 視為程式碼區塊複製按鈕（GitHub `<clipboard-copy>` 等)，從 widget 計數中剔除。修「code-block 容器內含 P 段沒翻」(LI 因含 clipboard-copy 被誤判 widget 整個 REJECT)。**改動 12(findBlockAncestor 自身命中回 el)**:el 自身 computed display 已是 block-ish(`<a style="display:flex">` GitHub release 卡片連結）時，findBlockAncestor 回傳 el 自身而非繼續往上找。修「inline 段落 wrapper 飄到 1000px 外大容器底端」。**改動 13(Medium `<pre>` 引用譯文)**:`buildDualInner` PRE 原 tag 的 inner 從 `<pre>` 改成 `<div>`(避免 UA 預設 `white-space: pre` 不換行衝出 column);typography copy 對 PRE source 不 copy fontFamily(避免中文譯文用 monospace 字型擁擠難讀)。**改動 14(SVG `<desc>` rect 0×0)**:`getVisibleText` 加 rect 0×0 判定 → 不可見。Medium clap / response counter anchor 用 SVG `<desc>` 放 a11y 文字，影響 textContent 但對 sighted user 完全不可見。**改動 15(數字計量 metric skip)**:`injectDual` B 預檢加 NUMERIC_METRIC_RE — source 可見文字只剩數字 + K/M/B/%/逗號/空白 → skip wrapper。修「LLM 把 1.8K 翻成 1800 也沒翻譯價值」(Medium / Twitter / Reddit clap 數 / 留言數 / 觀看數 anchor)。**Debug 工具（留下不算 fix)**：加 `chrome.runtime.reload()` Debug Bridge action `RELOAD_EXTENSION`,supported through background SW。Claude Code 透過此 API 自跑 hot reload，不再需要手動點 `chrome://extensions/` reload 按鈕。**Chrome 行為**:GitHub repo 頁 / Medium 文章 / 各類複雜版面 dual mode wrapper 視覺乾淨度大幅提升；沒命中新規則的一般 prose 段落翻譯行為零變化。**自動清快取**：不清。沒改 default prompt / cache key 結構 / hashing，改的是 detect / inject 結構性條件分支（該不該偵測為 unit、該不該注入 wrapper)，不影響快取命中行為。`npm test` 全綠（release gate)。
 
 **v1.8.56** — 自訂 Provider 加「強化段序號標記」toggle(預設開啟)+ Log 系統修補。**問題 1(本機量化模型誤翻段序號)**:多段批次時 Shinkansen 在每段原文開頭加緊湊的「«1» «2»」段序號讓 LLM 追蹤段數,Gemini / 商用 LLM(GPT / Claude / DeepSeek 等)都認得是協定 token 不會誤翻;但本機量化模型(gemma-4 量化版等)會把這對符號當自然語言誤譯成「N1、N2」洩漏到譯文。**改動 1(lib/system-instruction.js MARKER_COMPACT / MARKER_STRONG)**:抽出兩組 marker config — COMPACT「«N»」(Gemini 主路徑固定用,token 開銷小)、STRONG「<<<SHINKANSEN_SEG-N>>>」(自訂 OpenAI-compat 預設用,弱模型不會誤翻,代價是每段批次多約 7 tokens / segment、input + output 雙倍開銷)。`buildEffectiveSystemInstruction` 收 marker 參數,描述句裡顯示對應 N 範本。`sanitizeTermText` 兩種 token 都 strip 防注入。**改動 2(lib/openai-compat.js 根據 useStrongSegMarker toggle 切換)**:`cp.useStrongSegMarker !== false` 為 true 時用 STRONG,false 時用 COMPACT;舊使用者升級後 undefined 等同 true(預設 STRONG)。Gemini 主路徑(lib/gemini.js)固定 MARKER_COMPACT 不受影響,token cost / latency 不變。**改動 3(自訂 Provider 分頁 UI)**:新增 checkbox「強化段序號標記(適合本機量化模型)」+ 全形說明文字解釋場景與 token cost trade-off。商用 API 使用者(OpenRouter / DeepSeek / Groq 等)可關閉省 token,但開啟也無害。**改動 4(content-ns.js SK.sanitizeMarkers 兩種格式都 strip)**:防禦式雙保險——LLM 偷懶把 N 段合併成 1 段時(hadMismatch=true 路徑)殘留標記、跨 engine race / cache 殘留 / 使用者切換 toggle 期間譯文混合都能清乾淨。**問題 2(Log 系統盲區)**:v1.8.55 排查「翻譯卡 88 秒」事件,撈 yt_debug_log 只有 `api` / `rate-limit` 類,看不到 translate 主流程的 main flow start / batch start / batch done / stream firstChunkOrTimeout 訊號;Log 分頁也沒讀 persisted log,SW idle 重啟後使用者打開設定頁就空白;「清除」按鈕只清記憶體 buffer 沒清 persisted,下次 SW 重啟舊 log 又冒出來。**改動 5(lib/logger.js PERSIST_CATEGORIES 加 translate)**:翻譯主流程 log 跨 SW 重啟保留(代價是更頻繁 storage write、每筆 translate log 都進 _persistQueue,但 100 筆環形 buffer 上限不變)。**改動 6(options/options.js Log 分頁載入 + 清除流程)**:`startLogPolling` 第一次啟動時先呼叫 `GET_PERSISTED_LOGS` 載入 SW 重啟前的歷史紀錄,再開始 polling 記憶體 buffer。dedup 改用 `timestamp + category + message` 三元 key(SW 重啟後 logSeq 重置會撞號,純 seq 去重會漏)。「清除」按鈕同送 `CLEAR_LOGS` + `CLEAR_PERSISTED_LOGS`,兩層 buffer 都清。**改動 7(regression spec)**:加 `test/unit/openai-compat-marker-toggle.spec.js` 4 cases(useStrongSegMarker true/false/undefined/單段)、擴 `test/regression/sanitize-marker-leak.spec.js` 加 3 sub-case(SEG-N STRONG 殘留 / 兩種 marker 混合殘留 / 純 SEG-1 開頭)、擴 `test/unit/system-instruction-sanitize.spec.js` 加 2 條 sanitize injection spec(SEG-N + COMPACT)、加 `test/unit/logger-persist-categories.spec.js` 4 cases(translate 進 persist / 既有三類仍進 / 其他類不進 / 100 環形 buffer 推出舊的)。SANITY 雙向驗(各條件反向 → 對應 spec fail / 還原 → 全綠)。**Chrome 行為**:使用 Gemini 翻譯的使用者完全不感知此改動(token cost / latency 不變);使用自訂 OpenAI-compat 的使用者升級後預設用 STRONG marker,本機量化模型譯文不再洩漏「N1, N2」殘留;設定頁 Log 分頁打開後能看到 SW 重啟前的紀錄、清除按鈕真的清乾淨。**自動清快取**:不清。沒改 default prompt / cache key 結構 / hashing。`npm test` 561/561 全綠(release gate)。**未採納 PR #40**:PR #40(`fix: 多段序號標記改用 <<<SHINKANSEN_SEG-N>>> 避免弱模型誤翻`)動機正確、抽 SEQ_MARKER_RE 共用常數的重構也對,但「兩條 path 都改 STRONG 一刀切」會讓 Gemini 主路徑使用者承受 ~7 tokens / segment × input + output 雙倍開銷的 token 稅(同樣 batch input 從 841 → 981 tokens、+16.65%),而 Gemini 路徑從未撞過此 bug。本輪改成「Gemini 固定 COMPACT、自訂 Provider 加 toggle 預設 STRONG」精準分離兩條路徑,Gemini 用戶零影響、本機量化模型使用者開箱即用。
 

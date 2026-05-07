@@ -70,8 +70,8 @@ function estimateInputTokens(texts) {
 }
 
 // ─── 啟動時：版本檢查 ───────────────────
-// v1.8.45 起版本變更不再清快取,只更新標記。讓累積翻譯跨版本保留(避免每次 bump 都
-// 重打 API);若 prompt / 行為大改要清,使用者用 popup「清除快取」手動觸發。
+// v1.8.45 起版本變更不再清快取，只更新標記。讓累積翻譯跨版本保留（避免每次 bump 都
+// 重打 API)；若 prompt / 行為大改要清，使用者用 popup「清除快取」手動觸發。
 (async () => {
   const currentVersion = browser.runtime.getManifest().version;
   const result = await cache.checkVersionAndClear(currentVersion);
@@ -363,6 +363,16 @@ async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
 
 // ─── 訊息路由（handler map 取代 if-else 鏈） ──────────────────
 const messageHandlers = {
+  // DEBUG: 給 Debug Bridge 觸發 hot reload(讀取磁碟最新 unpacked extension code)。
+  // 之後內容腳本會在下次頁面載入時以新 code 重新注入。SW 自身會在呼叫後立即重啟，
+  // 故無法 sendResponse;Bridge 端視為 fire-and-forget。
+  RELOAD_EXTENSION: {
+    async: false,
+    handler: () => {
+      setTimeout(() => { try { browser.runtime.reload(); } catch (_) {} }, 50);
+      return { ok: true, reloading: true };
+    },
+  },
   TRANSLATE_BATCH: {
     async: true,
     handler: (payload, sender) => {
@@ -543,22 +553,22 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt'),
   },
-  // W3:文件翻譯(translate-doc/index.js)專用批次。沿用 TRANSLATE_BATCH 流程,
-  // cacheTag '_doc' 區隔 — 既有網頁翻譯('') / 字幕('_yt') / Google MT('_gt')
+  // W3：文件翻譯（translate-doc/index.js）專用批次。沿用 TRANSLATE_BATCH 流程，
+  // cacheTag '_doc' 區隔 — 既有網頁翻譯（'') / 字幕（'_yt') / Google MT('_gt')
   // 不互相污染。SPEC §17.5.3 規定的 blockType / fontSize 桶位精修留 W3-iter2;
-  // 第一版以 plainText + modelOverride + glossary 為 hash 變數,跟既有網頁翻譯邏輯一致。
+  // 第一版以 plainText + modelOverride + glossary 為 hash 變數，跟既有網頁翻譯邏輯一致。
   //
   // payload: { texts: string[], modelOverride?: string, glossary?: [{source,target}] }
-  // 回應:{ result: string[], usage: {...}, rpdExceeded, hadMismatch }
+  // 回應：{ result: string[], usage: {...}, rpdExceeded, hadMismatch }
   TRANSLATE_DOC_BATCH: {
     async: true,
     handler: async (payload, sender) => {
-      // W7:文件翻譯路徑用 settings.translateDoc.systemPrompt(空 fallback 到
-      // DEFAULT_DOC_SYSTEM_PROMPT),不污染網頁翻譯 prompt。通用於 PDF + 未來
+      // W7：文件翻譯路徑用 settings.translateDoc.systemPrompt(空 fallback 到
+      // DEFAULT_DOC_SYSTEM_PROMPT)，不污染網頁翻譯 prompt。通用於 PDF + 未來
       // 各 Office 格式。透過 geminiOverrides.systemInstruction 覆蓋 geminiConfig。
       //
-      // append DOC_INLINE_MARKER_INSTRUCTION:這段 inline marker 協定 user 編輯
-      // 不到也看不到(避免改壞 marker 解析核心邏輯),由 background 自動補在 user
+      // append DOC_INLINE_MARKER_INSTRUCTION：這段 inline marker 協定 user 編輯
+      // 不到也看不到（避免改壞 marker 解析核心邏輯)，由 background 自動補在 user
       // prompt 後送 LLM。即便 user 把 systemPrompt 改成完全不同的翻譯 prompt,
       // marker 規則仍然生效
       const s = await getSettings();
@@ -570,8 +580,8 @@ const messageHandlers = {
         overrides.temperature = td.temperature;
       }
       if (payload?.modelOverride) overrides.model = payload.modelOverride;
-      // v1.8.49: 文件翻譯路徑「是否套用固定術語表」由設定控制(預設 true,沿用之前隱含行為)。
-      // fixedGlossary entries 仍從 settings.fixedGlossary.global 讀(跟主功能共用)。
+      // v1.8.49: 文件翻譯路徑「是否套用固定術語表」由設定控制（預設 true，沿用之前隱含行為)。
+      // fixedGlossary entries 仍從 settings.fixedGlossary.global 讀（跟主功能共用)。
       const applyFixedGlossary = td.applyFixedGlossary !== false;
       return handleTranslate(payload, sender, overrides, null, '_doc', applyFixedGlossary);
     },
@@ -609,8 +619,8 @@ const messageHandlers = {
   // baseUrl / model / apiKey / pricing / thinking 等設定，但 systemPrompt 強制覆寫成
   // DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT(JSON timestamp 模式跟一般逐條字幕規則不同，
   // 不讀使用者自訂的 ytSubtitle.systemPrompt — 跟 Gemini 路徑 _handleAsrSubtitleBatch 對齊)。
-  // cache key '_oc_yt_asr' 區隔：跟 Gemini ASR('_yt_asr')/ 自訂一般字幕('_oc_yt')互不污染。
-  // 同樣不套用固定術語表 / 黑名單(ASR prompt 已內含禁用詞規則，且 JSON 包裝術語注入麻煩)。
+  // cache key '_oc_yt_asr' 區隔：跟 Gemini ASR('_yt_asr')/ 自訂一般字幕（'_oc_yt'）互不污染。
+  // 同樣不套用固定術語表 / 黑名單（ASR prompt 已內含禁用詞規則，且 JSON 包裝術語注入麻煩)。
   TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM: {
     async: true,
     handler: async (payload, sender) => {
@@ -652,7 +662,7 @@ const messageHandlers = {
   },
   // v1.5.7: API Key 測試 — 設定頁「測試」按鈕觸發。
   // Gemini 走 GET models/<model>?key=<key> 不耗 token；
-  // OpenAI-compat 走 POST /chat/completions ping(v1.8.43 起不帶 max_tokens),耗 ~1-3 token。
+  // OpenAI-compat 走 POST /chat/completions ping(v1.8.43 起不帶 max_tokens)，耗 ~1-3 token。
   TEST_GEMINI_KEY: {
     async: true,
     handler: (payload) => testGeminiKey(payload),
@@ -670,9 +680,9 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleExtractGlossary(payload, sender),
   },
-  // 自訂 Provider(openai-compat)走 chat.completions 抽術語表;不需要 Gemini API Key。
+  // 自訂 Provider(openai-compat）走 chat.completions 抽術語表；不需要 Gemini API Key。
   // content.js 依 engine 透過 SK.getGlossaryExtractType 路由到這裡。回傳格式跟
-  // EXTRACT_GLOSSARY 對齊(同 _diag / usage / glossary / fromCache 結構)。
+  // EXTRACT_GLOSSARY 對齊（同 _diag / usage / glossary / fromCache 結構)。
   EXTRACT_GLOSSARY_CUSTOM: {
     async: true,
     handler: (payload, sender) => handleExtractGlossaryCustomProvider(payload, sender),
@@ -680,7 +690,7 @@ const messageHandlers = {
   CLEAR_CACHE: {
     async: true,
     handler: () => cache.clearAll().then(async (removed) => {
-      // v1.8.53: storage 清完後 broadcast 給所有 tabs,讓 content script reset
+      // v1.8.53: storage 清完後 broadcast 給所有 tabs，讓 content script reset
       // YT in-memory state(captionMap / translatedWindows / displayCues)。
       // 否則使用者「清快取後拖進度條」會被 onSeeked 內 translatedWindows.has guard
       // 擋住「翻譯中…」+ translateWindowFrom 重發 API。詳見 content-youtube.js
@@ -1251,9 +1261,9 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     }
   }
 
-  // v1.8.49: preferArticleGlossary 時(文件翻譯 path 帶來),把跟文章術語表同 source 的
-  // fixed entry 從 fixedGlossary 移除,讓 article 完全 override fixed(不靠 LLM 判斷
-  // 優先級,直接從 prompt 拿掉避免衝突)
+  // v1.8.49: preferArticleGlossary 時（文件翻譯 path 帶來)，把跟文章術語表同 source 的
+  // fixed entry 從 fixedGlossary 移除，讓 article 完全 override fixed(不靠 LLM 判斷
+  // 優先級，直接從 prompt 拿掉避免衝突)
   const payloadGlossary = payload?.glossary;
   if (payload?.preferArticleGlossary
       && Array.isArray(payloadGlossary) && payloadGlossary.length > 0
@@ -1293,9 +1303,9 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   // （例如先按 Alt+A 走 Flash Lite 翻過，再按 Alt+S 走 Flash 應該重新打 API，不該命中 Flash Lite 的舊譯文）。
   const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
   glossaryKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
-  // W7:文件翻譯路徑(_doc)cache key 加 temperature,讓使用者在 settings page 改
-  // 文件翻譯獨立 temperature 後立即生效(不會 cache hit 拿到舊 temp 的譯文)。
-  // 網頁 / 字幕路徑沒獨立 temperature 設定,不加(避免 cache 多分裂)
+  // W7：文件翻譯路徑（_doc)cache key 加 temperature，讓使用者在 settings page 改
+  // 文件翻譯獨立 temperature 後立即生效（不會 cache hit 拿到舊 temp 的譯文)。
+  // 網頁 / 字幕路徑沒獨立 temperature 設定，不加（避免 cache 多分裂)
   if (cacheTag === '_doc') {
     const tdTemp = effectiveSettings.geminiConfig?.temperature;
     if (typeof tdTemp === 'number' && Number.isFinite(tdTemp)) {
@@ -1445,13 +1455,13 @@ async function testGeminiKey(payload) {
 
 /**
  * 測試自訂 OpenAI-compatible Provider。
- * 走 `POST /chat/completions` + 「ping」訊息,同時驗證 baseUrl / model / apiKey
- * 三者皆正確。比 GET /models 通用(部分 provider 不支援 GET /models)。
+ * 走 `POST /chat/completions` + 「ping」訊息，同時驗證 baseUrl / model / apiKey
+ * 三者皆正確。比 GET /models 通用（部分 provider 不支援 GET /models)。
  *
- * v1.8.43:不送 max_tokens——GPT-5 / o1 / o3 系列拒收 max_tokens 改認
- * max_completion_tokens,而 OpenRouter / DeepSeek / 較舊 OpenAI-compat 後端
- * 不一定認新欄位,改一個 break 一群。實際翻譯路徑(lib/openai-compat.js)
- * 本來就不送 max_tokens,測試路徑對齊即可。ping 訊息 server 自然回 1-3 token,
+ * v1.8.43：不送 max_tokens——GPT-5 / o1 / o3 系列拒收 max_tokens 改認
+ * max_completion_tokens，而 OpenRouter / DeepSeek / 較舊 OpenAI-compat 後端
+ * 不一定認新欄位，改一個 break 一群。實際翻譯路徑（lib/openai-compat.js)
+ * 本來就不送 max_tokens，測試路徑對齊即可。ping 訊息 server 自然回 1-3 token,
  * 沒 limit 也不會失控。
  */
 async function testCustomProvider(payload) {
@@ -1505,10 +1515,10 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   // v1.5.8: cpOverrides 給字幕路徑覆蓋特定欄位（例如 systemPrompt 改用字幕專屬），
   // 其他欄位（baseUrl / model / apiKey / 計價）仍走「自訂模型」分頁主設定。
   const cp = { ...(settings.customProvider || {}), ...(cpOverrides || {}) };
-  // v1.6.7: API Key 允許為空(本機 llama.cpp / Ollama 等不需要 key);商用後端漏填會自然 401
-  // v1.8.41 對齊:Model 也允許為空(llama.cpp / Ollama 啟動時鎖 model,adapter 不送
-  // model 欄位讓 server 用啟動 model)— lib/openai-compat.js translateChunk 本來就支援,
-  // 之前在這裡提早擋下會讓 local server 配置失敗(空 model 行為應跟 adapter 一致)。
+  // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key)；商用後端漏填會自然 401
+  // v1.8.41 對齊：Model 也允許為空（llama.cpp / Ollama 啟動時鎖 model,adapter 不送
+  // model 欄位讓 server 用啟動 model)— lib/openai-compat.js translateChunk 本來就支援，
+  // 之前在這裡提早擋下會讓 local server 配置失敗（空 model 行為應跟 adapter 一致)。
   if (!cp.baseUrl) throw new Error('尚未設定自訂 Provider 的 Base URL。');
 
   const texts = payload.texts;
@@ -1792,10 +1802,10 @@ async function handleExtractGlossary(payload, sender) {
   return { glossary, usage, fromCache: false, _diag: _diag || null };
 }
 
-// 自訂 Provider 路徑術語表抽取。跟 handleExtractGlossary(Gemini)結構對齊:
+// 自訂 Provider 路徑術語表抽取。跟 handleExtractGlossary(Gemini）結構對齊：
 // 先查快取 → API call → 寫快取 → 累計用量。差別只在 API endpoint(走
 // lib/openai-compat.js extractGlossary)、不檢查 Gemini API Key(自訂 Provider
-// 可不填 key,例如本機 llama.cpp / Ollama)。
+// 可不填 key，例如本機 llama.cpp / Ollama)。
 async function handleExtractGlossaryCustomProvider(payload, sender) {
   debugLog('info', 'glossary', 'openai-compat glossary extraction start', {
     inputHash: payload.inputHash, chars: payload.compressedText?.length,
@@ -1807,8 +1817,8 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
   }
   const { compressedText, inputHash } = payload;
 
-  // 1. 先查術語表快取(共用 cache.getGlossary;_diag 內含 baseUrl/model/engine 影響的話
-  //    可在 inputHash 計算時考量,目前 hash 只看 compressedText 跟 Gemini 路徑共享
+  // 1. 先查術語表快取（共用 cache.getGlossary;_diag 內含 baseUrl/model/engine 影響的話
+  //    可在 inputHash 計算時考量，目前 hash 只看 compressedText 跟 Gemini 路徑共享
   //    符合「同一份原文不同 engine 抽出的術語應該等價」假設)
   const cached = await cache.getGlossary(inputHash);
   if (cached) {
@@ -1816,17 +1826,17 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
     return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
   }
 
-  // 2. 呼叫自訂 Provider 抽術語表(extractGlossary 內部 best-effort,失敗回空陣列 + _diag)
+  // 2. 呼叫自訂 Provider 抽術語表（extractGlossary 內部 best-effort，失敗回空陣列 + _diag)
   const result = await extractGlossaryCustom(compressedText, settings);
   const { glossary, usage, _diag } = result;
   debugLog('info', 'glossary', 'openai-compat returned glossary', { terms: glossary.length, usage, diag: _diag || null });
 
-  // 3. 寫入快取(只快取有內容的)
+  // 3. 寫入快取（只快取有內容的)
   if (glossary.length > 0) {
     await cache.setGlossary(inputHash, glossary);
   }
 
-  // 4. 累計用量(自訂 Provider 用 customProvider.inputPerMTok / outputPerMTok 計價)
+  // 4. 累計用量（自訂 Provider 用 customProvider.inputPerMTok / outputPerMTok 計價)
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
     const billedInput = Math.max(0, Math.round(usage.inputTokens - (usage.cachedTokens || 0) * 0.75));
     const cpPricing = (cp.inputPerMTok || cp.outputPerMTok)
@@ -1876,10 +1886,10 @@ browser.commands.onCommand.addListener(async (command) => {
 });
 
 // ─── 安裝/更新事件 ─────────────────────────────────────────
-// W7:一次性清 tc_* 翻譯 cache(PDF inline marker 協定變動 → 舊 sha1 全部失效)。
-// flagKey 在 storage.local 設過後不再清,onInstalled + onStartup 兩處都呼叫只
-// 會跑一次。網頁 cache 一併清是 PDF 路徑 prompt 變動的代價,使用者下次翻譯重打
-// API,新譯文跟舊版本一致(只是費用)。Glossary 不在此清,因為術語表 prompt 沒變動。
+// W7：一次性清 tc_* 翻譯 cache(PDF inline marker 協定變動 → 舊 sha1 全部失效)。
+// flagKey 在 storage.local 設過後不再清，onInstalled + onStartup 兩處都呼叫只
+// 會跑一次。網頁 cache 一併清是 PDF 路徑 prompt 變動的代價，使用者下次翻譯重打
+// API，新譯文跟舊版本一致（只是費用)。Glossary 不在此清，因為術語表 prompt 沒變動。
 const W7_CACHE_MIGRATION_FLAG = '__shinkansen_w7_cache_migrated';
 async function runW7CacheMigration(triggerLabel) {
   try {
@@ -1892,7 +1902,7 @@ async function runW7CacheMigration(triggerLabel) {
   }
 }
 browser.runtime.onStartup?.addListener(() => { runW7CacheMigration('onStartup'); });
-runW7CacheMigration('sw-init'); // SW 冷啟動也跑一次(防 onStartup 沒觸發的 case,如更新 install)
+runW7CacheMigration('sw-init'); // SW 冷啟動也跑一次（防 onStartup 沒觸發的 case，如更新 install)
 
 browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   debugLog('info', 'system', `extension ${reason}`, {
