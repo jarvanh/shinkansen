@@ -1,18 +1,25 @@
 // Regression: v1.8.10 A — SK.sanitizeMarkers strip LLM 偷懶殘留的多段協定標記
 //
-// 背景:lib/system-instruction.js 把多段譯文用 <<<SHINKANSEN_SEP>>> 分隔 + 每段加 «N» 序號。
-// 正常情況下 lib/gemini.js parser 在 split 時會清掉這些標記。但 LLM 偷懶把 N 段合併成 1 段
+// 背景:lib/system-instruction.js 把多段譯文用 <<<SHINKANSEN_SEP>>> 分隔 + 每段加序號標記。
+// 序號標記有兩種格式:
+//   - COMPACT「«N»」:Gemini 主路徑用,token 開銷小
+//   - STRONG「<<<SHINKANSEN_SEG-N>>>」:OpenAI-compat 預設用,本機量化模型不會誤翻
+// 正常情況下 adapter parser 在 split 時會清掉。但 LLM 偷懶把 N 段合併成 1 段
 // (translations.length=1 ≠ texts.length=N → hadMismatch=true)時,合併版字串會帶完整的
-// SEP / «N» 進到 translations[0],一路寫進 captionMap / DOM,使用者看到「中文 + <<<SEP>>> + «2» + 中文」。
+// SEP / 序號標記進到 translations[0],一路寫進 captionMap / DOM。
 //
 // A 路徑(本 spec):defensive sanitize at write time——content-ns.js 加 SK.sanitizeMarkers,
 // 字幕 _injectBatchResult / 文章 runBatch & STREAMING_SEGMENT inject 時呼叫,strip 殘留標記。
+// 兩種 marker 都 strip(防禦式雙保險:跨 engine race / cache 殘留 / 使用者切換 toggle)。
 // B 路徑(streaming-batch-0-mismatch-retry.spec.js):hadMismatch=true → retry,根本不走合併版。
 // 兩條是分層防禦——A 是 B 失敗時最後一道防線。
 //
 // SANITY CHECK 紀錄(已驗證,2026-04-29):
 //   把 SK.sanitizeMarkers 改成 identity(`return text`)→ test #2 captionMap 含 SHINKANSEN_SEP fail。
 //   還原後 pass。
+// SANITY CHECK 紀錄(STRONG marker case,2026-05-07):
+//   把 sanitizeMarkers 內 `.replace(/<<<SHINKANSEN_SEG-\d+>>>\s*/g, '')` 註解掉
+//   → case 1 的「SEG-N STRONG 殘留」、「混合 marker 殘留」兩個 sub-case fail。還原後 pass。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -32,10 +39,21 @@ test('sanitize-marker-leak (case 1): SK.sanitizeMarkers 直接呼叫 strip SEP /
     {
       input: '«1» 第一句譯文 <<<SHINKANSEN_SEP>>> «2» 第二句譯文',
       expect: '第一句譯文 第二句譯文',
-      desc: 'SEP + «N» 都殘留',
+      desc: 'SEP + «N» COMPACT 都殘留',
+    },
+    {
+      input: '<<<SHINKANSEN_SEG-1>>> 第一句強化 <<<SHINKANSEN_SEP>>> <<<SHINKANSEN_SEG-2>>> 第二句強化',
+      expect: '第一句強化 第二句強化',
+      desc: 'SEP + SEG-N STRONG 殘留(自訂 OpenAI-compat 預設)',
+    },
+    {
+      input: '«1» Compact 段 <<<SHINKANSEN_SEP>>> <<<SHINKANSEN_SEG-2>>> Strong 段',
+      expect: 'Compact 段 Strong 段',
+      desc: '兩種 marker 混合殘留(跨 engine race / 切換 toggle 期間)',
     },
     { input: '<<<SHINKANSEN_SEP>>>', expect: '', desc: '只有 SEP' },
     { input: '«1» 純 «N» 開頭', expect: '純 «N» 開頭', desc: '只有 «1» 開頭(注意:正則只清一次)' },
+    { input: '<<<SHINKANSEN_SEG-1>>> 純 SEG-N 開頭', expect: '純 SEG-N 開頭', desc: '只有 SEG-1 開頭' },
     { input: '正常譯文沒有標記', expect: '正常譯文沒有標記', desc: '無標記應原樣回傳' },
     { input: '', expect: '', desc: '空字串' },
     { input: null, expect: null, desc: 'null 應原樣回(防禦式)' },

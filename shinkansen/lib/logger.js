@@ -30,8 +30,13 @@ const logBuffer = [];
 let logSeq = 0;
 
 // ─── 持久化 Log（v1.2.52）──────────────────────────────────
-// 只持久化效能除錯相關分類，避免 storage 爆滿。
-const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'rate-limit']);
+// 只持久化效能 / 流程除錯相關分類，避免 storage 爆滿。
+// translate（v1.8.56 加入）：翻譯主流程的 main flow start / batch start / batch done /
+// stream firstChunkOrTimeout 等 log。原本只在記憶體 buffer 1000 筆環形保留，SW idle 重啟
+// 就丟失，使用者翻完文章切走幾分鐘回來看 Log 分頁就空白（上一輪 v1.8.55 撈 yt_debug_log
+// 只看到 api / rate-limit，看不出哪一篇文章 / 哪一次觸發，診斷盲區明顯）。加入後 persisted
+// 會包含這些訊號，代價是更頻繁 storage write（每筆 translate log 都進 _persistQueue）。
+const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'rate-limit', 'translate']);
 const PERSIST_KEY = 'yt_debug_log';
 const PERSIST_MAX = 100;
 

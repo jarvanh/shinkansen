@@ -375,6 +375,11 @@ export const DEFAULT_SETTINGS = {
     //   並加 provider 專屬參數（top_k / metadata 等）。預設空白（進階使用者才需要）。
     thinkingLevel: 'auto',
     extraBodyJson: '',
+    // 多段翻譯序號標記格式。true = 用 <<<SHINKANSEN_SEG-N>>>(本機量化模型如 gemma-4 量化版
+    // 不會把這種 token 誤翻成「N1、N2」);false = 用緊湊 «N»(token 開銷小、商用 LLM 適用)。
+    // 預設 true 對本機 LLM 使用者開箱即用;商用 API 使用者可關閉省 token。
+    // 既有使用者升級後 undefined,lib/openai-compat.js 用 `=== false` 判斷,等同預設 true。
+    useStrongSegMarker: true,
   },
 };
 

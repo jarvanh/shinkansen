@@ -194,6 +194,8 @@ async function load() {
   const tl = validLevels.includes(cp.thinkingLevel) ? cp.thinkingLevel : 'auto';
   if ($('cp-thinking-level')) $('cp-thinking-level').value = tl;
   if ($('cp-extra-body-json')) $('cp-extra-body-json').value = (typeof cp.extraBodyJson === 'string') ? cp.extraBodyJson : '';
+  // 強化段序號標記。舊使用者升級後 undefined,等同預設 true(對齊 storage.js DEFAULTS)
+  if ($('cp-strong-seg-marker')) $('cp-strong-seg-marker').checked = cp.useStrongSegMarker !== false;
   // 從 storage.local 讀 customProviderApiKey
   const { customProviderApiKey = '' } = await browser.storage.local.get('customProviderApiKey');
   $('cp-apiKey').value = customProviderApiKey;
@@ -822,6 +824,9 @@ async function _saveImpl() {
         return ['auto', 'off', 'low', 'medium', 'high'].includes(v) ? v : 'auto';
       })(),
       extraBodyJson: ($('cp-extra-body-json')?.value || '').trim(),
+      // 強化段序號標記(預設 true)。讀取走 cp.useStrongSegMarker !== false 等同預設開啟,
+      // 對齊舊使用者升級後 undefined 也得到新行為。
+      useStrongSegMarker: $('cp-strong-seg-marker')?.checked !== false,
     },
   };
   // v1.5.7: customProvider.apiKey 走 storage.local（與主 apiKey 同樣設計），先抽出再寫 sync
@@ -2207,11 +2212,36 @@ $('usage-clear').addEventListener('click', async () => {
 let logPollingTimer = null;
 let logLatestSeq = 0;
 let allLogs = [];          // 累積收到的全部 log entries
+// v1.8.56: dedup 用三元 key，因為 SW 重啟後 logSeq 會重置 → persisted 與新記憶體 buffer 的 seq
+// 可能撞號；改用 ISO timestamp + category + message 做穩定 key（同一筆 log 只會有一份）。
+const _seenLogKeys = new Set();
+let _persistedLoaded = false;
+
+function logKey(entry) { return `${entry.t}|${entry.category}|${entry.message}`; }
+
+function appendLogs(entries) {
+  let added = 0;
+  for (const e of entries) {
+    const k = logKey(e);
+    if (_seenLogKeys.has(k)) continue;
+    _seenLogKeys.add(k);
+    allLogs.push(e);
+    added++;
+  }
+  if (allLogs.length > 2000) {
+    // 砍前段時對應 _seenLogKeys 也要清理，避免無限長
+    const dropped = allLogs.splice(0, allLogs.length - 2000);
+    for (const e of dropped) _seenLogKeys.delete(logKey(e));
+  }
+  return added;
+}
 
 // ─── Polling ────────────────────────────────────────────
 function startLogPolling() {
   if (logPollingTimer) return;
-  fetchLogs();  // 立即拉一次
+  // v1.8.56: 第一次進 Log 分頁時先載 persisted log（SW 重啟前的紀錄，跨 worker 仍在），
+  // 然後才開始 polling 記憶體 buffer。下一輪以後 _persistedLoaded=true，直接 polling。
+  fetchLogs();  // 立即拉一次（內部會處理 persisted 載入）
   logPollingTimer = setInterval(fetchLogs, 2000);
 }
 
@@ -2229,6 +2259,18 @@ async function fetchLogs() {
   if (_fetchLogsInFlight) return;
   _fetchLogsInFlight = true;
   try {
+    // v1.8.56: 第一次進入時先載 persisted log（跨 SW 重啟仍在，使用者翻完文章
+    // 切走幾分鐘回來看 Log 分頁也能看到上一輪 SW 的紀錄）
+    if (!_persistedLoaded) {
+      _persistedLoaded = true;
+      try {
+        const persisted = await browser.runtime.sendMessage({ type: 'GET_PERSISTED_LOGS' });
+        if (persisted?.ok && Array.isArray(persisted.logs) && persisted.logs.length > 0) {
+          appendLogs(persisted.logs);
+          renderLogTable();
+        }
+      } catch { /* 第一次失敗讓後續 polling 補，不阻斷 */ }
+    }
     const res = await browser.runtime.sendMessage({
       type: 'GET_LOGS',
       payload: { afterSeq: logLatestSeq },
@@ -2239,13 +2281,9 @@ async function fetchLogs() {
       if (res.latestSeq) logLatestSeq = res.latestSeq;
       return;
     }
-    allLogs = allLogs.concat(res.logs);
-    // 前端也限制 buffer 上限，避免記憶體無限成長
-    if (allLogs.length > 2000) {
-      allLogs = allLogs.slice(allLogs.length - 2000);
-    }
+    const added = appendLogs(res.logs);
     if (res.latestSeq) logLatestSeq = res.latestSeq;
-    renderLogTable();
+    if (added > 0) renderLogTable();
   } catch {
     // extension context invalidated 等情況，靜默
   } finally {
@@ -2411,11 +2449,18 @@ $('log-level-filter').addEventListener('change', renderLogTable);
 $('log-search').addEventListener('input', renderLogTable);
 
 // 清除
+// v1.8.56: 同時清記憶體 buffer 與 persisted yt_debug_log。原本只送 CLEAR_LOGS
+// → persisted 那 100 筆還在 storage.local，下次 SW 重啟 Log 分頁載入時又冒出來，
+// 使用者以為按了「清除」實際沒清乾淨。
 $('log-clear').addEventListener('click', async () => {
   try {
-    await browser.runtime.sendMessage({ type: 'CLEAR_LOGS' });
+    await Promise.all([
+      browser.runtime.sendMessage({ type: 'CLEAR_LOGS' }),
+      browser.runtime.sendMessage({ type: 'CLEAR_PERSISTED_LOGS' }),
+    ]);
   } catch { /* 靜默 */ }
   allLogs = [];
+  _seenLogKeys.clear();
   logLatestSeq = 0;
   renderLogTable();
 });

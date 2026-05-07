@@ -5,7 +5,7 @@
 import { debugLog } from './logger.js';
 // v1.5.7: DELIMITER / packChunks / buildEffectiveSystemInstruction 抽到共用模組，
 // 與 lib/openai-compat.js 共用同一份「翻譯 batch 構建」邏輯。
-import { DELIMITER, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
+import { DELIMITER, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
 
 const MAX_BACKOFF_MS = 8000;
 
@@ -358,13 +358,15 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     systemInstruction,
   } = geminiConfig;
 
-  // v0.89: 多段時加序號標記，幫助模型追蹤段數，降低 segment mismatch 機率
-  // 格式：«1» text1 <<<SHINKANSEN_SEP>>> «2» text2 ...
+  // v0.89: 多段時加序號標記,幫助模型追蹤段數,降低 segment mismatch 機率
+  // 格式:«1» text1 <<<SHINKANSEN_SEP>>> «2» text2 ...
   // 使用 «» 而非 [] 避免跟原文的引註 [3] 或佔位符 ⟦⟧ 衝突。
-  // parse 時會用 regex 移除每段開頭的 «N» 前綴，不會洩漏到 DOM。
+  // Gemini 主路徑固定用 COMPACT 緊湊格式(token 開銷小);OpenAI-compat 視
+  // useStrongSegMarker toggle 決定。
+  // parse 時會用 regex 移除每段開頭的 marker 前綴,不會洩漏到 DOM。
   const useSeqMarkers = texts.length > 1;
   const markedTexts = useSeqMarkers
-    ? texts.map((t, i) => `«${i + 1}» ${t}`)
+    ? texts.map((t, i) => MARKER_COMPACT.fmt(i + 1) + t)
     : texts;
   const joined = markedTexts.join(DELIMITER);
 
@@ -504,9 +506,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     outputPreview: text.slice(0, 300),
   });
 
-  // v0.89: split 後移除序號標記 «N»（若有）
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
-  const parts = text.split(DELIMITER).map(s => s.trim().replace(SEQ_MARKER_RE, ''));
+  // v0.89: split 後移除序號標記（若有）
+  const parts = text.split(DELIMITER).map(s => s.trim().replace(MARKER_COMPACT.re, ''));
   // 若回傳段數不符，且本批不只一段，則 fallback 改為逐段單獨翻譯，確保對齊
   if (parts.length !== texts.length) {
     await debugLog('warn', 'api', 'segment count mismatch — fallback to per-segment', {
@@ -573,9 +574,9 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   const { apiKey, geminiConfig } = settings;
   const { model, serviceTier, temperature, topP, topK, maxOutputTokens, systemInstruction } = geminiConfig;
 
-  // 跟 translateChunk 一致:多段時加 «N» 序號標記
+  // 跟 translateChunk 一致:多段時加 COMPACT 序號標記(Gemini 主路徑固定用 «N»)
   const useSeqMarkers = texts.length > 1;
-  const markedTexts = useSeqMarkers ? texts.map((t, i) => `«${i + 1}» ${t}`) : texts;
+  const markedTexts = useSeqMarkers ? texts.map((t, i) => MARKER_COMPACT.fmt(i + 1) + t) : texts;
   const joined = markedTexts.join(DELIMITER);
 
   const effectiveSystem = buildEffectiveSystemInstruction(systemInstruction, texts, joined, glossary, fixedGlossary, forbiddenTerms);
@@ -607,7 +608,6 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   });
 
   const t0 = Date.now();
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
 
   let resp;
   try {
@@ -652,7 +652,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
     // allParts 最後一個 element 是「尚未完成的當前段落」(因為它後面沒 DELIMITER 接),先不 emit
     const numComplete = allParts.length - 1;
     while (segmentsEmitted < numComplete && segmentsEmitted < texts.length) {
-      const segText = allParts[segmentsEmitted].trim().replace(SEQ_MARKER_RE, '');
+      const segText = allParts[segmentsEmitted].trim().replace(MARKER_COMPACT.re, '');
       callbacks.onSegment(segmentsEmitted, segText, false);
       segmentsEmitted++;
     }
@@ -723,7 +723,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   if (callbacks.onSegment) {
     const allParts = allText.split(DELIMITER);
     while (segmentsEmitted < allParts.length && segmentsEmitted < texts.length) {
-      const segText = allParts[segmentsEmitted].trim().replace(SEQ_MARKER_RE, '');
+      const segText = allParts[segmentsEmitted].trim().replace(MARKER_COMPACT.re, '');
       callbacks.onSegment(segmentsEmitted, segText, false);
       segmentsEmitted++;
     }
@@ -753,7 +753,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   }
 
   // 計算對齊後的譯文 array(跟 non-streaming 一致),hadMismatch 留給呼叫端決定如何處理
-  const translations = allText.split(DELIMITER).map(s => s.trim().replace(SEQ_MARKER_RE, ''));
+  const translations = allText.split(DELIMITER).map(s => s.trim().replace(MARKER_COMPACT.re, ''));
   const hadMismatch = translations.length !== texts.length;
 
   if (hadMismatch) {

@@ -230,6 +230,7 @@ Since v1.5.7, in addition to Gemini and Google Translate, you can connect one Op
 - **Cache partitioning**: the cache key includes a base URL hash — different endpoints with the same model name don't pollute each other
 - **API key not synced**: `customProvider.apiKey` lives only in your local browser — not synced across devices, not included in JSON export
 - **No rate limiter**: OpenRouter and friends handle quotas themselves; 429 retry-with-backoff is built in
+- **Strong segment markers** (on by default): local quantized models (e.g. gemma-4 quantized) tend to mistranslate the compact `«1» «2»` segment markers as natural language ("N1, N2") and leak them into the output. With this on, multi-segment batches use `<<<SHINKANSEN_SEG-N>>>` instead — weak models don't mistranslate it. Cost: about 7 extra tokens per segment. Commercial APIs (OpenRouter / DeepSeek / Groq, etc.) typically don't need this, but leaving it on is harmless
 
 ### Limitations
 

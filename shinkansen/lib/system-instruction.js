@@ -27,6 +27,30 @@ import { DEFAULT_UNITS_PER_BATCH, DEFAULT_CHARS_PER_BATCH } from './constants.js
 /** 多段翻譯時用此 delimiter 串接 / 拆回對齊。Gemini 與 OpenAI-compat 共用。 */
 export const DELIMITER = '\n<<<SHINKANSEN_SEP>>>\n';
 
+// 多段序號標記。為什麼有兩組:
+//   Gemini / 商用 LLM(GPT / Claude / DeepSeek 等)用緊湊的 «N»,token 開銷小。
+//   本機量化模型(gemma-4 量化版等)會把 «1» «2» 當自然語言誤翻成「N1、N2」洩漏到譯文,
+//   改用長形式 <<<SHINKANSEN_SEG-N>>> 弱模型認得是協定 token 不會誤翻,代價是
+//   每段批次多約 7 tokens / segment(input + output 雙倍開銷)。
+// 自訂 Provider 走 useStrongSegMarker toggle 切換(預設 STRONG),Gemini 主路徑固定用 COMPACT。
+//
+// fmt(n)        生成第 n 段的 marker 字串(內含尾部空白方便 join)
+// re            移除 LLM 譯文開頭殘留 marker 的 regex(行首 + 可選空白)
+// stripGlobalRe 全文掃 marker 殘留的 regex(防禦 sanitize 用,跨段位置任何地方)
+// display       prompt 描述句裡顯示給 LLM 看的「N 範本」
+export const MARKER_COMPACT = {
+  fmt: (n) => `«${n}» `,
+  re: /^«\d+»\s*/,
+  stripGlobalRe: /«\d+»\s*/g,
+  display: '«N»',
+};
+export const MARKER_STRONG = {
+  fmt: (n) => `<<<SHINKANSEN_SEG-${n}>>> `,
+  re: /^<<<SHINKANSEN_SEG-\d+>>>\s*/,
+  stripGlobalRe: /<<<SHINKANSEN_SEG-\d+>>>\s*/g,
+  display: '<<<SHINKANSEN_SEG-N>>>',
+};
+
 const MAX_UNITS_PER_CHUNK = DEFAULT_UNITS_PER_BATCH;
 const MAX_CHARS_PER_CHUNK = DEFAULT_CHARS_PER_BATCH;
 
@@ -46,6 +70,10 @@ function sanitizeTermText(s) {
     .replace(/⟦\/?\*?\d+⟧/g, '')
     // 多段 sentinel(防止假冒批次切分標記)
     .replace(/<<<SHINKANSEN_SEP>>>/gi, '')
+    // 多段序號標記兩種格式都 strip(防止假冒段序號;«\d+» 只匹配數字所以法文 / 德文
+    // 引號 «bonjour» 不會誤傷)
+    .replace(/<<<SHINKANSEN_SEG-\d+>>>/gi, '')
+    .replace(/«\d+»/g, '')
     // forbidden_terms_blacklist 標籤(防止使用者輸入提前關閉區塊)
     .replace(/<\/?forbidden_terms_blacklist>/gi, '')
     .trim()
@@ -110,9 +138,12 @@ export function packChunks(texts) {
  * @param {Array<{source:string, target:string}>} [glossary] 可選的自動擷取術語對照表
  * @param {Array<{source:string, target:string}>} [fixedGlossary] 可選的使用者固定術語表
  * @param {Array<{forbidden:string, replacement:string}>} [forbiddenTerms] 中國用語黑名單
+ * @param {{display:string}} [marker] 多段序號標記配置,影響「本批次包含 N 段」描述句裡顯示
+ *   的 N 範本。預設用 MARKER_COMPACT(«N»),OpenAI-compat 路徑可傳 MARKER_STRONG。
+ *   Gemini 路徑固定 COMPACT,呼叫端不必傳。
  * @returns {string} 完整的 effectiveSystem
  */
-export function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary, forbiddenTerms) {
+export function buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary, forbiddenTerms, marker = MARKER_COMPACT) {
   const parts = [baseSystem];
 
   // 段內換行保留規則
@@ -176,8 +207,9 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
 
   // 多段翻譯分隔符與序號規則(嵌入 batch 段數 N,batch 級變動;放最末端讓前段 cache 共享)
   if (texts.length > 1) {
+    const m = marker.display;
     parts.push(
-      `額外規則（多段翻譯分隔符與序號，極重要）:\n本批次包含 ${texts.length} 段文字。每段開頭有序號標記 «N»（N 為 1 到 ${texts.length}），段與段之間以分隔符 <<<SHINKANSEN_SEP>>> 隔開。\n你的輸出必須：\n- 每段譯文開頭也加上對應的序號標記 «N»（N 與輸入的序號一一對應）\n- 段與段之間用完全相同的分隔符 <<<SHINKANSEN_SEP>>> 隔開\n- 恰好輸出 ${texts.length} 段譯文和 ${texts.length - 1} 個分隔符\n- 不可合併段落、不可省略分隔符、不可增減段數`
+      `額外規則（多段翻譯分隔符與序號，極重要）:\n本批次包含 ${texts.length} 段文字。每段開頭有序號標記 ${m}（N 為 1 到 ${texts.length}），段與段之間以分隔符 <<<SHINKANSEN_SEP>>> 隔開。\n你的輸出必須：\n- 每段譯文開頭也加上對應的序號標記 ${m}（N 與輸入的序號一一對應）\n- 段與段之間用完全相同的分隔符 <<<SHINKANSEN_SEP>>> 隔開\n- 恰好輸出 ${texts.length} 段譯文和 ${texts.length - 1} 個分隔符\n- 不可合併段落、不可省略分隔符、不可增減段數`
     );
   }
 

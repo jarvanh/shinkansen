@@ -680,6 +680,17 @@
         <input type="number" id="cp-temperature" step="0.1" min="0" max="2" placeholder="0.7">
       </label>
 
+      <label class="switch" style="margin-top: 8px;">
+        <input type="checkbox" id="cp-strong-seg-marker" checked>
+        <span>強化段序號標記（適合本機量化模型）</span>
+      </label>
+      <small class="muted">
+        本機量化模型（如 gemma-4 量化版）會把預設的「<code>«1»</code> <code>«2»</code>」段序號誤譯為「N1、N2」洩漏到譯文。
+        開啟後改用 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 格式，弱模型不會誤翻；
+        代價是每段批次多約 7 tokens（input + output 雙倍開銷）。
+        商用 API（OpenRouter / DeepSeek / Groq 等）不需此選項，但開啟也無害
+      </small>
+
       <!-- v1.6.18: thinking 控制 -->
       <label>
         思考強度

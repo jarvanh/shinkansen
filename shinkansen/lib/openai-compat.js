@@ -19,7 +19,7 @@
 // 黑名單與固定術語表是「跨 provider 共用」（Jimmy 設計決定 #3）。
 
 import { debugLog } from './logger.js';
-import { DELIMITER, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
+import { DELIMITER, MARKER_COMPACT, MARKER_STRONG, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
 // v1.6.18: thinking 控制 mapping（各家 provider 的 thinking schema 不同，統一成
 // thinkingLevel 'auto/off/low/medium/high' + extraBodyJson 進階透傳）
 import { buildThinkingPayload } from './openai-compat-thinking.js';
@@ -148,17 +148,21 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   // v1.8.41:Model 也允許為空（llama.cpp 啟動時鎖 model,body 不送 model 欄位即用 server 預設）;
   // 商用後端不送 model 會自然 4xx「model required」，讓 provider error 自己講話。
 
-  // 多段時加序號標記（與 Gemini 同邏輯）
+  // 多段時加序號標記。useStrongSegMarker 預設 true(包含舊使用者升級後 undefined 的情況):
+  // 用 STRONG 格式 <<<SHINKANSEN_SEG-N>>> 防止本機量化模型(gemma-4 量化版等)誤翻 «N»
+  // 為自然語言 N1, N2 洩漏到譯文。商用 LLM(GPT / Claude / DeepSeek 等)使用者可關閉
+  // 此 toggle 改用緊湊 «N» 省 token。
+  const marker = (cp.useStrongSegMarker === false) ? MARKER_COMPACT : MARKER_STRONG;
   const useSeqMarkers = texts.length > 1;
   const markedTexts = useSeqMarkers
-    ? texts.map((t, i) => `«${i + 1}» ${t}`)
+    ? texts.map((t, i) => marker.fmt(i + 1) + t)
     : texts;
   const joined = markedTexts.join(DELIMITER);
 
   const baseSystem = (typeof systemPrompt === 'string' && systemPrompt.trim())
     ? systemPrompt
     : '你是專業的英文 → 繁體中文（台灣慣用語）翻譯助理，僅輸出譯文不加任何說明。';
-  const effectiveSystem = buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary, forbiddenTerms);
+  const effectiveSystem = buildEffectiveSystemInstruction(baseSystem, texts, joined, glossary, fixedGlossary, forbiddenTerms, marker);
 
   // v1.6.18: 依 baseUrl + model 偵測 provider，組對應 thinking 控制 payload。
   // 若 user 的 extraBodyJson 解析失敗，debugLog 一條 warn 但不阻斷翻譯。
@@ -249,9 +253,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   });
 
-  // 拆分對齊（與 Gemini 同邏輯：split by DELIMITER + 移除 «N» 序號標記）
-  const SEQ_MARKER_RE = /^«\d+»\s*/;
-  const parts = text.split(DELIMITER).map(s => s.trim().replace(SEQ_MARKER_RE, ''));
+  // 拆分對齊（與 Gemini 同邏輯：split by DELIMITER + 移除序號標記;用本批選的 marker.re）
+  const parts = text.split(DELIMITER).map(s => s.trim().replace(marker.re, ''));
   if (parts.length !== texts.length) {
     await debugLog('warn', 'api', 'openai-compat segment count mismatch — fallback to per-segment', {
       expected: texts.length, got: parts.length, elapsed: ms,
@@ -278,8 +281,9 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
  * dispatch path 下兩條 engine 都能 plug-in)。
  *
  * 走 chat.completions:system = settings.glossary.prompt、user = compressedText。
- * 不走 buildEffectiveSystemInstruction(那會插入翻譯特化規則:SEP 分隔符 / «N»
- * 段序號 / 段內換行 / 佔位符 / 自動 glossary / 固定術語表 / 黑名單),術語抽取不需要。
+ * 不走 buildEffectiveSystemInstruction(那會插入翻譯特化規則:SEP 分隔符 / 段序號標記
+ * («N» 或 <<<SHINKANSEN_SEG-N>>>) / 段內換行 / 佔位符 / 自動 glossary / 固定術語表 /
+ * 黑名單),術語抽取不需要。
  *
  * model:沿用 customProvider.model;為空(llama.cpp / Ollama 預設)時不送 model 欄位。
  * fetch timeout 用 settings.glossary.fetchTimeoutMs(預設 55s,跟 Gemini 對齊)。
