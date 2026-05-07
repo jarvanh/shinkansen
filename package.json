@@ -15,7 +15,8 @@
     "pdf-layout": "node tools/pdf-layout-harness.js",
     "pdf-snapshot": "node tools/pdf-layout-snapshot.js",
     "pdf-snapshot:update": "node tools/pdf-layout-snapshot.js --update",
-    "pdf-snapshot:metrics": "node tools/pdf-layout-snapshot.js --metrics"
+    "pdf-snapshot:metrics": "node tools/pdf-layout-snapshot.js --metrics",
+    "pdf-verify": "node tools/pdf-verify-harness.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

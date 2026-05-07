@@ -428,6 +428,11 @@
       }
       setTimeout(() => {
         if (!toastEl.className.includes('show')) return;
+        // 防 same-macrotask 連續 showToast(success) leak listener:兩次同步 showToast 各自 schedule
+        // 一個 setTimeout(0),先跑的會把 handler1 寫進 toastOutsideHandler 並 addEventListener;
+        // 後跑的若直接覆寫,handler1 會留在 document 上直到下次 hideToast 才 remove handler2,
+        // handler1 永久 leak。在 add 前先 remove 舊 handler 確保 1:1 對應。
+        removeOutsideClickHandler();
         toastOutsideHandler = (ev) => {
           const path = ev.composedPath ? ev.composedPath() : [];
           if (path.includes(toastHost)) return;
