@@ -33,6 +33,18 @@ button.primary {
 }
 button.primary:hover { background: #0077ed; }
 
+/* P1 (v1.8.59): i18n 過渡 banner，非 zh-TW target 時顯示。輕量灰底卡片，不搶 primary 按鈕視線。 */
+.i18n-transition-banner {
+  background: #f5f5f7;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  text-align: center;
+  color: #6e6e73;
+  font-size: 11px;
+}
+.i18n-transition-banner[hidden] { display: none !important; }
+
 button.secondary {
   width: 100%;
   padding: 8px;

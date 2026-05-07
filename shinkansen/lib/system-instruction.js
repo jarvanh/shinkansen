@@ -186,7 +186,7 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
       .join('\n');
     if (tableLines) {
       parts.push(
-        '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國大陸用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
+        '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
       );
     }
   }

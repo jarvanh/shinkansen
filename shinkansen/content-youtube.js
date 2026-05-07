@@ -1733,14 +1733,30 @@
 
   // ─── 時間視窗翻譯 ──────────────────────────────────────────
 
-  // v1.8.40: 字幕已是繁體中文時不送 Gemini 翻譯
+  // v1.8.40: 字幕已是目標語言時不送 LLM 翻譯
   // YouTube /api/timedtext URL 帶 lang= 參數(例如 'en' / 'zh-Hant' / 'ja')
-  // 明確繁中(zh-Hant / zh-TW / zh-HK / zh-MO)→ 直接 skip,避免浪費 token 翻自己。
-  // 簡中(zh-Hans / zh-CN)跟泛中(zh)維持送 Gemini 處理(LLM 簡轉繁更精準)。
+  // 明確匹配 target → 直接 skip,避免浪費 token 翻自己。
   // 設計上這裡只看 URL lang(快、便宜、不誤判),內容 heuristic 留未來增強。
-  const SKIP_TRANSLATE_LANGS_TW = new Set(['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO']);
+  // P1 (v1.8.59): 依 STATE.targetLanguage 決定 skip 集合(取代原寫死 zh-TW 集合)。
+  const SKIP_LANGS_BY_TARGET = {
+    'zh-TW': new Set(['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO']),
+    'zh-CN': new Set(['zh-Hans', 'zh-CN', 'zh-SG']),
+    'en':    new Set(['en', 'en-US', 'en-GB', 'en-CA', 'en-AU', 'en-IE', 'en-NZ']),
+    'ja':    new Set(['ja', 'ja-JP']),
+    'ko':    new Set(['ko', 'ko-KR']),
+    'es':    new Set(['es', 'es-ES', 'es-MX', 'es-AR', 'es-CL', 'es-CO', 'es-419']),
+    'fr':    new Set(['fr', 'fr-FR', 'fr-CA', 'fr-BE', 'fr-CH']),
+    'de':    new Set(['de', 'de-DE', 'de-AT', 'de-CH']),
+  };
+  function _shouldSkipBecauseAlreadyInTarget() {
+    if (!SK.YT.captionLang) return false;
+    const target = SK.STATE?.targetLanguage || 'zh-TW';
+    const skipSet = SKIP_LANGS_BY_TARGET[target];
+    return skipSet ? skipSet.has(SK.YT.captionLang) : false;
+  }
+  // P1 deprecation alias:既有 spec(youtube-skip-already-zh-hant.spec.js)reference 此舊名
   function _shouldSkipBecauseAlreadyTraditionalChinese() {
-    return SK.YT.captionLang && SKIP_TRANSLATE_LANGS_TW.has(SK.YT.captionLang);
+    return _shouldSkipBecauseAlreadyInTarget();
   }
 
   // v1.8.53: 字幕已是繁中(skip 路徑)時根本不會送 API,captionMap 永遠空,

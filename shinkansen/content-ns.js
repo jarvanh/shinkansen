@@ -81,6 +81,10 @@ if (window.__shinkansen_loaded) {
     displayMode: 'single',
     translatedMode: null,
     translationCache: new Map(),
+    // P1 (v1.8.59): 翻譯目標語言。content.js translatePage 開始時從 storage 注入。
+    //   預設 'zh-TW' 維持 v1.8.58 之前行為——content-detect.js isCandidateText 的
+    //   isAlreadyInTarget 檢查在 STATE 尚未 hydrate 前 fallback 到 zh-TW(跳繁中段)。
+    targetLanguage: 'zh-TW',
   };
 
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback

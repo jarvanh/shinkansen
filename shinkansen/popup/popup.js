@@ -203,9 +203,18 @@ async function init() {
   }
 
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
-  const { autoTranslate = false, displayMode = 'single', translatePresets = [] } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets']);
+  // P1 (v1.8.59): 加讀 targetLanguage,非 zh-TW target 顯示 i18n 過渡 banner
+  const { autoTranslate = false, displayMode = 'single', translatePresets = [], targetLanguage } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'targetLanguage']);
   const { apiKey = '' } = await browser.storage.local.get(['apiKey']);
   $('auto').checked = autoTranslate;
+
+  // P1: i18n 過渡 banner — 非 zh-TW target 才顯示(P2 完成 UI i18n 後拿掉)
+  {
+    const banner = $('i18n-transition-banner');
+    if (banner && targetLanguage && targetLanguage !== 'zh-TW') {
+      banner.hidden = false;
+    }
+  }
 
   // v1.5.0: 顯示模式 toggle 初始狀態
   setDisplayModeButtons(displayMode === 'dual' ? 'dual' : 'single');

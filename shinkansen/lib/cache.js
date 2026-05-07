@@ -335,8 +335,10 @@ export async function setBatch(texts, translations, keySuffix = '') {
  * @param {string} inputHash 壓縮後輸入文字的 SHA-1 hash
  * @returns {Promise<Array|null>} 快取命中時回傳術語陣列，否則 null
  */
-export async function getGlossary(inputHash) {
-  const key = GLOSSARY_PREFIX + inputHash;
+export async function getGlossary(inputHash, suffix = '') {
+  // P1: suffix 帶 _lang<x>(非 zh-TW target)區隔 glossary cache。
+  // 空字串維持既有 key 結構,zh-TW 使用者升級後 cache 仍 hit。
+  const key = GLOSSARY_PREFIX + inputHash + suffix;
   const stored = await browser.storage.local.get(key);
   if (!(key in stored)) return null;
   const entry = stored[key];
@@ -355,9 +357,10 @@ export async function getGlossary(inputHash) {
  * v0.69: 寫入術語表快取。
  * @param {string} inputHash 壓縮後輸入文字的 SHA-1 hash
  * @param {Array} glossary 術語陣列
+ * @param {string} suffix P1: cache key 後綴(非 zh-TW target 用,維持向下相容)
  */
-export async function setGlossary(inputHash, glossary) {
-  const key = GLOSSARY_PREFIX + inputHash;
+export async function setGlossary(inputHash, glossary, suffix = '') {
+  const key = GLOSSARY_PREFIX + inputHash + suffix;
   await safeStorageSet({ [key]: { v: glossary, t: Date.now() } });
 }
 

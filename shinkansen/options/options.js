@@ -2,7 +2,7 @@
 // v1.0.4: 改為 ES module，從 lib/ 匯入共用常數與工具函式，消除重複程式碼。
 
 import { browser } from '../lib/compat.js';
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS } from '../lib/storage.js';
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, TARGET_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
@@ -71,6 +71,12 @@ async function load() {
     apiKey: localApiKey,
   };
   $('apiKey').value = s.apiKey;
+  // P1 (v1.8.59): 翻譯目標語言 picker。saved 不在合法集合 → 用 DEFAULT_SETTINGS.targetLanguage(會走 detect 推導)
+  if ($('targetLanguage')) {
+    const tl = (typeof s.targetLanguage === 'string' && TARGET_LANGUAGES.includes(s.targetLanguage))
+      ? s.targetLanguage : DEFAULTS.targetLanguage;
+    $('targetLanguage').value = tl;
+  }
   // v1.6.15: 全域 #model dropdown 已移除，不再從 storage 載入到 UI。
   // settings.geminiConfig.model 仍保留 storage 結構（避免 migration）但 UI 不顯示。
   $('serviceTier').value = s.geminiConfig.serviceTier;
@@ -295,6 +301,11 @@ async function load() {
       }
     }
   } catch { /* 略 */ }
+
+  // P1 (v1.8.59): init 時跑一次同步,讓使用者打開 options 立刻看到正確的 hint state
+  // (若 saved prompt 已客製,hint 應該 init 顯示;若是任一 effective default,
+  // 自動切到當前 target 的版本字面值)
+  updateAllPromptTargetHints();
 }
 
 // v1.6.1: 「不再提示」按鈕——寫 disableUpdateNotice=true 立即生效
@@ -650,7 +661,11 @@ async function _saveImpl() {
   // v1.6.16: 同樣讀回 settings.pricing（後備路徑單價 UI 也移除了）。
   const existing = await browser.storage.sync.get(['geminiConfig', 'pricing']);
   const existingModel = existing.geminiConfig?.model || DEFAULTS.geminiConfig.model;
+  // P1: targetLanguage 從 picker 讀,不在合法集合走 DEFAULTS(避免損壞值寫進 storage)
+  const targetLanguageValue = TARGET_LANGUAGES.includes($('targetLanguage')?.value)
+    ? $('targetLanguage').value : DEFAULTS.targetLanguage;
   const settings = {
+    targetLanguage: targetLanguageValue,
     geminiConfig: {
       model: existingModel,
       serviceTier: $('serviceTier').value,
@@ -877,18 +892,74 @@ $('cp-test-apiKey').addEventListener('click', async () => {
     }),
   });
 });
+// P1 (v1.8.59): 切換目標語言時同步 prompt textarea
+//
+// 對單一 textarea 跑同步邏輯:
+//   - 若 textarea 內容是「視為未客製」(空 / trim 等於三 target 任一 effective default)
+//     → 自動更新為新 target 的 effective default,hint 隱藏
+//   - 若 textarea 內容已客製(不等於任一 default)
+//     → 保留 textarea,hint 顯示警示提醒使用者「prompt 沒跟著切」
+function _syncPromptTextareaToTarget(textareaId, hintId, getEffectiveFn) {
+  const textarea = $(textareaId);
+  const hint = $(hintId);
+  if (!textarea) return;
+  const tl = $('targetLanguage')?.value || 'zh-TW';
+  const cur = textarea.value || '';
+  // 所有 target 各自的 effective default 對 cur 跑 isPromptUnchangedFromDefault(走 storage.js
+  // normalize 邏輯,容忍歷史小幅修字,例如 v1.8.59 的「中國大陸」→「中國」)。
+  // 任一命中 → 視為「未客製」,自動覆蓋為新 target 的 default;否則保留 + show hint。
+  const treatedAsUnchanged = TARGET_LANGUAGES
+    .some(t => isPromptUnchangedFromDefault(cur, getEffectiveFn(t, '')));
+  if (treatedAsUnchanged) {
+    textarea.value = getEffectiveFn(tl, '');
+    if (hint) hint.hidden = true;
+  } else {
+    if (hint) hint.hidden = false;
+  }
+}
+
+// 四個 textarea 一起跑(主翻譯 / 術語表抽取 / YouTube 字幕 / 自訂模型)
+//   自訂模型 cp-systemPrompt 預設等於 Gemini DEFAULT_SYSTEM_PROMPT(line 364 of storage.js),
+//   所以共用 getEffectiveSystemPrompt 同一個 factory。
+function updateAllPromptTargetHints() {
+  _syncPromptTextareaToTarget('systemInstruction', 'systemInstruction-target-hint', getEffectiveSystemPrompt);
+  _syncPromptTextareaToTarget('glossaryPrompt', 'glossaryPrompt-target-hint', getEffectiveGlossaryPrompt);
+  _syncPromptTextareaToTarget('ytSystemPrompt', 'ytSystemPrompt-target-hint', getEffectiveSubtitleSystemPrompt);
+  _syncPromptTextareaToTarget('cp-systemPrompt', 'cp-systemPrompt-target-hint', getEffectiveSystemPrompt);
+}
+
+// 切 target picker 時觸發兩件事:
+//   1. 立刻寫 storage(targetLanguage 是總 switch,影響所有翻譯路徑,期望切了立刻生效;
+//      不該等使用者按「儲存設定」── 不然他切完關 options 直接翻譯,storage 仍是舊值,
+//      背景翻譯路徑讀錯 target,翻成原來那個語言)
+//   2. 同步 4 個 prompt textarea / 警示 hint
+$('targetLanguage')?.addEventListener('change', async () => {
+  const v = $('targetLanguage').value;
+  const tl = TARGET_LANGUAGES.includes(v) ? v : DEFAULTS.targetLanguage;
+  try {
+    await browser.storage.sync.set({ targetLanguage: tl });
+  } catch (err) {
+    console.error('[shinkansen] targetLanguage set failed', err);
+  }
+  updateAllPromptTargetHints();
+});
+
 // v1.2.11: YouTube 字幕分頁
 $('save-youtube').addEventListener('click', save);
 // Debug 分頁
 $('save-debug').addEventListener('click', save);
 $('yt-reset-prompt').addEventListener('click', () => {
-  $('ytSystemPrompt').value = DEFAULT_SUBTITLE_SYSTEM_PROMPT;
+  // P1: 依當前 target picker 給對應 effective default(zh-TW 走原 DEFAULT_SUBTITLE,其他走 UNIVERSAL 注入後)
+  const tl = $('targetLanguage')?.value || 'zh-TW';
+  $('ytSystemPrompt').value = getEffectiveSubtitleSystemPrompt(tl, '');
   markDirty(); // 值已變更，標記為未儲存
 });
 // W7:文件翻譯設定已搬到 translate-doc/settings.html(獨立 page),不在 options 內
 // v1.5.8: 自訂模型「重置為預設 Prompt」按鈕——把 textarea 重設為 Gemini 同款 DEFAULT_SYSTEM_PROMPT
+// P1 (v1.8.59):依當前 target picker 給對應 effective default(zh-TW 走 DEFAULT,其他走 UNIVERSAL 注入後)
 $('cp-reset-prompt')?.addEventListener('click', () => {
-  $('cp-systemPrompt').value = DEFAULT_SYSTEM_PROMPT;
+  const tl = $('targetLanguage')?.value || 'zh-TW';
+  $('cp-systemPrompt').value = getEffectiveSystemPrompt(tl, '');
   markDirty();
 });
 
@@ -906,7 +977,11 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('topP').value            = D.geminiConfig.topP;
   $('topK').value            = D.geminiConfig.topK;
   $('maxOutputTokens').value = D.geminiConfig.maxOutputTokens;
-  $('systemInstruction').value = D.geminiConfig.systemInstruction;
+  // P1: 依當前 target picker 給對應 effective default(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
+  {
+    const tl = $('targetLanguage')?.value || 'zh-TW';
+    $('systemInstruction').value = getEffectiveSystemPrompt(tl, '');
+  }
   // 計價
   // v1.6.16: 後備路徑單價 UI 已移除，reset 不再動 settings.pricing 欄位。
   // v1.6.14: per-model override 欄位 reset 為空（預設 modelPricingOverrides:{} 對應 UI 全空 = 走內建表）。

@@ -703,7 +703,13 @@
     } catch (_) { /* 讀取失敗用 default */ }
     SK.sendLog('info', 'translate', 'milestone:storage_loaded', { t: Date.now() - entryTime });
 
-    // 頁面層級繁中偵測
+    // P1: 注入 STATE.targetLanguage(供 content-detect.js isCandidateText 走 target-aware)
+    const TARGET = (typeof settings.targetLanguage === 'string' && ['zh-TW','zh-CN','en','ja','ko','es','fr','de'].includes(settings.targetLanguage))
+      ? settings.targetLanguage : 'zh-TW';
+    STATE.targetLanguage = TARGET;
+
+    // P1: 頁面層級「源語言已等於目標」偵測(原為「整頁繁中就跳過」,改成依 target 動態比對)。
+    // 設定 skipTraditionalChinesePage 沿用舊名,但實際語意是「整頁同 target 語言時跳過」。
     {
       const skipCheck = settings.skipTraditionalChinesePage === false;
       if (!skipCheck) {
@@ -713,8 +719,13 @@
           document.querySelector('[role="main"]') ||
           document.body;
         const pageSample = (contentRoot.innerText || '').slice(0, 2000);
-        if (pageSample.length > 20 && SK.isTraditionalChinese(pageSample)) {
-          SK.showToast('error', '此頁面已是繁體中文，不需翻譯', { autoHideMs: 3000 });
+        if (pageSample.length > 20 && SK.isAlreadyInTarget(pageSample, TARGET)) {
+          // P1: toast 訊息依 target 給對應措辭(P1 暫不做完整 UI i18n)
+          const targetLabel = ({
+            'zh-TW': '繁體中文', 'zh-CN': '簡體中文', 'en': '英文',
+            'ja': '日文', 'ko': '韓文', 'es': '西班牙文', 'fr': '法文', 'de': '德文',
+          })[TARGET] || '繁體中文';
+          SK.showToast('error', `此頁面已是${targetLabel}，不需翻譯`, { autoHideMs: 3000 });
           return;
         }
       }
@@ -1281,6 +1292,11 @@
     // 繁中偵測（與 Gemini 相同邏輯）
     let settings = {};
     try { settings = await browser.storage.sync.get(null); } catch (_) {}
+    // P1: 注入 STATE.targetLanguage(同 Gemini 路徑)
+    const TARGET = (typeof settings.targetLanguage === 'string' && ['zh-TW','zh-CN','en','ja','ko','es','fr','de'].includes(settings.targetLanguage))
+      ? settings.targetLanguage : 'zh-TW';
+    STATE.targetLanguage = TARGET;
+    // P1: 頁面層級「源語言已等於目標」偵測,target-aware
     {
       const skipCheck = settings.skipTraditionalChinesePage === false;
       if (!skipCheck) {
@@ -1290,8 +1306,12 @@
           document.querySelector('[role="main"]') ||
           document.body;
         const pageSample = (contentRoot.innerText || '').slice(0, 2000);
-        if (pageSample.length > 20 && SK.isTraditionalChinese(pageSample)) {
-          SK.showToast('error', '此頁面已是繁體中文，不需翻譯', { autoHideMs: 3000 });
+        if (pageSample.length > 20 && SK.isAlreadyInTarget(pageSample, TARGET)) {
+          const targetLabel = ({
+            'zh-TW': '繁體中文', 'zh-CN': '簡體中文', 'en': '英文',
+            'ja': '日文', 'ko': '韓文', 'es': '西班牙文', 'fr': '法文', 'de': '德文',
+          })[TARGET] || '繁體中文';
+          SK.showToast('error', `此頁面已是${targetLabel}，不需翻譯`, { autoHideMs: 3000 });
           return;
         }
       }

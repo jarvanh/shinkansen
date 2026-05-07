@@ -105,6 +105,21 @@ textarea { resize: vertical; font-family: -apple-system, 'PingFang TC', sans-ser
   line-height: 1.4;
 }
 
+/* P1 (v1.8.59): 切換目標語言時，若使用者已客製化 prompt，textarea 不自動覆蓋,
+   顯示此警示 hint 提醒「prompt 沒跟著切」。橘底配色,跟下方 .firefox-https-warn 共享色系 */
+.target-mismatch-hint {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: #fff8eb;
+  border: 1px solid #f5d987;
+  border-radius: 6px;
+  color: #855900;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.target-mismatch-hint[hidden] { display: none; }
+
 /* 自行輸入模型 ID（v0.64） */
 /* v1.6.15: .custom-model-row 隨全域 model dropdown 一起移除（自行輸入欄位失效） */
 

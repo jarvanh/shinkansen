@@ -5,7 +5,7 @@ import { browser } from './lib/compat.js';
 import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
-import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION } from './lib/storage.js';
+import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -350,7 +350,8 @@ async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
   const yt = s.ytSubtitle || {};
   const geminiOverrides = {
     // ASR 模式不沿用使用者自訂的 ytSubtitle.systemPrompt（那是逐條翻譯版本，規則不適用 ASR JSON 模式）
-    systemInstruction: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
+    // P1: 依 target 切 universal/zh-TW prompt(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
+    systemInstruction: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage),
     // ASR 合句需要一點推理，但翻譯仍應穩定；沿用 ytSubtitle.temperature
     temperature: yt.temperature ?? 0.1,
   };
@@ -419,7 +420,8 @@ const messageHandlers = {
         const s = await getSettings();
         const yt = s.ytSubtitle || {};
         const geminiOverrides = {
-          systemInstruction: yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+          // P1: 依 target 切 universal/zh-TW;使用者自訂(yt.systemPrompt)不為空且非預設視為客製,直接走 saved
+          systemInstruction: getEffectiveSubtitleSystemPrompt(s.targetLanguage, yt.systemPrompt),
           temperature: yt.temperature ?? 0.1,
         };
         if (yt.model) geminiOverrides.model = yt.model;
@@ -473,7 +475,8 @@ const messageHandlers = {
       });
       const yt = s.ytSubtitle || {};
       const geminiOverrides = {
-        systemInstruction: yt.systemPrompt || DEFAULT_SUBTITLE_SYSTEM_PROMPT,
+        // P1: 依 target 切 universal/zh-TW;使用者自訂(yt.systemPrompt)不為空且非預設視為客製,直接走 saved
+        systemInstruction: getEffectiveSubtitleSystemPrompt(s.targetLanguage, yt.systemPrompt),
         temperature: yt.temperature ?? 0.1,
       };
       // 若使用者設定了獨立 YouTube 模型，覆蓋 geminiConfig.model
@@ -573,7 +576,8 @@ const messageHandlers = {
       // marker 規則仍然生效
       const s = await getSettings();
       const td = s.translateDoc || {};
-      const userPrompt = (td.systemPrompt && td.systemPrompt.trim()) || DEFAULT_DOC_SYSTEM_PROMPT;
+      // P1: 依 target 切 universal/zh-TW;使用者自訂(td.systemPrompt)不為空且非預設視為客製
+      const userPrompt = getEffectiveDocSystemPrompt(s.targetLanguage, td.systemPrompt);
       const effectivePrompt = userPrompt + DOC_INLINE_MARKER_INSTRUCTION;
       const overrides = { systemInstruction: effectivePrompt };
       if (typeof td.temperature === 'number' && Number.isFinite(td.temperature)) {
@@ -627,7 +631,8 @@ const messageHandlers = {
       const s = await getSettings();
       const yt = s.ytSubtitle || {};
       const overrides = {
-        systemPrompt: DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT,
+        // P1: 自訂 Provider ASR 路徑同 Gemini ASR,依 target 切 universal/zh-TW prompt
+        systemPrompt: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage),
         temperature: yt.temperature ?? 0.1,
       };
       return handleTranslateCustom(payload, sender, '_oc_yt_asr', overrides, false, false);
@@ -1038,9 +1043,14 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   // payload.modelOverride(preset 快速鍵）。payload 層級 model 勝出。
   const overrides = { ...geminiOverrides };
   if (payload?.modelOverride) overrides.model = payload.modelOverride;
-  const effectiveSettings = Object.keys(overrides).length > 0
-    ? { ...settings, geminiConfig: { ...settings.geminiConfig, ...overrides } }
-    : settings;
+  // P1: 同 handleTranslate ── caller 沒覆蓋 systemInstruction 時依 targetLanguage 算 effective prompt
+  const baseSI = ('systemInstruction' in overrides)
+    ? overrides.systemInstruction
+    : getEffectiveSystemPrompt(settings.targetLanguage, settings.geminiConfig?.systemInstruction);
+  const effectiveSettings = {
+    ...settings,
+    geminiConfig: { ...settings.geminiConfig, ...overrides, systemInstruction: baseSI },
+  };
   // pricing 優先順序：caller 傳入 pricingOverride（字幕獨立計價）> modelOverride 查表 > settings.pricing
   let effectivePricing = pricingOverride;
   if (!effectivePricing && overrides.model) effectivePricing = getPricingForModel(overrides.model, settings);
@@ -1082,6 +1092,11 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   if (forbiddenHash) cacheKeySuffix += '_b' + forbiddenHash;
   const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
   cacheKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
+  // P1: targetLanguage 進 cache key(同 handleTranslate),zh-TW 不加維持向下相容
+  const tl = effectiveSettings.targetLanguage;
+  if (tl && tl !== 'zh-TW') {
+    cacheKeySuffix += '_lang' + tl.replace(/[^a-z0-9]/gi, '');
+  }
 
   // v1.8.1: 先查 cache。若全部命中，走 fast path 直接 emit 假 first_chunk + 所有 segment + done,
   // 不打 Gemini API。對應使用者「翻完還原重翻」的 case,batch 0 內容應該秒出。
@@ -1223,9 +1238,15 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
 
   // 若呼叫端傳入 geminiOverrides（如字幕模式），覆蓋 geminiConfig 對應欄位。
   // pricingOverride（v1.2.39）：字幕模式可傳入獨立計價，否則沿用主設定 pricing。
-  const effectiveSettings = Object.keys(geminiOverrides).length > 0
-    ? { ...settings, geminiConfig: { ...settings.geminiConfig, ...geminiOverrides } }
-    : settings;
+  // P1: 若 caller 沒覆蓋 systemInstruction(網頁主翻譯路徑),依 targetLanguage 切 universal/zh-TW prompt;
+  //     caller 已覆蓋(字幕 / 文件 / ASR 路徑)── 那邊已自行呼叫 getEffective*Prompt,這裡不再二次處理。
+  const baseSI = ('systemInstruction' in geminiOverrides)
+    ? geminiOverrides.systemInstruction
+    : getEffectiveSystemPrompt(settings.targetLanguage, settings.geminiConfig?.systemInstruction);
+  const effectiveSettings = {
+    ...settings,
+    geminiConfig: { ...settings.geminiConfig, ...geminiOverrides, systemInstruction: baseSI },
+  };
   // v1.4.12: preset 帶 modelOverride 時，從內建表查對應 model 的 pricing，
   // 確保 toast / usage log 的費用與 model 一致（Flash Lite $0.10/$0.30、Flash $0.50/$3.00）。
   // 優先順序：pricingOverride（字幕獨立計價） > modelOverride 查表 > settings.pricing
@@ -1303,6 +1324,12 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   // （例如先按 Alt+A 走 Flash Lite 翻過，再按 Alt+S 走 Flash 應該重新打 API，不該命中 Flash Lite 的舊譯文）。
   const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
   glossaryKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
+  // P1: targetLanguage 進 cache key,避免不同目標語言撞 cache(zh-TW vs zh-CN 翻同一段必須分開)。
+  // zh-TW 不加 suffix(向下相容,既有 zh-TW 使用者 cache 仍 hit);zh-CN / en 加 _lang<x>
+  const tl = effectiveSettings.targetLanguage;
+  if (tl && tl !== 'zh-TW') {
+    glossaryKeySuffix += '_lang' + tl.replace(/[^a-z0-9]/gi, '');
+  }
   // W7：文件翻譯路徑（_doc)cache key 加 temperature，讓使用者在 settings page 改
   // 文件翻譯獨立 temperature 後立即生效（不會 cache hit 拿到舊 temp 的譯文)。
   // 網頁 / 字幕路徑沒獨立 temperature 設定，不加（避免 cache 多分裂)
@@ -1515,6 +1542,12 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   // v1.5.8: cpOverrides 給字幕路徑覆蓋特定欄位（例如 systemPrompt 改用字幕專屬），
   // 其他欄位（baseUrl / model / apiKey / 計價）仍走「自訂模型」分頁主設定。
   const cp = { ...(settings.customProvider || {}), ...(cpOverrides || {}) };
+  // P1 (v1.8.59):cp.systemPrompt 走 getEffective(target-aware,跟 Gemini 主翻譯路徑對齊)。
+  // cpOverrides 已含 systemPrompt(字幕 / ASR caller 自帶 effective)→ 不再二次處理;
+  // cpOverrides 沒覆蓋 systemPrompt(主路徑)→ 在這裡 wrap getEffective。
+  if (!cpOverrides || !('systemPrompt' in cpOverrides)) {
+    cp.systemPrompt = getEffectiveSystemPrompt(settings.targetLanguage, cp.systemPrompt);
+  }
   // v1.6.7: API Key 允許為空（本機 llama.cpp / Ollama 等不需要 key)；商用後端漏填會自然 401
   // v1.8.41 對齊：Model 也允許為空（llama.cpp / Ollama 啟動時鎖 model,adapter 不送
   // model 欄位讓 server 用啟動 model)— lib/openai-compat.js translateChunk 本來就支援，
@@ -1567,6 +1600,11 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   const baseUrlHash = (await cache.hashText(cp.baseUrl)).slice(0, 6);
   const safeModel = String(cp.model).replace(/[^a-z0-9.\-]/gi, '_');
   suffix += `_m${baseUrlHash}_${safeModel}`;
+  // P1 (v1.8.59):targetLanguage 進 cache key,zh-TW 不加維持向下相容
+  const tl = settings.targetLanguage;
+  if (tl && tl !== 'zh-TW') {
+    suffix += '_lang' + tl.replace(/[^a-z0-9]/gi, '');
+  }
 
   // 1. 撈快取
   const cached = await cache.getBatch(texts, suffix);
@@ -1594,7 +1632,10 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
     debugLog('info', 'api', 'openai-compat translateBatch start', {
       texts: missingTexts.length, chars: totalChars, baseUrl: cp.baseUrl, model: cp.model,
     });
-    const res = await translateBatchCustom(missingTexts, settings, glossary, fixedGlossaryEntries, forbiddenTermsList);
+    // P1 (v1.8.59):translateBatchCustom 內部讀 settings.customProvider.systemPrompt,
+    // 把已 wrap 過 effective prompt 的 cp 寫回 settings.customProvider 才能讓 LLM 端拿到對的 prompt。
+    const effSettings = { ...settings, customProvider: cp };
+    const res = await translateBatchCustom(missingTexts, effSettings, glossary, fixedGlossaryEntries, forbiddenTermsList);
     fresh = res.translations;
     batchUsage = res.usage;
     batchHadMismatch = res.hadMismatch || false;
@@ -1752,8 +1793,13 @@ async function handleExtractGlossary(payload, sender) {
   }
   const { compressedText, inputHash } = payload;
 
+  // P1: glossary cache 也要依 target 區隔(同 source text 抽出的譯名 zh-TW vs zh-CN 必然不同)。
+  // zh-TW 不加 suffix 維持向下相容,既有 zh-TW 使用者升級後 cache 仍 hit。
+  const tl = settings.targetLanguage;
+  const glossarySuffix = (tl && tl !== 'zh-TW') ? '_lang' + tl.replace(/[^a-z0-9]/gi, '') : '';
+
   // 1. 先查術語表快取
-  const cached = await cache.getGlossary(inputHash);
+  const cached = await cache.getGlossary(inputHash, glossarySuffix);
   if (cached) {
     debugLog('info', 'glossary', 'glossary cache hit', { inputHash, terms: cached.length });
     return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
@@ -1764,14 +1810,20 @@ async function handleExtractGlossary(payload, sender) {
   //    extractGlossary 內部已改用 AbortController 自帶 20 秒 fetch timeout。
   debugLog('info', 'glossary', 'calling Gemini (bypassing rate limiter)');
 
+  // P1: glossary prompt 走 getEffective(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
+  const glossaryEffSettings = {
+    ...settings,
+    glossary: { ...settings.glossary, prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) },
+  };
+
   // 3. 呼叫 Gemini 擷取術語表
-  const result = await extractGlossary(compressedText, settings);
+  const result = await extractGlossary(compressedText, glossaryEffSettings);
   const { glossary, usage, _diag } = result;
   debugLog('info', 'glossary', 'Gemini returned glossary', { terms: glossary.length, usage, diag: _diag || null });
 
   // 4. 寫入快取（只快取有內容的術語表；空結果不快取，讓下次重試有機會成功）
   if (glossary.length > 0) {
-    await cache.setGlossary(inputHash, glossary);
+    await cache.setGlossary(inputHash, glossary, glossarySuffix);
   }
 
   // 5. 累計使用量統計
@@ -1817,23 +1869,33 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
   }
   const { compressedText, inputHash } = payload;
 
+  // P1: glossary cache 依 target 區隔(同 handleExtractGlossary)
+  const tl = settings.targetLanguage;
+  const glossarySuffix = (tl && tl !== 'zh-TW') ? '_lang' + tl.replace(/[^a-z0-9]/gi, '') : '';
+
   // 1. 先查術語表快取（共用 cache.getGlossary;_diag 內含 baseUrl/model/engine 影響的話
   //    可在 inputHash 計算時考量，目前 hash 只看 compressedText 跟 Gemini 路徑共享
   //    符合「同一份原文不同 engine 抽出的術語應該等價」假設)
-  const cached = await cache.getGlossary(inputHash);
+  const cached = await cache.getGlossary(inputHash, glossarySuffix);
   if (cached) {
     debugLog('info', 'glossary', 'openai-compat glossary cache hit', { inputHash, terms: cached.length });
     return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
   }
 
+  // P1: glossary prompt 走 getEffective(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
+  const glossaryEffSettings = {
+    ...settings,
+    glossary: { ...settings.glossary, prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) },
+  };
+
   // 2. 呼叫自訂 Provider 抽術語表（extractGlossary 內部 best-effort，失敗回空陣列 + _diag)
-  const result = await extractGlossaryCustom(compressedText, settings);
+  const result = await extractGlossaryCustom(compressedText, glossaryEffSettings);
   const { glossary, usage, _diag } = result;
   debugLog('info', 'glossary', 'openai-compat returned glossary', { terms: glossary.length, usage, diag: _diag || null });
 
   // 3. 寫入快取（只快取有內容的)
   if (glossary.length > 0) {
-    await cache.setGlossary(inputHash, glossary);
+    await cache.setGlossary(inputHash, glossary, glossarySuffix);
   }
 
   // 4. 累計用量（自訂 Provider 用 customProvider.inputPerMTok / outputPerMTok 計價)

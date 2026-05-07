@@ -18,32 +18,88 @@
 
   const NON_CHINESE_LANG_PREFIX = /^(ja|ko)\b/i;
 
-  SK.isTraditionalChinese = function isTraditionalChinese(text) {
+  // P1: 原 isTraditionalChinese 拆分為通用 detectTextLang(回傳語言類別) +
+  //     target-aware isAlreadyInTarget(target=='zh-TW' 跳繁中、'zh-CN' 跳簡中、'en' 跳英文)。
+  //     既有 isTraditionalChinese 保留為 alias,避免外部 reference 斷掉(spec / 字幕路徑等)。
+  //
+  // 回傳:'zh-Hant' | 'zh-Hans' | 'ja' | 'ko' | 'en' | 'other'
+  //   - 'zh-Hant' = 繁體中文(cjk 多 + 沒簡體特徵字)
+  //   - 'zh-Hans' = 簡體中文(cjk 多 + 簡體特徵字比例 ≥ 0.2)
+  //   - 'ja' / 'ko' = htmlLang 明示
+  //   - 'en' = 主要 ASCII letter,cjk 比例 < 0.05
+  //   - 'other' = 其他狀況(短文字 / 純符號 / 多語混雜等)
+  SK.detectTextLang = function detectTextLang(text) {
     const htmlLang = document.documentElement.lang || '';
-    if (NON_CHINESE_LANG_PREFIX.test(htmlLang)) return false;
+    if (/^ja\b/i.test(htmlLang)) return 'ja';
+    if (/^ko\b/i.test(htmlLang)) return 'ko';
 
     const lettersOnly = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
-    if (lettersOnly.length === 0) return false;
+    if (lettersOnly.length === 0) return 'other';
 
     let cjkCount = 0;
     let simpCount = 0;
     let kanaCount = 0;
+    let hangulCount = 0;
+    let asciiLetterCount = 0;
 
     for (const ch of lettersOnly) {
       const code = ch.codePointAt(0);
       if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0x3400 && code <= 0x4DBF)) {
         cjkCount++;
         if (SIMPLIFIED_ONLY_CHARS.has(ch)) simpCount++;
-      }
-      if ((code >= 0x3040 && code <= 0x309F) || (code >= 0x30A0 && code <= 0x30FF)) {
+      } else if ((code >= 0x3040 && code <= 0x309F) || (code >= 0x30A0 && code <= 0x30FF)) {
         kanaCount++;
+      } else if (code >= 0xAC00 && code <= 0xD7AF) {
+        // P1 v1.8.59:hangul Unicode 區段(韓文音節)
+        hangulCount++;
+      } else if ((code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)) {
+        asciiLetterCount++;
       }
     }
 
-    if (kanaCount > 0 && kanaCount / lettersOnly.length > 0.05) return false;
-    if (cjkCount / lettersOnly.length < 0.5) return false;
-    if (cjkCount > 0 && simpCount / cjkCount >= 0.2) return false;
-    return true;
+    // hangul 比例 > 5% → 視為韓文
+    if (hangulCount > 0 && hangulCount / lettersOnly.length > 0.05) return 'ko';
+    // 假名比例 > 5% → 視為日文(跟原 isTraditionalChinese 邏輯一致)
+    if (kanaCount > 0 && kanaCount / lettersOnly.length > 0.05) return 'ja';
+
+    const cjkRatio = cjkCount / lettersOnly.length;
+    if (cjkRatio >= 0.5) {
+      // 主要是 CJK ── 依簡體特徵字比例分繁簡
+      if (cjkCount > 0 && simpCount / cjkCount >= 0.2) return 'zh-Hans';
+      return 'zh-Hant';
+    }
+
+    // 主要是 ASCII letter(包括英 / 西 / 法 / 德等所有拉丁字母語言)
+    // 文字級無法區分這些語言(都是 ASCII letter),統一回 'en' 作為「拉丁字母 letter-dominant」識別。
+    // isAlreadyInTarget 對 es/fr/de target 一律 return false(讓 LLM 端處理 echo / 翻譯判斷)。
+    if (cjkRatio < 0.05 && asciiLetterCount / lettersOnly.length >= 0.5) return 'en';
+
+    return 'other';
+  };
+
+  // P1: target-aware「源語言已等於目標語言」判定。
+  //   target='zh-TW' → 跳 'zh-Hant'(維持 v1.8.58 之前行為)
+  //   target='zh-CN' → 跳 'zh-Hans'
+  //   target='en'    → 跳 'en'(主要 ASCII letter)
+  //   target='ja'    → 跳 'ja'(假名比例 > 5%)
+  //   target='ko'    → 跳 'ko'(hangul 比例 > 5%)
+  //   target='es' / 'fr' / 'de' → 一律 false(拉丁字母文字級無法區分,讓 LLM 端處理 echo)
+  //   不認得的 target 一律 false(不跳,送 LLM 翻)。
+  SK.isAlreadyInTarget = function isAlreadyInTarget(text, target) {
+    const detected = SK.detectTextLang(text);
+    if (target === 'zh-TW') return detected === 'zh-Hant';
+    if (target === 'zh-CN') return detected === 'zh-Hans';
+    if (target === 'en')    return detected === 'en';
+    if (target === 'ja')    return detected === 'ja';
+    if (target === 'ko')    return detected === 'ko';
+    // es / fr / de:文字級無法區分,return false(送 LLM 處理)
+    return false;
+  };
+
+  // P1: 既有 isTraditionalChinese 保留為 zh-TW 專用 alias(spec / 字幕路徑等仍 reference)。
+  // 行為等同 isAlreadyInTarget(text, 'zh-TW')。
+  SK.isTraditionalChinese = function isTraditionalChinese(text) {
+    return SK.isAlreadyInTarget(text, 'zh-TW');
   };
 
   function isCandidateText(el) {
@@ -54,7 +110,10 @@
     // 子隱藏」混排（極罕見），對長度/語言判斷不足以改變結果。
     const text = el.textContent?.trim();
     if (!text || text.length < 2) return false;
-    if (SK.isTraditionalChinese(text)) return false;
+    // P1: target-aware「已是目標語言」跳過。STATE.targetLanguage 由 content.js translatePage
+    //     開始時從 storage 注入,預設 'zh-TW' 維持既有行為。
+    const target = SK.STATE?.targetLanguage || 'zh-TW';
+    if (SK.isAlreadyInTarget(text, target)) return false;
     if (!/[\p{L}]/u.test(text)) return false;
     return true;
   }
@@ -281,10 +340,14 @@
         n = n.nextSibling;
       }
       const trimmed = text.trim();
-      // v1.2.0: 已翻譯成繁中的 fragment 不再重複收集
+      // v1.2.0: 已翻譯成 target 語言的 fragment 不再重複收集
       // （fragment 注入後父元素不帶 data-shinkansen-translated，
       //   若不在此過濾，SPA observer rescan 會無限迴圈）
-      if (trimmed.length >= 2 && SK.isTraditionalChinese(trimmed)) {
+      // P1 (v1.8.59):從寫死 isTraditionalChinese 改成 target-aware ──
+      //   原邏輯只考慮 target=zh-TW(只翻成繁中),target=en/zh-CN 時繁中原文(例如新聞標題)
+      //   會被誤判「已是 target」直接跳掉,造成「target=en 但中文標題沒翻」的 bug。
+      const _target = SK.STATE?.targetLanguage || 'zh-TW';
+      if (trimmed.length >= 2 && SK.isAlreadyInTarget(trimmed, _target)) {
         runStart = null;
         runEnd = null;
         return;
