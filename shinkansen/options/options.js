@@ -54,7 +54,7 @@ function applyTierToInputs(tier, model) {
   const limits = table[model] || { rpm: 60, tpm: 1000000, rpd: 1000 };
   rpmEl.value = limits.rpm;
   tpmEl.value = limits.tpm;
-  rpdEl.value = limits.rpd === Infinity ? '無限制' : limits.rpd;
+  rpdEl.value = limits.rpd === Infinity ? _t('common.unlimited') : limits.rpd;
 }
 
 const $ = (id) => document.getElementById(id);
@@ -306,7 +306,25 @@ async function load() {
   // (若 saved prompt 已客製,hint 應該 init 顯示;若是任一 effective default,
   // 自動切到當前 target 的版本字面值)
   updateAllPromptTargetHints();
+
+  // P2 (v1.8.60): UI i18n — 套用 data-i18n attributes,訂閱 onChanged
+  const I18N = window.__SK?.i18n;
+  if (I18N) {
+    const tl = $('targetLanguage')?.value || s.targetLanguage || 'zh-TW';
+    I18N.applyI18n(document, tl);
+    I18N.subscribeUiLanguageChange((newUi, newTarget) => {
+      I18N.applyI18n(document, newTarget);
+    });
+  }
 }
+
+// P2 helper: SK.t shortcut for dynamic strings
+const _t = (key, params) => {
+  const I18N = window.__SK?.i18n;
+  if (!I18N) return key;
+  const tl = $('targetLanguage')?.value || 'zh-TW';
+  return I18N.t(key, params, tl);
+};
 
 // v1.6.1: 「不再提示」按鈕——寫 disableUpdateNotice=true 立即生效
 $('update-banner-dismiss')?.addEventListener('click', async (e) => {
@@ -848,10 +866,10 @@ async function _saveImpl() {
   const cpApiKeyValue = ($('cp-apiKey').value || '').trim();
   await browser.storage.local.set({ customProviderApiKey: cpApiKeyValue });
   await browser.storage.sync.set(settings);
-  $('save-status').textContent = '✓ 已儲存';
+  $('save-status').textContent = _t('options.action.saved');
   setTimeout(() => { $('save-status').textContent = ''; }, 2000);
   // v0.94: 顯示綠色已儲存提示條
-  showSaveBar('saved', '設定已儲存');
+  showSaveBar('saved', _t('options.action.savedBar'));
 }
 
 $('save').addEventListener('click', save);
@@ -942,6 +960,10 @@ $('targetLanguage')?.addEventListener('change', async () => {
     console.error('[shinkansen] targetLanguage set failed', err);
   }
   updateAllPromptTargetHints();
+  // P2 (v1.8.60): 切 target 後 reapply UI i18n
+  if (window.__SK?.i18n) {
+    window.__SK.i18n.applyI18n(document, tl);
+  }
 });
 
 // v1.2.11: YouTube 字幕分頁
@@ -1070,7 +1092,7 @@ function markDirty() {
   const bar = $('save-bar');
   // 若目前是「已儲存」狀態，不立即覆蓋（等它自己消失）
   if (bar.classList.contains('saved') && !bar.hidden) return;
-  showSaveBar('dirty', '有未儲存的變更');
+  showSaveBar('dirty', _t('options.action.dirtyBar'));
 }
 // 監聽設定分頁與 Gemini 分頁內所有 input / select / textarea 的變更
 document.getElementById('tab-settings').addEventListener('input', markDirty);
@@ -1161,18 +1183,18 @@ $('toggle-api-key').addEventListener('click', () => {
 async function runApiTest({ btn, resultEl, sendMessage }) {
   btn.disabled = true;
   btn.dataset.state = 'loading';
-  btn.textContent = '測試中⋯';
+  btn.textContent = _t('options.action.testing');
   resultEl.hidden = false;
   resultEl.dataset.state = 'loading';
-  resultEl.textContent = '正在連線測試⋯';
+  resultEl.textContent = _t('options.action.testingConnect');
   try {
     const resp = await sendMessage();
     if (resp?.ok) {
       resultEl.dataset.state = 'ok';
-      resultEl.textContent = '✓ ' + (resp.message || '連線成功');
+      resultEl.textContent = '✓ ' + (resp.message || _t('options.action.connectOk'));
     } else {
       resultEl.dataset.state = 'fail';
-      resultEl.textContent = '✗ ' + (resp?.message || resp?.error || '未知錯誤');
+      resultEl.textContent = '✗ ' + (resp?.message || resp?.error || _t('common.errorUnknown'));
     }
   } catch (err) {
     resultEl.dataset.state = 'fail';
@@ -1251,7 +1273,7 @@ $('reset-defaults').addEventListener('click', async () => {
   // 所以直接 clear sync 即可；apiKey 自然不受影響。
   await browser.storage.sync.clear();
   await load();
-  $('save-status').textContent = '✓ 已回復預設設定';
+  $('save-status').textContent = _t('options.reset.done');
   $('save-status').style.color = '#34c759';
   setTimeout(() => {
     $('save-status').textContent = '';
@@ -2259,7 +2281,7 @@ $('usage-reload')?.addEventListener('click', () => {
 $('usage-export-csv').addEventListener('click', async () => {
   const { from, to } = getUsageDateRange();
   const res = await browser.runtime.sendMessage({ type: 'EXPORT_USAGE_CSV', payload: { from, to } });
-  if (!res?.ok) { alert('匯出失敗：' + (res?.error || '未知錯誤')); return; }
+  if (!res?.ok) { alert(_t('options.usage.exportFailed', { error: res?.error || _t('common.errorUnknown') })); return; }
   const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2276,7 +2298,7 @@ $('usage-clear').addEventListener('click', async () => {
   if (res?.ok) {
     loadUsageData();
   } else {
-    alert('清除失敗：' + (res?.error || '未知錯誤'));
+    alert(_t('options.usage.clearFailed', { error: res?.error || _t('common.errorUnknown') }));
   }
 });
 

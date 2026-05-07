@@ -2718,7 +2718,7 @@
       }
       // manual:再按一次還原
       stopYouTubeTranslation();
-      SK.showToast('success', '已還原原文字幕');
+      SK.showToast('success', SK.t('toast.subtitleRestored'));
       setTimeout(() => SK.hideToast(), 2000);
       return;
     }
@@ -2792,7 +2792,7 @@
           } else {
             // captionMap 也是空的 → CC 可能真的沒開
             hideCaptionStatus();
-            SK.showToast('success', '字幕翻譯已開啟。請開啟 YouTube 字幕（CC），翻譯將自動開始。');
+            SK.showToast('success', SK.t('toast.subtitleEnabled'));
           }
         }
       }, 5000);

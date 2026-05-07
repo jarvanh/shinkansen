@@ -7,97 +7,95 @@
 </head>
 <body>
   <header>
-    <h1><img src="../icons/icon-128.png" alt="" class="page-title-icon">Shinkansen<span class="update-dot" id="update-dot" hidden title="有新版可下載"></span></h1>
+    <h1><img src="../icons/icon-128.png" alt="" class="page-title-icon">Shinkansen<span class="update-dot" id="update-dot" hidden data-i18n-attr-title="popup.title.updateAvailable"></span></h1>
     <span class="version" id="version"></span>
   </header>
 
   <main>
-    <!-- v1.6.5: 剛升級的歡迎條（CWS 自動更新後顯示一次性綠色 banner，使用者按
-         「知道了」永久 dismissed）。welcome banner 與 update banner 互斥——
-         CWS 使用者只會看到綠色，unpacked 使用者只會看到黃色。 -->
+    <!-- v1.6.5: 剛升級的歡迎條(CWS 自動更新後顯示一次性綠色 banner) -->
     <div id="welcome-banner" class="welcome-banner" hidden>
       <strong id="welcome-banner-title">🎉 已升級</strong>
-      <p class="welcome-banner-subtitle">本版新增：</p>
+      <p class="welcome-banner-subtitle" data-i18n="popup.banner.welcomeBullets">本版新增:</p>
       <ul id="welcome-bullets" class="welcome-bullets"></ul>
-      <button id="welcome-banner-dismiss" class="welcome-banner-dismiss" type="button">知道了</button>
+      <button id="welcome-banner-dismiss" class="welcome-banner-dismiss" type="button" data-i18n="popup.banner.welcomeDismiss">知道了</button>
     </div>
 
-    <!-- v1.6.1: 有新版可下載時顯示 banner（v1.6.3 改 button 不依賴 a-tag navigate
-         避免 popup 環境下 <a target="_blank"> 反而 navigate 到 popup.html# 的怪 bug） -->
+    <!-- v1.6.1: 有新版可下載時顯示 banner -->
     <button id="update-banner" class="update-banner" type="button" hidden>
-      <strong>📦 有新版可下載</strong>
+      <strong data-i18n="popup.banner.updateNoticeTitle">📦 有新版可下載</strong>
       <span id="update-banner-version"></span>
     </button>
 
-    <!-- P1 (v1.8.59): 翻譯目標語言過渡期 banner。target 非 zh-TW 時顯示,
-         提示英文 / 簡中使用者「翻譯功能完整可用,UI 翻譯陸續上架」。P2 完成後拿掉。 -->
-    <div id="i18n-transition-banner" class="i18n-transition-banner" hidden>
-      <small>UI translation in progress · 翻譯功能完整可用</small>
+    <!-- P2 (v1.8.60): 5 語 target(ja/ko/es/fr/de)時顯示英文 fallback banner;
+         三語 target(zh-TW / zh-CN / en)時隱藏。原 P1 banner 機制移除 -->
+    <div id="i18n-fallback-banner" class="i18n-transition-banner" hidden>
+      <small data-i18n="popup.banner.i18nFallback">UI shown in English · Translation works fully</small>
     </div>
 
-    <button id="translate-btn" class="primary">翻譯本頁</button>
-    <button id="edit-btn" class="secondary" hidden>編輯譯文</button>
+    <button id="translate-btn" class="primary" data-i18n="popup.action.translate">翻譯本頁</button>
+    <button id="edit-btn" class="secondary" hidden data-i18n="popup.action.editStart">編輯譯文</button>
 
-    <!-- v1.5.0: 顯示模式切換（單語覆蓋 / 雙語對照） -->
+    <!-- v1.5.0: 顯示模式切換(單語覆蓋 / 雙語對照) -->
     <div class="display-mode-row">
-      <span class="display-mode-label">顯示模式</span>
-      <div class="display-mode-toggle" role="radiogroup" aria-label="顯示模式">
-        <button id="mode-single" class="mode-btn" type="button" role="radio" aria-checked="true">單語覆蓋</button>
-        <button id="mode-dual"   class="mode-btn" type="button" role="radio" aria-checked="false">雙語對照</button>
+      <span class="display-mode-label" data-i18n="popup.label.displayMode">顯示模式</span>
+      <div class="display-mode-toggle" role="radiogroup" data-i18n-attr-aria-label="popup.label.displayMode">
+        <button id="mode-single" class="mode-btn" type="button" role="radio" aria-checked="true" data-i18n="popup.label.modeSingle">單語覆蓋</button>
+        <button id="mode-dual"   class="mode-btn" type="button" role="radio" aria-checked="false" data-i18n="popup.label.modeDual">雙語對照</button>
       </div>
     </div>
 
     <div class="row">
-      <label for="auto">自動翻譯指定網站</label>
+      <label for="auto" data-i18n="popup.label.autoTranslate">自動翻譯指定網站</label>
       <input type="checkbox" id="auto">
     </div>
 
     <!-- v1.2.12: 只在 YouTube 頁面時顯示 -->
     <div class="row" id="yt-subtitle-row" hidden>
-      <label for="yt-subtitle-toggle">YouTube 字幕翻譯</label>
+      <label for="yt-subtitle-toggle" data-i18n="popup.label.ytSubtitle">YouTube 字幕翻譯</label>
       <input type="checkbox" id="yt-subtitle-toggle">
     </div>
 
-    <!-- commit 5a：只在 Drive 影片 viewer 顯示（drive.google.com/file/） -->
+    <!-- commit 5a:只在 Drive 影片 viewer 顯示(drive.google.com/file/) -->
     <div class="row" id="drive-subtitle-row" hidden>
-      <label for="drive-subtitle-toggle">Drive 影片字幕翻譯</label>
+      <label for="drive-subtitle-toggle" data-i18n="popup.label.driveSubtitle">Drive 影片字幕翻譯</label>
       <input type="checkbox" id="drive-subtitle-toggle">
     </div>
 
-    <!-- commit 5c：雙語對照 toggle（YouTube 影片 + Drive 影片頁顯示，共用 ytSubtitle.bilingualMode） -->
+    <!-- commit 5c:雙語對照 toggle(YouTube 影片 + Drive 影片頁顯示) -->
     <div class="row" id="bilingual-row" hidden>
-      <label for="bilingual-toggle">字幕雙語對照</label>
+      <label for="bilingual-toggle" data-i18n="popup.label.bilingual">字幕雙語對照</label>
       <input type="checkbox" id="bilingual-toggle">
     </div>
 
     <div class="row">
-      <label for="glossary-toggle">術語表一致化</label>
+      <label for="glossary-toggle" data-i18n="popup.label.glossary">術語表一致化</label>
       <input type="checkbox" id="glossary-toggle">
     </div>
 
     <div class="cache-row">
-      <span id="cache-info" class="cache-info">快取：讀取中…</span>
-      <button id="clear-cache-btn" class="link small">清除快取</button>
+      <span id="cache-info" class="cache-info" data-i18n="popup.cache.loading">快取:讀取中⋯</span>
+      <button id="clear-cache-btn" class="link small" data-i18n="popup.cache.clear">清除快取</button>
       <span id="clear-cache-confirm" class="clear-cache-confirm" hidden>
-        確定清除？
-        <button id="clear-cache-yes" class="link small clear-cache-danger">是</button>
-        <button id="clear-cache-no" class="link small">否</button>
+        <span data-i18n="popup.cache.confirm">確定清除?</span>
+        <button id="clear-cache-yes" class="link small clear-cache-danger" data-i18n="popup.cache.confirmYes">是</button>
+        <button id="clear-cache-no" class="link small" data-i18n="popup.cache.confirmNo">否</button>
       </span>
     </div>
 
     <div class="cache-row">
-      <span id="usage-info" class="cache-info">累計費用：讀取中…</span>
+      <span id="usage-info" class="cache-info" data-i18n="popup.usage.loading">累計費用:讀取中⋯</span>
     </div>
 
-    <div id="status" class="status">狀態：就緒</div>
+    <div id="status" class="status" data-i18n="popup.status.ready">狀態:就緒</div>
   </main>
 
   <footer>
-    <button id="options-btn" class="link">設定</button>
-    <button id="translate-doc-btn" class="link" type="button">翻譯文件（beta）</button>
+    <button id="options-btn" class="link" data-i18n="popup.footer.options">設定</button>
+    <button id="translate-doc-btn" class="link" type="button" data-i18n="popup.footer.translateDoc">翻譯文件(beta)</button>
     <span id="shortcut-hint" class="hint"></span>
   </footer>
 
+  <script src="../lib/i18n.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

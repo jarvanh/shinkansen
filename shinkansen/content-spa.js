@@ -653,14 +653,14 @@
     let loadingShown = false;
     const loadingTimer = setTimeout(() => {
       loadingShown = true;
-      SK.showToast('loading', `翻譯新內容… 0 / ${newUnits.length}`, { progress: 0, startTimer: true });
+      SK.showToast('loading', SK.t('toast.translateNew', { done: 0, total: newUnits.length }), { progress: 0, startTimer: true });
     }, 200);
     try {
       const { done, failures, pageUsage } = await SK.translateUnits(newUnits, {
         onProgress: (d, t) => {
           // 只在 loading toast 已顯示時才更新 progress(避免「toast 還沒顯示卻被 onProgress 喚出」)
           if (loadingShown) {
-            SK.showToast('loading', `翻譯新內容… ${d} / ${t}`, { progress: d / t });
+            SK.showToast('loading', SK.t('toast.translateNew', { done: d, total: t }), { progress: d / t });
           }
         },
       });
@@ -682,7 +682,7 @@
     } catch (err) {
       clearTimeout(loadingTimer);
       SK.sendLog('warn', 'spa', 'SPA observer rescan failed', { error: err.message });
-      SK.showToast('error', `新內容翻譯失敗:${err.message}`, { stopTimer: true });
+      SK.showToast('error', SK.t('toast.translateNewFailed', { error: err.message }), { stopTimer: true });
     }
   }
 

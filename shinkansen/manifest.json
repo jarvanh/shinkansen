@@ -57,6 +57,7 @@
       ],
       "js": [
         "content-ns.js",
+        "lib/i18n.js",
         "content-toast.js",
         "content-detect.js",
         "content-serialize.js",

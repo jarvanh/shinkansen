@@ -672,7 +672,7 @@
       const mobileUrl = getGoogleDocsMobileBasicUrl();
       if (mobileUrl) {
         SK.sendLog('info', 'translate', 'Google Docs detected, redirecting to mobilebasic', { mobileUrl });
-        SK.showToast('loading', '偵測到 Google Docs，正在開啟可翻譯的閱讀版⋯');
+        SK.showToast('loading', SK.t('toast.detectGoogleDocs'));
         SK.safeSendMessage({
           type: 'OPEN_GDOC_MOBILE',
           payload: { url: mobileUrl },
@@ -684,12 +684,12 @@
     if (STATE.translating) {
       SK.sendLog('info', 'translate', 'aborting in-progress translation');
       STATE.abortController?.abort();
-      SK.showToast('loading', '正在取消翻譯⋯');
+      SK.showToast('loading', SK.t('toast.cancelling'));
       return;
     }
 
     if (!navigator.onLine) {
-      SK.showToast('error', '目前處於離線狀態，無法翻譯。請確認網路連線後再試', { autoHideMs: 5000 });
+      SK.showToast('error', SK.t('toast.offline'), { autoHideMs: 5000 });
       return;
     }
 
@@ -720,12 +720,9 @@
           document.body;
         const pageSample = (contentRoot.innerText || '').slice(0, 2000);
         if (pageSample.length > 20 && SK.isAlreadyInTarget(pageSample, TARGET)) {
-          // P1: toast 訊息依 target 給對應措辭(P1 暫不做完整 UI i18n)
-          const targetLabel = ({
-            'zh-TW': '繁體中文', 'zh-CN': '簡體中文', 'en': '英文',
-            'ja': '日文', 'ko': '韓文', 'es': '西班牙文', 'fr': '法文', 'de': '德文',
-          })[TARGET] || '繁體中文';
-          SK.showToast('error', `此頁面已是${targetLabel}，不需翻譯`, { autoHideMs: 3000 });
+          // P2 (v1.8.60): toast 走 SK.t — target label 也由 dict 提供
+          const lang = SK.t(`lang.${TARGET}`, undefined, TARGET) || SK.t('lang.zh-TW', undefined, TARGET);
+          SK.showToast('error', SK.t('toast.alreadyInTarget', { lang }, TARGET), { autoHideMs: 3000 });
           return;
         }
       }
@@ -770,7 +767,7 @@
     const t_collect_start = Date.now();
     let units = SK.collectParagraphs();
     if (units.length === 0) {
-      SK.showToast('error', '找不到可翻譯的內容', { autoHideMs: 3000 });
+      SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
       STATE.translating = false;
       STATE.abortController = null;
       return;
@@ -889,7 +886,7 @@
       // SK.getSubtitleBatchType 收斂單一資料源，術語表也對齊不重複 inline 三元式。
       const _glossaryMsgType = SK.getGlossaryExtractType(options?.engine);
       if (batchCount > blockingThreshold) {
-        SK.showToast('loading', '建立術語表⋯', { progress: 0, startTimer: true });
+        SK.showToast('loading', SK.t('toast.glossaryBuilding'), { progress: 0, startTimer: true });
         try {
           const glossaryResult = await Promise.race([
             SK.safeSendMessage({
@@ -929,7 +926,7 @@
       }
     }
 
-    SK.showToast('loading', `${labelPrefix}翻譯中… 0 / ${total}`, {
+    SK.showToast('loading', SK.t('toast.translateProgress', { prefix: labelPrefix, done: 0, total }), {
       progress: 0,
       startTimer: true,
     });
@@ -954,7 +951,7 @@
         engine: options.engine || 'gemini',
         // v1.8.8: 「翻譯剩餘段落」路徑要繞過 partialMode 的 skip batch 1+ 邏輯
         ignorePartialMode: !!options.ignorePartialMode,
-        onProgress: (d, t, mismatch) => SK.showToast('loading', `${labelPrefix}翻譯中… ${d} / ${t}`, {
+        onProgress: (d, t, mismatch) => SK.showToast('loading', SK.t('toast.translateProgress', { prefix: labelPrefix, done: d, total: t }), {
           progress: d / t,
           mismatch: !!mismatch,
         }),
@@ -963,14 +960,14 @@
       if (abortSignal.aborted) {
         SK.sendLog('info', 'translate', 'translation aborted', { done, total });
         restoreOriginalHTMLAndReset();
-        SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
         return;
       }
 
       if (failures.length) {
         const failedSegs = failures.reduce((s, f) => s + f.count, 0);
         const firstErr = failures[0].error;
-        SK.showToast('error', `翻譯部分失敗：${failedSegs} / ${total} 段失敗`, {
+        SK.showToast('error', SK.t('toast.partialFailed', { failed: failedSegs, total }), {
           stopTimer: true,
           detail: firstErr.slice(0, 120),
         });
@@ -1088,7 +1085,7 @@
 
       if (rpdWarning) {
         setTimeout(() => {
-          SK.showToast('error', '提醒：今日 API 請求次數已超過預算上限', {
+          SK.showToast('error', SK.t('toast.budgetWarning'), {
             detail: '翻譯仍可正常使用，但請留意用量。每日計數於太平洋時間午夜重置（約台灣時間下午 3 點）',
             autoHideMs: 6000,
           });
@@ -1100,7 +1097,7 @@
     } catch (err) {
       SK.sendLog('error', 'translate', 'translatePage error', { error: err.message || String(err) });
       if (!abortSignal.aborted) {
-        SK.showToast('error', `翻譯失敗：${err.message}`, { stopTimer: true });
+        SK.showToast('error', SK.t('toast.translateFailed', { error: err.message }), { stopTimer: true });
       }
     } finally {
       STATE.translating = false;
@@ -1178,7 +1175,7 @@
     SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     // v1.4.11: 清除跨 tab sticky（只影響當前 tab，不影響樹中其他 tab）
     SK.safeSendMessage({ type: 'STICKY_CLEAR' }).catch(() => {});
-    SK.showToast('success', '已還原原文', { progress: 1, autoHideMs: 2000 });
+    SK.showToast('success', SK.t('toast.restored'), { progress: 1, autoHideMs: 2000 });
   }
 
   // ─── v1.4.0: Google Translate 批次送出 ──────────────────────
@@ -1275,7 +1272,7 @@
     // 若正在翻譯中（任何引擎）→ 中止
     if (STATE.translating) {
       STATE.abortController?.abort();
-      SK.showToast('loading', '正在取消翻譯⋯');
+      SK.showToast('loading', SK.t('toast.cancelling'));
       return;
     }
 
@@ -1285,7 +1282,7 @@
     }
 
     if (!navigator.onLine) {
-      SK.showToast('error', '目前處於離線狀態，無法翻譯。請確認網路連線後再試', { autoHideMs: 5000 });
+      SK.showToast('error', SK.t('toast.offline'), { autoHideMs: 5000 });
       return;
     }
 
@@ -1307,11 +1304,8 @@
           document.body;
         const pageSample = (contentRoot.innerText || '').slice(0, 2000);
         if (pageSample.length > 20 && SK.isAlreadyInTarget(pageSample, TARGET)) {
-          const targetLabel = ({
-            'zh-TW': '繁體中文', 'zh-CN': '簡體中文', 'en': '英文',
-            'ja': '日文', 'ko': '韓文', 'es': '西班牙文', 'fr': '法文', 'de': '德文',
-          })[TARGET] || '繁體中文';
-          SK.showToast('error', `此頁面已是${targetLabel}，不需翻譯`, { autoHideMs: 3000 });
+          const lang = SK.t(`lang.${TARGET}`, undefined, TARGET) || SK.t('lang.zh-TW', undefined, TARGET);
+          SK.showToast('error', SK.t('toast.alreadyInTarget', { lang }, TARGET), { autoHideMs: 3000 });
           return;
         }
       }
@@ -1335,7 +1329,7 @@
 
     let units = SK.collectParagraphs();
     if (units.length === 0) {
-      SK.showToast('error', '找不到可翻譯的內容', { autoHideMs: 3000 });
+      SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
       STATE.translating = false;
       STATE.abortController = null;
       return;
@@ -1367,25 +1361,25 @@
     }
     const total = units.length;
 
-    SK.showToast('loading', `${labelPrefix}Google 翻譯中… 0 / ${total}`, { progress: 0, startTimer: true });
+    SK.showToast('loading', SK.t('toast.translateProgressGoogle', { prefix: labelPrefix, done: 0, total }), { progress: 0, startTimer: true });
 
     try {
       const { done, failures, chars } = await SK.translateUnitsGoogle(units, {
         signal: abortSignal,
-        onProgress: (d, t) => SK.showToast('loading', `${labelPrefix}Google 翻譯中… ${d} / ${t}`, {
+        onProgress: (d, t) => SK.showToast('loading', SK.t('toast.translateProgressGoogle', { prefix: labelPrefix, done: d, total: t }), {
           progress: d / t,
         }),
       });
 
       if (abortSignal.aborted) {
         restoreOriginalHTMLAndReset();
-        SK.showToast('success', '已取消翻譯', { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
         return;
       }
 
       if (failures.length) {
         const failedSegs = failures.reduce((s, f) => s + f.count, 0);
-        SK.showToast('error', `翻譯部分失敗：${failedSegs} / ${total} 段失敗`, {
+        SK.showToast('error', SK.t('toast.partialFailed', { failed: failedSegs, total }), {
           stopTimer: true,
           detail: failures[0].error.slice(0, 120),
         });
@@ -1428,7 +1422,7 @@
     } catch (err) {
       SK.sendLog('error', 'translate', 'translatePageGoogle error', { error: err.message || String(err) });
       if (!abortSignal.aborted) {
-        SK.showToast('error', `翻譯失敗：${err.message}`, { stopTimer: true });
+        SK.showToast('error', SK.t('toast.translateFailed', { error: err.message }), { stopTimer: true });
       }
     } finally {
       STATE.translating = false;
@@ -1482,7 +1476,7 @@
     if (STATE.translating) {
       SK.sendLog('info', 'translate', 'aborting in-progress translation (preset key)');
       STATE.abortController?.abort();
-      SK.showToast('loading', '正在取消翻譯⋯');
+      SK.showToast('loading', SK.t('toast.cancelling'));
       return;
     }
     // 閒置：讀 preset 定義。若 storage 還沒寫入（例如從 v1.4.11 升級第一次按快捷鍵）
@@ -1556,7 +1550,7 @@
       const mode = msg.mode === 'dual' ? 'dual' : 'single';
       if (STATE.translated) {
         const desc = mode === 'dual' ? '雙語對照' : '單語覆蓋';
-        SK.showToast('success', `顯示模式已切換為「${desc}」，請按快速鍵重新翻譯以套用`, {
+        SK.showToast('success', SK.t('toast.modeChanged', { desc }), {
           autoHideMs: 5000,
         });
       }
