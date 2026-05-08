@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "Shinkansen",
+    "description": "Name der Erweiterung"
+  },
+  "extDescription": {
+    "message": "Eine schnelle, flüssige Übersetzungserweiterung für Webseiten auf Basis von Google Gemini, mit zweisprachiger Anzeige und YouTube-Untertitel-Übersetzung."
+  }
+}

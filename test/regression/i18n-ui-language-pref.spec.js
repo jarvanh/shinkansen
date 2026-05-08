@@ -59,14 +59,15 @@ test('getUiLanguage(三語其一)→ 直接 return,不走 navigator', async ({ c
   expect(await evaluate(`window.__SK.i18n.getUiLanguage('en')`)).toBe('en');
 });
 
-test('getUiLanguage(8 語 target)→ 對應三語(舊行為相容)', async ({ context, localServer }) => {
+test('getUiLanguage(8 語 target)→ 直接回該語(P3 / v1.8.62 起 8 語 dict 全到位)', async ({ context, localServer }) => {
   const page = await context.newPage();
   const { evaluate } = await load(page, localServer);
-  // ja / ko / es / fr / de / xx 等不在 SUPPORTED_UI_LANGS 內 → fallback en
-  for (const t of ['ja', 'ko', 'es', 'fr', 'de', 'xx']) {
+  // ja / ko / es / fr / de 已加入 SUPPORTED_UI_LANGS → 直接回原值;只有不認識的 'xx' 仍 fallback en
+  for (const t of ['ja', 'ko', 'es', 'fr', 'de']) {
     expect(await evaluate(`window.__SK.i18n.getUiLanguage(${JSON.stringify(t)})`))
-      .toBe('en');
+      .toBe(t);
   }
+  expect(await evaluate(`window.__SK.i18n.getUiLanguage('xx')`)).toBe('en');
 });
 
 test('options:#uiLanguage picker 切換 → 立刻寫 storage(不等「儲存設定」)', async ({ context, extensionId }) => {

@@ -181,11 +181,11 @@ export const DEFAULT_FORBIDDEN_TERMS = [
 
 export const TARGET_LANGUAGES = ['zh-TW', 'zh-CN', 'en', 'ja', 'ko', 'es', 'fr', 'de'];
 
-// P2 (v1.8.60):介面語言(UI dict)獨立設定,跟翻譯目標(targetLanguage)解綁。
-// 'auto'(預設)= 由 resolveUiLanguage(navigator.language) 推導為三語其一;
-// 使用者可在 Options 強制鎖到 zh-TW / zh-CN / en。
-// 5 語 target(ja/ko/es/fr/de)沒有 UI dict,所有非三語選擇最終都 fallback 到 en。
-export const UI_LANGUAGES = ['auto', 'zh-TW', 'zh-CN', 'en'];
+// P3 (v1.8.62):介面語言(UI dict)獨立設定,跟翻譯目標(targetLanguage)解綁。
+// 'auto'(預設)= 由 resolveUiLanguage(navigator.language) 推導為 8 語其一;
+// 使用者可在 Options 強制鎖到任一支援語言。8 語 dict 全到位後,fallback 到 en 僅在
+// navigator.language 未命中任何已知語族時觸發。
+export const UI_LANGUAGES = ['auto', 'zh-TW', 'zh-CN', 'en', 'ja', 'ko', 'es', 'fr', 'de'];
 
 // 送進 universal prompt 的 {targetLanguage} 字串。
 // zh-CN 明確標 "China conventions" 讓 LLM 用簡中中國用詞,避免混到台灣用詞;label 內附帶的
@@ -291,18 +291,22 @@ export function detectDefaultTargetLanguage() {
   return 'en';
 }
 
-// P2 (v1.8.60):把 UI 語系偏好(可能 'auto' / 三語其一)解析為實際 dict 用的三語之一。
-// 'auto' / 'undefined' / 不認識值 → 由 navigator.language 推導(zh-TW 系 → zh-TW、其他 zh-* → zh-CN、其他 → en)。
-// 注意:UI dict 永遠是三語(`messages_zhTW` / `messages_zhCN` / `messages_en`),不像 target
-// 有 8 種,故 navigator 推導也只回三語(ja/ko/es/fr/de 等都走 en)。
+// P3 (v1.8.62):把 UI 語系偏好(可能 'auto' / 8 語其一)解析為實際 dict 用的 8 語之一。
+// 'auto' / 'undefined' / 不認識值 → 由 navigator.language 推導(zh-TW 系 → zh-TW、其他 zh-* → zh-CN、
+// ja/ko/es/fr/de → 對應、其他 → en)。
 export function resolveUiLanguage(uiLanguagePref) {
   if (uiLanguagePref && uiLanguagePref !== 'auto'
-      && ['zh-TW', 'zh-CN', 'en'].includes(uiLanguagePref)) {
+      && ['zh-TW', 'zh-CN', 'en', 'ja', 'ko', 'es', 'fr', 'de'].includes(uiLanguagePref)) {
     return uiLanguagePref;
   }
   const nav = ((typeof navigator !== 'undefined' && navigator.language) || 'en').toLowerCase();
   if (nav.startsWith('zh-tw') || nav.startsWith('zh-hant') || nav.startsWith('zh-hk')) return 'zh-TW';
   if (nav.startsWith('zh')) return 'zh-CN';
+  if (nav.startsWith('ja')) return 'ja';
+  if (nav.startsWith('ko')) return 'ko';
+  if (nav.startsWith('es')) return 'es';
+  if (nav.startsWith('fr')) return 'fr';
+  if (nav.startsWith('de')) return 'de';
   return 'en';
 }
 

@@ -48,8 +48,21 @@ test('toast: en target 走英文 dict', async ({ context, localServer }) => {
     .toBe('No translatable content found');
 });
 
-test('toast: ja target(5 語 fallback)走 en dict', async ({ context, localServer }) => {
+test('toast: ja target 走 ja dict(P3 / v1.8.62 起 8 語 dict 全到位)', async ({ context, localServer }) => {
   const page = await context.newPage();
   expect(await loadAndQuery(page, localServer, 'ja', 'toast.cancelling'))
-    .toBe('Cancelling translation…');
+    .toBe('翻訳をキャンセル中⋯');
+});
+
+test('toast: ko / es / fr / de target 各走對應 dict(P3 / v1.8.62)', async ({ context, localServer }) => {
+  const page = await context.newPage();
+  // 抽樣 toast.cancelling 各語版本驗證
+  expect(await loadAndQuery(page, localServer, 'ko', 'toast.cancelling'))
+    .toBe('번역 취소 중⋯');
+  expect(await loadAndQuery(page, localServer, 'es', 'toast.cancelling'))
+    .toBe('Cancelando traducción⋯');
+  expect(await loadAndQuery(page, localServer, 'fr', 'toast.cancelling'))
+    .toBe('Annulation de la traduction⋯');
+  expect(await loadAndQuery(page, localServer, 'de', 'toast.cancelling'))
+    .toBe('Übersetzung wird abgebrochen⋯');
 });

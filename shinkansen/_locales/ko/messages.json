@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "Shinkansen",
+    "description": "확장 프로그램 이름"
+  },
+  "extDescription": {
+    "message": "Google Gemini 기반의 빠르고 부드러운 웹 페이지 번역 확장 프로그램. 대역 표시와 YouTube 자막 번역을 지원합니다."
+  }
+}
