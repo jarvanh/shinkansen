@@ -17,7 +17,7 @@
 //   (b) PRE 豁免 isInteractiveWidgetContainer 檢查
 //
 // 斷言基於結構特徵（有無 <code>、PRE 語意），不綁站點，符合硬規則 8。
-// <!-- SANITY-PENDING: 把 PRE 加回 HARD_EXCLUDE_TAGS，確認 #comment-pre 消失 -->
+// SANITY 紀錄(已驗證):把 'PRE' 加回 HARD_EXCLUDE_TAGS → 「#comment-pre 必須被偵測」斷言 fail。還原 → pass。
 import { test, expect } from '../fixtures/extension.js';
 import {
   loadFixtureResponse,

@@ -20,7 +20,14 @@ import * as cache from '../lib/cache.js';
 
 const $ = (id) => document.getElementById(id);
 
+const t = (key, params, fallback) => {
+  const i18n = window.__SK?.i18n;
+  if (i18n && typeof i18n.t === 'function') return i18n.t(key, params);
+  return fallback != null ? fallback : key;
+};
+
 async function load() {
+  await initI18n();
   const s = await getSettings();
   const td = s.translateDoc || DEFAULT_SETTINGS.translateDoc;
   $('td-systemPrompt').value = td.systemPrompt || DEFAULT_DOC_SYSTEM_PROMPT;
@@ -31,6 +38,19 @@ async function load() {
   // 載入完成標記乾淨狀態(避免 load 觸發 input event 把 save-bar 點起來)
   initialLoaded = true;
   hideSaveBar();
+}
+
+async function initI18n() {
+  const I18N = window.__SK?.i18n;
+  if (!I18N) return;
+  let uiLang = 'auto';
+  try {
+    const stored = await chrome.storage.sync.get(['uiLanguage']);
+    if (typeof stored.uiLanguage === 'string') uiLang = stored.uiLanguage;
+  } catch (_) { /* fallback auto */ }
+  const dictLang = I18N.getUiLanguage(uiLang);
+  I18N.applyI18n(document, dictLang);
+  I18N.subscribeUiLanguageChange((newUi) => I18N.applyI18n(document, newUi));
 }
 
 async function save() {
@@ -50,7 +70,7 @@ async function save() {
     temperature: tempClean,
   };
   await browser.storage.sync.set({ translateDoc: merged });
-  showSaveBar('saved', '✓ 已儲存');
+  showSaveBar('saved', t('doc.settingsPage.saveBar.saved'));
 }
 
 // ─── save-bar(對齊 options.js v0.94 同套機制)──────────────────
@@ -75,7 +95,7 @@ function markDirty() {
   if (!initialLoaded) return; // load() 階段觸發的 input 不算 dirty
   const bar = $('save-bar');
   if (bar.classList.contains('saved') && !bar.hidden) return;
-  showSaveBar('dirty', '有未儲存的變更');
+  showSaveBar('dirty', t('doc.settingsPage.saveBar.dirty'));
 }
 document.querySelector('.container').addEventListener('input', markDirty);
 document.querySelector('.container').addEventListener('change', markDirty);
@@ -88,15 +108,15 @@ $('td-reset-prompt').addEventListener('click', () => {
 });
 
 $('td-clear-all-cache-btn').addEventListener('click', async () => {
-  if (!confirm('確定要清掉所有文件翻譯記憶嗎？\n\n清除後,之前翻過的文件下次再翻會重新呼叫 AI（也會重新計費）。\n\n網頁翻譯、字幕翻譯不受影響。')) return;
+  if (!confirm(t('doc.settingsPage.confirm.clearAllCache'))) return;
   const status = $('td-clear-cache-status');
   try {
     const cleared = await cache.clearDocTranslationCache();
-    status.textContent = `✓ 已清除 ${cleared} 筆翻譯記憶`;
+    status.textContent = t('doc.settingsPage.cache.cleared', { n: cleared });
     status.style.color = '#34c759';
     setTimeout(() => { status.textContent = ''; status.style.color = ''; }, 3000);
   } catch (err) {
-    status.textContent = `✗ 清除失敗：${err && err.message}`;
+    status.textContent = t('doc.settingsPage.cache.failed', { error: (err && err.message) || '' });
     status.style.color = '#ef4444';
   }
 });

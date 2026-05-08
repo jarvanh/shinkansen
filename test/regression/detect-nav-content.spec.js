@@ -23,7 +23,7 @@
 //   因此麵包屑短連結（如 "Computing"、"Laptops"）正確地不被偵測。
 //
 // 斷言基於 HTML5 語意元素（nav、footer、main），不綁站點，符合硬規則 8。
-// <!-- SANITY-PENDING: 將 'NAV' 加回 SEMANTIC_CONTAINER_EXCLUDE_TAGS，確認 nav 內段落消失 -->
+// SANITY 紀錄(已驗證):將 'NAV' 加回 SEMANTIC_CONTAINER_EXCLUDE_TAGS → 「nav 內的文字應被偵測」斷言 fail(麵包屑 / 趨勢連結消失)。還原 → pass。
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 

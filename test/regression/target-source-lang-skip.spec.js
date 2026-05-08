@@ -11,9 +11,9 @@
 //   target='zh-CN' → 跳 'zh-Hans',繁中 / 英文進候選
 //   target='en'    → 跳 'en',繁中 / 簡中進候選
 
-// SANITY-PENDING: 把 isCandidateText 內 isAlreadyInTarget 改回硬寫
-// `if (SK.isTraditionalChinese(text)) return false;`,zh-CN target case 的「繁中段不該被跳」
-// 斷言會 fail(繁中仍被跳)。
+// SANITY 紀錄(已驗證):把 isCandidateText 內 `isAlreadyInTarget(text, target)` 改回
+// 硬寫 `isTraditionalChinese(text)` → target=zh-CN 與 target=en 兩條 case fail
+// (簡中段 / 英文段被誤跳)。還原 → 全 pass。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';

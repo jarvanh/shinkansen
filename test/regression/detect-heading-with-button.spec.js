@@ -16,7 +16,7 @@
 //   heading 的 HTML 語意就是標題，內部的 button 是輔助控制項不是 CTA。
 //
 // 斷言基於 HTML 語意（heading tag），不綁站點，符合硬規則 8。
-// <!-- SANITY-PENDING: 從 WIDGET_CHECK_EXEMPT_TAGS 移除 H4，確認 #heading-with-btn 消失 -->
+// SANITY 紀錄(已驗證):從 WIDGET_CHECK_EXEMPT_TAGS 移除 'H4' → 「#heading-with-btn 必須被偵測」斷言 fail。還原 → pass。
 import { test, expect } from '../fixtures/extension.js';
 import {
   loadFixtureResponse,

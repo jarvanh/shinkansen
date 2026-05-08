@@ -87,5 +87,9 @@ test('bracket-alias: LLM 把 ⟦⟧ 替換成 ❰❱ 時標記不可洩漏至可
   await page.close();
 });
 
-// <!-- SANITY-PENDING: 把 normalizeLlmPlaceholders 中的 BRACKET_ALIASES_OPEN/CLOSE
-//      替換邏輯註解掉，此 spec 應該 fail（❰❱ 會洩漏） -->
+// SANITY 紀錄(已驗證):此 spec 實際上由「兩層防禦」共同把關 ❰❱ 不洩漏:
+//   (1) normalizeLlmPlaceholders 把 ❰❱ 替換成 ⟦⟧(讓 deserializer 認得)
+//   (2) stripStrayPlaceholderMarkers 在 deserializer fallback 時把 ❰❱ ⟦⟧ 全清掉
+// 只破壞 (1) → spec 仍 pass(走到 fallback,(2) 把字元清掉);
+// 只破壞 (2) → spec 仍 pass((1) 已先把 ❰❱ 轉成 ⟦⟧,deserializer 正常解析無殘留);
+// 兩條同時破壞 → spec fail(❰❱ 殘留可見)。雙層保險是設計上的冗餘,各自獨立修法。

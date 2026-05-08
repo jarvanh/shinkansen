@@ -3,37 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>翻譯文件 — Shinkansen</title>
+  <title data-i18n="doc.title">翻譯文件 — Shinkansen</title>
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
   <header class="app-header">
     <h1>
       <img src="../icons/icon-128.png" alt="" class="app-icon">
-      <span>翻譯文件（beta）</span>
+      <span data-i18n="doc.header">翻譯文件（beta）</span>
     </h1>
   </header>
 
   <main id="app-main">
     <!-- 階段 1：上傳 -->
     <section id="stage-upload" class="stage">
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="拖放或選取文件">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="拖放或選取文件" data-i18n-attr-aria-label="doc.upload.aria">
         <div class="dropzone-icon">📄</div>
-        <div class="dropzone-title">拖放文件至此</div>
-        <div class="dropzone-hint">或點擊選取檔案</div>
+        <div class="dropzone-title" data-i18n="doc.upload.dropzone.title">拖放文件至此</div>
+        <div class="dropzone-hint" data-i18n="doc.upload.dropzone.hint">或點擊選取檔案</div>
         <input type="file" id="file-input" accept="application/pdf,.pdf" hidden>
       </div>
 
       <div class="constraints">
         <div class="constraint-item">
-          <span class="constraint-label">支援上限</span>
-          <span class="constraint-value">50 頁 / 10 MB</span>
+          <span class="constraint-label" data-i18n="doc.upload.constraint.label">支援上限</span>
+          <span class="constraint-value" data-i18n="doc.upload.constraint.value">50 頁 / 10 MB</span>
         </div>
       </div>
 
       <div class="privacy-note">
-        <div class="privacy-note-title">文件不離開你的瀏覽器</div>
-        <div class="privacy-note-detail">整份文件全程在本機解析，不會上傳任何雲端、伺服器或第三方服務。只有擷取出來的純文字會送往你自己設定的 Gemini API 進行翻譯</div>
+        <div class="privacy-note-title" data-i18n="doc.upload.privacy.title">文件不離開你的瀏覽器</div>
+        <div class="privacy-note-detail" data-i18n="doc.upload.privacy.detail">整份文件全程在本機解析，不會上傳任何雲端、伺服器或第三方服務。只有擷取出來的純文字會送往你自己設定的 Gemini API 進行翻譯</div>
       </div>
 
       <div id="upload-error" class="error-banner" hidden></div>
@@ -44,32 +44,32 @@
       <div class="parsing-status">
         <div class="spinner-ring" aria-hidden="true"></div>
         <div class="parsing-text">
-          <div id="parsing-title" class="parsing-title">解析文件中</div>
-          <div id="parsing-detail" class="parsing-detail">讀取檔案結構…</div>
+          <div id="parsing-title" class="parsing-title" data-i18n="doc.parsing.title">解析文件中</div>
+          <div id="parsing-detail" class="parsing-detail" data-i18n="doc.parsing.detail.fileStruct">讀取檔案結構…</div>
         </div>
       </div>
-      <button id="cancel-btn" class="secondary-btn" type="button">取消</button>
+      <button id="cancel-btn" class="secondary-btn" type="button" data-i18n="doc.parsing.btn.cancel">取消</button>
     </section>
 
     <!-- 階段 3：解析完成 dump（W2 暫用——展示版面 IR 摘要） -->
     <section id="stage-result" class="stage" hidden>
-      <h2 class="result-title">解析完成</h2>
+      <h2 class="result-title" data-i18n="doc.result.title">解析完成</h2>
       <div class="result-summary">
-        <div class="result-row"><span>檔名</span><span id="result-filename"></span></div>
-        <div class="result-row"><span>頁數</span><span id="result-pages"></span></div>
-        <div class="result-row"><span>文件字數</span><span id="result-chars"></span></div>
+        <div class="result-row"><span data-i18n="doc.result.row.filename">檔名</span><span id="result-filename"></span></div>
+        <div class="result-row"><span data-i18n="doc.result.row.pages">頁數</span><span id="result-pages"></span></div>
+        <div class="result-row"><span data-i18n="doc.result.row.chars">文件字數</span><span id="result-chars"></span></div>
       </div>
       <div class="result-actions">
-        <button id="translate-btn" class="primary-btn" type="button">開始翻譯</button>
-        <button id="extract-glossary-btn" class="secondary-btn" type="button" title="先用 AI 抽出文章內專有名詞 / 人名對照表，編輯確認後再翻譯，確保譯名前後一致">先建立文章術語表</button>
-        <button id="result-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
-        <button id="reupload-btn" class="secondary-btn" type="button">重新上傳</button>
+        <button id="translate-btn" class="primary-btn" type="button" data-i18n="doc.result.btn.translate">開始翻譯</button>
+        <button id="extract-glossary-btn" class="secondary-btn" type="button" title="先用 AI 抽出文章內專有名詞 / 人名對照表，編輯確認後再翻譯，確保譯名前後一致" data-i18n="doc.result.btn.glossary" data-i18n-attr-title="doc.result.btn.glossary.title">先建立文章術語表</button>
+        <button id="result-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型" data-i18n="doc.result.btn.settings" data-i18n-attr-title="doc.result.btn.settings.title">翻譯設定</button>
+        <button id="reupload-btn" class="secondary-btn" type="button" data-i18n="doc.result.btn.reupload">重新上傳</button>
       </div>
     </section>
 
     <!-- 階段 4.5：翻譯中（W3） -->
     <section id="stage-translating" class="stage" hidden>
-      <h2 class="result-title">翻譯中</h2>
+      <h2 class="result-title" data-i18n="doc.translating.title">翻譯中</h2>
       <div class="translate-progress-wrap">
         <div class="translate-progress-bar"><div id="translate-progress-fill" class="translate-progress-fill"></div></div>
         <div class="translate-progress-meta">
@@ -80,51 +80,51 @@
         <div id="translate-progress-failed" class="translate-progress-failed" hidden></div>
       </div>
       <div class="result-actions">
-        <button id="translate-cancel-btn" class="secondary-btn" type="button">取消</button>
+        <button id="translate-cancel-btn" class="secondary-btn" type="button" data-i18n="doc.translating.btn.cancel">取消</button>
       </div>
     </section>
 
     <!-- 翻譯設定 modal（stage-result / reader-toolbar 各一個按鈕都開這個） -->
     <dialog id="translate-settings-dialog" class="summary-dialog">
-      <h2 class="result-title">翻譯設定</h2>
+      <h2 class="result-title" data-i18n="doc.settings.title">翻譯設定</h2>
       <div class="settings-section">
-        <div class="settings-label">使用哪組預設</div>
+        <div class="settings-label" data-i18n="doc.settings.label.preset">使用哪組預設</div>
         <div id="settings-preset-list" class="settings-preset-list"></div>
-        <p class="settings-hint">三組預設的引擎、模型、標籤在「設定 → 翻譯快速鍵」分頁自訂</p>
+        <p class="settings-hint" data-i18n="doc.settings.hint.preset">三組預設的引擎、模型、標籤在「設定 → 翻譯快速鍵」分頁自訂</p>
       </div>
       <div class="settings-section">
-        <div class="settings-label">本篇翻譯記憶</div>
-        <button id="settings-clear-doc-cache-btn" class="secondary-btn" type="button">清除本篇翻譯記憶</button>
+        <div class="settings-label" data-i18n="doc.settings.label.docCache">本篇翻譯記憶</div>
+        <button id="settings-clear-doc-cache-btn" class="secondary-btn" type="button" data-i18n="doc.settings.btn.clearDocCache">清除本篇翻譯記憶</button>
         <span id="settings-clear-doc-cache-status" class="settings-hint" style="margin-left:8px"></span>
-        <p class="settings-hint">只清掉這份文件的翻譯記憶（其他文件 / 網頁 / 字幕不影響）。清除後下次翻這份會重新呼叫 AI 翻譯。適合「覺得譯文有錯想重來」「想換個翻譯指令重試」的情境</p>
+        <p class="settings-hint" data-i18n="doc.settings.hint.docCache">只清掉這份文件的翻譯記憶（其他文件 / 網頁 / 字幕不影響）。清除後下次翻這份會重新呼叫 AI 翻譯。適合「覺得譯文有錯想重來」「想換個翻譯指令重試」的情境</p>
       </div>
       <!-- W7：深設定（翻譯指令 / 預設選項 / 清除所有文件翻譯記憶）在獨立 page，不擠進 modal -->
       <div class="settings-section">
-        <button id="settings-open-doc-options-btn" class="secondary-btn" type="button">進階設定 →</button>
-        <p class="settings-hint">開啟「文件翻譯設定」分頁，可自訂翻譯指令、調整預設選項、清除翻譯記憶</p>
+        <button id="settings-open-doc-options-btn" class="secondary-btn" type="button" data-i18n="doc.settings.btn.openOptions">進階設定 →</button>
+        <p class="settings-hint" data-i18n="doc.settings.hint.openOptions">開啟「文件翻譯設定」分頁，可自訂翻譯指令、調整預設選項、清除翻譯記憶</p>
       </div>
       <div class="result-actions">
-        <button id="translate-settings-save-btn" class="primary-btn" type="button">儲存</button>
-        <button id="translate-settings-cancel-btn" class="secondary-btn" type="button">取消</button>
+        <button id="translate-settings-save-btn" class="primary-btn" type="button" data-i18n="doc.settings.btn.save">儲存</button>
+        <button id="translate-settings-cancel-btn" class="secondary-btn" type="button" data-i18n="doc.settings.btn.cancel">取消</button>
       </div>
     </dialog>
 
     <!-- 翻譯紀錄 modal（從工具欄「翻譯紀錄」按鈕開啟） -->
     <dialog id="translate-summary-dialog" class="summary-dialog">
-      <h2 class="result-title">翻譯紀錄</h2>
+      <h2 class="result-title" data-i18n="doc.summary.title">翻譯紀錄</h2>
       <div class="result-summary">
-        <div class="result-row"><span>檔名</span><span id="translated-filename"></span></div>
-        <div class="result-row"><span>已翻譯段落</span><span id="translated-count"></span></div>
-        <div class="result-row"><span>翻譯失敗</span><span id="translated-failed"></span></div>
-        <div class="result-row"><span>快取命中</span><span id="translated-cache-hits"></span></div>
-        <div class="result-row"><span>輸入 token</span><span id="translated-input-tokens"></span></div>
-        <div class="result-row"><span>輸出 token</span><span id="translated-output-tokens"></span></div>
-        <div class="result-row"><span>累計費用</span><span id="translated-cost"></span></div>
+        <div class="result-row"><span data-i18n="doc.summary.row.filename">檔名</span><span id="translated-filename"></span></div>
+        <div class="result-row"><span data-i18n="doc.summary.row.translated">已翻譯段落</span><span id="translated-count"></span></div>
+        <div class="result-row"><span data-i18n="doc.summary.row.failed">翻譯失敗</span><span id="translated-failed"></span></div>
+        <div class="result-row"><span data-i18n="doc.summary.row.cacheHits">快取命中</span><span id="translated-cache-hits"></span></div>
+        <div class="result-row"><span data-i18n="doc.summary.row.inputTokens">輸入 token</span><span id="translated-input-tokens"></span></div>
+        <div class="result-row"><span data-i18n="doc.summary.row.outputTokens">輸出 token</span><span id="translated-output-tokens"></span></div>
+        <div class="result-row"><span data-i18n="doc.summary.row.cost">累計費用</span><span id="translated-cost"></span></div>
       </div>
       <div class="result-actions">
-        <button id="summary-retry-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗的段落">重試失敗段落</button>
-        <button id="translate-summary-overlay-btn" class="secondary-btn" type="button">查看版面結構</button>
-        <button id="translate-summary-close-btn" class="secondary-btn" type="button">關閉</button>
+        <button id="summary-retry-btn" class="secondary-btn" type="button" hidden title="重試所有翻譯失敗的段落" data-i18n="doc.summary.btn.retry" data-i18n-attr-title="doc.summary.btn.retry.title">重試失敗段落</button>
+        <button id="translate-summary-overlay-btn" class="secondary-btn" type="button" data-i18n="doc.summary.btn.overlay">查看版面結構</button>
+        <button id="translate-summary-close-btn" class="secondary-btn" type="button" data-i18n="doc.summary.btn.close">關閉</button>
       </div>
     </dialog>
 
@@ -132,22 +132,22 @@
     <section id="stage-reader" class="stage" hidden>
       <div class="reader-toolbar">
         <span class="reader-toolbar-spacer"></span>
-        <span class="reader-zoom-group" title="調整顯示大小（50%-200%，用 CSS 縮放，canvas 解析度不變）">
+        <span class="reader-zoom-group" title="調整顯示大小（50%-200%，用 CSS 縮放，canvas 解析度不變）" data-i18n-attr-title="doc.reader.zoom.title">
           <button id="reader-zoom-out" class="secondary-btn" type="button">−</button>
           <span id="reader-zoom-level" class="reader-zoom-level">100%</span>
           <button id="reader-zoom-in" class="secondary-btn" type="button">+</button>
         </span>
-        <label class="debug-toolbar-toggle" title="關閉後左右欄各自獨立捲動，不互相同步">
+        <label class="debug-toolbar-toggle" title="關閉後左右欄各自獨立捲動，不互相同步" data-i18n-attr-title="doc.reader.sync.title">
           <input type="checkbox" id="reader-sync-toggle" checked>
-          同步捲動
+          <span data-i18n="doc.reader.sync.label">同步捲動</span>
         </label>
-        <button id="reader-edit-btn" class="secondary-btn" type="button" title="逐段編輯譯文（支援 markdown 標記），儲存後重新產生雙頁預覽">編輯譯文</button>
-        <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿">複製譯文</button>
-        <button id="reader-summary-btn" class="secondary-btn" type="button" title="查看翻譯紀錄（已翻段數 / 失敗 / 快取命中 / token / 費用）+ 開啟版面 overlay">翻譯紀錄</button>
-        <button id="reader-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型">翻譯設定</button>
-        <button id="reader-reupload-btn" class="secondary-btn" type="button">重新上傳</button>
+        <button id="reader-edit-btn" class="secondary-btn" type="button" title="逐段編輯譯文（支援 markdown 標記），儲存後重新產生雙頁預覽" data-i18n="doc.reader.btn.edit" data-i18n-attr-title="doc.reader.btn.edit.title">編輯譯文</button>
+        <button id="reader-copy-btn" class="secondary-btn" type="button" title="複製整份譯文純文字到剪貼簿" data-i18n="doc.reader.btn.copy" data-i18n-attr-title="doc.reader.btn.copy.title">複製譯文</button>
+        <button id="reader-summary-btn" class="secondary-btn" type="button" title="查看翻譯紀錄（已翻段數 / 失敗 / 快取命中 / token / 費用）+ 開啟版面 overlay" data-i18n="doc.reader.btn.summary" data-i18n-attr-title="doc.reader.btn.summary.title">翻譯紀錄</button>
+        <button id="reader-settings-btn" class="secondary-btn" type="button" title="選擇翻譯用的 preset 模型" data-i18n="doc.reader.btn.settings" data-i18n-attr-title="doc.reader.btn.settings.title">翻譯設定</button>
+        <button id="reader-reupload-btn" class="secondary-btn" type="button" data-i18n="doc.reader.btn.reupload">重新上傳</button>
         <span class="reader-toolbar-spacer"></span>
-        <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照譯文（每張原頁後接一張譯文頁）">下載譯文</button>
+        <button id="reader-download-pdf-btn" class="primary-btn" type="button" title="下載雙頁並排對照譯文（每張原頁後接一張譯文頁）" data-i18n="doc.reader.btn.download" data-i18n-attr-title="doc.reader.btn.download.title">下載譯文</button>
       </div>
       <div class="reader-grid">
         <div class="reader-col reader-col-original" id="reader-col-original"></div>
@@ -158,25 +158,25 @@
     <!-- 階段 5：譯文編輯（v1.8.49）——逐段編輯譯文，儲存後重新產生雙頁預覽 -->
     <section id="stage-edit" class="stage" hidden>
       <div class="edit-toolbar">
-        <span class="edit-toolbar-title">編輯譯文</span>
-        <button id="edit-glossary-btn" class="secondary-btn" type="button" title="編輯文章術語表（沒建過會先自動抽取），編輯後會用新術語表重新翻譯整份文件">編輯文章術語表並重新翻譯</button>
+        <span class="edit-toolbar-title" data-i18n="doc.edit.title">編輯譯文</span>
+        <button id="edit-glossary-btn" class="secondary-btn" type="button" title="編輯文章術語表（沒建過會先自動抽取），編輯後會用新術語表重新翻譯整份文件" data-i18n="doc.edit.btn.glossary" data-i18n-attr-title="doc.edit.btn.glossary.title">編輯文章術語表並重新翻譯</button>
         <span class="edit-toolbar-spacer"></span>
-        <button id="edit-cancel-btn" class="secondary-btn" type="button">取消</button>
-        <button id="edit-save-btn" class="primary-btn" type="button">儲存並重新產生文件</button>
+        <button id="edit-cancel-btn" class="secondary-btn" type="button" data-i18n="doc.edit.btn.cancel">取消</button>
+        <button id="edit-save-btn" class="primary-btn" type="button" data-i18n="doc.edit.btn.save">儲存並重新產生文件</button>
       </div>
       <div id="edit-find-bar" class="edit-find-bar" hidden>
-        <input type="text" id="edit-find-input" class="edit-find-input" placeholder="搜尋譯文">
+        <input type="text" id="edit-find-input" class="edit-find-input" placeholder="搜尋譯文" data-i18n-attr-placeholder="doc.edit.find.placeholder">
         <span id="edit-find-count" class="edit-find-count">0 / 0</span>
-        <button id="edit-find-prev-btn" class="secondary-btn" type="button" title="上一個 (Shift+Enter)">↑</button>
-        <button id="edit-find-next-btn" class="secondary-btn" type="button" title="下一個 (Enter)">↓</button>
+        <button id="edit-find-prev-btn" class="secondary-btn" type="button" title="上一個 (Shift+Enter)" data-i18n-attr-title="doc.edit.find.btn.prev.title">↑</button>
+        <button id="edit-find-next-btn" class="secondary-btn" type="button" title="下一個 (Enter)" data-i18n-attr-title="doc.edit.find.btn.next.title">↓</button>
         <span class="edit-find-divider"></span>
-        <input type="text" id="edit-replace-input" class="edit-find-input" placeholder="取代為">
-        <button id="edit-replace-btn" class="secondary-btn" type="button" title="取代當前">取代</button>
-        <button id="edit-replace-all-btn" class="secondary-btn" type="button" title="全部取代">全部取代</button>
+        <input type="text" id="edit-replace-input" class="edit-find-input" placeholder="取代為" data-i18n-attr-placeholder="doc.edit.find.replacePlaceholder">
+        <button id="edit-replace-btn" class="secondary-btn" type="button" title="取代當前" data-i18n="doc.edit.find.btn.replace" data-i18n-attr-title="doc.edit.find.btn.replace.title">取代</button>
+        <button id="edit-replace-all-btn" class="secondary-btn" type="button" title="全部取代" data-i18n="doc.edit.find.btn.replaceAll" data-i18n-attr-title="doc.edit.find.btn.replaceAll.title">全部取代</button>
         <span class="edit-toolbar-spacer"></span>
-        <button id="edit-find-close-btn" class="secondary-btn" type="button" title="關閉 (Esc)">×</button>
+        <button id="edit-find-close-btn" class="secondary-btn" type="button" title="關閉 (Esc)" data-i18n-attr-title="doc.edit.find.btn.close.title">×</button>
       </div>
-      <div class="edit-help">
+      <div class="edit-help" data-i18n-html="doc.edit.help.html">
         <strong>支援格式</strong>：<code>**粗體**</code>、<code>*斜體*</code>、<code>[連結文字](網址)</code>。其他字元當純文字。譯文留空表示不顯示譯文（保留原文）。儲存後會重新產生雙頁預覽，編輯結果不會跨次保存。<strong>搜尋取代</strong>：<code>⌘F</code> / <code>Ctrl+F</code> 開啟
       </div>
       <div id="edit-list" class="edit-list"></div>
@@ -185,29 +185,29 @@
     <!-- 階段 6：文章術語表編輯（v1.8.49）——翻譯前 / reader 內都可進來編輯 -->
     <section id="stage-glossary" class="stage" hidden>
       <div class="glossary-toolbar">
-        <span class="glossary-toolbar-title">文章術語表</span>
+        <span class="glossary-toolbar-title" data-i18n="doc.glossary.title">文章術語表</span>
         <span id="glossary-count" class="glossary-count">0 條</span>
         <span class="edit-toolbar-spacer"></span>
-        <button id="glossary-import-btn" class="secondary-btn" type="button" title="從 JSON 檔匯入術語表（覆蓋現有內容）">匯入 JSON</button>
-        <button id="glossary-export-btn" class="secondary-btn" type="button" title="把目前術語表存成 JSON 檔">匯出 JSON</button>
-        <button id="glossary-reextract-btn" class="secondary-btn" type="button" title="重新請 AI 抽取（覆蓋現有內容）">重新抽取</button>
-        <button id="glossary-cancel-btn" class="secondary-btn" type="button">取消</button>
-        <button id="glossary-translate-btn" class="primary-btn" type="button">用此術語表翻譯</button>
+        <button id="glossary-import-btn" class="secondary-btn" type="button" title="從 JSON 檔匯入術語表（覆蓋現有內容）" data-i18n="doc.glossary.btn.import" data-i18n-attr-title="doc.glossary.btn.import.title">匯入 JSON</button>
+        <button id="glossary-export-btn" class="secondary-btn" type="button" title="把目前術語表存成 JSON 檔" data-i18n="doc.glossary.btn.export" data-i18n-attr-title="doc.glossary.btn.export.title">匯出 JSON</button>
+        <button id="glossary-reextract-btn" class="secondary-btn" type="button" title="重新請 AI 抽取（覆蓋現有內容）" data-i18n="doc.glossary.btn.reextract" data-i18n-attr-title="doc.glossary.btn.reextract.title">重新抽取</button>
+        <button id="glossary-cancel-btn" class="secondary-btn" type="button" data-i18n="doc.glossary.btn.cancel">取消</button>
+        <button id="glossary-translate-btn" class="primary-btn" type="button" data-i18n="doc.glossary.btn.translate">用此術語表翻譯</button>
       </div>
-      <div class="edit-help">
+      <div class="edit-help" data-i18n-html="doc.glossary.help.html">
         <strong>用途</strong>：翻譯時 AI 會把這份對照表當作必須遵守的譯名規則，確保人名 / 專有名詞前後譯法一致。文章術語表跟「設定 → 術語表」的固定術語表合併使用，<strong>同一個原文以文章術語表為準</strong>。從閱讀器進來編輯後按「用此術語表翻譯」會重新呼叫 AI 翻整份文件，會產生費用
       </div>
       <div class="glossary-table-wrap">
         <div id="glossary-grid" class="glossary-grid">
-          <div class="g-header">原文</div>
-          <div class="g-header">譯文</div>
+          <div class="g-header" data-i18n="doc.glossary.col.source">原文</div>
+          <div class="g-header" data-i18n="doc.glossary.col.target">譯文</div>
           <div class="g-header g-header-action"></div>
-          <div class="g-header g-header-secondary">原文</div>
-          <div class="g-header g-header-secondary">譯文</div>
+          <div class="g-header g-header-secondary" data-i18n="doc.glossary.col.source">原文</div>
+          <div class="g-header g-header-secondary" data-i18n="doc.glossary.col.target">譯文</div>
           <div class="g-header g-header-action g-header-secondary"></div>
         </div>
         <div class="glossary-actions">
-          <button id="glossary-add-row-btn" class="secondary-btn" type="button">＋ 加一列</button>
+          <button id="glossary-add-row-btn" class="secondary-btn" type="button" data-i18n="doc.glossary.btn.addRow">＋ 加一列</button>
         </div>
       </div>
       <input type="file" id="glossary-import-file" accept="application/json,.json" hidden>
@@ -222,25 +222,25 @@
         <span class="debug-toolbar-spacer"></span>
         <label class="debug-toolbar-toggle">
           <input type="checkbox" id="debug-show-bbox" checked>
-          顯示 bbox
+          <span data-i18n="doc.debug.bbox">顯示 bbox</span>
         </label>
         <label class="debug-toolbar-toggle">
           <input type="checkbox" id="debug-show-order" checked>
-          顯示 reading order
+          <span data-i18n="doc.debug.order">顯示 reading order</span>
         </label>
         <span class="debug-isolate-row">
-          只看 #
-          <input type="number" id="debug-isolate-input" min="0" placeholder="全部">
+          <span data-i18n="doc.debug.isolate.label">只看 #</span>
+          <input type="number" id="debug-isolate-input" min="0" placeholder="全部" data-i18n-attr-placeholder="doc.debug.isolate.placeholder">
         </span>
         <span class="debug-toolbar-toggle">
-          上色：
+          <span data-i18n="doc.debug.color.label">上色：</span>
           <select id="debug-color-mode" class="debug-color-select">
-            <option value="type" selected>依類型</option>
-            <option value="order">依 reading order</option>
+            <option value="type" selected data-i18n="doc.debug.color.byType">依類型</option>
+            <option value="order" data-i18n="doc.debug.color.byOrder">依 reading order</option>
           </select>
         </span>
-        <button id="debug-copy-json-btn" class="secondary-btn" type="button" title="複製整份 layout doc 序列化結果到剪貼簿（供回報 / debug 用）">複製 JSON</button>
-        <button id="debug-back-btn" class="secondary-btn" type="button">關閉</button>
+        <button id="debug-copy-json-btn" class="secondary-btn" type="button" title="複製整份 layout doc 序列化結果到剪貼簿（供回報 / debug 用）" data-i18n="doc.debug.btn.copyJson" data-i18n-attr-title="doc.debug.btn.copyJson.title">複製 JSON</button>
+        <button id="debug-back-btn" class="secondary-btn" type="button" data-i18n="doc.debug.btn.back">關閉</button>
       </div>
 
       <div class="debug-stats">
@@ -252,7 +252,7 @@
       <!-- detail 放在 viewport 上方 + sticky，讓使用者 hover 時不需要 scroll
            就能看到原文/譯文（bbox / canvas 高可達 1100+ px，放下面看不到） -->
       <div class="debug-detail" id="debug-detail">
-        <span class="debug-detail-empty">把游標移到 bbox 上看該 block 的 plainText / 譯文</span>
+        <span class="debug-detail-empty" data-i18n="doc.debug.detail.empty">把游標移到 bbox 上看該 block 的 plainText / 譯文</span>
       </div>
 
       <div class="debug-viewport-wrap">
@@ -272,6 +272,7 @@
        — 載成 window.PDFLib / window.fontkit globals，給 pdf-renderer.js 用 -->
   <script src="../lib/vendor/pdf-lib/pdf-lib.min.js"></script>
   <script src="../lib/vendor/pdf-lib/fontkit.umd.min.js"></script>
+  <script src="../lib/i18n.js"></script>
   <script type="module" src="index.js"></script>
 </body>
 </html>
