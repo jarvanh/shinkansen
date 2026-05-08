@@ -33,18 +33,6 @@ button.primary {
 }
 button.primary:hover { background: #0077ed; }
 
-/* P1 (v1.8.59): i18n 過渡 banner，非 zh-TW target 時顯示。輕量灰底卡片，不搶 primary 按鈕視線。 */
-.i18n-transition-banner {
-  background: #f5f5f7;
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  text-align: center;
-  color: #6e6e73;
-  font-size: 11px;
-}
-.i18n-transition-banner[hidden] { display: none !important; }
-
 button.secondary {
   width: 100%;
   padding: 8px;
@@ -89,10 +77,20 @@ button.secondary:hover { background: #f0f4ff; }
 footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* v1.8.60: 三個 footer 子元素改 3 等寬欄 + 文字置中。en UI 後 label 變長
+     (Translate document (beta) / quick toggle 等)會 wrap,space-between 排法
+     會讓「Settings」擠左、長 label 擠中右,視覺不平衡。改 flex: 1 1 0 + text-align: center
+     讓三欄等寬,wrap 也固定欄內置中。 */
   padding: 10px 16px;
   border-top: 1px solid #eee;
   background: #fafafa;
+  gap: 8px;
+}
+
+footer > * {
+  flex: 1 1 0;
+  text-align: center;
+  min-width: 0; /* 允許長 label 在欄內 wrap,不撐爆 grid */
 }
 
 button.link {

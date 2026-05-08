@@ -12,6 +12,15 @@
 import { test, expect } from '../fixtures/extension.js';
 
 test('preset 標籤改變時下游兩個下拉選單即時更新', async ({ context, extensionId }) => {
+  // P2 (v1.8.60):_slotTitle 改用 SK.t() 後 prefix 文字依 uiLanguage 切;鎖死
+  // zh-TW 才能比對「預設 2」字面值(預設 'auto' 依 navigator.language 推導,
+  // headless chromium 走 en)。改用 uiLanguage(v1.8.60 起 UI 跟 target 解綁)。
+  const sw = context.serviceWorkers()[0]
+    || (await context.waitForEvent('serviceworker', { timeout: 10_000 }));
+  await sw.evaluate(async () => {
+    await chrome.storage.sync.set({ uiLanguage: 'zh-TW' });
+  });
+
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#preset-label-1');

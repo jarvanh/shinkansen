@@ -27,7 +27,6 @@
     'popup.banner.welcomeDismiss': '知道了',
     'popup.banner.updateNoticeTitle': '📦 有新版可下載',
     'popup.banner.updateNoticeVersion': 'v{newVersion}（你目前是 v{currentVersion}）',
-    'popup.banner.i18nFallback': 'UI shown in English · Translation works fully',
     'popup.label.displayMode': '顯示模式',
     'popup.label.modeSingle': '單語覆蓋',
     'popup.label.modeDual': '雙語對照',
@@ -130,8 +129,14 @@
     'options.updateBanner.title': '📦 有新版可下載',
     'options.updateBanner.dismiss': '不再提示',
     'options.updateBanner.dismissTitle': '不再顯示更新提示',
+    'options.updateBanner.version': 'v{newVersion}（你目前是 v{currentVersion}）',
 
     // ── options 翻譯目標語言 ─────────────────────────────
+    'options.uiLanguage.heading': '介面語言',
+    'options.uiLanguage.label': '擴充功能介面顯示',
+    'options.uiLanguage.auto': '自動（跟瀏覽器設定）',
+    'options.uiLanguage.hint': '控制 popup、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟下方「翻譯目標語言」獨立，互不影響',
+
     'options.target.heading': '翻譯目標語言',
     'options.target.label': '翻譯成',
     'options.target.hint.html': '所有翻譯模式（網頁、PDF、YouTube 字幕）共用此目標語言。變更後新翻譯結果會用新語言；舊翻譯快取仍保留，可在 Popup 點「清除快取」重新翻譯。<strong>zh-CN 與 en 為新增功能，品質持續優化中</strong>',
@@ -152,6 +157,7 @@
     'options.preset.primary': '主要預設',
     'options.preset.slot2': '預設 2',
     'options.preset.slot3': '預設 3',
+    'options.preset.fallbackLabel': '預設 {slot}',
     'options.preset.label': '標籤',
     'options.preset.engine': '翻譯引擎',
     'options.preset.engineGemini': 'Gemini（AI 翻譯）',
@@ -315,6 +321,14 @@
     'options.gemini.resetAllTitle': '把本分頁所有欄位重設為預設值（按下後仍需點「儲存設定」才會生效）',
     'options.gemini.resetAllConfirm': '確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：Service Tier、模型計價覆蓋（清空走內建表）、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Top P、Top K、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後仍需點「儲存設定」才會生效。',
     'options.gemini.resetAllDone': '欄位已重設，請按「儲存設定」生效',
+
+    // ── options Gemini cost-hint(動態 yt-prompt-cost-hint) ─
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate 不會送 prompt</strong>，這兩個 toggle 對 Google MT 不適用。',
+    'options.gemini.cost.noPrice.html': '<strong>無法估算費用</strong>：請在對應的計價欄位設定 input 單價（USD / 1M tokens）。',
+    'options.gemini.cost.estimateHeader.html': '<strong>token 開銷估算</strong>（以目前模型 <code>{model}</code> 計，input ${inputPrice}/1M tokens、30 分鐘影片約 60 批）：',
+    'options.gemini.cost.estimateGlossary.html': '• 套用「固定術語表」（{count} 條）→ 每批 prompt +{tok} token，全片約 {usd}（cache 命中後 ~{usdCache}）',
+    'options.gemini.cost.estimateForbidden.html': '• 套用「禁用詞清單」（{count} 條）→ 每批 prompt +{tok} token，全片約 {usd}（cache 命中後 ~{usdCache}）',
+    'options.gemini.cost.estimateFooter.html': '※ token 為粗估，實際以 Gemini tokenizer 為準。Gemini implicit cache 命中需 prompt prefix ≥1024 token 且穩定，命中部分 25% 計費。',
 
     // ── options 術語表分頁 ───────────────────────────────
     'options.glossary.fixed.heading': '固定術語表',
@@ -568,7 +582,6 @@
     'popup.banner.welcomeDismiss': '知道了',
     'popup.banner.updateNoticeTitle': '📦 有新版可下载',
     'popup.banner.updateNoticeVersion': 'v{newVersion}（你目前是 v{currentVersion}）',
-    'popup.banner.i18nFallback': 'UI shown in English · Translation works fully',
     'popup.label.displayMode': '显示模式',
     'popup.label.modeSingle': '单语覆盖',
     'popup.label.modeDual': '双语对照',
@@ -671,8 +684,14 @@
     'options.updateBanner.title': '📦 有新版可下载',
     'options.updateBanner.dismiss': '不再提示',
     'options.updateBanner.dismissTitle': '不再显示更新提示',
+    'options.updateBanner.version': 'v{newVersion}（你当前是 v{currentVersion}）',
 
     // ── options 翻译目标语言 ─────────────────────────────
+    'options.uiLanguage.heading': '界面语言',
+    'options.uiLanguage.label': '扩展功能界面显示',
+    'options.uiLanguage.auto': '自动（跟浏览器设置）',
+    'options.uiLanguage.hint': '控制 popup、设置页、翻译进度通知等扩展功能界面字符串的语言。跟下方「翻译目标语言」独立，互不影响',
+
     'options.target.heading': '翻译目标语言',
     'options.target.label': '翻译成',
     'options.target.hint.html': '所有翻译模式（网页、PDF、YouTube 字幕）共用此目标语言。变更后新翻译结果会用新语言；旧翻译缓存仍保留，可在 Popup 点「清除缓存」重新翻译。<strong>zh-CN 与 en 为新增功能，质量持续优化中</strong>',
@@ -693,6 +712,7 @@
     'options.preset.primary': '主要预设',
     'options.preset.slot2': '预设 2',
     'options.preset.slot3': '预设 3',
+    'options.preset.fallbackLabel': '预设 {slot}',
     'options.preset.label': '标签',
     'options.preset.engine': '翻译引擎',
     'options.preset.engineGemini': 'Gemini（AI 翻译）',
@@ -856,6 +876,14 @@
     'options.gemini.resetAllTitle': '把本分页所有字段重置为默认值（按下后仍需点「保存设置」才会生效）',
     'options.gemini.resetAllConfirm': '确定要把 Gemini 分页所有参数重置为默认值吗？\n\n影响字段：Service Tier、模型计价覆盖（清空走内置表）、Tier/RPM/TPM/RPD、安全边际、重试次数、Temperature、Top P、Top K、Max Output Tokens、翻译 Prompt、并发批次、每批段数/字符/段落上限。\n\n按下后仍需点「保存设置」才会生效。',
     'options.gemini.resetAllDone': '字段已重置，请按「保存设置」生效',
+
+    // ── options Gemini cost-hint(动态 yt-prompt-cost-hint) ─
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate 不会发送 prompt</strong>，这两个 toggle 对 Google MT 不适用。',
+    'options.gemini.cost.noPrice.html': '<strong>无法估算费用</strong>：请在对应的计价字段设置 input 单价（USD / 1M tokens）。',
+    'options.gemini.cost.estimateHeader.html': '<strong>token 开销估算</strong>（以当前模型 <code>{model}</code> 计，input ${inputPrice}/1M tokens、30 分钟视频约 60 批）：',
+    'options.gemini.cost.estimateGlossary.html': '• 应用「固定术语表」（{count} 条）→ 每批 prompt +{tok} token，全片约 {usd}（cache 命中后 ~{usdCache}）',
+    'options.gemini.cost.estimateForbidden.html': '• 应用「禁用词清单」（{count} 条）→ 每批 prompt +{tok} token，全片约 {usd}（cache 命中后 ~{usdCache}）',
+    'options.gemini.cost.estimateFooter.html': '※ token 为粗估，实际以 Gemini tokenizer 为准。Gemini implicit cache 命中需 prompt prefix ≥1024 token 且稳定，命中部分 25% 计费。',
 
     // ── options 术语表分页 ───────────────────────────────
     'options.glossary.fixed.heading': '固定术语表',
@@ -1109,7 +1137,6 @@
     'popup.banner.welcomeDismiss': 'Got it',
     'popup.banner.updateNoticeTitle': '📦 Update available',
     'popup.banner.updateNoticeVersion': 'v{newVersion} (you are on v{currentVersion})',
-    'popup.banner.i18nFallback': 'UI shown in English · Translation works fully',
     'popup.label.displayMode': 'Display mode',
     'popup.label.modeSingle': 'Replace',
     'popup.label.modeDual': 'Bilingual',
@@ -1212,8 +1239,14 @@
     'options.updateBanner.title': '📦 Update available',
     'options.updateBanner.dismiss': "Don't show again",
     'options.updateBanner.dismissTitle': "Don't show update notice again",
+    'options.updateBanner.version': 'v{newVersion} (you have v{currentVersion})',
 
     // ── options target language ───────────────────────────
+    'options.uiLanguage.heading': 'Interface language',
+    'options.uiLanguage.label': 'Extension UI shown in',
+    'options.uiLanguage.auto': 'Automatic (follow browser locale)',
+    'options.uiLanguage.hint': 'Controls the language of the popup, settings page, translation progress toast, and other extension UI strings. Independent from the "Translation target language" setting below.',
+
     'options.target.heading': 'Translation target language',
     'options.target.label': 'Translate to',
     'options.target.hint.html': 'All translation modes (web, PDF, YouTube subtitles) share this target language. New translations after change use the new language; old cache is preserved—click "Clear cache" in Popup to re-translate. <strong>zh-CN and en are new features, quality continuously improving</strong>',
@@ -1234,6 +1267,7 @@
     'options.preset.primary': 'Primary preset',
     'options.preset.slot2': 'Preset 2',
     'options.preset.slot3': 'Preset 3',
+    'options.preset.fallbackLabel': 'Preset {slot}',
     'options.preset.label': 'Label',
     'options.preset.engine': 'Translation engine',
     'options.preset.engineGemini': 'Gemini (AI translation)',
@@ -1397,6 +1431,14 @@
     'options.gemini.resetAllTitle': 'Reset all fields on this tab to defaults (still need to click "Save settings" to apply)',
     'options.gemini.resetAllConfirm': 'Reset all Gemini tab params to defaults?\n\nAffected fields: Service Tier, model pricing override (clear → use built-in table), Tier/RPM/TPM/RPD, safety margin, retry count, Temperature, Top P, Top K, Max Output Tokens, Translation Prompt, concurrent batches, paragraphs/chars/page limit per batch.\n\nStill need to click "Save settings" to apply.',
     'options.gemini.resetAllDone': 'Fields reset, click "Save settings" to apply',
+
+    // ── options Gemini cost-hint (dynamic yt-prompt-cost-hint) ─
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate sends no prompt</strong>; these two toggles do not apply to Google MT.',
+    'options.gemini.cost.noPrice.html': '<strong>Cannot estimate cost</strong>: please set the input unit price (USD / 1M tokens) in the corresponding pricing field.',
+    'options.gemini.cost.estimateHeader.html': '<strong>Token cost estimate</strong> (using current model <code>{model}</code>, input ${inputPrice}/1M tokens, ~60 batches per 30-min video):',
+    'options.gemini.cost.estimateGlossary.html': '• Applying "Fixed glossary" ({count} entries) → +{tok} token per batch prompt, ~{usd} per video (~{usdCache} after cache hit)',
+    'options.gemini.cost.estimateForbidden.html': '• Applying "Forbidden terms" ({count} entries) → +{tok} token per batch prompt, ~{usd} per video (~{usdCache} after cache hit)',
+    'options.gemini.cost.estimateFooter.html': '※ Token is a rough estimate; actual count uses Gemini tokenizer. Gemini implicit cache hit requires a stable prompt prefix ≥1024 tokens; the matched portion is billed at 25%.',
 
     // ── options glossary tab ─────────────────────────────
     'options.glossary.fixed.heading': 'Fixed glossary',
@@ -1645,8 +1687,21 @@
   const SUPPORTED_UI_LANGS = ['zh-TW', 'zh-CN', 'en'];
   const FALLBACK_LANG = 'en';
 
-  function getUiLanguage(targetLanguage) {
-    if (SUPPORTED_UI_LANGS.includes(targetLanguage)) return targetLanguage;
+  // P2 (v1.8.60):接受兩種輸入型態:
+  //   - uiLanguage 偏好值('auto' / 'zh-TW' / 'zh-CN' / 'en' / undefined)— 新路徑,
+  //     'auto' 走 navigator.language 推導三語其一(zh-TW/HK/Hant 系 → zh-TW;其他 zh → zh-CN;
+  //     else → en)
+  //   - 任一字串(target 8 語其一)— 舊路徑相容(content scripts 仍可能傳 STATE.targetLanguage)。
+  //     若值在 SUPPORTED_UI_LANGS 內(三語)直接 return,否則 fallback en。
+  // 兩種路徑統一入口:'auto' 是新增的 sentinel,其他輸入維持舊行為。
+  function getUiLanguage(input) {
+    if (input === 'auto' || input == null) {
+      const nav = ((typeof navigator !== 'undefined' && navigator.language) || 'en').toLowerCase();
+      if (nav.startsWith('zh-tw') || nav.startsWith('zh-hant') || nav.startsWith('zh-hk')) return 'zh-TW';
+      if (nav.startsWith('zh')) return 'zh-CN';
+      return FALLBACK_LANG;
+    }
+    if (SUPPORTED_UI_LANGS.includes(input)) return input;
     return FALLBACK_LANG;
   }
 
@@ -1672,10 +1727,13 @@
     return key;
   }
 
+  // P2 (v1.8.60):content scripts 場景透過 STATE.uiLanguage(優先)/ STATE.targetLanguage
+  // (舊行為相容)決定 dict。popup / options 直接傳 lang 參數,不走此 fallback。
   function _readCurrentTarget() {
     try {
-      if (global.__SK && global.__SK.STATE && global.__SK.STATE.targetLanguage) {
-        return global.__SK.STATE.targetLanguage;
+      if (global.__SK && global.__SK.STATE) {
+        if (global.__SK.STATE.uiLanguage) return global.__SK.STATE.uiLanguage;
+        if (global.__SK.STATE.targetLanguage) return global.__SK.STATE.targetLanguage;
       }
     } catch (_) { /* 略 */ }
     return 'zh-TW';
@@ -1725,17 +1783,22 @@
     }
   }
 
-  // subscribeUiLanguageChange — 監聽 settings.targetLanguage 變動
-  // callback(newUiLanguage, newTarget) 觸發時保留供呼叫方 reapplyI18n
+  // P2 (v1.8.60):監聽 settings.uiLanguage 變動(新)+ targetLanguage 變動(舊行為相容)。
+  // 真正觸發 UI dict 切換的是 uiLanguage;若 storage 只動 targetLanguage(non-UI sync change),
+  // UI 不該重 render。但同時還要支援舊 P2 release 沒寫入 uiLanguage 的場景(callback 預設
+  // 行為:任何 sync change 都檢查 effective ui dict 是否變化)。
+  // callback(newUiLanguageDict, newRawValue) 觸發時保留供呼叫方 reapplyI18n
   function subscribeUiLanguageChange(callback) {
     if (typeof callback !== 'function') return () => {};
     if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.onChanged) {
       return () => {};
     }
     const handler = (changes, area) => {
-      if (area !== 'sync' || !changes.targetLanguage) return;
-      const newTarget = changes.targetLanguage.newValue;
-      callback(getUiLanguage(newTarget), newTarget);
+      if (area !== 'sync') return;
+      // 只有 uiLanguage 真的變動才觸發 UI reapply。
+      if (!changes.uiLanguage) return;
+      const newPref = changes.uiLanguage.newValue;
+      callback(getUiLanguage(newPref), newPref);
     };
     chrome.storage.onChanged.addListener(handler);
     return () => {

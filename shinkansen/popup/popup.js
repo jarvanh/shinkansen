@@ -14,14 +14,6 @@ const I18N = (typeof window !== 'undefined' && window.__SK && window.__SK.i18n) 
 const t = (key, params) => (I18N ? I18N.t(key, params, _currentTarget) : key);
 let _currentTarget = 'zh-TW'; // init 時讀 storage 覆蓋
 
-// P2: 5 語 target(ja / ko / es / fr / de)時顯示英文 fallback banner;三語時隱藏
-const SUPPORTED_UI_LANGS_LOCAL = ['zh-TW', 'zh-CN', 'en'];
-function _applyFallbackBanner(target) {
-  const banner = document.getElementById('i18n-fallback-banner');
-  if (!banner) return;
-  banner.hidden = !!(target && SUPPORTED_UI_LANGS_LOCAL.includes(target));
-}
-
 // v1.6.5: 把 markdown 風的 **粗體** 標記轉成 <strong>，其他字符做 escapeHtml
 function highlightToHtml(s) {
   const esc = String(s)
@@ -174,7 +166,9 @@ async function init() {
   const manifest = browser.runtime.getManifest();
   $('version').textContent = 'v' + manifest.version;
 
-  refreshShortcutHint();
+  // v1.8.60: 不在這裡呼叫 refreshShortcutHint() — 此時 _currentTarget 仍是初始 zh-TW,
+  // 會把 t('popup.shortcut.value') 的 zh-TW 字串塞進 #shortcut-hint 黏到後面 applyI18n
+  // 之後 stale。改在 storage 讀完 + applyI18n 之後一起呼叫(見下方)。
 
   // v1.6.5: welcome banner（CWS 剛升級）優先於 update banner（GitHub 有新版）顯示。
   // 兩者互斥——CWS 自動升級後使用者不需要看「有新版可下載」（已在最新），看「歡迎升級」即可；
@@ -224,19 +218,20 @@ async function init() {
   }
 
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
-  // P2 (v1.8.60): 讀 targetLanguage 後 (1) 套用 UI i18n (2) 5 語 fallback banner
-  const { autoTranslate = false, displayMode = 'single', translatePresets = [], targetLanguage } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'targetLanguage']);
+  // P2 (v1.8.60): UI 語系獨立於 targetLanguage,讀 uiLanguage('auto' / 三語)後
+  // 透過 I18N.getUiLanguage('auto') 解析為 navigator.language 推導值
+  const { autoTranslate = false, displayMode = 'single', translatePresets = [], uiLanguage } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'uiLanguage']);
   const { apiKey = '' } = await browser.storage.local.get(['apiKey']);
   $('auto').checked = autoTranslate;
 
-  // P2: UI i18n — 寫入 _currentTarget,套 applyI18n,訂閱 onChanged
-  _currentTarget = targetLanguage || 'zh-TW';
+  // P2: UI i18n — 寫入 _currentTarget(現在叫「ui dict 語系」更貼切,但變數名沿用),
+  // 套 applyI18n,訂閱 storage.uiLanguage 變動
+  _currentTarget = I18N ? I18N.getUiLanguage(uiLanguage || 'auto') : 'zh-TW';
   if (I18N) {
     I18N.applyI18n(document, _currentTarget);
-    I18N.subscribeUiLanguageChange((newUi, newTarget) => {
-      _currentTarget = newTarget || 'zh-TW';
+    I18N.subscribeUiLanguageChange((newUi /* , newPref */) => {
+      _currentTarget = newUi || 'zh-TW';
       I18N.applyI18n(document, _currentTarget);
-      _applyFallbackBanner(_currentTarget);
       // 動態欄位重新整理(cache / usage / button label / shortcut)
       refreshCacheInfo();
       refreshUsageInfo();
@@ -244,7 +239,10 @@ async function init() {
       refreshShortcutHint();
     });
   }
-  _applyFallbackBanner(_currentTarget);
+  // v1.8.60: _currentTarget ready 後才呼叫 refreshShortcutHint(原本在 init 開頭呼叫,
+  // 那時 _currentTarget=zh-TW 會把繁中「快速切換」黏到 #shortcut-hint, applyI18n 也救不回
+  // 因為這個元素沒掛 data-i18n、由 JS 動態設 textContent)。
+  refreshShortcutHint();
 
   // v1.5.0: 顯示模式 toggle 初始狀態
   setDisplayModeButtons(displayMode === 'dual' ? 'dual' : 'single');

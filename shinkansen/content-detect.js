@@ -252,8 +252,20 @@
     // 程式碼區塊複製按鈕（GitHub `<clipboard-copy>` / 通用「button 跟 <pre> 同
     // 父層」結構）是 utility，不是父段落本身的互動。從 button 往上 walk，若任一
     // 層的兄弟元素含 <pre>，視為 code-block utility，從 widget 計數中剔除。
+    //
+    // v1.8.60: <a role="button"> 有真實 href(非 '#' / 'javascript:' / 空)→ 視為
+    // navigation link,不算互動 widget(swiper carousel / Bootstrap nav-pills 慣例,
+    // 把 role="button" 加在 nav anchor 上是 a11y 提示,並非真按鈕)。對應 upmedia.mg
+    // 主選單(<li><a href="/tw/project/..." role="button">短文字</a></li>)case,
+    // 沒這條 nav LI 整顆被 widget skip → 短中文 nav 翻不到。'#' / 'javascript:' /
+    // 空 href 仍視為真 widget(SPA dropdown trigger / accordion toggle 等本質上
+    // 不 navigate,只觸發 JS 行為)。
     let nonUtilityCount = 0;
     for (const btn of buttons) {
+      if (btn.tagName === 'A' && btn.getAttribute('role') === 'button') {
+        const href = btn.getAttribute('href');
+        if (href && href !== '#' && !href.startsWith('javascript:')) continue;
+      }
       let cur = btn;
       let isCodeUtility = false;
       while (cur && cur !== el && cur.parentElement) {

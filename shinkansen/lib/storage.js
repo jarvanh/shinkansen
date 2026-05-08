@@ -181,6 +181,12 @@ export const DEFAULT_FORBIDDEN_TERMS = [
 
 export const TARGET_LANGUAGES = ['zh-TW', 'zh-CN', 'en', 'ja', 'ko', 'es', 'fr', 'de'];
 
+// P2 (v1.8.60):介面語言(UI dict)獨立設定,跟翻譯目標(targetLanguage)解綁。
+// 'auto'(預設)= 由 resolveUiLanguage(navigator.language) 推導為三語其一;
+// 使用者可在 Options 強制鎖到 zh-TW / zh-CN / en。
+// 5 語 target(ja/ko/es/fr/de)沒有 UI dict,所有非三語選擇最終都 fallback 到 en。
+export const UI_LANGUAGES = ['auto', 'zh-TW', 'zh-CN', 'en'];
+
 // 送進 universal prompt 的 {targetLanguage} 字串。
 // zh-CN 明確標 "China conventions" 讓 LLM 用簡中中國用詞,避免混到台灣用詞;label 內附帶的
 // 中文字串本身用簡體(中国用语),避免「告訴 LLM 用簡體但 label 自己是繁體」自相矛盾。
@@ -285,6 +291,21 @@ export function detectDefaultTargetLanguage() {
   return 'en';
 }
 
+// P2 (v1.8.60):把 UI 語系偏好(可能 'auto' / 三語其一)解析為實際 dict 用的三語之一。
+// 'auto' / 'undefined' / 不認識值 → 由 navigator.language 推導(zh-TW 系 → zh-TW、其他 zh-* → zh-CN、其他 → en)。
+// 注意:UI dict 永遠是三語(`messages_zhTW` / `messages_zhCN` / `messages_en`),不像 target
+// 有 8 種,故 navigator 推導也只回三語(ja/ko/es/fr/de 等都走 en)。
+export function resolveUiLanguage(uiLanguagePref) {
+  if (uiLanguagePref && uiLanguagePref !== 'auto'
+      && ['zh-TW', 'zh-CN', 'en'].includes(uiLanguagePref)) {
+    return uiLanguagePref;
+  }
+  const nav = ((typeof navigator !== 'undefined' && navigator.language) || 'en').toLowerCase();
+  if (nav.startsWith('zh-tw') || nav.startsWith('zh-hant') || nav.startsWith('zh-hk')) return 'zh-TW';
+  if (nav.startsWith('zh')) return 'zh-CN';
+  return 'en';
+}
+
 // P1: 對歷史 prompt 字面值的小幅修字做 normalize,讓既有使用者升級後 saved 仍能被
 // 視為「未客製」。每次大幅改 DEFAULT_*_PROMPT 內容時(例如 v1.8.59 把「中國大陸」改成
 // 「中國」對齊全域用語規範),在這裡加 rule;不寫 storage migration(零寫入,零風險)。
@@ -370,6 +391,9 @@ export const DEFAULT_SETTINGS = {
   // P1 (v1.8.59):翻譯目標語言。預設依 navigator.language 推導(detectDefaultTargetLanguage)。
   // 既有使用者升級後 saved 沒此 key,getSettings 會自動 detect 一次當預設,不寫回 storage。
   targetLanguage: detectDefaultTargetLanguage(),
+  // P2 (v1.8.60):UI 語系偏好。'auto' = 跟 chrome 瀏覽器語系(navigator.language);
+  // 使用者可選 zh-TW / zh-CN / en 強制鎖。預設 'auto' 不寫 storage(getSettings 走 default)。
+  uiLanguage: 'auto',
   geminiConfig: {
     model: 'gemini-3-flash-preview',       // v0.83: 預設模型升級至 Gemini 3 Flash
     serviceTier: 'DEFAULT',
@@ -669,6 +693,9 @@ export async function getSettings() {
     ...DEFAULT_SETTINGS,
     ...saved,
     targetLanguage: target,
+    // P2 (v1.8.60):uiLanguage 偏好。saved 不在合法集合 → 'auto'(由 resolveUiLanguage 推導)。
+    uiLanguage: (typeof saved.uiLanguage === 'string' && UI_LANGUAGES.includes(saved.uiLanguage))
+      ? saved.uiLanguage : 'auto',
     geminiConfig: { ...DEFAULT_SETTINGS.geminiConfig, ...(saved.geminiConfig || {}) },
     pricing: { ...DEFAULT_SETTINGS.pricing, ...(saved.pricing || {}) },
     domainRules: { ...DEFAULT_SETTINGS.domainRules, ...(saved.domainRules || {}) },

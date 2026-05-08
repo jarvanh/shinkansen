@@ -27,7 +27,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 
 ## Features
 
-- **Three target languages** (since v1.8.59): translate into Traditional Chinese (Taiwan) / Simplified Chinese (China) / English. Pick in the "Target language" panel of options; all translation paths (web / PDF / YouTube subtitles) share this setting. Defaults to whichever fits your browser locale.
+- **Three target languages + three UI languages** (target since v1.8.59, UI since v1.8.60): translate into Traditional Chinese (Taiwan) / Simplified Chinese (China) / English. Pick in the "Target language" panel of options; all translation paths (web / PDF / YouTube subtitles) share this setting. Since v1.8.60 the extension UI (popup / settings / translation progress toast) switches along (the other 5 target languages fall back to English UI). Defaults to whichever fits your browser locale.
 - **Instant Translation** (since v1.8.0): see the page start turning into your target language within 1 second of pressing translate — no waiting for the entire batch to come back before any text is updated (Gemini only).
 - **Preserves page layout**: text is replaced in place; fonts, sizes, colors, and links are kept; bold and italics survive untouched.
 - **Single-language overlay / bilingual side-by-side dual mode** (since v1.5.0): one-click switch in the popup. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
@@ -297,7 +297,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.8.59 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.8.60 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

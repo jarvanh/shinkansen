@@ -1,0 +1,9 @@
+{
+  "extName": {
+    "message": "Shinkansen",
+    "description": "Extension name"
+  },
+  "extDescription": {
+    "message": "A fast, smooth web translation extension powered by Google Gemini, with bilingual display and YouTube subtitle translation."
+  }
+}

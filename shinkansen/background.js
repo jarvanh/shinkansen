@@ -14,6 +14,7 @@ import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
 import { detectForbiddenTermLeaks } from './lib/forbidden-terms.js'; // v1.5.6
 import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/update-check.js'; // v1.6.1
+import { shouldLogInit as _shouldLogRateLimitInit } from './lib/rate-limit-init-log-dedup.js'; // v1.8.60
 import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 import { refreshExchangeRate, getCachedRate, isCacheFresh } from './lib/exchange-rate.js'; // v1.8.41
 
@@ -34,14 +35,23 @@ async function initLimiter() {
   const settings = await getSettings();
   const limits = getLimitsForSettings(settings);
   limiter = new RateLimiter(limits);
-  debugLog('info', 'rate-limit', 'rate limiter initialized', {
+  // v1.8.60: SW idle-die 每 5-25 分鐘 cold start → 此 log 在 Debug 分頁視覺上很雜。
+  // 加 24h 去重:同 limits 設定 24h 內只 log 一次;limits 變化(tier / override / model)
+  // 仍即時 log,值得記。dedup 邏輯抽到 lib/rate-limit-init-log-dedup.js 方便 unit test。
+  const payload = {
     tier: settings.tier,
     model: settings.geminiConfig.model,
     rpm: limits.rpm,
     tpm: limits.tpm,
     rpd: limits.rpd,
     safetyMargin: limits.safetyMargin,
-  });
+  };
+  try {
+    const { _rateLimitInitLog: prev } = await browser.storage.local.get('_rateLimitInitLog');
+    if (!_shouldLogRateLimitInit(prev, Date.now(), payload)) return;
+    await browser.storage.local.set({ _rateLimitInitLog: { payload, timestamp: Date.now() } });
+  } catch { /* storage 失敗就 fall through 寫 log,不阻 SW 啟動 */ }
+  debugLog('info', 'rate-limit', 'rate limiter initialized', payload);
 }
 initLimiter();
 

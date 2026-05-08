@@ -217,6 +217,11 @@ a:hover { text-decoration: underline; }
 /* ═══ v0.86: Tab 切換 ═══ */
 .tab-bar {
   display: flex;
+  /* v1.8.60: en/zh-CN UI 後 tab label 較長(YouTube subtitles / Custom model
+     等)會超過 container 720px 寬。改 flex-wrap: wrap 讓 tab 自動折行,
+     而不是水平捲軸(後者捲軸太細,使用者看不出來「右邊還有 tab」)。
+     zh-TW UI tab 寬度足夠時仍維持單列。 */
+  flex-wrap: wrap;
   gap: 0;
   margin-bottom: 24px;
   border-bottom: 2px solid #eee;

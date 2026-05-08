@@ -40,6 +40,22 @@
       <button id="update-banner-dismiss" class="update-banner-dismiss" type="button" data-i18n-attr-title="options.updateBanner.dismissTitle" data-i18n="options.updateBanner.dismiss">不再提示</button>
     </div>
 
+    <!-- P2 (v1.8.60):介面語言(UI dict),獨立於翻譯目標。預設 'auto' 跟 chrome 瀏覽器語系。
+         option label 維持 native script 不 i18n。 -->
+    <section>
+      <h2 data-i18n="options.uiLanguage.heading">介面語言</h2>
+      <label>
+        <span data-i18n="options.uiLanguage.label">擴充功能介面顯示</span>
+        <select id="uiLanguage">
+          <option value="auto" data-i18n="options.uiLanguage.auto">自動（跟瀏覽器設定）</option>
+          <option value="zh-TW">繁體中文（台灣）</option>
+          <option value="zh-CN">简体中文（中国）</option>
+          <option value="en">English</option>
+        </select>
+        <small class="muted" data-i18n="options.uiLanguage.hint">控制 popup、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟下方「翻譯目標語言」獨立，互不影響</small>
+      </label>
+    </section>
+
     <!-- 翻譯目標語言。option label 維持 native script 不 i18n -->
     <section>
       <h2 data-i18n="options.target.heading">翻譯目標語言</h2>
@@ -180,10 +196,12 @@
       <p class="hint" data-i18n="options.popupBtn.intro">點擊瀏覽器工具列上的 Shinkansen 圖示後，跳出視窗中「翻譯本頁」按鈕要使用哪一組設定（與翻譯快速鍵共用三組預設）</p>
       <label class="popup-button-slot-label">
         <span data-i18n="options.popupBtn.label">對應的翻譯預設</span>
+        <!-- 注意:option text 由 refreshSlotDropdownLabels() 動態管理(prefix + 使用者
+             label),故不掛 data-i18n;HTML 字面值只在 init / 翻譯完成前的瞬間出現 -->
         <select id="popup-button-slot">
-          <option value="2" data-i18n="options.preset.primary">主要預設</option>
-          <option value="1" data-i18n="options.preset.slot2">預設 2</option>
-          <option value="3" data-i18n="options.preset.slot3">預設 3</option>
+          <option value="2">主要預設</option>
+          <option value="1">預設 2</option>
+          <option value="3">預設 3</option>
         </select>
       </label>
     </section>
@@ -196,10 +214,11 @@
       </label>
       <label class="popup-button-slot-label">
         <span data-i18n="options.domain.autoTranslateSlotLabel">自動翻譯使用的預設</span>
+        <!-- 同 popup-button-slot:option text 由 refreshSlotDropdownLabels() 動態管理 -->
         <select id="auto-translate-slot">
-          <option value="2" data-i18n="options.preset.primary">主要預設</option>
-          <option value="1" data-i18n="options.preset.slot2">預設 2</option>
-          <option value="3" data-i18n="options.preset.slot3">預設 3</option>
+          <option value="2">主要預設</option>
+          <option value="1">預設 2</option>
+          <option value="3">預設 3</option>
         </select>
         <small class="muted" data-i18n="options.domain.autoTranslateSlotHint">進入白名單網域時走哪一組預設（等同自動按下對應的快速鍵）。預設「主要預設」與 v1.6.12 之前的行為一致</small>
       </label>
