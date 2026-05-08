@@ -34,8 +34,29 @@ export async function getShinkansenEvaluator(page) {
   const cdp = await page.context().newCDPSession(page);
 
   const contexts = [];
+  // 改用 event-driven 等 Shinkansen isolated world 出現,取代原本寫死 500ms wait。
+  // 原因:MV3 service worker cold-start + content script 注入耗時隨系統負載變動,
+  // 全套 npm test 跑到 600+ specs 時偶發超過 500ms 命中,後續 evaluate 卡到 60s timeout
+  // (Playwright 預設 per-test timeout)。改成「context 一出現就解 Promise」+ 5s 安全上限,
+  // 在閒置時與原本一樣快(< 500ms)、在高負載時也能等到位才繼續,不再 flaky。
+  const findShinkansen = () => {
+    const isolated = contexts.filter((c) => c?.auxData?.type === 'isolated');
+    return isolated.find((c) => c.name === 'Shinkansen')
+        || isolated.find((c) => /Shinkansen/i.test(c.name || ''));
+  };
+
+  let shinkansen = null;
+  let resolveReady;
+  const ready = new Promise((res) => { resolveReady = res; });
+  const tryResolve = () => {
+    if (shinkansen) return;
+    const found = findShinkansen();
+    if (found) { shinkansen = found; resolveReady(found); }
+  };
+
   cdp.on('Runtime.executionContextCreated', (event) => {
     contexts.push(event.context);
+    tryResolve();
   });
   cdp.on('Runtime.executionContextDestroyed', (event) => {
     const idx = contexts.findIndex((c) => c.id === event.executionContextId);
@@ -43,21 +64,22 @@ export async function getShinkansenEvaluator(page) {
   });
 
   await cdp.send('Runtime.enable');
-  await page.waitForTimeout(500);
+  // Runtime.enable 會觸發 executionContextCreated 補發既存 contexts,event listener
+  // 收到後 tryResolve 會立即觸發。但 race 有可能:enable 完成前 listener 已註冊好,
+  // 安全起見 enable 後再手動 try 一次(已存在的 contexts 已被推進陣列)。
+  tryResolve();
 
-  const isolated = contexts.filter((c) => c?.auxData?.type === 'isolated');
-  let shinkansen = isolated.find((c) => c.name === 'Shinkansen');
-  if (!shinkansen) {
-    shinkansen = isolated.find((c) => /Shinkansen/i.test(c.name || ''));
-  }
-  if (!shinkansen) {
-    const dump = isolated.map((c) => ({
-      id: c.id, name: c.name, origin: c.origin, auxData: c.auxData,
-    }));
-    throw new Error(
-      `找不到 Shinkansen isolated world execution context。\n候選: ${JSON.stringify(dump, null, 2)}`,
-    );
-  }
+  await Promise.race([
+    ready,
+    new Promise((_, reject) => setTimeout(() => {
+      const dump = contexts
+        .filter((c) => c?.auxData?.type === 'isolated')
+        .map((c) => ({ id: c.id, name: c.name, origin: c.origin, auxData: c.auxData }));
+      reject(new Error(
+        `找不到 Shinkansen isolated world execution context(等 5s 仍無)。\n候選: ${JSON.stringify(dump, null, 2)}`,
+      ));
+    }, 5000)),
+  ]);
 
   async function evaluate(expression) {
     const result = await cdp.send('Runtime.evaluate', {

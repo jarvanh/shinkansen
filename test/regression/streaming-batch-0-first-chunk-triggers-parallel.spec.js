@@ -114,23 +114,49 @@ test('streaming-batch-0-first-chunk-triggers-parallel: batch 0 走 STREAM,first_
     })()
   `);
 
-  // 等 100ms:此時 streaming 還在等 first_chunk(200ms 才 fire),batch 1+ 不該送
-  await page.waitForTimeout(100);
-  const at100 = await evaluate(`({
-    streamCount: window.__streamCount,
-    batchCount: window.__batchCallTimes.length,
-  })`);
-  expect(at100.streamCount, 'batch 0 應走 STREAM 訊息(STREAM 計數 = 1)').toBe(1);
-  expect(at100.batchCount, 'first_chunk 之前(100ms),TRANSLATE_BATCH 不該被送').toBe(0);
+  // 改用 page-side polling 取代 page.waitForTimeout 寫死毫秒——避免高負載下 SW
+  // cold-start latency 把 100ms / 300ms wait 推爆。Atomic snapshot:在 streamCount=1
+  // 的同一個 microtask 內讀 batchCount,避免「等 streamCount → 回 spec → 再讀 batchCount」
+  // 之間 first_chunk 的 200ms 計時器搶先 fire 造成誤判。
+  const atStreamSent = await evaluate(`
+    new Promise((resolve, reject) => {
+      const start = Date.now();
+      const check = () => {
+        if (window.__streamCount === 1) {
+          resolve({ streamCount: window.__streamCount, batchCount: window.__batchCallTimes.length });
+        } else if (Date.now() - start > 5000) {
+          reject(new Error('waited 5s for streamCount === 1'));
+        } else {
+          setTimeout(check, 20);
+        }
+      };
+      check();
+    })
+  `);
+  expect(atStreamSent.streamCount, 'batch 0 應走 STREAM 訊息(STREAM 計數 = 1)').toBe(1);
+  expect(atStreamSent.batchCount, 'first_chunk 之前 TRANSLATE_BATCH 不該被送').toBe(0);
 
-  // 等到 first_chunk 後 + batch 1/2 dispatch 完成(200ms first_chunk + 100ms batch delay = ~300ms,留餘裕)
-  await page.waitForTimeout(300);
-
-  const result = await evaluate(`({
-    streamCount: window.__streamCount,
-    batchCallTimes: window.__batchCallTimes,
-    batchCount: window.__batchCallTimes.length,
-  })`);
+  // 等 batch 1 + batch 2 都 dispatch 出去(first_chunk 200ms timer fire 後 SK 會
+  // 同步並行送)。Atomic resolve 拿到當下 batchCallTimes,不再寫死等 300ms。
+  const result = await evaluate(`
+    new Promise((resolve, reject) => {
+      const start = Date.now();
+      const check = () => {
+        if (window.__batchCallTimes.length >= 2) {
+          resolve({
+            streamCount: window.__streamCount,
+            batchCallTimes: window.__batchCallTimes.slice(),
+            batchCount: window.__batchCallTimes.length,
+          });
+        } else if (Date.now() - start > 5000) {
+          reject(new Error('waited 5s for batchCount >= 2'));
+        } else {
+          setTimeout(check, 20);
+        }
+      };
+      check();
+    })
+  `);
 
   expect(result.batchCount, '應送 2 筆 TRANSLATE_BATCH(batch 1 + batch 2)').toBe(2);
 
