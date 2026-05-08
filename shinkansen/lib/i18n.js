@@ -274,7 +274,7 @@
     'options.gemini.partial.heading': '節省模式',
     'options.gemini.partial.toggle': '只翻文章開頭',
     'options.gemini.partial.maxLabel': '翻譯段落數上限',
-    'options.gemini.partial.hint': '啟用後只翻譯頁面前 N 段（按 DOM 順序，不排序）。適合先快速預覽再決定是否繼續讀完整文章，可大幅減少 token 用量。翻譯完成後右下角提示會出現「翻譯剩餘段落」按鈕，點按即可繼續翻完整篇——前面已翻好的段落會從本地快取載入，不重複收費。預設 25 段，範圍 5-50',
+    'options.gemini.partial.hint': '啟用後只翻譯頁面前幾段。適合先快速預覽再決定是否繼續讀完整文章，可大幅減少 token 用量。翻譯完成後右下角提示會出現「翻譯剩餘段落」按鈕，點按即可繼續翻完整篇——前面已翻好的段落會從本地快取載入，不重複收費。預設 25 段，範圍 5-50',
 
     'options.gemini.params.heading': '模型參數微調',
     'options.gemini.params.tempLabel': 'Temperature',
@@ -1035,7 +1035,7 @@
     'options.gemini.partial.heading': '节省模式',
     'options.gemini.partial.toggle': '只翻文章开头',
     'options.gemini.partial.maxLabel': '翻译段落数上限',
-    'options.gemini.partial.hint': '启用后只翻译页面前 N 段（按 DOM 顺序，不排序）。适合先快速预览再决定是否继续读完整文章，可大幅减少 token 用量。翻译完成后右下角提示会出现「翻译剩余段落」按钮，点按即可继续翻完整篇——前面已翻好的段落会从本地缓存载入，不重复收费。默认 25 段，范围 5-50',
+    'options.gemini.partial.hint': '启用后只翻译页面前几段。适合先快速预览再决定是否继续读完整文章，可大幅减少 token 用量。翻译完成后右下角提示会出现「翻译剩余段落」按钮，点按即可继续翻完整篇——前面已翻好的段落会从本地缓存载入，不重复收费。默认 25 段，范围 5-50',
 
     'options.gemini.params.heading': '模型参数微调',
     'options.gemini.params.tempLabel': 'Temperature',
@@ -1794,7 +1794,7 @@
     'options.gemini.partial.heading': 'Save mode',
     'options.gemini.partial.toggle': 'Translate only article opening',
     'options.gemini.partial.maxLabel': 'Max paragraphs to translate',
-    'options.gemini.partial.hint': 'When enabled, translate only the first N paragraphs (DOM order, not sorted). Useful for quick previews to decide whether to keep reading; significantly reduces token usage. After translation a "Translate remaining paragraphs" button appears in the bottom corner—click to finish translation; previously translated paragraphs load from local cache without re-charging. Default 25, range 5-50',
+    'options.gemini.partial.hint': 'When enabled, translate only the first few paragraphs. Useful for quick previews to decide whether to keep reading; significantly reduces token usage. After translation a "Translate remaining paragraphs" button appears in the bottom corner—click to finish translation; previously translated paragraphs load from local cache without re-charging. Default 25, range 5-50',
 
     'options.gemini.params.heading': 'Model parameter tuning',
     'options.gemini.params.tempLabel': 'Temperature',
@@ -2553,7 +2553,7 @@
     'options.gemini.partial.heading': '節約モード',
     'options.gemini.partial.toggle': '記事冒頭のみ翻訳',
     'options.gemini.partial.maxLabel': '翻訳段落数の上限',
-    'options.gemini.partial.hint': '有効時はページの最初の N 段落のみ翻訳します（DOM 順、ソートなし）。プレビューしてから読み続けるか判断する場合に適しており、トークン使用量を大幅に削減できます。翻訳完了後、右下の通知に「残りの段落を翻訳」ボタンが表示され、クリックすれば全文翻訳を続行できます。既訳分はローカルキャッシュから読み込まれ、再課金されません。デフォルト 25 段、範囲 5–50',
+    'options.gemini.partial.hint': '有効時はページの最初の数段落のみ翻訳します。プレビューしてから読み続けるか判断する場合に適しており、トークン使用量を大幅に削減できます。翻訳完了後、右下の通知に「残りの段落を翻訳」ボタンが表示され、クリックすれば全文翻訳を続行できます。既訳分はローカルキャッシュから読み込まれ、再課金されません。デフォルト 25 段、範囲 5–50',
 
     'options.gemini.params.heading': 'モデルパラメータ調整',
     'options.gemini.params.tempLabel': 'Temperature',
@@ -3312,7 +3312,7 @@
     'options.gemini.partial.heading': '절약 모드',
     'options.gemini.partial.toggle': '문서 시작 부분만 번역',
     'options.gemini.partial.maxLabel': '번역 단락 수 상한',
-    'options.gemini.partial.hint': '활성화 시 페이지의 처음 N개 단락만 번역합니다 (DOM 순서, 정렬 없음). 빠른 미리보기 후 계속 읽을지 결정하기에 적합하며 token 사용량을 크게 줄일 수 있습니다. 번역 완료 후 오른쪽 아래 알림에 "나머지 단락 번역" 버튼이 나타나며, 클릭하면 전체 번역을 계속할 수 있습니다 — 이미 번역된 단락은 로컬 캐시에서 불러오므로 중복 과금되지 않습니다. 기본 25단락, 범위 5–50',
+    'options.gemini.partial.hint': '활성화 시 페이지의 처음 몇 단락만 번역합니다. 빠른 미리보기 후 계속 읽을지 결정하기에 적합하며 token 사용량을 크게 줄일 수 있습니다. 번역 완료 후 오른쪽 아래 알림에 "나머지 단락 번역" 버튼이 나타나며, 클릭하면 전체 번역을 계속할 수 있습니다 — 이미 번역된 단락은 로컬 캐시에서 불러오므로 중복 과금되지 않습니다. 기본 25단락, 범위 5–50',
 
     'options.gemini.params.heading': '모델 매개변수 미세 조정',
     'options.gemini.params.tempLabel': 'Temperature',
@@ -4070,7 +4070,7 @@
     'options.gemini.partial.heading': 'Modo ahorro',
     'options.gemini.partial.toggle': 'Traducir solo el principio del artículo',
     'options.gemini.partial.maxLabel': 'Límite de párrafos a traducir',
-    'options.gemini.partial.hint': 'Si está activado, solo se traducen los primeros N párrafos de la página (en orden DOM, sin ordenar). Útil para previsualizar antes de leer todo el artículo, reduce mucho el uso de tokens. Tras la traducción aparece en la esquina inferior derecha el botón "Traducir párrafos restantes"; al pulsarlo se completa la traducción y los párrafos ya traducidos se cargan desde la caché local sin coste adicional. Por defecto 25, rango 5–50',
+    'options.gemini.partial.hint': 'Si está activado, solo se traducen los primeros párrafos de la página. Útil para previsualizar antes de leer todo el artículo, reduce mucho el uso de tokens. Tras la traducción aparece en la esquina inferior derecha el botón "Traducir párrafos restantes"; al pulsarlo se completa la traducción y los párrafos ya traducidos se cargan desde la caché local sin coste adicional. Por defecto 25, rango 5–50',
 
     'options.gemini.params.heading': 'Ajuste fino del modelo',
     'options.gemini.params.tempLabel': 'Temperature',
@@ -4828,7 +4828,7 @@
     'options.gemini.partial.heading': 'Mode économie',
     'options.gemini.partial.toggle': 'Traduire uniquement le début de l\'article',
     'options.gemini.partial.maxLabel': 'Limite de paragraphes traduits',
-    'options.gemini.partial.hint': 'Si activé, seuls les N premiers paragraphes de la page sont traduits (ordre DOM, sans tri). Pratique pour prévisualiser avant de décider de continuer la lecture, réduit fortement la consommation de tokens. Une fois la traduction terminée, un bouton « Traduire les paragraphes restants » apparaît dans la notification en bas à droite ; en cliquant dessus on poursuit la traduction — les paragraphes déjà traduits sont chargés depuis le cache local sans coût supplémentaire. Par défaut 25, plage 5–50',
+    'options.gemini.partial.hint': 'Si activé, seuls les premiers paragraphes de la page sont traduits. Pratique pour prévisualiser avant de décider de continuer la lecture, réduit fortement la consommation de tokens. Une fois la traduction terminée, un bouton « Traduire les paragraphes restants » apparaît dans la notification en bas à droite ; en cliquant dessus on poursuit la traduction — les paragraphes déjà traduits sont chargés depuis le cache local sans coût supplémentaire. Par défaut 25, plage 5–50',
 
     'options.gemini.params.heading': 'Réglage fin du modèle',
     'options.gemini.params.tempLabel': 'Temperature',
@@ -5586,7 +5586,7 @@
     'options.gemini.partial.heading': 'Sparmodus',
     'options.gemini.partial.toggle': 'Nur den Anfang des Artikels übersetzen',
     'options.gemini.partial.maxLabel': 'Maximale Anzahl zu übersetzender Absätze',
-    'options.gemini.partial.hint': 'Wenn aktiviert, werden nur die ersten N Absätze der Seite übersetzt (DOM-Reihenfolge, keine Sortierung). Geeignet zur schnellen Vorschau, bevor entschieden wird, ob der ganze Artikel gelesen werden soll, reduziert die Token-Nutzung erheblich. Nach Abschluss erscheint in der Benachrichtigung unten rechts ein Button „Restliche Absätze übersetzen", per Klick wird der ganze Artikel zu Ende übersetzt — bereits übersetzte Absätze werden aus dem lokalen Cache geladen und nicht erneut berechnet. Standard 25, Bereich 5–50',
+    'options.gemini.partial.hint': 'Wenn aktiviert, werden nur die ersten Absätze der Seite übersetzt. Geeignet zur schnellen Vorschau, bevor entschieden wird, ob der ganze Artikel gelesen werden soll, reduziert die Token-Nutzung erheblich. Nach Abschluss erscheint in der Benachrichtigung unten rechts ein Button „Restliche Absätze übersetzen", per Klick wird der ganze Artikel zu Ende übersetzt — bereits übersetzte Absätze werden aus dem lokalen Cache geladen und nicht erneut berechnet. Standard 25, Bereich 5–50',
 
     'options.gemini.params.heading': 'Modellparameter feinjustieren',
     'options.gemini.params.tempLabel': 'Temperature',

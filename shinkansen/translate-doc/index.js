@@ -1581,10 +1581,19 @@ async function initI18n() {
     if (typeof stored.uiLanguage === 'string') uiLang = stored.uiLanguage;
   } catch (_) { /* 沒權限 / API 失敗時走 auto */ }
   const dictLang = I18N.getUiLanguage(uiLang);
+  // 把 dictLang 寫進 window.__SK.STATE.uiLanguage,讓 i18n.t() 在沒帶 target 參數時
+  // 能透過 _readCurrentTarget() 讀到正確語言(否則 fallback 'zh-TW')。translate-doc
+  // 不是 content script,window.__SK.STATE 預設不存在,需手動建立。reader.js / index.js
+  // 內的 t() 動態字串(preset 名稱 / progress 文字 / glossary state 等)都依賴此值。
+  window.__SK = window.__SK || {};
+  window.__SK.STATE = window.__SK.STATE || {};
+  window.__SK.STATE.uiLanguage = dictLang;
   I18N.applyI18n(document, dictLang);
-  // 訂閱 uiLanguage 變動 → reapply。translate-doc 開著時若使用者在 options 切 UI 語言,
-  // 此 callback 會把所有 [data-i18n] 元素重 render 成新語言。
+  // 訂閱 uiLanguage 變動 → 同步更新 STATE + reapply。translate-doc 開著時若使用者
+  // 在 options 切 UI 語言,此 callback 會把所有 [data-i18n] 元素 + 後續 t() 動態
+  // 呼叫都重指向新語言。
   I18N.subscribeUiLanguageChange((newUi) => {
+    window.__SK.STATE.uiLanguage = newUi;
     I18N.applyI18n(document, newUi);
   });
 }

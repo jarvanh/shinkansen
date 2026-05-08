@@ -4,6 +4,6 @@
     "description": "拡張機能名"
   },
   "extDescription": {
-    "message": "Google Gemini を活用した、高速で滑らかなウェブページ翻訳拡張機能。対訳表示と YouTube 字幕翻訳に対応。"
+    "message": "ウェブページ・YouTube 字幕に対応した高速・スムーズな翻訳拡張機能。8 言語のターゲットと複数の AI エンジンに対応。データはブラウザから出ません。"
   }
 }

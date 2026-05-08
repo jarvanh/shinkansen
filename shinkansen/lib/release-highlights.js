@@ -30,5 +30,5 @@ export const RELEASE_HIGHLIGHTS = [
   '新增**自訂 AI 模型**，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型',
   '新增**AI 分句**，YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀',
   '新增**禁用詞清單**，明確要求 LLM 不要使用視頻 / 軟件 / 數據等不希望出現在譯文中的詞',
-  '新增**只翻文章開頭**選項，先翻前 N 段預覽，大幅節省 token',
+  '新增**只翻文章開頭**選項，先翻前幾段預覽，大幅節省 token',
 ];

@@ -49,8 +49,15 @@ async function initI18n() {
     if (typeof stored.uiLanguage === 'string') uiLang = stored.uiLanguage;
   } catch (_) { /* fallback auto */ }
   const dictLang = I18N.getUiLanguage(uiLang);
+  // 同 translate-doc/index.js:寫 window.__SK.STATE.uiLanguage 讓 t() 動態字串能讀到
+  window.__SK = window.__SK || {};
+  window.__SK.STATE = window.__SK.STATE || {};
+  window.__SK.STATE.uiLanguage = dictLang;
   I18N.applyI18n(document, dictLang);
-  I18N.subscribeUiLanguageChange((newUi) => I18N.applyI18n(document, newUi));
+  I18N.subscribeUiLanguageChange((newUi) => {
+    window.__SK.STATE.uiLanguage = newUi;
+    I18N.applyI18n(document, newUi);
+  });
 }
 
 async function save() {

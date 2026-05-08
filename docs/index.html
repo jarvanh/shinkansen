@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Shinkansen｜極速、私密、高品質的網頁翻譯體驗</title>
-  <meta name="description" content="使用 Google Gemini 將外語網頁翻譯成台灣繁體中文，原地替換文字，保留頁面原始排版你的瀏覽資料不經過第三方伺服器">
+  <meta name="description" content="快速、私密的網頁、YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。">
 
   <!-- Open Graph / Social Preview -->
   <meta property="og:type" content="website">
@@ -383,9 +383,9 @@
           <span data-i18n="btn.amo.text">從 Firefox Add-ons 安裝</span>
           <span class="btn-version">v<!-- amo-version-start -->1.8.55<!-- amo-version-end --> · <span data-i18n="btn.amo.status">已上架</span></span>
         </a>
-        <a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.8.64/shinkansen-v1.8.64.zip" class="btn-download secondary">
+        <a href="https://github.com/jimmysu0309/shinkansen/releases/download/v1.8.65/shinkansen-v1.8.65.zip" class="btn-download secondary">
           <span data-i18n="btn.github.text">GitHub 下載 beta 版手動安裝</span>
-          <span class="btn-version">v1.8.64 · beta</span>
+          <span class="btn-version">v1.8.65 · beta</span>
         </a>
       </div>
       <p class="hero-sub" data-i18n="hero.sub">開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a></p>
@@ -397,13 +397,13 @@
     <div class="container">
       <h2 data-i18n="recent.heading">近期重大更新</h2>
       <ul class="recent-updates">
-        <li data-i18n="recent.0">新增<strong>多語翻譯目標 + 多語介面</strong>（v1.8.59 起，v1.8.62 全部到位）：8 種翻譯目標（繁體中文 / 簡體中文 / 英文 / 日文 / 韓文 / 西班牙文 / 法文 / 德文）；popup / 設定頁 / 網頁翻譯進度通知同樣支援 8 語，預設依瀏覽器語言推導（PDF 文件翻譯 reader 介面暫仍為繁中）</li>
+        <li data-i18n="recent.0">新增<strong>多語翻譯 + 多語介面</strong>：8 種翻譯目標（繁體中文 / 簡體中文 / 英文 / 日文 / 韓文 / 西班牙文 / 法文 / 德文）；popup / 設定頁 / 網頁翻譯進度通知 / PDF 文件翻譯 reader 同樣支援 8 語，預設依瀏覽器語言推導</li>
         <li data-i18n="recent.1">新增<strong>極速秒翻</strong>，按下翻譯 1 秒看到頁面開始變中文（限 Gemini）</li>
         <li data-i18n="recent.2">新增<strong>雙語對照模式</strong>，原文 + 譯文並列顯示</li>
         <li data-i18n="recent.3">新增<strong>自訂 AI 模型</strong>，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型</li>
-        <li data-i18n="recent.4">新增<strong>AI 分句</strong>,YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀</li>
+        <li data-i18n="recent.4">新增<strong>AI 分句</strong>，YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀</li>
         <li data-i18n="recent.5">新增<strong>禁用詞清單</strong>，明確要求 LLM 不要使用視頻 / 軟件 / 數據等不希望出現在譯文中的詞</li>
-        <li data-i18n="recent.6">新增<strong>只翻文章開頭</strong>選項，先翻前 N 段預覽，大幅節省 token</li>
+        <li data-i18n="recent.6">新增<strong>只翻文章開頭</strong>選項，先翻前幾段預覽，大幅節省 token</li>
       </ul>
     </div>
   </section>
@@ -545,7 +545,7 @@
       var I18N = {
         'zh-TW': {
           'meta.title': 'Shinkansen｜極速、私密、高品質的網頁翻譯體驗',
-          'meta.description': '使用 Google Gemini 將外語網頁翻譯成台灣繁體中文，原地替換文字，保留頁面原始排版你的瀏覽資料不經過第三方伺服器',
+          'meta.description': '快速、私密的網頁、YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。',
           'og.title': 'Shinkansen — Chrome 網頁翻譯擴充功能',
           'og.description': '使用 Google Gemini 翻譯網頁，保留原始排版，瀏覽資料不經過第三方伺服器',
 
@@ -559,13 +559,13 @@
           'hero.sub': '開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
 
           'recent.heading': '近期重大更新',
-          'recent.0': '新增<strong>多語翻譯目標 + 多語介面</strong>（v1.8.59 起，v1.8.62 全部到位）：8 種翻譯目標（繁體中文 / 簡體中文 / 英文 / 日文 / 韓文 / 西班牙文 / 法文 / 德文）；popup / 設定頁 / 網頁翻譯進度通知同樣支援 8 語，預設依瀏覽器語言推導（PDF 文件翻譯 reader 介面暫仍為繁中）',
+          'recent.0': '新增<strong>多語翻譯 + 多語介面</strong>：8 種翻譯目標（繁體中文 / 簡體中文 / 英文 / 日文 / 韓文 / 西班牙文 / 法文 / 德文）；popup / 設定頁 / 網頁翻譯進度通知 / PDF 文件翻譯 reader 同樣支援 8 語，預設依瀏覽器語言推導',
           'recent.1': '新增<strong>極速秒翻</strong>，按下翻譯 1 秒看到頁面開始變中文（限 Gemini）',
           'recent.2': '新增<strong>雙語對照模式</strong>，原文 + 譯文並列顯示',
           'recent.3': '新增<strong>自訂 AI 模型</strong>，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型',
-          'recent.4': '新增<strong>AI 分句</strong>,YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀',
+          'recent.4': '新增<strong>AI 分句</strong>，YouTube 自動產生字幕經 AI 重新分句，中文字幕更自然好讀',
           'recent.5': '新增<strong>禁用詞清單</strong>，明確要求 LLM 不要使用視頻 / 軟件 / 數據等不希望出現在譯文中的詞',
-          'recent.6': '新增<strong>只翻文章開頭</strong>選項，先翻前 N 段預覽，大幅節省 token',
+          'recent.6': '新增<strong>只翻文章開頭</strong>選項，先翻前幾段預覽，大幅節省 token',
 
           'privacy.heading': '為什麼做 Shinkansen?',
           'privacy.intro1': '既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光',
@@ -618,7 +618,7 @@
         },
         'en': {
           'meta.title': 'Shinkansen | Fast, private, high-quality web translation',
-          'meta.description': 'Translate foreign-language web pages into Traditional Chinese (Taiwan) with Google Gemini. In-place text replacement preserves the original layout. Your browsing never touches a third-party server.',
+          'meta.description': 'A fast, privacy-first translation extension for web pages and YouTube subtitles. 8 target languages, multiple AI engines. In-place text replacement preserves the original layout; your browsing never touches a third-party server.',
           'og.title': 'Shinkansen — Chrome web translation extension',
           'og.description': 'Translate web pages with Google Gemini. Original layout preserved. Browsing data never touches a third-party server.',
 
@@ -632,7 +632,7 @@
           'hero.sub': 'Open source · <a href="https://github.com/jimmysu0309/shinkansen#readme">Documentation</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
 
           'recent.heading': 'Recent major updates',
-          'recent.0': 'Added <strong>Multi-language target + multi-language UI</strong> (since v1.8.59, fully landed in v1.8.62) — 8 target languages (Traditional Chinese / Simplified Chinese / English / Japanese / Korean / Spanish / French / German); popup, settings page, and web-translation progress toast available in all 8 UI languages, defaulting to your browser locale (PDF document reader UI remains in Traditional Chinese for now).',
+          'recent.0': 'Added <strong>Multi-language translation + multi-language UI</strong>: 8 target languages (Traditional Chinese / Simplified Chinese / English / Japanese / Korean / Spanish / French / German); popup, settings page, web-translation progress toast, and PDF document reader UI all available in all 8 UI languages, defaulting to your browser locale.',
           'recent.1': 'Added <strong>Instant Translation</strong> — see the page start turning into your target language within 1 second of pressing translate (Gemini only).',
           'recent.2': 'Added <strong>Bilingual mode</strong> — original and translation shown side by side.',
           'recent.3': 'Added <strong>Custom AI models</strong> — bring your own OpenRouter / Claude / DeepSeek / local Ollama, etc.',

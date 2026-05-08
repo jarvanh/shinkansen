@@ -4,6 +4,6 @@
     "description": "확장 프로그램 이름"
   },
   "extDescription": {
-    "message": "Google Gemini 기반의 빠르고 부드러운 웹 페이지 번역 확장 프로그램. 대역 표시와 YouTube 자막 번역을 지원합니다."
+    "message": "웹 페이지·YouTube 자막을 위한 빠르고 부드러운 번역 확장 프로그램. 8개 대상 언어와 다양한 AI 엔진 지원. 데이터는 브라우저를 떠나지 않습니다."
   }
 }
