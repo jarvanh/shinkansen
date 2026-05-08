@@ -85,6 +85,16 @@ if (window.__shinkansen_loaded) {
     //   預設 'zh-TW' 維持 v1.8.58 之前行為——content-detect.js isCandidateText 的
     //   isAlreadyInTarget 檢查在 STATE 尚未 hydrate 前 fallback 到 zh-TW(跳繁中段)。
     targetLanguage: 'zh-TW',
+    // 注入前 element 的 lang attribute 原值(null = 原本沒設)。譯文注入時把 el lang
+    // 設為 targetLanguage 讓瀏覽器選對 CJK 字形變體(避免 zh-TW 頁面下日文譯文用到
+    // 中文字形變體 → 視覺不協調),restorePage / abort 路徑用這份還原回原 lang。
+    originalLang: new Map(), // el → string | null
+    // 注入前 element 的 inline style.fontFamily 原值(空字串 = 原本沒設 inline)。
+    // 譯文注入時若 target 是 CJK locale,會把 LOCALE_FONT_PREPEND 對應字體 stack
+    // prepend 到 inline fontFamily,確保站點 hardcode 單一 locale 字體
+    // (例 upmedia.mg 的 "Noto Serif TC")的情境下,日 / 韓 / 簡中譯文仍能用到對應
+    // locale 字形變體。restore 時還原此原值。
+    originalFontFamily: new Map(), // el → string
   };
 
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback
@@ -303,6 +313,71 @@ if (window.__shinkansen_loaded) {
 
   // CJK 字元匹配 pattern（serialize 用）
   SK.CJK_CHAR = '[\\u3400-\\u9fff\\uf900-\\ufaff\\u3000-\\u303f\\uff00-\\uffef]';
+
+  // ─── locale-aware 字體 fallback ──────────────────────
+  // 站點若 hardcode 單一 locale 字體(例 upmedia.mg 的 "Noto Serif TC" 開頭 stack)
+  // 涵蓋 CJK 漢字 codepoint 卻只有該 locale 字形變體,單純設 lang attribute 無法
+  // 換到目標 locale 字形(因為瀏覽器停在第一順位字體不再 fallback)。對 CJK target
+  // 譯文 prepend 對應 locale 字體 stack,讓瀏覽器優先選對 locale 字體。
+  // 站點原 stack 仍保留在 prepend 之後當 fallback,系統沒裝這些字體時不影響顯示。
+  // 歐語 target(en/es/fr/de)沒 Han variant 問題,不在表中 → applyTargetLocaleStyling
+  // 跳過 prepend。
+  // 每 locale 兩組 stack:sans-serif / serif。applyTargetLocaleStyling 偵測站點原
+  // font-family 屬於哪種風格,挑對應 stack prepend,避免「站點 serif 但譯文變 sans」
+  // 之類視覺不一致(例 upmedia.mg 用 Noto Serif TC,日文譯文應用 Hiragino Mincho 系)。
+  // Stack 順序:macOS 字體 → Windows 字體 → Linux/通用 Noto CJK fallback。
+  // 瀏覽器依序選第一個系統有的字體,因此 macOS 用戶走 Hiragino / PingFang 等 Apple 字體,
+  // Windows 用戶走 Yu Gothic / Microsoft JhengHei / MingLiU 等內建字體,Linux 用戶
+  // 走 Noto CJK 系列(若已安裝)。三個平台都應有正確 locale 字形變體。
+  SK.LOCALE_FONT_PREPEND = {
+    ja: {
+      'sans-serif': '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", "Meiryo", "MS Gothic", "Noto Sans CJK JP", "Noto Sans JP"',
+      'serif': '"Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif CJK JP", "Noto Serif JP"',
+    },
+    ko: {
+      'sans-serif': '"Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR"',
+      'serif': '"AppleMyungjo", "Batang", "BatangChe", "Gungsuh", "Noto Serif CJK KR", "Noto Serif KR"',
+    },
+    'zh-TW': {
+      'sans-serif': '"PingFang TC", "Heiti TC", "Microsoft JhengHei", "Noto Sans CJK TC", "Noto Sans TC"',
+      'serif': '"Songti TC", "LiSong Pro", "MingLiU", "PMingLiU", "Noto Serif CJK TC", "Noto Serif TC"',
+    },
+    'zh-CN': {
+      'sans-serif': '"PingFang SC", "Heiti SC", "Microsoft YaHei", "DengXian", "Noto Sans CJK SC", "Noto Sans SC"',
+      'serif': '"Songti SC", "STSong", "SimSun", "NSimSun", "Noto Serif CJK SC", "Noto Serif SC"',
+    },
+  };
+
+  // 偵測 font-family stack 屬於 serif 還是 sans-serif 風格,以決定 prepend 哪組 locale 字體。
+  // 策略:取第一個顯式字體名(去引號 trim),命中 serif 標記詞 → serif,否則一律 sans-serif。
+  // serif 標記詞涵蓋常見 serif 字體 family 名(Times / Georgia / Mincho / Songti / Sung /
+  // Ming / 宋 / 明朝)+ 通用 generic family `serif`。先排除 `sans-serif` 整字 token
+  // 避免子字串誤命中。
+  SK.detectFontStyle = function detectFontStyle(fontFamily) {
+    if (!fontFamily || typeof fontFamily !== 'string') return 'sans-serif';
+    const firstFont = (fontFamily.split(',')[0] || '').replace(/^["']|["']$/g, '').trim();
+    if (!firstFont) return 'sans-serif';
+    if (/sans-serif/i.test(firstFont)) return 'sans-serif';
+    if (/serif|mincho|songti|sungti|\bsung\b|\bming\b|times|georgia|palatino|garamond|cambria|宋|明朝/i.test(firstFont)) {
+      return 'serif';
+    }
+    return 'sans-serif';
+  };
+
+  // 把 BCP 47 lang code 正規化成 LOCALE_FONT_PREPEND 的 key(zh-TW / zh-CN / ja / ko)。
+  // 涵蓋常見 BCP 47 變體:zh-Hant-TW / zh-Hans-CN / ja-JP / ko-KR / zh-HK 等。
+  // 'zh' 不帶 region 視為 ambiguous → 回 null(讓 caller 不 prepend 而非猜地區)。
+  // 不認識的 lang code(en / fr / 空字串)也回 null。
+  SK.normalizeLangCode = function normalizeLangCode(lang) {
+    if (!lang || typeof lang !== 'string') return null;
+    const lower = lang.toLowerCase();
+    if (lower === 'ja' || lower.startsWith('ja-')) return 'ja';
+    if (lower === 'ko' || lower.startsWith('ko-')) return 'ko';
+    // zh 變體:Hant / TW / HK / MO → zh-TW;Hans / CN / SG → zh-CN
+    if (lower.includes('hant') || lower === 'zh-tw' || lower === 'zh-hk' || lower === 'zh-mo') return 'zh-TW';
+    if (lower.includes('hans') || lower === 'zh-cn' || lower === 'zh-sg') return 'zh-CN';
+    return null;
+  };
 
   // ─── v1.5.0 雙語對照模式常數 ─────────────────────────
   SK.TRANSLATION_WRAPPER_TAG = 'shinkansen-translation';

@@ -20,6 +20,85 @@
     if (!STATE.originalText.has(el)) {
       STATE.originalText.set(el, (el.textContent || '').trim());
     }
+    if (!STATE.originalLang.has(el)) {
+      STATE.originalLang.set(el, el.hasAttribute('lang') ? el.getAttribute('lang') : null);
+    }
+    if (!STATE.originalFontFamily.has(el)) {
+      STATE.originalFontFamily.set(el, el.style.fontFamily || '');
+    }
+  };
+
+  // 注入時對 el 套 locale-aware 樣式:
+  //   1. lang attribute 設為 STATE.targetLanguage(讓瀏覽器選對 CJK 字形變體)
+  //   2. CJK target(ja / ko / zh-TW / zh-CN)時 prepend locale 字體到 inline fontFamily
+  //      站點 hardcode 單一 locale 字體 stack(例 upmedia.mg "Noto Serif TC" 開頭)
+  //      時,單純設 lang 救不了(瀏覽器停在第一順位字體不再 fallback);prepend 對應
+  //      locale 字體讓瀏覽器優先選對 locale 字形。
+  // Why prepend 而非取代:保留站點原 stack 當 fallback,系統沒裝 locale 字體時不影響
+  //   顯示;有裝時前面字體會涵蓋 CJK codepoint → 用對 locale 字形變體。
+  function applyTargetLocaleStyling(el) {
+    const target = STATE.targetLanguage;
+    if (!target || typeof target !== 'string') return;
+    el.setAttribute('lang', target);
+
+    const localeMap = SK.LOCALE_FONT_PREPEND && SK.LOCALE_FONT_PREPEND[target];
+    if (!localeMap) return;
+
+    // 只在 source locale ≠ target locale 時 prepend。同 locale 時站點 CSS 已選對
+    // 字形變體,prepend 反而會強制覆寫站點 typography(例 zh-TW 站特意用 Noto Serif TC
+    // 變成譯文段被換成 sans-serif PingFang TC)。source 未知(<html> 沒設 lang 或
+    // 不認識的 code)也跳過 prepend——保守做法,避免在不確定的場景動站點 typography。
+    const doc = el.ownerDocument;
+    const pageLang = SK.normalizeLangCode?.(doc?.documentElement?.lang);
+    if (!pageLang || pageLang === target) return;
+
+    // base = 「我們動之前的 stack」:
+    //   - 有 inline(dual mode buildDualInner 剛 copy 原段落 cs.fontFamily 進來,或
+    //     站點對 el 寫死 inline style):直接用 inline 當 base
+    //   - 無 inline:讀 computed(站點 CSS cascade 過來的 stack)
+    const current = el.style.fontFamily || '';
+    let base = current;
+    if (!base) {
+      const win = el.ownerDocument?.defaultView;
+      const cs = win?.getComputedStyle?.(el);
+      base = cs?.fontFamily || '';
+    }
+
+    // 偵測站點 stack 是 serif 還是 sans-serif,選對應 prepend stack。
+    // 偵測必須用「我們動之前的 stack」(用 STATE.originalFontFamily 或 computed 反推),
+    // 不能用 current(SPA 第二次 apply 時 current 已含我們的 prepend → 會用第一字體
+    // 偵測誤判成 prepend 的風格 → idempotent 偵測歪)。優先 STATE.originalFontFamily
+    // (snapshotOnce 記錄的原 inline);沒記錄時用 base。
+    const originalForDetect = STATE.originalFontFamily.has(el)
+      ? (STATE.originalFontFamily.get(el) || base)
+      : base;
+    const style = SK.detectFontStyle?.(originalForDetect) || 'sans-serif';
+    const prepend = localeMap[style] || localeMap['sans-serif'];
+    if (!prepend) return;
+
+    // Idempotent guard:已經 prepend 過(SPA reapply / Content Guard 多次觸發),
+    // 不再重複 prepend → 避免 stack 越疊越長。比對「第一字體名」(剝去引號)即可,
+    // 不能直接 startsWith(prepend),因為瀏覽器會正規化 CSS string(例如把
+    // `"Meiryo"` 簡化成 `Meiryo` 不必要引號),導致 setter 進去跟 getter 出來不字面相等。
+    const stripQuotes = (s) => s.replace(/^["']|["']$/g, '').trim();
+    const firstOf = (s) => stripQuotes((s.split(',')[0] || '').trim());
+    if (firstOf(current) === firstOf(prepend)) return;
+
+    el.style.fontFamily = base ? `${prepend}, ${base}` : prepend;
+  }
+
+  // restorePage / abort 路徑用:還原翻譯前的 lang attribute + inline fontFamily。
+  // originalLang 為 null = 原本沒設 attribute,移除即可;originalFontFamily 空字串 =
+  // 原本沒 inline style,設空字串會清掉 inline,重新繼承站點 CSS。
+  SK.restoreLocaleStyling = function restoreLocaleStyling(el) {
+    if (STATE.originalLang.has(el)) {
+      const orig = STATE.originalLang.get(el);
+      if (orig === null) el.removeAttribute('lang');
+      else el.setAttribute('lang', orig);
+    }
+    if (STATE.originalFontFamily.has(el)) {
+      el.style.fontFamily = STATE.originalFontFamily.get(el);
+    }
   };
 
   /**
@@ -271,6 +350,7 @@
       if (ok) {
         replaceNodeInPlace(el, frag);
         el.setAttribute('data-shinkansen-translated', '1');
+        applyTargetLocaleStyling(el);
         STATE.translatedHTML.set(el, el.innerHTML);
         SK.refreshAncestorSavedHTML?.(el);
         SK._guardObserveEl?.(el); // v1.8.20: 把新譯段註冊進 IO subset
@@ -282,6 +362,7 @@
       if (recovered) {
         replaceNodeInPlace(el, recovered);
         el.setAttribute('data-shinkansen-translated', '1');
+        applyTargetLocaleStyling(el);
         STATE.translatedHTML.set(el, el.innerHTML);
         SK.refreshAncestorSavedHTML?.(el);
         SK._guardObserveEl?.(el);
@@ -289,6 +370,7 @@
       }
       plainTextFallback(el, cleaned);
       el.setAttribute('data-shinkansen-translated', '1');
+      applyTargetLocaleStyling(el);
       STATE.translatedHTML.set(el, el.innerHTML);
       SK.refreshAncestorSavedHTML?.(el);
       SK._guardObserveEl?.(el);
@@ -297,6 +379,7 @@
 
     replaceTextInPlace(el, translation);
     el.setAttribute('data-shinkansen-translated', '1');
+    applyTargetLocaleStyling(el);
     STATE.translatedHTML.set(el, el.innerHTML);
     SK.refreshAncestorSavedHTML?.(el);
     SK._guardObserveEl?.(el);
@@ -346,6 +429,7 @@
     // v1.8.20: fragment 路徑也要寫 attribute + STATE.translatedHTML——
     // 否則 dual 模式下 fragment 段落 Content Guard 保護不到、SPA observer 重複偵測 → 重複翻譯。
     el.setAttribute('data-shinkansen-translated', '1');
+    applyTargetLocaleStyling(el);
     STATE.translatedHTML.set(el, el.innerHTML);
     SK.refreshAncestorSavedHTML?.(el);
     SK._guardObserveEl?.(el);
@@ -466,6 +550,10 @@
     // 到 wrapper.style.marginBottom)。
     inner.style.padding = '0';
     inner.style.margin = '0';
+
+    // 設 lang 讓瀏覽器選對 CJK 字形變體。dual 模式 inner 完全是譯文,直接設 lang 比
+    // 設在 wrapper 更精準(wrapper element 本身不含可見文字)。
+    applyTargetLocaleStyling(inner);
 
     // 譯文內容：有 slots 走 deserializer 重建 inline 結構，否則純文字 / br fragment
     if (slots && slots.length > 0) {

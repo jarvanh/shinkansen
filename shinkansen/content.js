@@ -1117,9 +1117,10 @@
       STATE.originalHTML.forEach((originalHTML, el) => {
         if (!el.isConnected) { detached++; return; }
         // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 翻譯前用
-        // el.innerHTML 讀出來自存的原始 DOM 字串），純還原用，無 user input 流入。
+        // el.innerHTML 讀出來自存的原始 DOM 字串），純還原用,無 user input 流入。
         el.innerHTML = originalHTML;
         el.removeAttribute('data-shinkansen-translated');
+        SK.restoreLocaleStyling?.(el);
       });
       STATE.originalHTML.clear();
       if (detached > 0) {
@@ -1127,6 +1128,8 @@
       }
     }
     STATE.originalText?.clear?.();
+    STATE.originalLang?.clear?.();
+    STATE.originalFontFamily?.clear?.();
     STATE.translated = false;
   }
 
@@ -1158,6 +1161,7 @@
       // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 自存的原文 DOM)，純還原用。
       el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
+      SK.restoreLocaleStyling?.(el);
     });
     if (restoreDetached > 0) {
       SK.sendLog?.('warn', 'system', 'restorePage: skipped detached elements (page may not fully restore)', { detached: restoreDetached });
@@ -1165,6 +1169,8 @@
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
     STATE.originalText?.clear?.();
+    STATE.originalLang?.clear?.();
+    STATE.originalFontFamily?.clear?.();
     STATE.translationCache?.clear?.();  // v1.5.0
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0
