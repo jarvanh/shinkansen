@@ -112,7 +112,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen 設定',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
 
     'options.action.save': '儲存設定',
     'options.action.show': '顯示',
@@ -135,11 +135,11 @@
     'options.uiLanguage.heading': '介面語言',
     'options.uiLanguage.label': '擴充功能介面顯示',
     'options.uiLanguage.auto': '自動（跟瀏覽器設定）',
-    'options.uiLanguage.hint': '控制 popup、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟下方「翻譯目標語言」獨立，互不影響',
+    'options.uiLanguage.hint': '控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟下方「翻譯目標語言」獨立，互不影響',
 
     'options.target.heading': '翻譯目標語言',
     'options.target.label': '翻譯成',
-    'options.target.hint.html': '所有翻譯模式（網頁、PDF、YouTube 字幕）共用此目標語言。變更後新翻譯結果會用新語言；舊翻譯快取仍保留，可在 Popup 點「清除快取」重新翻譯。<strong>zh-CN 與 en 為新增功能，品質持續優化中</strong>',
+    'options.target.hint.html': '所有翻譯模式（網頁、PDF、YouTube 字幕）共用此目標語言。變更後新翻譯結果會用新語言；舊翻譯快取仍保留，可點工具列圖示再點「清除快取」重新翻譯',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -175,16 +175,16 @@
     'options.domain.heading': '網域規則',
     'options.domain.whitelistLabel': '自動翻譯網站（每行一個網域，進入時自動翻譯）',
     'options.domain.autoTranslateSlotLabel': '自動翻譯使用的預設',
-    'options.domain.autoTranslateSlotHint': '進入白名單網域時走哪一組預設（等同自動按下對應的快速鍵）。預設「主要預設」與 v1.6.12 之前的行為一致',
+    'options.domain.autoTranslateSlotHint': '進入白名單網域時走哪一組預設（等同自動按下對應的快速鍵）',
 
     // ── options 語言偵測 ─────────────────────────────────
     'options.langDetect.heading': '語言偵測',
-    'options.langDetect.skipTraditional': '跳過繁體中文網頁',
-    'options.langDetect.skipTraditionalHint': '開啟時，若整頁文字以繁體中文為主，按翻譯會直接跳過。關閉後仍會逐段跳過中文段落，只翻譯外語內容。Gmail 等介面為中文但信件多為英文的網站，建議關閉此選項',
+    'options.langDetect.skipInTarget': '跳過{lang}網頁',
+    'options.langDetect.skipInTargetHint': '開啟時，若整頁文字以{lang}為主，按翻譯會直接跳過。關閉後仍會逐段跳過{lang}段落，只翻譯其他語言內容。例如 Gmail 等介面為某種語言但內容多為其他語言的網站，建議關閉此選項',
 
     // ── options 雙語對照視覺標記 ────────────────────────
     'options.dualMark.heading': '雙語對照視覺標記',
-    'options.dualMark.intro': '當顯示模式設為「雙語對照」時，譯文會以新段落形式 append 在原文之後。以下選項決定譯文段落的視覺標記樣式（顯示模式本身可在 popup 切換）。v1.8.31 起，Shinkansen 會自動偵測網頁實際背景亮度套用對應配色，亮色與深色頁面各自呈現如下',
+    'options.dualMark.intro': '當顯示模式設為「雙語對照」時，譯文會以新段落形式附加在原文之後。以下選項決定譯文段落的視覺標記樣式（顯示模式本身可點工具列圖示切換）',
     'options.dualMark.demoLight': '亮色頁面',
     'options.dualMark.demoDark': '深色頁面',
     'options.dualMark.demoOriginal': 'The quick brown fox jumps over the lazy dog.',
@@ -203,7 +203,7 @@
     'options.dualMark.accentPurple': '紫',
     'options.dualMark.accentPink': '粉',
     'options.dualMark.accentCustom': '自訂',
-    'options.dualMark.hint': '深色頁面預設灰色看不清時，可選一個強調色；三種視覺標記會共用同一色（tint 套淡底，bar / dashed 套實線色）',
+    'options.dualMark.hint': '深色頁面預設灰色看不清時，可選一個強調色；三種視覺標記會共用同一色',
 
     // ── options 翻譯進度通知 ─────────────────────────────
     'options.toast.heading': '翻譯進度通知',
@@ -221,7 +221,7 @@
 
     // ── options 金額顯示幣值 ─────────────────────────────
     'options.currency.heading': '金額顯示幣值',
-    'options.currency.intro': '影響翻譯完成通知、popup 累計、用量明細分頁的金額顯示。內部計價仍以美金為基準，只在顯示時換算',
+    'options.currency.intro': '影響翻譯完成通知、工具列圖示累計、用量明細分頁的金額顯示。內部計價仍以美金為基準，只在顯示時換算',
     'options.currency.usd': 'USD（美金）',
     'options.currency.twd': 'TWD（台幣）',
     'options.currency.rateLoading': '目前匯率讀取中⋯',
@@ -246,7 +246,7 @@
 
     // ── options 回復預設 ─────────────────────────────────
     'options.reset.heading': '回復預設設定',
-    'options.reset.intro.html': '將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請分別在 Popup 點「清除快取」與「重置統計」處理）',
+    'options.reset.intro.html': '將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請點工具列圖示分別點「清除快取」與「重置統計」處理）',
     'options.reset.button': '回復預設設定',
     'options.reset.confirm': '確定要回復所有預設設定嗎？\n\nAPI Key 會被保留，翻譯快取與累計使用統計不受影響。\n此操作無法復原。',
     'options.reset.done': '✓ 已回復預設設定',
@@ -332,7 +332,7 @@
 
     // ── options 術語表分頁 ───────────────────────────────
     'options.glossary.fixed.heading': '固定術語表',
-    'options.glossary.fixed.intro': '手動指定「原文 → 譯文」對照。每次翻譯時會注入 Gemini 的 system prompt，強制模型遵守你指定的譯法。固定術語的優先級高於自動擷取的術語',
+    'options.glossary.fixed.intro': '手動指定「原文 → 譯文」對照。每次翻譯時會注入翻譯引擎的翻譯 Prompt，強制模型遵守你指定的譯法。固定術語的優先級高於自動擷取的術語',
     'options.glossary.fixed.globalTitle': '全域（所有網站共用）',
     'options.glossary.fixed.colSource': '原文',
     'options.glossary.fixed.colTarget': '譯文',
@@ -348,7 +348,7 @@
     'options.glossary.fixed.deleteRow': '刪除',
 
     'options.glossary.auto.heading': '自動術語擷取',
-    'options.glossary.auto.intro.html': '長文翻譯時，先呼叫 Gemini 擷取全文專有名詞建立對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。預設不開啟——開啟後術語翻譯會跳過 system prompt 的部分指示（例如「英文人名保留不翻」會失效）。詳細說明見 <a href="https://github.com/jimmysu0309/shinkansen#術語表一致化" target="_blank" rel="noopener">README</a>',
+    'options.glossary.auto.intro.html': '長文翻譯時，先呼叫翻譯引擎擷取全文專有名詞建立對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。預設不開啟——開啟後術語翻譯會跳過翻譯 Prompt 的部分指示（例如「英文人名保留不翻」會失效）。詳細說明見 <a href="https://github.com/jimmysu0309/shinkansen#術語表一致化" target="_blank" rel="noopener">README</a>',
     'options.glossary.auto.toggle': '啟用自動術語擷取',
     'options.glossary.auto.modelLabel': '術語擷取模型',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite（預設，快又便宜）',
@@ -356,15 +356,15 @@
     'options.glossary.auto.modelPro': 'Gemini 3.1 Pro（最強，較貴）',
     'options.glossary.auto.modelSame': '與主翻譯模型相同',
     'options.glossary.auto.modelHint': '術語擷取是任務簡單的單次請求，Flash Lite 通常已夠用，且比 Flash 快 1.5-3 倍、便宜 5 倍',
-    'options.glossary.auto.advSummary': '進階設定（阻塞門檻、Temperature、逾時時間、術語擷取 Prompt）',
-    'options.glossary.auto.blockingLabel': '阻塞門檻（批次數）',
-    'options.glossary.auto.blockingHint': '頁面切批 > 此值才「先等術語表再翻譯」(blocking),≤ 此值則術語表跟翻譯並行（fire-and-forget，不阻塞首字）。預設 10——中等長度頁面省 1.5-7 秒首字延遲，但 batch 0 翻的部分可能跟後段術語不一致。設 0 = 全部走 fire-and-forget（永不阻塞）；設極大值（如 50）= 幾乎都阻塞（舊行為）',
+    'options.glossary.auto.advSummary': '進階設定（等待門檻、Temperature、逾時時間、術語擷取 Prompt）',
+    'options.glossary.auto.blockingLabel': '術語表等待門檻（批次數）',
+    'options.glossary.auto.blockingHint': '決定多長的文章才需要先等術語表抽完再開始翻譯。文章批次數超過此值，先等術語表抽完再翻譯（整篇譯名一致）；未超過則邊翻邊抽術語表（首字較快，但前後段譯名可能略不一致）。預設 10。設 0 = 一律邊翻邊抽，首字最快；設高（例如 50）= 幾乎都先等，譯名最一致',
     'options.glossary.auto.tempLabel': '術語表 Temperature',
     'options.glossary.auto.tempHint': '控制術語擷取的穩定度，越低越穩定。預設 0.1，一般不需調整',
-    'options.glossary.auto.timeoutLabel': '逾時時間（毫秒）',
-    'options.glossary.auto.timeoutHint': '長文等待術語表的最長時間。超過則放棄術語表直接翻譯，預設 60000（60 秒）',
+    'options.glossary.auto.timeoutLabel': '逾時時間（秒）',
+    'options.glossary.auto.timeoutHint': '長文等待術語表的最長時間。超過則放棄術語表直接翻譯，預設 60 秒',
     'options.glossary.auto.promptLabel': '術語擷取 Prompt',
-    'options.glossary.auto.promptHint': '控制 Gemini 擷取哪些類型的專有名詞。進階使用者可自行調整',
+    'options.glossary.auto.promptHint': '控制翻譯引擎擷取哪些類型的專有名詞。進階使用者可自行調整',
     'options.glossary.auto.targetMismatch.html': '⚠ 你已客製化此 prompt；切換目標語言<strong>不會自動覆蓋</strong>你的版本。要套用新目標語言預設，請清空欄位儲存（系統會自動走對應預設）',
 
     // ── options 自訂模型分頁 ─────────────────────────────
@@ -414,7 +414,7 @@
 
     // ── options 禁用詞清單分頁 ───────────────────────────
     'options.forbidden.heading': '禁用詞清單',
-    'options.forbidden.intro': '針對 AI 模型容易漏網的禁用辭彙自訂禁用對照表。內容會以高顯著性區塊注入 Gemini 的 system prompt 末端，明確要求譯文不可使用左欄詞彙、必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文',
+    'options.forbidden.intro': '針對 AI 模型容易漏網的禁用辭彙自訂禁用對照表。內容會以高顯著性區塊注入翻譯引擎的翻譯 Prompt 末端，明確要求譯文不可使用左欄詞彙、必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文',
     'options.forbidden.colWord': '禁用詞',
     'options.forbidden.colReplacement': '替換詞',
     'options.forbidden.colNote': '備註',
@@ -507,8 +507,8 @@
     // ── options YouTube 字幕分頁 ─────────────────────────
     'options.yt.auto.heading': '自動翻譯',
     'options.yt.auto.toggle': '偵測到 YouTube 影片時自動翻譯字幕',
-    'options.yt.auto.hint': '開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動在 Popup 開啟開關',
-    'options.yt.asr.heading': '自動產生字幕分句模式',
+    'options.yt.auto.hint': '開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動點工具列圖示開啟開關',
+    'options.yt.asr.heading': 'AI 分句',
     'options.yt.asr.intro.html': '僅影響 YouTube <strong>自動產生</strong>的字幕，人工字幕不受此設定影響',
     'options.yt.asr.toggle': 'AI 分句模式',
     'options.yt.asr.hint.html': '<strong>開啟</strong>：使用 AI 分句，提升字幕品質，些微提升 token 耗費<br><strong>關閉</strong>：使用 YouTube 自動產生字幕的原始分句邏輯',
@@ -518,8 +518,7 @@
     'options.yt.engine.google': 'Google Translate（免費，速度較快，不需 API Key）',
     'options.yt.engine.custom': '自訂模型（與「自訂模型」分頁共用設定）',
     'options.yt.engine.hint.html': '選擇 Google Translate 時，下方模型、計價、Prompt 設定均不作用（Google MT 不支援自訂 Prompt）。<br>選擇「自訂模型」時，會使用「自訂模型」分頁設定的 Base URL / 模型 ID / API Key / Prompt（與文章翻譯共用同一組）；下方模型、計價也不作用',
-    'options.yt.gemini.heading': 'Gemini 設定',
-    'options.yt.gemini.intro': '括號為 Standard tier 參考價（input / output，每 1M tokens USD）',
+    'options.yt.gemini.advSummary': '進階：翻譯模型設定',
     'options.yt.gemini.modelLabel': '模型',
     'options.yt.gemini.modelSame': '（與網頁翻譯主要預設相同）',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite-preview($0.10 / $0.30)— 便宜，字幕品質足夠',
@@ -532,7 +531,7 @@
     'options.yt.gemini.outputLabel': '字幕 Output 單價（USD / 1M tokens）',
     'options.yt.gemini.outputPlaceholder': '（與文章翻譯相同）',
     'options.yt.gemini.tempLabel': 'Temperature',
-    'options.yt.prompt.heading': '字幕翻譯 Prompt',
+    'options.yt.prompt.advSummary': '進階：字幕翻譯 Prompt',
     'options.yt.prompt.intro': '字幕翻譯使用獨立的 prompt，與文章翻譯分開。字幕著重口語化、逐段保持、不合併',
     'options.yt.prompt.targetMismatch.html': '⚠ 你已客製化此 prompt；切換目標語言<strong>不會自動覆蓋</strong>你的版本。要套用新目標語言預設，請清空欄位儲存（系統會自動走對應預設），或點下方「重置」按鈕',
     'options.yt.prompt.reset': '重置為預設 Prompt',
@@ -667,7 +666,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen 设置',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/" target="_blank" rel="noopener">项目主页</a>，功能介绍与使用说明请参考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">项目主页</a>，功能介绍与使用说明请参考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
 
     'options.action.save': '保存设置',
     'options.action.show': '显示',
@@ -690,11 +689,11 @@
     'options.uiLanguage.heading': '界面语言',
     'options.uiLanguage.label': '扩展功能界面显示',
     'options.uiLanguage.auto': '自动（跟浏览器设置）',
-    'options.uiLanguage.hint': '控制 popup、设置页、翻译进度通知等扩展功能界面字符串的语言。跟下方「翻译目标语言」独立，互不影响',
+    'options.uiLanguage.hint': '控制工具栏图标、设置页、翻译进度通知等扩展功能界面字符串的语言。跟下方「翻译目标语言」独立，互不影响',
 
     'options.target.heading': '翻译目标语言',
     'options.target.label': '翻译成',
-    'options.target.hint.html': '所有翻译模式（网页、PDF、YouTube 字幕）共用此目标语言。变更后新翻译结果会用新语言；旧翻译缓存仍保留，可在 Popup 点「清除缓存」重新翻译。<strong>zh-CN 与 en 为新增功能，质量持续优化中</strong>',
+    'options.target.hint.html': '所有翻译模式（网页、PDF、YouTube 字幕）共用此目标语言。变更后新翻译结果会用新语言；旧翻译缓存仍保留，可点工具栏图标再点「清除缓存」重新翻译',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -730,16 +729,16 @@
     'options.domain.heading': '域名规则',
     'options.domain.whitelistLabel': '自动翻译网站（每行一个域名，进入时自动翻译）',
     'options.domain.autoTranslateSlotLabel': '自动翻译使用的预设',
-    'options.domain.autoTranslateSlotHint': '进入白名单域名时走哪一组预设（等同自动按下对应的快捷键）。预设「主要预设」与 v1.6.12 之前的行为一致',
+    'options.domain.autoTranslateSlotHint': '进入白名单域名时走哪一组预设（等同自动按下对应的快捷键）',
 
     // ── options 语言检测 ─────────────────────────────────
     'options.langDetect.heading': '语言检测',
-    'options.langDetect.skipTraditional': '跳过繁体中文网页',
-    'options.langDetect.skipTraditionalHint': '开启时，若整页文字以繁体中文为主，按翻译会直接跳过。关闭后仍会逐段跳过中文段落，只翻译外语内容。Gmail 等界面为中文但邮件多为英文的网站，建议关闭此选项',
+    'options.langDetect.skipInTarget': '跳过{lang}网页',
+    'options.langDetect.skipInTargetHint': '开启时，若整页文字以{lang}为主，按翻译会直接跳过。关闭后仍会逐段跳过{lang}段落，只翻译其他语言内容。例如 Gmail 等界面为某种语言但内容多为其他语言的网站，建议关闭此选项',
 
     // ── options 双语对照视觉标记 ────────────────────────
     'options.dualMark.heading': '双语对照视觉标记',
-    'options.dualMark.intro': '当显示模式设为「双语对照」时，译文会以新段落形式 append 在原文之后。以下选项决定译文段落的视觉标记样式（显示模式本身可在 popup 切换）。v1.8.31 起，Shinkansen 会自动检测网页实际背景亮度套用对应配色，亮色与深色页面各自呈现如下',
+    'options.dualMark.intro': '当显示模式设为「双语对照」时，译文会以新段落形式附加在原文之后。以下选项决定译文段落的视觉标记样式（显示模式本身可点工具栏图标切换）',
     'options.dualMark.demoLight': '亮色页面',
     'options.dualMark.demoDark': '深色页面',
     'options.dualMark.demoOriginal': 'The quick brown fox jumps over the lazy dog.',
@@ -758,7 +757,7 @@
     'options.dualMark.accentPurple': '紫',
     'options.dualMark.accentPink': '粉',
     'options.dualMark.accentCustom': '自定义',
-    'options.dualMark.hint': '深色页面默认灰色看不清时，可选一个强调色；三种视觉标记会共用同一色（tint 套淡底，bar / dashed 套实线色）',
+    'options.dualMark.hint': '深色页面默认灰色看不清时，可选一个强调色；三种视觉标记会共用同一色',
 
     // ── options 翻译进度通知 ─────────────────────────────
     'options.toast.heading': '翻译进度通知',
@@ -776,7 +775,7 @@
 
     // ── options 金额显示币值 ─────────────────────────────
     'options.currency.heading': '金额显示币值',
-    'options.currency.intro': '影响翻译完成通知、popup 累计、用量明细分页的金额显示。内部计价仍以美金为基准，只在显示时换算',
+    'options.currency.intro': '影响翻译完成通知、工具栏图标累计、用量明细分页的金额显示。内部计价仍以美金为基准，只在显示时换算',
     'options.currency.usd': 'USD（美金）',
     'options.currency.twd': 'TWD（台币）',
     'options.currency.rateLoading': '目前汇率读取中⋯',
@@ -801,7 +800,7 @@
 
     // ── options 恢复默认 ─────────────────────────────────
     'options.reset.heading': '恢复默认设置',
-    'options.reset.intro.html': '将所有设置（模型、参数、计价、域名规则、系统提示等）还原为默认值。<strong>API Key 会被保留</strong>，不需要重填。翻译缓存与累计使用统计也不会受影响（请分别在 Popup 点「清除缓存」与「重置统计」处理）',
+    'options.reset.intro.html': '将所有设置（模型、参数、计价、域名规则、系统提示等）还原为默认值。<strong>API Key 会被保留</strong>，不需要重填。翻译缓存与累计使用统计也不会受影响（请点工具栏图标分别点「清除缓存」与「重置统计」处理）',
     'options.reset.button': '恢复默认设置',
     'options.reset.confirm': '确定要恢复所有默认设置吗？\n\nAPI Key 会被保留，翻译缓存与累计使用统计不受影响。\n此操作无法恢复。',
     'options.reset.done': '✓ 已恢复默认设置',
@@ -887,7 +886,7 @@
 
     // ── options 术语表分页 ───────────────────────────────
     'options.glossary.fixed.heading': '固定术语表',
-    'options.glossary.fixed.intro': '手动指定「原文 → 译文」对照。每次翻译时会注入 Gemini 的 system prompt，强制模型遵守你指定的译法。固定术语的优先级高于自动提取的术语',
+    'options.glossary.fixed.intro': '手动指定「原文 → 译文」对照。每次翻译时会注入翻译引擎的翻译 Prompt，强制模型遵守你指定的译法。固定术语的优先级高于自动提取的术语',
     'options.glossary.fixed.globalTitle': '全局（所有网站共用）',
     'options.glossary.fixed.colSource': '原文',
     'options.glossary.fixed.colTarget': '译文',
@@ -903,7 +902,7 @@
     'options.glossary.fixed.deleteRow': '删除',
 
     'options.glossary.auto.heading': '自动术语提取',
-    'options.glossary.auto.intro.html': '长文翻译时，先调用 Gemini 提取全文专有名词建立对照表，确保分批翻译的名词译名一致。短文（1 批以内）自动跳过。默认不开启——开启后术语翻译会跳过 system prompt 的部分指示（例如「英文人名保留不翻」会失效）。详细说明见 <a href="https://github.com/jimmysu0309/shinkansen#术语表一致化" target="_blank" rel="noopener">README</a>',
+    'options.glossary.auto.intro.html': '长文翻译时，先调用翻译引擎提取全文专有名词建立对照表，确保分批翻译的名词译名一致。短文（1 批以内）自动跳过。默认不开启——开启后术语翻译会跳过翻译 Prompt 的部分指示（例如「英文人名保留不翻」会失效）。详细说明见 <a href="https://github.com/jimmysu0309/shinkansen#术语表一致化" target="_blank" rel="noopener">README</a>',
     'options.glossary.auto.toggle': '启用自动术语提取',
     'options.glossary.auto.modelLabel': '术语提取模型',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite（默认，快又便宜）',
@@ -911,15 +910,15 @@
     'options.glossary.auto.modelPro': 'Gemini 3.1 Pro（最强，较贵）',
     'options.glossary.auto.modelSame': '与主翻译模型相同',
     'options.glossary.auto.modelHint': '术语提取是任务简单的单次请求，Flash Lite 通常已够用，且比 Flash 快 1.5-3 倍、便宜 5 倍',
-    'options.glossary.auto.advSummary': '高级设置（阻塞门槛、Temperature、超时时间、术语提取 Prompt）',
-    'options.glossary.auto.blockingLabel': '阻塞门槛（批次数）',
-    'options.glossary.auto.blockingHint': '页面切批 > 此值才「先等术语表再翻译」(blocking)，≤ 此值则术语表跟翻译并行（fire-and-forget，不阻塞首字）。默认 10——中等长度页面省 1.5-7 秒首字延迟，但 batch 0 翻的部分可能跟后段术语不一致。设 0 = 全部走 fire-and-forget（永不阻塞）；设极大值（如 50）= 几乎都阻塞（旧行为）',
+    'options.glossary.auto.advSummary': '高级设置（等待门槛、Temperature、超时时间、术语提取 Prompt）',
+    'options.glossary.auto.blockingLabel': '术语表等待门槛（批次数）',
+    'options.glossary.auto.blockingHint': '决定多长的文章才需要先等术语表抽完再开始翻译。文章批次数超过此值，先等术语表抽完再翻译（整篇译名一致）；未超过则边翻边抽术语表（首字较快，但前后段译名可能略不一致）。默认 10。设 0 = 一律边翻边抽，首字最快；设高（例如 50）= 几乎都先等，译名最一致',
     'options.glossary.auto.tempLabel': '术语表 Temperature',
     'options.glossary.auto.tempHint': '控制术语提取的稳定度，越低越稳定。默认 0.1，一般不需调整',
-    'options.glossary.auto.timeoutLabel': '超时时间（毫秒）',
-    'options.glossary.auto.timeoutHint': '长文等待术语表的最长时间。超过则放弃术语表直接翻译，默认 60000（60 秒）',
+    'options.glossary.auto.timeoutLabel': '超时时间（秒）',
+    'options.glossary.auto.timeoutHint': '长文等待术语表的最长时间。超过则放弃术语表直接翻译，默认 60 秒',
     'options.glossary.auto.promptLabel': '术语提取 Prompt',
-    'options.glossary.auto.promptHint': '控制 Gemini 提取哪些类型的专有名词。高级用户可自行调整',
+    'options.glossary.auto.promptHint': '控制翻译引擎提取哪些类型的专有名词。高级用户可自行调整',
     'options.glossary.auto.targetMismatch.html': '⚠ 你已自定义此 prompt；切换目标语言<strong>不会自动覆盖</strong>你的版本。要应用新目标语言默认，请清空字段保存（系统会自动走对应默认）',
 
     // ── options 自定义模型分页 ─────────────────────────────
@@ -969,7 +968,7 @@
 
     // ── options 禁用词清单分页 ───────────────────────────
     'options.forbidden.heading': '禁用词清单',
-    'options.forbidden.intro': '针对 AI 模型容易漏网的禁用词汇自定义禁用对照表。内容会以高显著性区块注入 Gemini 的 system prompt 末端，明确要求译文不可使用左栏词汇、必须改用右栏。修改清单后会自动让既有翻译缓存分区，不再命中旧译文',
+    'options.forbidden.intro': '针对 AI 模型容易漏网的禁用词汇自定义禁用对照表。内容会以高显著性区块注入翻译引擎的翻译 Prompt 末端，明确要求译文不可使用左栏词汇、必须改用右栏。修改清单后会自动让既有翻译缓存分区，不再命中旧译文',
     'options.forbidden.colWord': '禁用词',
     'options.forbidden.colReplacement': '替换词',
     'options.forbidden.colNote': '备注',
@@ -1062,8 +1061,8 @@
     // ── options YouTube 字幕分页 ─────────────────────────
     'options.yt.auto.heading': '自动翻译',
     'options.yt.auto.toggle': '检测到 YouTube 视频时自动翻译字幕',
-    'options.yt.auto.hint': '开启后进入 YouTube 视频页面时，会自动开始翻译字幕，不需要手动在 Popup 开启开关',
-    'options.yt.asr.heading': '自动生成字幕分句模式',
+    'options.yt.auto.hint': '开启后进入 YouTube 视频页面时，会自动开始翻译字幕，不需要手动点工具栏图标开启开关',
+    'options.yt.asr.heading': 'AI 分句',
     'options.yt.asr.intro.html': '仅影响 YouTube <strong>自动生成</strong>的字幕，人工字幕不受此设置影响',
     'options.yt.asr.toggle': 'AI 分句模式',
     'options.yt.asr.hint.html': '<strong>开启</strong>：使用 AI 分句，提升字幕质量，些微提升 token 耗费<br><strong>关闭</strong>：使用 YouTube 自动生成字幕的原始分句逻辑',
@@ -1073,8 +1072,7 @@
     'options.yt.engine.google': 'Google Translate（免费，速度较快，不需要 API Key）',
     'options.yt.engine.custom': '自定义模型（与「自定义模型」分页共用设置）',
     'options.yt.engine.hint.html': '选择 Google Translate 时，下方模型、计价、Prompt 设置均不作用（Google MT 不支持自定义 Prompt）。<br>选择「自定义模型」时，会使用「自定义模型」分页设置的 Base URL / 模型 ID / API Key / Prompt（与文章翻译共用同一组）；下方模型、计价也不作用',
-    'options.yt.gemini.heading': 'Gemini 设置',
-    'options.yt.gemini.intro': '括号为 Standard tier 参考价（input / output，每 1M tokens USD）',
+    'options.yt.gemini.advSummary': '进阶：翻译模型设置',
     'options.yt.gemini.modelLabel': '模型',
     'options.yt.gemini.modelSame': '（与网页翻译主要预设相同）',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 便宜，字幕质量足够',
@@ -1087,7 +1085,7 @@
     'options.yt.gemini.outputLabel': '字幕 Output 单价（USD / 1M tokens）',
     'options.yt.gemini.outputPlaceholder': '（与文章翻译相同）',
     'options.yt.gemini.tempLabel': 'Temperature',
-    'options.yt.prompt.heading': '字幕翻译 Prompt',
+    'options.yt.prompt.advSummary': '进阶：字幕翻译 Prompt',
     'options.yt.prompt.intro': '字幕翻译使用独立的 prompt，与文章翻译分开。字幕注重口语化、逐段保持、不合并',
     'options.yt.prompt.targetMismatch.html': '⚠ 你已自定义此 prompt；切换目标语言<strong>不会自动覆盖</strong>你的版本。要应用新目标语言默认，请清空字段保存（系统会自动走对应默认），或点下方「重置」按钮',
     'options.yt.prompt.reset': '重置为默认 Prompt',
@@ -1222,7 +1220,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen settings',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/" target="_blank" rel="noopener">Project home</a>. For features and usage, see the <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=en" target="_blank" rel="noopener">Project home</a>. For features and usage, see the <a href="https://github.com/jimmysu0309/shinkansen/blob/main/README.en.md" target="_blank" rel="noopener">README</a>',
 
     'options.action.save': 'Save settings',
     'options.action.show': 'Show',
@@ -1245,11 +1243,11 @@
     'options.uiLanguage.heading': 'Interface language',
     'options.uiLanguage.label': 'Extension UI shown in',
     'options.uiLanguage.auto': 'Automatic (follow browser locale)',
-    'options.uiLanguage.hint': 'Controls the language of the popup, settings page, translation progress toast, and other extension UI strings. Independent from the "Translation target language" setting below.',
+    'options.uiLanguage.hint': 'Controls the language of the toolbar icon, settings page, translation progress toast, and other extension UI strings. Independent from the "Translation target language" setting below',
 
     'options.target.heading': 'Translation target language',
     'options.target.label': 'Translate to',
-    'options.target.hint.html': 'All translation modes (web, PDF, YouTube subtitles) share this target language. New translations after change use the new language; old cache is preserved—click "Clear cache" in Popup to re-translate. <strong>zh-CN and en are new features, quality continuously improving</strong>',
+    'options.target.hint.html': 'All translation modes (web, PDF, YouTube subtitles) share this target language. New translations after change use the new language; old cache is preserved—click the toolbar icon then "Clear cache" to re-translate',
 
     // ── options API Key ───────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -1258,7 +1256,7 @@
     'options.apiKey.showAria': 'Show API Key',
     'options.apiKey.hideAria': 'Hide API Key',
     'options.apiKey.testAria': 'Test API Key',
-    'options.apiKey.hint.html': "Don't have an API Key? See <a href=\"https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md\" target=\"_blank\" rel=\"noopener\">Gemini API Key setup guide</a> (includes billing setup and other easy-to-miss steps)",
+    'options.apiKey.hint.html': "Don't have an API Key? See <a href=\"https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.en.md\" target=\"_blank\" rel=\"noopener\">Gemini API Key setup guide</a> (includes billing setup and other easy-to-miss steps)",
 
     // ── options translation shortcuts ─────────────────────
     'options.preset.heading': 'Translation shortcuts',
@@ -1285,20 +1283,20 @@
     'options.domain.heading': 'Domain rules',
     'options.domain.whitelistLabel': 'Auto-translate sites (one domain per line, translates on entry)',
     'options.domain.autoTranslateSlotLabel': 'Preset for auto-translate',
-    'options.domain.autoTranslateSlotHint': 'Which preset to use when entering whitelisted domains (equivalent to pressing the corresponding shortcut). Default "Primary preset" matches behavior before v1.6.12',
+    'options.domain.autoTranslateSlotHint': 'Which preset to use when entering whitelisted domains (equivalent to pressing the corresponding shortcut)',
 
     // ── options language detection ───────────────────────
     'options.langDetect.heading': 'Language detection',
-    'options.langDetect.skipTraditional': 'Skip Traditional Chinese pages',
-    'options.langDetect.skipTraditionalHint': 'When enabled, if a page is mostly Traditional Chinese, pressing translate skips it. When disabled, Chinese paragraphs are still skipped per-segment, only foreign text is translated. For sites like Gmail where the UI is Chinese but emails are mostly English, disable this option',
+    'options.langDetect.skipInTarget': 'Skip {lang} pages',
+    'options.langDetect.skipInTargetHint': 'When enabled, if a page is mostly {lang}, pressing translate skips it. When disabled, {lang} paragraphs are still skipped per-segment, only other-language text is translated. For sites where the UI is one language but content is mostly another (e.g. Gmail), disable this option',
 
     // ── options bilingual visual marks ───────────────────
     'options.dualMark.heading': 'Bilingual visual marks',
-    'options.dualMark.intro': 'When display mode is "Bilingual", translations are appended as new paragraphs after originals. The options below decide the visual mark style (display mode itself can be toggled in popup). Since v1.8.31, Shinkansen automatically detects page background brightness and applies matching colors—light and dark pages render as below',
+    'options.dualMark.intro': 'When display mode is "Bilingual", translations are appended as new paragraphs after originals. The options below decide the visual mark style (display mode itself can be toggled by clicking the toolbar icon)',
     'options.dualMark.demoLight': 'Light page',
     'options.dualMark.demoDark': 'Dark page',
-    'options.dualMark.demoOriginal': 'The quick brown fox jumps over the lazy dog.',
-    'options.dualMark.demoTranslation': 'The agile brown fox leaps over the lazy dog',
+    'options.dualMark.demoOriginal': '敏捷的棕狐跨越懶狗',
+    'options.dualMark.demoTranslation': 'The quick brown fox jumps over the lazy dog.',
     'options.dualMark.tint': 'Tinted background',
     'options.dualMark.bar': 'Left border bar',
     'options.dualMark.dashed': 'Wavy underline',
@@ -1313,7 +1311,7 @@
     'options.dualMark.accentPurple': 'Purple',
     'options.dualMark.accentPink': 'Pink',
     'options.dualMark.accentCustom': 'Custom',
-    'options.dualMark.hint': 'When the default gray is hard to read on dark pages, pick an accent color; all three marks share the same color (tint applies a light wash, bar / dashed apply solid color)',
+    'options.dualMark.hint': 'When the default gray is hard to read on dark pages, pick an accent color; all three marks share the same color',
 
     // ── options progress notification ────────────────────
     'options.toast.heading': 'Translation progress notification',
@@ -1331,7 +1329,7 @@
 
     // ── options currency ─────────────────────────────────
     'options.currency.heading': 'Currency display',
-    'options.currency.intro': 'Affects translation completion notification, popup total, and usage detail tab. Internal pricing is in USD, only converted on display',
+    'options.currency.intro': 'Affects translation completion notification, toolbar icon total, and usage detail tab. Internal pricing is in USD, only converted on display',
     'options.currency.usd': 'USD',
     'options.currency.twd': 'TWD',
     'options.currency.rateLoading': 'Loading current rate…',
@@ -1356,7 +1354,7 @@
 
     // ── options reset ─────────────────────────────────────
     'options.reset.heading': 'Restore defaults',
-    'options.reset.intro.html': 'Restore all settings (model, parameters, pricing, domain rules, system prompts, etc.) to defaults. <strong>API Key is preserved</strong>, no need to re-enter. Translation cache and usage stats are also unaffected (handle separately via "Clear cache" and "Reset stats" in Popup)',
+    'options.reset.intro.html': 'Restore all settings (model, parameters, pricing, domain rules, system prompts, etc.) to defaults. <strong>API Key is preserved</strong>, no need to re-enter. Translation cache and usage stats are also unaffected (click the toolbar icon and use "Clear cache" / "Reset stats" separately)',
     'options.reset.button': 'Restore defaults',
     'options.reset.confirm': 'Restore all default settings?\n\nAPI Key is preserved, translation cache and usage stats unaffected.\nThis operation cannot be undone.',
     'options.reset.done': '✓ Defaults restored',
@@ -1442,7 +1440,7 @@
 
     // ── options glossary tab ─────────────────────────────
     'options.glossary.fixed.heading': 'Fixed glossary',
-    'options.glossary.fixed.intro': 'Manually specify "source → target" mappings. Each translation injects them into Gemini\'s system prompt, forcing the model to obey your translations. Fixed terms have higher priority than auto-extracted ones',
+    'options.glossary.fixed.intro': "Manually specify \"source → target\" mappings. Each translation injects them into the translation engine's translation prompt, forcing the model to obey your translations. Fixed terms have higher priority than auto-extracted ones",
     'options.glossary.fixed.globalTitle': 'Global (shared across all sites)',
     'options.glossary.fixed.colSource': 'Source',
     'options.glossary.fixed.colTarget': 'Target',
@@ -1458,7 +1456,7 @@
     'options.glossary.fixed.deleteRow': 'Delete',
 
     'options.glossary.auto.heading': 'Auto term extraction',
-    'options.glossary.auto.intro.html': 'For long-form translation, first call Gemini to extract proper nouns and build a glossary, ensuring consistent translation across batches. Short articles (1 batch or fewer) skip this. Off by default—when on, term translation skips some system prompt instructions (e.g. "keep English names untranslated" no longer applies). See <a href="https://github.com/jimmysu0309/shinkansen#glossary-consistency" target="_blank" rel="noopener">README</a> for details',
+    'options.glossary.auto.intro.html': 'For long-form translation, first call the translation engine to extract proper nouns and build a glossary, ensuring consistent translation across batches. Short articles (1 batch or fewer) skip this. Off by default—when on, term translation skips some translation prompt instructions (e.g. "keep English names untranslated" no longer applies). See <a href="https://github.com/jimmysu0309/shinkansen/blob/main/README.en.md#glossary-consistency" target="_blank" rel="noopener">README</a> for details',
     'options.glossary.auto.toggle': 'Enable auto term extraction',
     'options.glossary.auto.modelLabel': 'Term extraction model',
     'options.glossary.auto.modelLite': 'Gemini 3.1 Flash Lite (default, fast and cheap)',
@@ -1466,15 +1464,15 @@
     'options.glossary.auto.modelPro': 'Gemini 3.1 Pro (strongest, more expensive)',
     'options.glossary.auto.modelSame': 'Same as main translation model',
     'options.glossary.auto.modelHint': 'Term extraction is a simple single-request task; Flash Lite is usually sufficient and 1.5-3x faster + 5x cheaper than Flash',
-    'options.glossary.auto.advSummary': 'Advanced (blocking threshold, Temperature, timeout, term extraction Prompt)',
-    'options.glossary.auto.blockingLabel': 'Blocking threshold (batch count)',
-    'options.glossary.auto.blockingHint': 'Pages with batches > this value "wait for glossary before translating" (blocking); ≤ this value runs glossary in parallel with translation (fire-and-forget, no first-token delay). Default 10—saves 1.5-7s on first-token latency for medium-length pages, but batch 0 may be inconsistent with later term names. Set 0 = always fire-and-forget (never block); large value (e.g. 50) = nearly always block (legacy behavior)',
+    'options.glossary.auto.advSummary': 'Advanced (wait threshold, Temperature, timeout, term extraction Prompt)',
+    'options.glossary.auto.blockingLabel': 'Glossary wait threshold (batches)',
+    'options.glossary.auto.blockingHint': 'Decides how long an article needs to be before waiting for the glossary to finish before translating. If batch count exceeds this value, wait for the glossary first (consistent term names throughout); if not, run the glossary in parallel with translation (faster first token, but term names may slightly differ between early and later paragraphs). Default 10. Set 0 = always run in parallel for fastest first token; set high (e.g. 50) = almost always wait first for the most consistent term names',
     'options.glossary.auto.tempLabel': 'Glossary Temperature',
     'options.glossary.auto.tempHint': 'Controls term extraction stability; lower = more stable. Default 0.1, no need to adjust normally',
-    'options.glossary.auto.timeoutLabel': 'Timeout (ms)',
-    'options.glossary.auto.timeoutHint': 'Max wait time for the glossary on long articles. If exceeded, skip glossary and translate directly. Default 60000 (60 sec)',
+    'options.glossary.auto.timeoutLabel': 'Timeout (s)',
+    'options.glossary.auto.timeoutHint': 'Max wait time for the glossary on long articles. If exceeded, skip glossary and translate directly. Default 60 sec',
     'options.glossary.auto.promptLabel': 'Term extraction Prompt',
-    'options.glossary.auto.promptHint': 'Controls which types of proper nouns Gemini extracts. Advanced users can adjust',
+    'options.glossary.auto.promptHint': 'Controls which types of proper nouns the translation engine extracts. Advanced users can adjust',
     'options.glossary.auto.targetMismatch.html': '⚠ You have customized this prompt; switching target language <strong>will not auto-overwrite</strong> your version. To apply the new target language default, clear the field and save (system uses corresponding default)',
 
     // ── options custom provider tab ───────────────────────
@@ -1524,7 +1522,7 @@
 
     // ── options forbidden terms tab ───────────────────────
     'options.forbidden.heading': 'Forbidden terms',
-    'options.forbidden.intro': "Customize a forbidden-terms mapping for terms AI models often miss. The list is injected as a high-prominence block at the end of Gemini's system prompt, explicitly requiring translations not to use the left column terms and to use the right column instead. Modifying the list automatically partitions existing translation cache, so old translations no longer match",
+    'options.forbidden.intro': "Customize a forbidden-terms mapping for terms AI models often miss. The list is injected as a high-prominence block at the end of the translation engine's translation prompt, explicitly requiring translations not to use the left column terms and to use the right column instead. Modifying the list automatically partitions existing translation cache, so old translations no longer match",
     'options.forbidden.colWord': 'Forbidden term',
     'options.forbidden.colReplacement': 'Replacement',
     'options.forbidden.colNote': 'Note',
@@ -1617,8 +1615,8 @@
     // ── options YouTube subtitle tab ──────────────────────
     'options.yt.auto.heading': 'Auto-translate',
     'options.yt.auto.toggle': 'Auto-translate subtitles when YouTube video is detected',
-    'options.yt.auto.hint': 'When enabled, on entering a YouTube video page, subtitle translation starts automatically with no need to toggle in Popup',
-    'options.yt.asr.heading': 'Auto-generated subtitle segmentation mode',
+    'options.yt.auto.hint': 'When enabled, on entering a YouTube video page, subtitle translation starts automatically with no need to click the toolbar icon to toggle',
+    'options.yt.asr.heading': 'AI segmentation',
     'options.yt.asr.intro.html': 'Only affects YouTube <strong>auto-generated</strong> subtitles; manual subtitles are unaffected',
     'options.yt.asr.toggle': 'AI segmentation mode',
     'options.yt.asr.hint.html': '<strong>On</strong>: use AI segmentation, improving subtitle quality with slight extra token cost<br><strong>Off</strong>: use the original YouTube auto-generated subtitle segmentation logic',
@@ -1628,8 +1626,7 @@
     'options.yt.engine.google': 'Google Translate (free, faster, no API Key needed)',
     'options.yt.engine.custom': 'Custom model (shares settings with "Custom model" tab)',
     'options.yt.engine.hint.html': 'When Google Translate is selected, model / pricing / Prompt settings below have no effect (Google MT does not support custom Prompt).<br>When "Custom model" is selected, the Base URL / model ID / API Key / Prompt from the "Custom model" tab is used (shared with article translation); model / pricing below also have no effect',
-    'options.yt.gemini.heading': 'Gemini settings',
-    'options.yt.gemini.intro': 'Brackets show Standard tier reference price (input / output, USD per 1M tokens)',
+    'options.yt.gemini.advSummary': 'Advanced: Translation model settings',
     'options.yt.gemini.modelLabel': 'Model',
     'options.yt.gemini.modelSame': '(Same as web translation primary preset)',
     'options.yt.gemini.modelLite': 'gemini-3.1-flash-lite-preview ($0.10 / $0.30) — cheap, subtitle quality sufficient',
@@ -1642,7 +1639,7 @@
     'options.yt.gemini.outputLabel': 'Subtitle Output price (USD / 1M tokens)',
     'options.yt.gemini.outputPlaceholder': '(Same as article translation)',
     'options.yt.gemini.tempLabel': 'Temperature',
-    'options.yt.prompt.heading': 'Subtitle translation Prompt',
+    'options.yt.prompt.advSummary': 'Advanced: Subtitle translation Prompt',
     'options.yt.prompt.intro': 'Subtitle translation uses an independent prompt, separate from article translation. Subtitles emphasize colloquial style, per-segment preservation, no merging',
     'options.yt.prompt.targetMismatch.html': '⚠ You have customized this prompt; switching target language <strong>will not auto-overwrite</strong> your version. To apply the new target language default, clear the field and save (system uses corresponding default), or click the "Reset" button below',
     'options.yt.prompt.reset': 'Reset to default Prompt',

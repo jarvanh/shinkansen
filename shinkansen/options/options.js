@@ -132,13 +132,15 @@ async function load() {
   // v1.7.3: 阻塞門檻可調（預設 10,> 此值才 blocking,≤ 此值走 fire-and-forget)
   $('glossaryBlockingThreshold').value = gl.blockingThreshold ?? DEFAULTS.glossary.blockingThreshold;
   $('glossaryTemperature').value = gl.temperature;
-  $('glossaryTimeout').value = gl.timeoutMs;
+  // v1.8.61:UI 顯示秒,storage 內部仍 ms;讀時 ms / 1000 換算
+  $('glossaryTimeout').value = Math.round((gl.timeoutMs ?? 60000) / 1000);
   $('glossaryPrompt').value = gl.prompt;
 
   // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
   const opacityPct = Math.round((s.toastOpacity ?? 0.7) * 100);
   $('toastOpacity').value = opacityPct;
-  $('toastOpacityLabel').textContent = opacityPct;
+  // v1.8.61:wrap label 走 i18n 動態字串(原本寫死繁中,en/zh-CN UI 漏翻)
+  _renderToastOpacityLabel(opacityPct);
   $('toastPosition').value = s.toastPosition || 'bottom-right';
   // v1.1.3: Toast 自動關閉
   $('toastAutoHide').checked = s.toastAutoHide !== false;
@@ -335,10 +337,32 @@ async function load() {
     // $('uiLanguage').value 還沒從 storage 同步進去,_t() 會用 HTML 預設 'auto'
     // → 跑到 en dict。現在 picker value 已 sync,重做一次拿到正確 dict。
     refreshSlotDropdownLabels();
+    // v1.8.61:幣值 section 只在繁中 UI 顯示
+    _updateCurrencySectionVisibility();
+    // v1.8.61:Toast opacity label 動態 i18n 字串
+    _renderToastOpacityLabel($('toastOpacity')?.value || 70);
+    // v1.8.61:字幕 prompt token hint 重 render — load() line 293 已呼叫過一次,但當時
+    // picker.value 還沒從 storage sync(走 navigator.language 推 auto),Jimmy 機器是
+    // 繁中環境就拿到繁中,即使 stored uiLanguage='en' 也無效。picker.value sync 後重 render 一次。
+    updateYtPromptCostHint();
+    // v1.8.61:語言偵測 label / hint 動態 render
+    _renderLangDetectLabels();
     I18N.subscribeUiLanguageChange((newUi /* , newPref */) => {
       I18N.applyI18n(document, newUi);
       // 動態 dropdown(refreshSlotDropdownLabels)用 _t() 取 prefix,UI 語系切換要重組
       refreshSlotDropdownLabels();
+      // v1.8.61:#currency-rate-display 不掛 data-i18n,applyI18n 不會碰它,
+      // UI 語系切換要主動重 render 才會看到新語言的「目前匯率: ...」字串
+      refreshExchangeRateDisplay();
+      // v1.8.61:幣值 section 隨 UI 語言切換顯示 / 隱藏
+      _updateCurrencySectionVisibility();
+      // v1.8.61:Toast opacity label 跟著 UI 語系重 render
+      _renderToastOpacityLabel($('toastOpacity')?.value || 70);
+      // v1.8.61:字幕 prompt token 開銷 hint 是純動態 _t() 計算,applyI18n 不碰,
+      // 主動 reapply 才會看到新語言的 dict 字串
+      updateYtPromptCostHint();
+      // v1.8.61:語言偵測 label / hint 跟著 UI 語系重 render
+      _renderLangDetectLabels();
     });
   }
 }
@@ -512,10 +536,48 @@ function fmtMoneyOpts() {
   return { currency: currentCurrencyState.currency, rate: currentCurrencyState.rate };
 }
 
-// v1.8.41：更新「目前匯率」顯示文字 + radio 同步
+// v1.8.61:Toast 透明度 label 走 i18n 動態字串(原本 source HTML 寫死繁中導致
+// en / zh-CN UI 漏翻)。每次 slider 拖動 / init / UI 語系切換都重 render。
+function _renderToastOpacityLabel(value) {
+  const wrap = document.getElementById('toastOpacityLabelWrap');
+  if (!wrap) return;
+  wrap.textContent = _t('options.toast.opacity', { value });
+}
+
+// v1.8.61:語言偵測 toggle 的 label / hint 是「跳過{lang}網頁」這類動態字串。
+// {lang} 從 lang.${TARGET} dict 動態注入(共 8 個 target 對應的 native name)。
+// 三處呼叫:init i18n block + subscribeUiLanguageChange callback + targetLanguage picker change。
+function _renderLangDetectLabels() {
+  const labelEl = document.getElementById('skipTargetPageLabel');
+  const hintEl = document.getElementById('skipTargetPageHint');
+  if (!labelEl && !hintEl) return;
+  const tl = $('targetLanguage')?.value || 'zh-TW';
+  const lang = _t(`lang.${tl}`);
+  if (labelEl) labelEl.textContent = _t('options.langDetect.skipInTarget', { lang });
+  if (hintEl)  hintEl.textContent  = _t('options.langDetect.skipInTargetHint', { lang });
+}
+
+// v1.8.61:「金額顯示幣值」section 只在繁中 UI 顯示。
+// 邏輯:取當前 effective UI 語言(由 #uiLanguage picker 推導,auto 會走 navigator),
+// 等於 'zh-TW' 才 show,其餘隱藏整個 section。對應使用情境:TWD/USD 換算對非繁中
+// 使用者無意義,匯率以 USD/TWD 計,英文 / 簡中 / 其他 UI 使用者預設用 USD。
+function _updateCurrencySectionVisibility() {
+  const sec = document.getElementById('currency-section');
+  if (!sec) return;
+  const I18N = window.__SK?.i18n;
+  const uiPref = $('uiLanguage')?.value || 'auto';
+  const dictLang = I18N ? I18N.getUiLanguage(uiPref) : 'zh-TW';
+  sec.hidden = (dictLang !== 'zh-TW');
+}
+
+// v1.8.41:更新「目前匯率」顯示文字 + radio 同步
+// v1.8.61:#currency-rate-display 移除 data-i18n,完全由本函式控制 textContent。
+//   - 開頭立刻 set loading(用當前 UI 語言),不再依賴 source HTML 預設值
+//   - sendMessage 失敗 / resp.ok 是 falsy 時顯示「讀取失敗」(原本沉默失敗會永遠停在 loading)
 async function refreshExchangeRateDisplay() {
   const el = document.getElementById('currency-rate-display');
   if (!el) return;
+  el.textContent = _t('options.currency.rateLoading');
   try {
     const resp = await browser.runtime.sendMessage({ type: 'EXCHANGE_RATE_GET' });
     if (resp?.ok) {
@@ -526,6 +588,8 @@ async function refreshExchangeRateDisplay() {
         source: resp.source,
       };
       el.textContent = formatRateLine(resp);
+    } else {
+      el.textContent = _t('options.currency.rateFailed');
     }
   } catch {
     el.textContent = _t('options.currency.rateFailed');
@@ -765,7 +829,8 @@ async function _saveImpl() {
       skipThreshold: DEFAULTS.glossary.skipThreshold,
       // v1.7.3: blockingThreshold 使用者可調（0 = 永遠 fire-and-forget，大值 = 幾乎都 blocking)
       blockingThreshold: parseUserNum($('glossaryBlockingThreshold').value, DEFAULTS.glossary.blockingThreshold),
-      timeoutMs: parseUserNum($('glossaryTimeout').value, 60000),
+      // v1.8.61:UI 是秒,儲存前 × 1000 換算成 ms(storage schema 仍 timeoutMs)
+      timeoutMs: parseUserNum($('glossaryTimeout').value, 60) * 1000,
       maxTerms: DEFAULTS.glossary.maxTerms,
     },
     // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
@@ -997,6 +1062,8 @@ $('targetLanguage')?.addEventListener('change', async () => {
     console.error('[shinkansen] targetLanguage set failed', err);
   }
   updateAllPromptTargetHints();
+  // v1.8.61:target 改變,語言偵測 label / hint 內含 {lang} 也要更新
+  _renderLangDetectLabels();
   // P2 (v1.8.60):translation target 改變不再連動 UI dict(UI 由獨立 #uiLanguage
   // picker 控制)。但若使用者選 'auto'(uiLanguage)而 navigator.language 跟新 target
   // 同語系,UI dict 看起來會「跟著切」是巧合,非設計;真正的 UI 切換見 #uiLanguage handler。
@@ -1021,6 +1088,16 @@ $('uiLanguage')?.addEventListener('change', async () => {
     const dictLang = window.__SK.i18n.getUiLanguage(ul);
     window.__SK.i18n.applyI18n(document, dictLang);
     refreshSlotDropdownLabels();
+    // v1.8.61:#currency-rate-display 不掛 data-i18n,主動重 render 拿新語言匯率字串
+    refreshExchangeRateDisplay();
+    // v1.8.61:幣值 section 隨 UI 語言切換顯示 / 隱藏
+    _updateCurrencySectionVisibility();
+    // v1.8.61:Toast opacity label 跟著 UI 語系重 render
+    _renderToastOpacityLabel($('toastOpacity')?.value || 70);
+    // v1.8.61:字幕 prompt token 開銷 hint 是純動態 _t() 計算,主動 reapply
+    updateYtPromptCostHint();
+    // v1.8.61:語言偵測 label / hint 跟著 UI 語系重 render
+    _renderLangDetectLabels();
   }
 });
 
@@ -1056,6 +1133,9 @@ $('yt-reset-prompt').addEventListener('click', () => {
   const tl = $('targetLanguage')?.value || 'zh-TW';
   $('ytSystemPrompt').value = getEffectiveSubtitleSystemPrompt(tl, '');
   markDirty(); // 值已變更，標記為未儲存
+  // v1.8.61:reset 後 textarea 已等於 effective default,但「你已客製化」hint 還殘留
+  // hidden=false。重 calc target-mismatch hint 可見性,讓 hint 自動消失。
+  updateAllPromptTargetHints();
 });
 // W7:文件翻譯設定已搬到 translate-doc/settings.html(獨立 page),不在 options 內
 // v1.5.8: 自訂模型「重置為預設 Prompt」按鈕——把 textarea 重設為 Gemini 同款 DEFAULT_SYSTEM_PROMPT
@@ -1064,6 +1144,8 @@ $('cp-reset-prompt')?.addEventListener('click', () => {
   const tl = $('targetLanguage')?.value || 'zh-TW';
   $('cp-systemPrompt').value = getEffectiveSystemPrompt(tl, '');
   markDirty();
+  // v1.8.61:同 yt-reset-prompt,reset 後 hint 應自動消失
+  updateAllPromptTargetHints();
 });
 
 // v1.5.8: Gemini 分頁「重設所有參數」按鈕 — 把本分頁所有欄位填回 DEFAULT_SETTINGS 對應值。
@@ -1110,6 +1192,8 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('partialModeEnabled').checked = D.partialMode.enabled;
   $('partialModeMaxUnits').value  = D.partialMode.maxUnits;
   markDirty();
+  // v1.8.61:reset systemInstruction textarea 後 hint 應自動消失(同 yt/cp reset)
+  updateAllPromptTargetHints();
   $('save-gemini-status').textContent = _t('options.gemini.resetAllDone');
   setTimeout(() => { $('save-gemini-status').textContent = ''; }, 4000);
 });
@@ -1314,7 +1398,7 @@ $('tier').addEventListener('change', () => {
 });
 // v1.8.19: safetyMargin slider UI 已移除，程式碼內部維持 storage default 0.1
 $('toastOpacity').addEventListener('input', () => {
-  $('toastOpacityLabel').textContent = $('toastOpacity').value;
+  _renderToastOpacityLabel($('toastOpacity').value);
 });
 $('toastPosition').addEventListener('change', markDirty);
 
@@ -1694,7 +1778,10 @@ function updateDomainSelect() {
   const domains = Object.keys(fixedGlossary.byDomain).sort();
   // AMO source review: domain 字串（使用者輸入）經 escapeAttr / escapeHtml 雙重處理，
   // 第一段是 dev hardcoded 字串。
-  sel.innerHTML = `<option value="">${escapeHtml(_t('options.glossary.fixed.domainSelectPlaceholder'))}</option>` +
+  // v1.8.61:placeholder option 加 data-i18n,讓 applyI18n 在 init / UI 語系切換時
+  // 能持續更新文字(不加的話 init 時用 picker.value=auto 推導的語言,使用者切 UI
+  // 語言後 placeholder 不會跟著切)。
+  sel.innerHTML = `<option value="" data-i18n="options.glossary.fixed.domainSelectPlaceholder">${escapeHtml(_t('options.glossary.fixed.domainSelectPlaceholder'))}</option>` +
     domains.map(d => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join('');
   if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
     sel.value = currentDomain;
@@ -2287,7 +2374,8 @@ function populateModelFilter() {
   // 重建選項（保留「全部模型」作為第一個選項）
   // v1.5.7: option text 用 preset label 顯示；option value 仍是 model id 維持 filter 行為
   // AMO source review: model id 跟 label 都經 escapeHtml/escapeAttr，第一段是 dev hardcoded。
-  sel.innerHTML = `<option value="">${escapeHtml(_t('options.usage.modelAll'))}</option>` +
+  // v1.8.61:placeholder option 加 data-i18n 讓 applyI18n 在 UI 語系切換時持續更新
+  sel.innerHTML = `<option value="" data-i18n="options.usage.modelAll">${escapeHtml(_t('options.usage.modelAll'))}</option>` +
     models.map(m => {
       const label = escapeHtml(modelToLabel(m));
       return `<option value="${escapeAttr(m)}"${m === currentVal ? ' selected' : ''}>${label}</option>`;

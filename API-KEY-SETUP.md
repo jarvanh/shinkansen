@@ -7,7 +7,7 @@
 
 ### 步驟 1：登入 Google AI Studio
 
-1. 開啟 [Google AI Studio](https://aistudio.google.com/),用你的 Google 帳號登入
+1. 開啟 [Google AI Studio](https://aistudio.google.com/)，用你的 Google 帳號登入
 2. 第一次登入會要求同意服務條款,勾選後按「Continue」
 
 ### 步驟 2:建立 API Key

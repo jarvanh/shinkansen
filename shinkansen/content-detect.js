@@ -260,11 +260,22 @@
     // 沒這條 nav LI 整顆被 widget skip → 短中文 nav 翻不到。'#' / 'javascript:' /
     // 空 href 仍視為真 widget(SPA dropdown trigger / accordion toggle 等本質上
     // 不 navigate,只觸發 JS 行為)。
+    //
+    // v1.8.61: 進一步收緊 — `aria-haspopup="true"` 是 ARIA 標準明確聲明「會展開
+    // popup / menu」,等同 dropdown trigger,即使 href 是真 URL 也維持 widget skip。
+    // 對應 upmedia.mg 主選單真實結構(`<a role="button" aria-haspopup="true">頂層</a>
+    // <div class="dropdown-menu"><a class="dropdown-item">子項</a>…</div>`):若不擋,
+    // collectParagraphs 會把 LI 整顆收進候選,inject 譯文時嵌套 dropdown-menu 結構
+    // 被破壞 → 全部子項平鋪展開亂版。Bootstrap / Headless UI / Reach UI 等任何符合
+    // ARIA 的 dropdown 共用此屬性,屬結構性通則不是站點特判。
     let nonUtilityCount = 0;
     for (const btn of buttons) {
       if (btn.tagName === 'A' && btn.getAttribute('role') === 'button') {
+        const ariaHaspopup = btn.getAttribute('aria-haspopup');
+        const isPopupTrigger = ariaHaspopup && ariaHaspopup !== 'false';
         const href = btn.getAttribute('href');
-        if (href && href !== '#' && !href.startsWith('javascript:')) continue;
+        const hasRealHref = href && href !== '#' && !href.startsWith('javascript:');
+        if (hasRealHref && !isPopupTrigger) continue;
       }
       let cur = btn;
       let isCodeUtility = false;
@@ -720,7 +731,23 @@
       if (!isCandidateText(d)) return;
       // v1.6.9: textContent 取代 innerText
       const txt = (d.textContent || '').trim();
-      if (txt.length < 20) return;
+      if (txt.length < 2) return;
+      // v1.8.61: 短文字 leaf DIV/SPAN(2-19 字)必須是 visual prominent block
+      // heading(display 為 block 系列 + font-size >= 24px)才放行。對應上報網站
+      // 「編輯部推薦」(5 字 / 48px / block / sel-tit2 class)這類 DIV section
+      // title — 非 H1-H6 但視覺是大字標題,沒這條補抓會永久不翻。24px 是 heading
+      // 慣例下限(body 14-18px / prominent heading >= 24px),跟 timestamp / author
+      // / inline counter 等 14-20px 噪音明確分開;display 限 block 系列(排除
+      // inline span 短字如 author / time / counter)。結構性通則(visual
+      // prominence),不靠 class 黑白名單(對應硬規則 §6 / §8)。
+      if (txt.length < 20) {
+        const cs = getComputedStyle(d);
+        const fs = parseFloat(cs.fontSize) || 0;
+        const disp = cs.display;
+        const isBlockDisplay = disp === 'block' || disp === 'flex' ||
+                               disp === 'grid' || disp === 'list-item';
+        if (!(isBlockDisplay && fs >= 24)) return;
+      }
       if (stats) stats.leafContentDiv = (stats.leafContentDiv || 0) + 1;
       results.push({ kind: 'element', el: d });
       seen.add(d);

@@ -712,13 +712,21 @@ a:hover { text-decoration: underline; }
   align-items: center;
   margin-bottom: 12px;
 }
+/* v1.8.61:select / input / button 同高(對齊 button.secondary ~38px),消除原生
+   select / input 預設 OS 渲染微差;同 v1.5.7 usage-date-label 對齊策略。 */
+.glossary-domain-controls select,
+.glossary-domain-controls input,
+.glossary-domain-controls button {
+  height: 38px;
+  margin: 0;
+  box-sizing: border-box;
+}
 .glossary-domain-controls select {
   width: auto;
   min-width: 180px;
 }
 .glossary-domain-controls input {
   flex: 1;
-  margin: 0;
 }
 .glossary-domain-header {
   display: flex;

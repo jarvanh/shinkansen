@@ -52,7 +52,7 @@
           <option value="zh-CN">简体中文（中国）</option>
           <option value="en">English</option>
         </select>
-        <small class="muted" data-i18n="options.uiLanguage.hint">控制 popup、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟下方「翻譯目標語言」獨立，互不影響</small>
+        <small class="muted" data-i18n="options.uiLanguage.hint">控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟下方「翻譯目標語言」獨立，互不影響</small>
       </label>
     </section>
 
@@ -73,8 +73,7 @@
         </select>
         <small class="muted" data-i18n-html="options.target.hint.html">
           所有翻譯模式（網頁、PDF、YouTube 字幕）共用此目標語言。
-          變更後新翻譯結果會用新語言；舊翻譯快取仍保留，可在 Popup 點「清除快取」重新翻譯。
-          <strong>zh-CN 與 en 為新增功能，品質持續優化中</strong>
+          變更後新翻譯結果會用新語言；舊翻譯快取仍保留，可點工具列圖示再點「清除快取」重新翻譯
         </small>
       </label>
     </section>
@@ -220,7 +219,7 @@
           <option value="1">預設 2</option>
           <option value="3">預設 3</option>
         </select>
-        <small class="muted" data-i18n="options.domain.autoTranslateSlotHint">進入白名單網域時走哪一組預設（等同自動按下對應的快速鍵）。預設「主要預設」與 v1.6.12 之前的行為一致</small>
+        <small class="muted" data-i18n="options.domain.autoTranslateSlotHint">進入白名單網域時走哪一組預設（等同自動按下對應的快速鍵）</small>
       </label>
     </section>
 
@@ -228,18 +227,19 @@
       <h2 data-i18n="options.langDetect.heading">語言偵測</h2>
       <label class="switch">
         <input type="checkbox" id="skipTraditionalChinesePage" checked>
-        <span data-i18n="options.langDetect.skipTraditional">跳過繁體中文網頁</span>
+        <!-- v1.8.61:label / hint 用 {lang} placeholder + JS 動態 render(同 target 切換 / UI 切換),
+             舊 dict key skipTraditional / skipTraditionalHint 廢除。實際 storage key 仍叫
+             skipTraditionalChinesePage(historical name,語意已是「整頁同 target 語言時跳過」)。 -->
+        <span id="skipTargetPageLabel">跳過繁體中文網頁</span>
       </label>
-      <small class="muted" data-i18n="options.langDetect.skipTraditionalHint">開啟時，若整頁文字以繁體中文為主，按翻譯會直接跳過。關閉後仍會逐段跳過中文段落，只翻譯外語內容。Gmail 等介面為中文但信件多為英文的網站，建議關閉此選項</small>
+      <small class="muted" id="skipTargetPageHint">開啟時，若整頁文字以繁體中文為主，按翻譯會直接跳過。關閉後仍會逐段跳過繁體中文段落，只翻譯其他語言內容。例如 Gmail 等介面為某種語言但內容多為其他語言的網站，建議關閉此選項</small>
     </section>
 
     <!-- v1.5.0: 雙語對照視覺標記 -->
     <section>
       <h2 data-i18n="options.dualMark.heading">雙語對照視覺標記</h2>
       <p class="muted" data-i18n="options.dualMark.intro">
-        當顯示模式設為「雙語對照」時，譯文會以新段落形式 append 在原文之後。
-        以下選項決定譯文段落的視覺標記樣式（顯示模式本身可在 popup 切換）。
-        v1.8.31 起，Shinkansen 會自動偵測網頁實際背景亮度套用對應配色，亮色與深色頁面各自呈現如下
+        當顯示模式設為「雙語對照」時，譯文會以新段落形式附加在原文之後。以下選項決定譯文段落的視覺標記樣式（顯示模式本身可點工具列圖示切換）
       </p>
       <div class="dual-demo-pair">
         <div class="dual-demo dual-demo-light">
@@ -280,7 +280,7 @@
           <input type="text" id="dualAccentHexInput" maxlength="7" placeholder="#RRGGBB" autocomplete="off" spellcheck="false">
         </span>
       </div>
-      <small class="muted" data-i18n="options.dualMark.hint">深色頁面預設灰色看不清時，可選一個強調色；三種視覺標記會共用同一色（tint 套淡底，bar / dashed 套實線色）</small>
+      <small class="muted" data-i18n="options.dualMark.hint">深色頁面預設灰色看不清時，可選一個強調色；三種視覺標記會共用同一色</small>
     </section>
 
     <section>
@@ -289,6 +289,11 @@
         <input type="checkbox" id="showProgressToast" checked>
         <span data-i18n="options.toast.show">顯示翻譯進度通知</span>
         <small class="muted" data-i18n="options.toast.showHint">關閉後將完全不顯示翻譯期間的進度通知（包含成功 / 失敗訊息也不顯示）</small>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="toastAutoHide" checked>
+        <span data-i18n="options.toast.autoHide">翻譯完成後自動關閉通知</span>
+        <small class="muted" data-i18n="options.toast.autoHideHint">開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉</small>
       </label>
       <label>
         <span data-i18n="options.toast.position">顯示位置</span>
@@ -300,27 +305,30 @@
         </select>
       </label>
       <label>
-        <span id="toastOpacityLabelWrap">通知透明度 <span id="toastOpacityLabel">70</span>%</span>
+        <!-- v1.8.61:純動態 i18n label(原本寫死繁中沒掛 data-i18n,en/zh-CN UI 漏翻)。
+             由 options.js _renderToastOpacityLabel 在 init / slider input / UI 語系切換時設整段字串。 -->
+        <span id="toastOpacityLabelWrap">通知透明度 70%</span>
         <input type="range" id="toastOpacity" min="10" max="100" step="10" value="70">
         <small class="muted" data-i18n="options.toast.opacityHint">如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
       </label>
-      <label class="toggle">
-        <input type="checkbox" id="toastAutoHide" checked>
-        <span data-i18n="options.toast.autoHide">翻譯完成後自動關閉通知</span>
-        <small class="muted" data-i18n="options.toast.autoHideHint">開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉</small>
-      </label>
     </section>
 
-    <!-- v1.8.41：金額顯示幣值 -->
-    <section>
+    <!-- v1.8.41：金額顯示幣值
+         v1.8.61:只在繁中 UI 顯示 — TWD/USD 換算對非繁中使用者無意義(匯率以
+         USD/TWD 計,英文 / 簡中 UI 使用者預設用 USD)。由 options.js
+         _updateCurrencySectionVisibility 在 init / UI 語言切換時控制 hidden。 -->
+    <section id="currency-section">
       <h2 data-i18n="options.currency.heading">金額顯示幣值</h2>
-      <p class="muted" data-i18n="options.currency.intro">影響翻譯完成通知、popup 累計、用量明細分頁的金額顯示。內部計價仍以美金為基準，只在顯示時換算</p>
+      <p class="muted" data-i18n="options.currency.intro">影響翻譯完成通知、工具列圖示累計、用量明細分頁的金額顯示。內部計價仍以美金為基準，只在顯示時換算</p>
       <div class="currency-options">
         <label><input type="radio" name="displayCurrency" value="USD"><span data-i18n="options.currency.usd">USD（美金）</span></label>
         <label><input type="radio" name="displayCurrency" value="TWD" checked><span data-i18n="options.currency.twd">TWD（台幣）</span></label>
       </div>
       <p class="muted" id="currency-rate-hint" style="margin-top: 12px;">
-        <span id="currency-rate-display" data-i18n="options.currency.rateLoading">目前匯率讀取中…</span>
+        <!-- 不掛 data-i18n:純動態 content(loading → 匯率 / 失敗訊息),由 refreshExchangeRateDisplay 控制。
+             掛 data-i18n 會被 applyI18n reapply 蓋掉動態文字 → 永遠停在 loading(v1.8.61 修正)。
+             source HTML 寫繁中 fallback,JS init 跑時會用 _t() 重設成當前 UI 語言。 -->
+        <span id="currency-rate-display">目前匯率讀取中⋯</span>
         <button type="button" id="refresh-rate-btn" class="ghost-btn" style="margin-left: 8px;" data-i18n="options.currency.refresh">重新抓取匯率</button>
       </p>
     </section>
@@ -337,7 +345,7 @@
 
     <section>
       <h2 data-i18n="options.reset.heading">回復預設設定</h2>
-      <p class="muted" data-i18n-html="options.reset.intro.html">將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請分別在 Popup 點「清除快取」與「重置統計」處理）</p>
+      <p class="muted" data-i18n-html="options.reset.intro.html">將所有設定（模型、參數、計價、網域規則、系統提示等）還原為預設值。<strong>API Key 會被保留</strong>，不需要重填。翻譯快取與累計使用統計也不會受影響（請點工具列圖示分別點「清除快取」與「重置統計」處理）</p>
       <button id="reset-defaults" class="secondary" data-i18n="options.reset.button">回復預設設定</button>
     </section>
 
@@ -537,7 +545,7 @@
     <!-- 固定術語表 -->
     <section>
       <h2 data-i18n="options.glossary.fixed.heading">固定術語表</h2>
-      <p class="muted" data-i18n="options.glossary.fixed.intro">手動指定「原文 → 譯文」對照。每次翻譯時會注入 Gemini 的 system prompt，強制模型遵守你指定的譯法。固定術語的優先級高於自動擷取的術語</p>
+      <p class="muted" data-i18n="options.glossary.fixed.intro">手動指定「原文 → 譯文」對照。每次翻譯時會注入翻譯引擎的翻譯 Prompt，強制模型遵守你指定的譯法。固定術語的優先級高於自動擷取的術語</p>
 
       <h3 class="glossary-scope-title" data-i18n="options.glossary.fixed.globalTitle">全域（所有網站共用）</h3>
       <div class="glossary-table-wrapper">
@@ -586,7 +594,7 @@
     <!-- 術語表一致化（自動擷取，從 Gemini Tab 搬來） -->
     <section>
       <h2 data-i18n="options.glossary.auto.heading">自動術語擷取</h2>
-      <p class="muted" data-i18n-html="options.glossary.auto.intro.html">長文翻譯時，先呼叫 Gemini 擷取全文專有名詞建立對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。預設不開啟——開啟後術語翻譯會跳過 system prompt 的部分指示（例如「英文人名保留不翻」會失效）。詳細說明見 <a href="https://github.com/jimmysu0309/shinkansen#術語表一致化" target="_blank" rel="noopener">README</a></p>
+      <p class="muted" data-i18n-html="options.glossary.auto.intro.html">長文翻譯時，先呼叫翻譯引擎擷取全文專有名詞建立對照表，確保分批翻譯的名詞譯名一致。短文（1 批以內）自動跳過。預設不開啟——開啟後術語翻譯會跳過翻譯 Prompt 的部分指示（例如「英文人名保留不翻」會失效）。詳細說明見 <a href="https://github.com/jimmysu0309/shinkansen#術語表一致化" target="_blank" rel="noopener">README</a></p>
       <label class="switch">
         <input type="checkbox" id="glossaryEnabled">
         <span data-i18n="options.glossary.auto.toggle">啟用自動術語擷取</span>
@@ -602,11 +610,11 @@
         <small class="muted" data-i18n="options.glossary.auto.modelHint">術語擷取是任務簡單的單次請求，Flash Lite 通常已夠用，且比 Flash 快 1.5-3 倍、便宜 5 倍</small>
       </label>
       <details class="advanced-details">
-        <summary data-i18n="options.glossary.auto.advSummary">進階設定（阻塞門檻、Temperature、逾時時間、術語擷取 Prompt）</summary>
+        <summary data-i18n="options.glossary.auto.advSummary">進階設定（等待門檻、Temperature、逾時時間、術語擷取 Prompt）</summary>
         <label>
-          <span data-i18n="options.glossary.auto.blockingLabel">阻塞門檻（批次數）</span>
+          <span data-i18n="options.glossary.auto.blockingLabel">術語表等待門檻（批次數）</span>
           <input type="number" id="glossaryBlockingThreshold" step="1" min="0" max="50">
-          <small class="muted" data-i18n="options.glossary.auto.blockingHint">頁面切批 > 此值才「先等術語表再翻譯」（blocking），≤ 此值則術語表跟翻譯並行（fire-and-forget，不阻塞首字）。預設 10——中等長度頁面省 1.5-7 秒首字延遲，但 batch 0 翻的部分可能跟後段術語不一致。設 0 = 全部走 fire-and-forget（永不阻塞）；設極大值（如 50）= 幾乎都阻塞（舊行為）</small>
+          <small class="muted" data-i18n="options.glossary.auto.blockingHint">決定多長的文章才需要先等術語表抽完再開始翻譯。文章批次數超過此值，先等術語表抽完再翻譯（整篇譯名一致）；未超過則邊翻邊抽術語表（首字較快，但前後段譯名可能略不一致）。預設 10。設 0 = 一律邊翻邊抽，首字最快；設高（例如 50）= 幾乎都先等，譯名最一致</small>
         </label>
         <label>
           <span data-i18n="options.glossary.auto.tempLabel">術語表 Temperature</span>
@@ -614,14 +622,15 @@
           <small class="muted" data-i18n="options.glossary.auto.tempHint">控制術語擷取的穩定度，越低越穩定。預設 0.1，一般不需調整</small>
         </label>
         <label>
-          <span data-i18n="options.glossary.auto.timeoutLabel">逾時時間（毫秒）</span>
-          <input type="number" id="glossaryTimeout" step="1000" min="3000" max="60000">
-          <small class="muted" data-i18n="options.glossary.auto.timeoutHint">長文等待術語表的最長時間。超過則放棄術語表直接翻譯，預設 60000（60 秒）</small>
+          <span data-i18n="options.glossary.auto.timeoutLabel">逾時時間（秒）</span>
+          <!-- v1.8.61:UI 顯示秒,storage 內部仍存 ms(timeoutMs)。options.js 讀寫做秒↔ms 換算。 -->
+          <input type="number" id="glossaryTimeout" step="1" min="3" max="60">
+          <small class="muted" data-i18n="options.glossary.auto.timeoutHint">長文等待術語表的最長時間。超過則放棄術語表直接翻譯，預設 60 秒</small>
         </label>
         <label>
           <span data-i18n="options.glossary.auto.promptLabel">術語擷取 Prompt</span>
           <textarea id="glossaryPrompt" rows="10"></textarea>
-          <small class="muted" data-i18n="options.glossary.auto.promptHint">控制 Gemini 擷取哪些類型的專有名詞。進階使用者可自行調整</small>
+          <small class="muted" data-i18n="options.glossary.auto.promptHint">控制翻譯引擎擷取哪些類型的專有名詞。進階使用者可自行調整</small>
           <small id="glossaryPrompt-target-hint" class="muted target-mismatch-hint" hidden data-i18n-html="options.glossary.auto.targetMismatch.html">
             ⚠ 你已客製化此 prompt；切換目標語言<strong>不會自動覆蓋</strong>你的版本。要套用新目標語言預設，請清空欄位儲存（系統會自動走對應預設）
           </small>
@@ -762,7 +771,7 @@
 
         <label style="margin-top: 8px;">
           <span data-i18n="options.cp.extraBodyLabel">自訂 request body 額外參數（JSON，覆蓋上方思考強度）</span>
-          <textarea id="cp-extra-body-json" rows="4" placeholder='例：{"reasoning":{"max_tokens":4000},"top_k":40}' style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
+          <textarea id="cp-extra-body-json" rows="4" placeholder='e.g. {"reasoning":{"max_tokens":4000},"top_k":40}' style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;"></textarea>
           <small class="muted" data-i18n-html="options.cp.extraBodyHint.html">
             內容會深層 merge 進 chat.completions request body，可用來：
             （1）強制覆蓋上方「思考強度」自動產生的設定；
@@ -805,7 +814,7 @@
       <h2 data-i18n="options.forbidden.heading">禁用詞清單</h2>
       <p class="muted" data-i18n="options.forbidden.intro">
         針對 AI 模型容易漏網的禁用辭彙自訂禁用對照表。內容會以高顯著性區塊
-        注入 Gemini 的 system prompt 末端，明確要求譯文不可使用左欄詞彙、
+        注入翻譯引擎的翻譯 Prompt 末端，明確要求譯文不可使用左欄詞彙、
         必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文
       </p>
       <div class="glossary-table-wrapper">
@@ -1015,12 +1024,12 @@
       <label class="checkbox-label">
         <input type="checkbox" id="ytAutoTranslate">
         <span data-i18n="options.yt.auto.toggle">偵測到 YouTube 影片時自動翻譯字幕</span>
-        <small class="muted" data-i18n="options.yt.auto.hint">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動在 Popup 開啟開關</small>
+        <small class="muted" data-i18n="options.yt.auto.hint">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動點工具列圖示開啟開關</small>
       </label>
     </section>
 
     <section>
-      <h2 data-i18n="options.yt.asr.heading">自動產生字幕分句模式</h2>
+      <h2 data-i18n="options.yt.asr.heading">AI 分句</h2>
       <p class="muted" data-i18n-html="options.yt.asr.intro.html">
         僅影響 YouTube <strong>自動產生</strong>的字幕，人工字幕不受此設定影響
       </p>
@@ -1050,46 +1059,50 @@
       </label>
     </section>
 
+    <!-- v1.8.61:翻譯模型設定 + 字幕翻譯 Prompt 收進 advanced-details 摺疊區。 -->
     <div id="yt-gemini-only-sections">
       <section>
-        <h2 data-i18n="options.yt.gemini.heading">Gemini 設定</h2>
-        <p class="muted" data-i18n="options.yt.gemini.intro">括號為 Standard tier 參考價（input / output，每 1M tokens USD）</p>
-        <label>
-          <span data-i18n="options.yt.gemini.modelLabel">模型</span>
-          <select id="ytModel">
-            <option value="" data-i18n="options.yt.gemini.modelSame">（與網頁翻譯主要預設相同）</option>
-            <option value="gemini-3.1-flash-lite-preview" data-i18n="options.yt.gemini.modelLite">gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 便宜，字幕品質足夠</option>
-            <option value="gemini-3-flash-preview" data-i18n="options.yt.gemini.modelFlash">gemini-3-flash-preview（$0.50 / $3.00）— 推薦</option>
-            <option value="gemini-3.1-pro-preview" data-i18n="options.yt.gemini.modelPro">gemini-3.1-pro-preview（$2.00 / $12.00）— 大炮打小鳥，不推薦</option>
-          </select>
-          <small class="muted" data-i18n="options.yt.gemini.modelHint">選擇模型後，下方計價會自動帶入參考價；你也可以手動修改</small>
-        </label>
-        <label>
-          <span data-i18n="options.yt.gemini.inputLabel">字幕 Input 單價（USD / 1M tokens）</span>
-          <input type="number" id="ytInputPerMTok" step="0.01" min="0" data-i18n-attr-placeholder="options.yt.gemini.inputPlaceholder" placeholder="（與文章翻譯相同）">
-          <small class="muted" data-i18n="options.yt.gemini.inputHint">空白表示使用與文章翻譯相同的計價，不需重複設定</small>
-        </label>
-        <label>
-          <span data-i18n="options.yt.gemini.outputLabel">字幕 Output 單價（USD / 1M tokens）</span>
-          <input type="number" id="ytOutputPerMTok" step="0.01" min="0" data-i18n-attr-placeholder="options.yt.gemini.outputPlaceholder" placeholder="（與文章翻譯相同）">
-        </label>
-        <label>
-          <span data-i18n="options.yt.gemini.tempLabel">Temperature</span>
-          <input type="number" id="ytTemperature" step="0.05" min="0" max="2">
-        </label>
+        <details class="advanced-details">
+          <summary data-i18n="options.yt.gemini.advSummary">進階：翻譯模型設定</summary>
+          <label>
+            <span data-i18n="options.yt.gemini.modelLabel">模型</span>
+            <select id="ytModel">
+              <option value="" data-i18n="options.yt.gemini.modelSame">（與網頁翻譯主要預設相同）</option>
+              <option value="gemini-3.1-flash-lite-preview" data-i18n="options.yt.gemini.modelLite">gemini-3.1-flash-lite-preview（$0.10 / $0.30）— 便宜，字幕品質足夠</option>
+              <option value="gemini-3-flash-preview" data-i18n="options.yt.gemini.modelFlash">gemini-3-flash-preview（$0.50 / $3.00）— 推薦</option>
+              <option value="gemini-3.1-pro-preview" data-i18n="options.yt.gemini.modelPro">gemini-3.1-pro-preview（$2.00 / $12.00）— 大炮打小鳥，不推薦</option>
+            </select>
+            <small class="muted" data-i18n="options.yt.gemini.modelHint">選擇模型後，下方計價會自動帶入參考價；你也可以手動修改</small>
+          </label>
+          <label>
+            <span data-i18n="options.yt.gemini.inputLabel">字幕 Input 單價（USD / 1M tokens）</span>
+            <input type="number" id="ytInputPerMTok" step="0.01" min="0" data-i18n-attr-placeholder="options.yt.gemini.inputPlaceholder" placeholder="（與文章翻譯相同）">
+            <small class="muted" data-i18n="options.yt.gemini.inputHint">空白表示使用與文章翻譯相同的計價，不需重複設定</small>
+          </label>
+          <label>
+            <span data-i18n="options.yt.gemini.outputLabel">字幕 Output 單價（USD / 1M tokens）</span>
+            <input type="number" id="ytOutputPerMTok" step="0.01" min="0" data-i18n-attr-placeholder="options.yt.gemini.outputPlaceholder" placeholder="（與文章翻譯相同）">
+          </label>
+          <label>
+            <span data-i18n="options.yt.gemini.tempLabel">Temperature</span>
+            <input type="number" id="ytTemperature" step="0.05" min="0" max="2">
+          </label>
+        </details>
       </section>
     </div><!-- /yt-gemini-only-sections -->
 
     <section id="yt-prompt-section">
-      <h2 data-i18n="options.yt.prompt.heading">字幕翻譯 Prompt</h2>
-      <p class="muted" data-i18n="options.yt.prompt.intro">字幕翻譯使用獨立的 prompt，與文章翻譯分開。字幕著重口語化、逐段保持、不合併</p>
-      <label>
-        <textarea id="ytSystemPrompt" rows="14" style="font-family: monospace; font-size: 12px;"></textarea>
-        <small id="ytSystemPrompt-target-hint" class="muted target-mismatch-hint" hidden data-i18n-html="options.yt.prompt.targetMismatch.html">
-          ⚠ 你已客製化此 prompt；切換目標語言<strong>不會自動覆蓋</strong>你的版本。要套用新目標語言預設，請清空欄位儲存（系統會自動走對應預設），或點下方「重置」按鈕
-        </small>
-      </label>
-      <button type="button" id="yt-reset-prompt" class="secondary" data-i18n="options.yt.prompt.reset">重置為預設 Prompt</button>
+      <details class="advanced-details">
+        <summary data-i18n="options.yt.prompt.advSummary">進階：字幕翻譯 Prompt</summary>
+        <p class="muted" data-i18n="options.yt.prompt.intro">字幕翻譯使用獨立的 prompt，與文章翻譯分開。字幕著重口語化、逐段保持、不合併</p>
+        <label>
+          <textarea id="ytSystemPrompt" rows="14" style="font-family: monospace; font-size: 12px;"></textarea>
+          <small id="ytSystemPrompt-target-hint" class="muted target-mismatch-hint" hidden data-i18n-html="options.yt.prompt.targetMismatch.html">
+            ⚠ 你已客製化此 prompt；切換目標語言<strong>不會自動覆蓋</strong>你的版本。要套用新目標語言預設，請清空欄位儲存（系統會自動走對應預設），或點下方「重置」按鈕
+          </small>
+        </label>
+        <button type="button" id="yt-reset-prompt" class="secondary" data-i18n="options.yt.prompt.reset">重置為預設 Prompt</button>
+      </details>
     </section>
 
     <section>

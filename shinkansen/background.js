@@ -1723,14 +1723,22 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
 // ─── v1.4.0: Google Translate 批次處理 ────────────────────────
 // 與 handleTranslate 不同：不走 rate limiter、不走術語表、費用 $0。
 // cacheSuffix：網頁翻譯用 '_gt'，字幕翻譯用 '_gt_yt'，確保快取與 Gemini 分開存放。
+// v1.8.61: targetLanguage 透傳給 translateGoogleBatch + 進 cache key,
+// zh-TW 不加 lang suffix(向下相容,既有 _gt cache 仍 hit),其他 target 加 _lang<x>。
 async function handleTranslateGoogle(payload, sender, cacheSuffix) {
   const texts = payload?.texts;
   if (!Array.isArray(texts) || texts.length === 0) {
     return { result: [], usage: { engine: 'google', chars: 0 } };
   }
 
+  const settings = await getSettings();
+  const tl = settings.targetLanguage || 'zh-TW';
+  const effectiveCacheSuffix = (tl && tl !== 'zh-TW')
+    ? cacheSuffix + '_lang' + tl.replace(/[^a-z0-9]/gi, '')
+    : cacheSuffix;
+
   // 1. 先查快取（與 Gemini 快取共用 cache module，但 key suffix 不同）
-  const cached = await cache.getBatch(texts, cacheSuffix);
+  const cached = await cache.getBatch(texts, effectiveCacheSuffix);
   const missingIdxs = [];
   const missingTexts = [];
   cached.forEach((tr, i) => {
@@ -1742,7 +1750,7 @@ async function handleTranslateGoogle(payload, sender, cacheSuffix) {
 
   const cacheHits = texts.length - missingTexts.length;
   debugLog('info', 'cache', 'google batch cache lookup', {
-    total: texts.length, hits: cacheHits, misses: missingTexts.length,
+    total: texts.length, hits: cacheHits, misses: missingTexts.length, tl,
   });
 
   // 2. 缺失的部分呼叫 Google Translate
@@ -1750,18 +1758,19 @@ async function handleTranslateGoogle(payload, sender, cacheSuffix) {
   let totalChars = 0;
   if (missingTexts.length > 0) {
     const t0 = Date.now();
-    debugLog('info', 'api', 'google translateBatch start', { count: missingTexts.length });
-    const res = await translateGoogleBatch(missingTexts);
+    debugLog('info', 'api', 'google translateBatch start', { count: missingTexts.length, tl });
+    const res = await translateGoogleBatch(missingTexts, tl);
     fresh = res.translations;
     totalChars = res.chars;
     debugLog('info', 'api', 'google translateBatch done', {
       count: missingTexts.length,
       chars: totalChars,
       elapsed: Date.now() - t0,
+      tl,
     });
 
     // 3. 寫回快取
-    await cache.setBatch(missingTexts, fresh, cacheSuffix);
+    await cache.setBatch(missingTexts, fresh, effectiveCacheSuffix);
 
     // 4. 記錄用量（費用 $0，以字元計）
     // v1.5.7: 走 upsertGoogleUsage 合併同一篇 URL 一小時內的批次到單一紀錄，

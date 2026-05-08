@@ -94,7 +94,43 @@ test('translateGoogleBatch: 索引保留正確（多批次 result 依 idx 寫回
   expect(translations[3].startsWith('[ZH] D')).toBe(true);
 });
 
+// v1.8.61: targetLanguage 必須帶進 URL 的 tl= 參數（之前寫死 zh-TW,
+// 導致 zh-CN / en / ja 等其他 target 都翻成繁中)。
+test('translateGoogleBatch: 預設不帶 target → URL tl=zh-TW', async () => {
+  await translateGoogleBatch(['Hello']);
+  expect(fetchCalls.length).toBe(1);
+  const tlMatch = String(fetchCalls[0]).match(/[?&]tl=([^&]*)/);
+  expect(tlMatch).not.toBeNull();
+  expect(decodeURIComponent(tlMatch[1])).toBe('zh-TW');
+});
+
+test('translateGoogleBatch: target=ja → URL tl=ja', async () => {
+  await translateGoogleBatch(['Hello'], 'ja');
+  expect(fetchCalls.length).toBe(1);
+  const tlMatch = String(fetchCalls[0]).match(/[?&]tl=([^&]*)/);
+  expect(decodeURIComponent(tlMatch[1])).toBe('ja');
+});
+
+test('translateGoogleBatch: target=zh-CN → URL tl=zh-CN', async () => {
+  await translateGoogleBatch(['Hello'], 'zh-CN');
+  expect(fetchCalls.length).toBe(1);
+  const tlMatch = String(fetchCalls[0]).match(/[?&]tl=([^&]*)/);
+  expect(decodeURIComponent(tlMatch[1])).toBe('zh-CN');
+});
+
+test('translateGoogleBatch: 不認得的 target → fallback tl=zh-TW', async () => {
+  await translateGoogleBatch(['Hello'], 'xx-YY');
+  expect(fetchCalls.length).toBe(1);
+  const tlMatch = String(fetchCalls[0]).match(/[?&]tl=([^&]*)/);
+  expect(decodeURIComponent(tlMatch[1])).toBe('zh-TW');
+});
+
 // SANITY check（手動驗證紀錄，已在 Claude Code 端跑過）：
 //   把 google-translate.js line 33 的條件 `cur.length > 0 && curEncodedLen + eLen > MAX_URL_ENCODED_CHARS`
 //   改為 `false`（永不切批），第三條測試 fetchCalls.length 會降為 1，斷言 fail。
 //   還原後 pass。已驗證。
+//
+// v1.8.61 SANITY check：
+//   把 google-translate.js 的 `tl=${encodeURIComponent(tl)}` 改回 `tl=zh-TW` 寫死,
+//   "target=ja" / "target=zh-CN" / "fallback" 三條測試會 fail(實際 tl 都是 zh-TW)。
+//   還原後 4 條 target language 測試全 pass。已驗證。
