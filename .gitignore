@@ -1,20 +1,20 @@
-# Cowork 端的土法煉鋼備份（git 取代之後可留著當雙保險，但不進版控）
+# 本機備份
 .backups/
 
-# Node / Playwright（之後在 Claude Code 裡會裝）
+# Node / Playwright
 node_modules/
 test-results/
 playwright-report/
 playwright/.cache/
 test/reports/
 
-# Chrome Web Store 上傳用的本機打包
+# 本機打包輸出
 dist/
 
-# docs 內部素材暫存區(Brand asset 工作區、原始概念稿、CWS 上架用素材等),只保留本機
+# docs 工作區素材
 docs/excluded/
 
-# Claude 協作用內部文件（含個人資訊，不公開）
+# 含個人資訊的本機檔
 CLAUDE.md
 測試流程說明.md
 CLAUDE-TEMPLATE-*.md
@@ -25,23 +25,18 @@ CLAUDE-TEMPLATE-*.md
 .env
 .env.*
 
-# debug harness 截圖輸出（tools/debug-harness.js）與一次性 probe 腳本
+# debug harness 截圖與一次性 probe 腳本
 .playwright-mcp/
 tools/probe-*.js
 
-# PDF layout snapshot baseline 純本機,內含對外不公開的內部素材切段 metadata
-# (PDF 在 docs/excluded/ 不進 repo,snapshot 就跟著留本機。Source code 公開,
-# 但開發過程的 layout 切點 know-how + 內部 PDF 結構快照不對外)
+# PDF layout snapshot baseline(本機素材對應)
 test/regression/pdf-layout-snapshots/
 
-# PDF 翻譯功能開發計畫(內部 know-how 不對外;source code 公開,規劃文件留本機)
+# 本機規劃 / 筆記檔
 PDF-TRANSLATION-PLAN.md
-
-# YouTube 字幕 _debugRender 欄位說明(內部 debug 工具 know-how,本機保留)
+SPEC-PRIVATE.md
 DEBUG-BOARD.md
-
-# 開發過程的 probe / roadmap / 實作筆記(內部 know-how,本機保留)
 /reports/
 
-# Claude Code ScheduleWakeup transient lock（每次 wakeup 重生,不該進 commit）
+# Claude Code ScheduleWakeup transient lock
 .claude/scheduled_tasks.lock

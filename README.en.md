@@ -6,7 +6,7 @@ A fast, privacy-first translation extension for web pages and YouTube subtitles.
 
 The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictionless reading experience.
 
-> [Install from Chrome Web Store](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) · [Install from Firefox Add-ons](https://addons.mozilla.org/firefox/addon/shinkansen/) · [Download latest zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · See the [project page](https://jimmysu0309.github.io/shinkansen/) for install guide and product overview · [Changelog](CHANGELOG.md)
+> [Install from Chrome Web Store](https://chromewebstore.google.com/detail/shinkansen/pnhmlecoofeoofajcjenndnimhbodhlg) · [Install from Firefox Add-ons](https://addons.mozilla.org/firefox/addon/shinkansen/) · [Download latest zip](https://github.com/jimmysu0309/shinkansen/releases/latest) · See the [project page](https://jimmysu0309.github.io/shinkansen/) for install guide and product overview · [Release notes](https://jimmysu0309.github.io/shinkansen/release-notes.en.html)
 
 ## Recent major updates
 
@@ -294,7 +294,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.8.65 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.8.66 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

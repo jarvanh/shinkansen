@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shinkansen — Store Release Notes</title>
+  <style>
+    :root {
+      --bg: #fdfdfd;
+      --fg: #1a1a1a;
+      --muted: #555;
+      --accent: #0055aa;
+      --border: #e0e0e0;
+      --section-bg: #f7f8fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a;
+        --fg: #e8e8e8;
+        --muted: #aaa;
+        --accent: #6ab0ff;
+        --border: #333;
+        --section-bg: #222;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.75;
+      padding: 2rem 1.5rem;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.7rem;
+      margin-bottom: 0.4rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 2rem;
+    }
+    .lang-switch {
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 2.4rem;
+      margin-bottom: 0.4rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h2 .release-date {
+      font-size: 0.88rem;
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 0.6rem;
+    }
+    .release-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    p { margin-bottom: 0.9rem; }
+    ul { margin-bottom: 1.2rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.7rem; }
+    li strong { color: var(--fg); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-size: 0.9em;
+      background: var(--section-bg);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+    .lead {
+      background: var(--section-bg);
+      border-left: 3px solid var(--accent);
+      padding: 0.8rem 1rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <p class="lang-switch"><a href="release-notes.html">繁體中文</a> | <strong>English</strong></p>
+
+  <h1>Store Release Notes</h1>
+  <p class="subtitle">Update summary for users on Chrome Web Store and Firefox Add-ons. Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
+
+  <h2>v1.8.55 <span class="release-date">Released 2026-05-05</span></h2>
+  <p class="release-meta">Compared with the previous store version v1.8.38</p>
+
+  <p class="lead">Two main themes: more target languages, and PDF document translation.</p>
+
+  <ul>
+    <li><strong>Multi-language translation target</strong>: the translation target expanded from Traditional Chinese to 8 languages (Traditional Chinese, Simplified Chinese, English, Japanese, Korean, Spanish, French, German). Switch in the "Target language" panel of options; all translation modes (web pages, PDF, YouTube subtitles) share this setting.</li>
+    <li><strong>Multi-language UI</strong>: the extension UI is also available in all 8 languages — popup, settings page, web translation progress toast, and PDF document translation reader. Set independently or follow your browser locale.</li>
+    <li><strong>PDF document translation (beta)</strong>: drop a PDF onto the "Translate Document" tab; Shinkansen parses the layout locally, sends the extracted text for translation, and presents the result in a side-by-side reader for users to read. Can be downloaded as a bilingual PDF. The whole document is processed inside your browser; only the extracted plain text is sent to the translation endpoint you configured.</li>
+    <li><strong>PDF translation editing</strong>: the reader supports per-segment editing of the translation, with basic markdown (bold, italic, links) and built-in find / replace. Saving regenerates the side-by-side preview.</li>
+    <li><strong>Article glossary</strong>: before translation, AI can extract a glossary of names and proper nouns from the article. After review or editing, this glossary is used during translation to keep names consistent throughout the document. The glossary can be imported and exported as JSON.</li>
+    <li><strong>Google Drive video subtitle translation</strong>: the YouTube subtitle translation pipeline extends to videos hosted on Google Drive, with consistent styling and bilingual behavior.</li>
+    <li><strong>YouTube bilingual subtitle visual integration</strong>: in bilingual mode, the original and translated lines now share a single black background, fully solving the previous "two-line English crowds out the translation" and "three black bars stacked" issues.</li>
+    <li><strong>Customizable accent color for bilingual mode</strong>: bilingual mode offers 8 accent colors and automatic dark-mode contrast, improving legibility on dark pages.</li>
+    <li><strong>Translation memory no longer cleared on extension version updates</strong>: the cache survives version bumps so users do not lose data each upgrade. Manual clearing is still available from the popup or settings page.</li>
+    <li><strong>Display currency switch</strong> (Traditional Chinese UI only): cost statistics in the settings page can switch between USD and TWD with automatic conversion.</li>
+  </ul>
+
+  <h2>v1.8.38 <span class="release-date">Released 2026-05-01</span></h2>
+  <p class="release-meta">Compared with the previous store version v1.8.30</p>
+
+  <p class="lead">This release focuses on UX polish and cross-browser compatibility fixes.</p>
+
+  <ul>
+    <li><strong>Local Ollama / llama.cpp connection guidance</strong>: the custom Provider tab in settings adds an expandable section "Getting 403 connecting to local Ollama / llama.cpp?" with two viable workarounds (configuring <code>OLLAMA_ORIGINS</code>, or using a hosts-file fake domain).</li>
+    <li><strong>Support for browsers without <code>openOptionsPage</code> (e.g. Arc)</strong>: clicking the "Settings" button in the popup now opens the settings tab correctly on Arc.</li>
+    <li><strong>YouTube no longer keeps translating after CC is turned off</strong>: when the user toggles off the YouTube CC button, Shinkansen pauses subtitle translation immediately and hides any leftover Chinese subtitles, so tokens are not consumed when subtitles are not visible.</li>
+    <li><strong>Bilingual mode contrast on dark backgrounds</strong>: the bilingual wrapper now auto-detects the actual page background luminance and applies a contrast-strengthened color scheme on dark pages, fixing the previous "beige fill clashes with light-gray text" issue. Border radius, padding, and inter-paragraph spacing also tuned.</li>
+    <li><strong>Subscribed-thread title detection on forums</strong>: thread titles in vBulletin-style forums (which add a wrapper and small icon when subscribed) are now correctly detected and translated.</li>
+  </ul>
+
+  <h2>v1.8.30 <span class="release-date">Released 2026-04-30</span></h2>
+  <p class="release-meta">Compared with the previous store version v1.4.22</p>
+
+  <p class="lead">A long stretch separated this release from v1.4.22, with substantial accumulated changes. The user-visible highlights are below.</p>
+
+  <ul>
+    <li><strong>Instant Translation</strong>: see the page start turning into your target language within 1 second of pressing translate, instead of waiting for the entire batch to come back at once (Gemini engine only). The first paragraphs now stream, dropping first-character latency from 2.5–4.4 seconds to 1.0–1.2 seconds.</li>
+    <li><strong>Bilingual side-by-side mode</strong>: a one-click toggle in the popup. "Overlay" replaces text in place; "Bilingual" keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint, left border, wavy underline, none) for the translated paragraphs.</li>
+    <li><strong>Custom AI models</strong>: in addition to Google Gemini and Google Translate, a new "Custom OpenAI-compatible endpoint" tab lets users connect to OpenRouter, Together, DeepSeek, Groq, Fireworks, Anthropic Claude, local Ollama / llama.cpp, and any other OpenAI-compatible service — hundreds of models in total.</li>
+    <li><strong>YouTube auto-caption smart re-segmentation</strong>: YouTube auto-generated captions (videos without manual subtitles, marked CC auto-generated) used to arrive as 1–3 word fragments without punctuation, with translations broken to match. Now AI re-segments the whole batch by sentence boundaries and adds punctuation before translating, so Chinese subtitles read as complete sentences instead of word fragments. Default mode is "hybrid": local heuristic segmentation appears immediately, AI re-segmentation runs in the background and replaces it once ready.</li>
+    <li><strong>Translate opening only (cost saver)</strong>: translate only the first few paragraphs (5–50 range, default 25), dramatically reducing token usage — useful for previewing before deciding whether to read the whole article. After translation, a "Translate remaining paragraphs" button appears in the bottom-right; clicking it finishes the article, reusing previously translated paragraphs from the local cache without re-charging.</li>
+    <li><strong>Blocked-word list</strong>: a user-editable substitution list (25 defaults, e.g. mainland Chinese phrasings to avoid in Taiwan-Mandarin output), explicitly telling the AI to never use the left-column terms.</li>
+    <li><strong>Translation shortcuts and three presets</strong>: three customizable translation presets, each bound to a shortcut (macOS Option+A/S/D, Windows Alt+A/S/D); engine, model, and label per preset are configurable in the "Translation shortcuts" section of settings. Pressing any shortcut while translated restores the page; pressing during translation cancels.</li>
+    <li><strong>Cross-tab translation continuity</strong>: after triggering translation in tab A, opening a link from A in a new tab B (including Cmd / Ctrl-click, <code>target="_blank"</code>, or programmatic <code>window.open</code>) automatically translates B with the same preset. Multi-level: B opening C also continues.</li>
+    <li><strong>Faster translation startup</strong>: long pages (Wikipedia, forums, long Medium articles) now start translating noticeably faster. Across a representative set of long pages, first-character latency dropped by an average of 29% (NPR from 11.7 s to 5.1 s).</li>
+    <li><strong>More intuitive translation order</strong>: on long pages, the first translated text users see is now the article title and first paragraph instead of navigation menus, cookie banners, or tables of contents (paragraphs inside <code>main</code> / <code>article</code> are translated first).</li>
+    <li><strong>Store update notifications</strong>: when Chrome Web Store or Firefox Add-ons auto-updates to a new version, popup and toast show a "Welcome to the new version" message listing the headline features. Patch-level updates are silent and don't pester users.</li>
+    <li><strong>"Translate this page" toolbar button</strong>: clicking the toolbar icon directly triggers translation and can be configured in settings to use a specific preset.</li>
+    <li><strong>Background-tab CPU and battery savings</strong>: when a tab is in the background, Shinkansen pauses content detection and SPA URL polling, reducing power drain on inactive tabs.</li>
+    <li><strong>Reload button on the usage history page</strong>: the usage history tab in settings adds a "Reload" button so users can see the latest entries without closing the settings tab.</li>
+    <li><strong>Multiple YouTube subtitle improvements</strong>: subtitles bypass YouTube's native "word-by-word" rendering for stable full-line display, subtitle styling auto-aligns to the native YouTube caption style, the YouTube subtitle settings tab is reorganized (auto-translate, engine, advanced, window, prompt), and subtitle translation can optionally apply the fixed glossary and blocked-word list (off by default to save tokens).</li>
+  </ul>
+
+  <footer>
+    <p>This page summarizes only the updates between store-released versions. The complete version history (including patches not pushed to stores) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>. &copy; 2026 Shinkansen.</p>
+  </footer>
+</body>
+</html>

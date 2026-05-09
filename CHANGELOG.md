@@ -5,79 +5,9 @@
 
 ---
 
-## 使用者功能變更摘要
-
-> 這份摘要只涵蓋使用者能感知到的功能與 UX 變更。完整版本歷史與技術細節請見下方 v1.6.x 起的詳細紀錄。
-
-### 翻譯引擎與模型
-
-- **v1.8.0** — **極速秒翻**：文章翻譯 batch 0 改走 Gemini streaming(SSE)，按下翻譯 1 秒就看到頁面開始變中文（首字延遲 2.5-4.4 秒 → 1.0-1.2 秒);batch 0 size 從 10 unit 擴大到 25 unit，涵蓋整段內文前 25 段。僅限 Gemini 文章翻譯 batch 0，字幕 / 術語表 / Google MT / 自訂模型不動
-- **v1.6.19** — Code review 後修 5 條穩健性 bug:YouTube 字幕並行批次某批失敗不再拖累其他批字幕、跨 tab sticky 翻譯在 SW 喚醒當下連開多 tab 不再漏繼承、設定頁可正確輸入 0(不會被靜默改回預設)、fragment 注入遇到 DOM 重排不再 crash、batch timer 不再洩漏
-- **v1.6.18** — 自訂模型分頁加「思考強度」(自動 / 關閉 / 低 / 中 / 高）統一控制，涵蓋 OpenRouter / DeepSeek / Claude / OpenAI o-series / Grok / Qwen 6 家 thinking API 差異；另加「進階 JSON」逃生口給 power user 透傳 provider 專屬參數
-- **v1.6.12** — 修 Pro 模型（`gemini-3-pro-preview` / `gemini-2.5-pro` 等）翻譯失敗 bug，並升級到 Gemini 3 推薦的 `thinkingLevel` API
-- **v1.6.7** — 自訂模型支援本機後端（llama.cpp / Ollama 等不需 API Key 的服務）
-- **v1.5.7** — 新增「自訂 OpenAI 相容模型」分頁，可接 OpenRouter / Together / DeepSeek / Groq / Fireworks / Ollama 等任何 OpenAI 相容端點
-
-### 翻譯預設與快速鍵
-
-- **v1.6.6** — 工具列「翻譯本頁」按鈕可指定對應的翻譯預設
-
-### 顯示模式
-
-- **v1.5.3** — 雙語對照的「虛線底線」改為波浪底線，與連結直線底線視覺區分
-- **v1.5.2** — 雙語對照模式譯文繼承原文字型、字距、行距
-- **v1.5.0** — 新增雙語對照模式（譯文與原文並列，可在 popup 即時切換）
-
-### 翻譯品質與術語管理
-
-- **v1.8.7** — 「**翻譯剩餘段落**」按鈕：partialMode 翻完開頭後 toast 顯示「已翻譯前 N 段（共 M 段)」+ 常駐按鈕，點按走完整翻譯，前段從本地快取 fast path 命中（0 token / 9ms)，只後段打 API。「只翻文章開頭」UI 從「效能」section 獨立成「**節省模式**」section，搬到「配額」之前
-- **v1.8.3** — 新增「**只翻文章開頭（節省費用)**」選項。翻譯只跑前 N 段（範圍 5-50，預設 25)，大幅減少 token 用量；適合先預覽再決定要不要看完整文章。預設關閉
-- **v1.7.1** — **翻譯優先級排序**：長網頁翻譯時最先看到的譯文從「導覽列 / cookie 同意書 / TOC」變成「文章標題 + 第一段內文」(`prioritizeUnits` 把 main / article 內段落排到 batch 0 + batch 0 序列化先跑)
-- **v1.5.6** — 新增中國用語黑名單分頁（預設 25 條禁用詞，可編輯）
-
-### YouTube 字幕翻譯
-
-- **v1.8.9** — YouTube **人工字幕**(非 ASR)batch 0 也走 streaming(SSE)，首字延遲從整批 resolve 砍成 SSE 首段；非 ASR 字幕長譯文也比照 ASR 走 `_wrapTargetText` 切點 + `<br>` 注入，中文長句不再沖出 video 寬
-- **v1.8.2** — ASR 字幕 overlay 黑底 padding 縮緊，左右各省 7px，視覺比例對齊原生 YouTube 字幕（原本黑底比原生大很多)
-- **v1.7.0** — YouTube **自動產生字幕**(ASR）生產級體驗：**AI 智慧分句**(整批送 Gemini 依語意重組，中文字幕從「破碎的詞」變「完整句子」)、**混合模式預設**(預設分句先秒出、AI 分句結果回來後替換)、**字幕 overlay 整句穩定顯示**(完全旁路 YouTube 原生 caption-segment 一字一字跳的問題);UI 簡化為單一「AI 分句模式」toggle
-- **v1.6.20** — YouTube 自動產生字幕整套重做：三種分句模式可切換（預設分句 / AI 分句 / 混合模式)、字幕完全旁路原生跳動 + 整句穩定顯示、譯文過長依標點動態斷行（2 行為主)、字體 / 顏色 / 透明度 / 字型動態對齊原生英文字幕；勾「自動翻譯字幕」+ CC 未開時自動開啟 CC
-- **v1.6.0** — 字幕分頁 tab 移到「一般設定」右邊；section 重組為「自動翻譯 → 翻譯引擎 → Gemini 設定 → 進階 → 視窗設定 → Prompt」
-- **v1.6.0** — 字幕引擎新增「自訂模型」選項（與文章翻譯共用設定，prompt 可獨立）
-- **v1.6.0** — 字幕新增「字幕也套用『固定術語表』/『禁用詞清單』」兩個 toggle（預設關，省 token）
-- **v1.5.5** — 修「編輯譯文」會被自動還原的 bug
-
-### 設定頁與用量紀錄
-
-- **v1.6.17** — 設定頁次按鈕視覺對齊主按鈕（高度/字級一致，主按鈕仍突出)
-- **v1.6.16** — 自訂模型分頁預填 OpenRouter DeepSeek V4 Pro(只剩 API Key 要填即可啟動);Gemini 分頁移除「後備路徑單價」UI;reset 按鈕補清空 v1.6.14 的計價覆蓋表
-- **v1.6.15** — Gemini 分頁移除「全域 Gemini 模型」下拉（後備路徑已不需要),Service Tier 搬到「LLM 參數微調」section
-- **v1.6.14** — 翻譯預設改名「主要預設 / 預設 2 / 預設 3」(原預設 2 突顯為「主要預設」加藍邊框);Gemini 分頁加 per-model 計價覆蓋表（Google 改價時可手動更新)
-- **v1.6.13** — 自動翻譯白名單可指定使用哪一組預設（原本走 Gemini 全域模型，現在跟快速鍵行為一致);Gemini 分頁的「模型/計價」section 重新標示為「後備路徑專用」消除混淆
-- **v1.6.11** — 用量紀錄分頁加「重新載入」按鈕（不需關閉設定頁也能看到最新紀錄)
-- **v1.6.0** — 設定頁加入「重設所有參數」與「重置為預設 Prompt」按鈕；每批段數預設 12→20；用量紀錄時間 filter 改 24 小時制 + 「現在時間」按鈕
-- **v1.5.7** — 用量紀錄「模型」欄改顯示 preset 標籤；Google MT 同 URL 批次自動合併
-
-### 效能與穩定性
-
-- **v1.8.10** — 修 LLM 偷懶把多段譯文合併成 1 段時，使用者看到字幕 / 文章顯示「«1» 中文 <<<SHINKANSEN_SEP>>> «2» 中文」殘留協定標記（YouTube 字幕 streaming 上特別常見)
-- **v1.8.8** — 修「翻譯剩餘段落」按鈕後 toast 立刻顯示完成、實際大部分內容沒翻的 bug
-- **v1.8.6** — 修「只翻文章開頭」中英夾雜的 bug(partialMode 改走純 DOM 順序，不再被 prioritizeUnits 重新排序造成 tier 1 真內文段被 truncate 掉)
-- **v1.8.1** — 修 v1.8.0 streaming 路徑漏寫 cache,「翻譯 → 還原 → 重翻同一頁」回到 cache fast path(實測同頁 9 毫秒完成)
-- **v1.7.3** — Glossary 阻塞門檻動態調整（預設 5 → 10)：中等長度頁面（6-10 批）從「先等術語表再翻」改為「術語表跟翻譯並行」，首字延遲省 1.5-7.4 秒（Verge -61% / GitHub -64%)
-- **v1.7.2** — 翻譯首字延遲再優化：batch 0 切小（10 unit / 1500 chars)、Readability tier 0 細分（GitHub repo / Wikipedia 等「main 包了 chrome」的網站 batch 0 排序更準)、glossary 抽取改用 Flash Lite。同組 10 個 URL 平均 -29%(NPR 11.7s → 5.1s 省 6.6 秒)
-- **v1.6.10** — 分頁切到背景時暫停 Content Guard 與 SPA URL 輪詢，降低背景分頁的 CPU 與電力消耗
-- **v1.6.9** — 段落偵測階段大幅優化，長頁（Wikipedia / 論壇 / 長 Medium）翻譯啟動明顯變快
-
-### 通知與更新提示
-
-- **v1.6.8** — 「顯示翻譯進度通知」master switch（可完全關閉 toast）
-- **v1.6.5** — Chrome 商店自動更新後的「歡迎升級」提示（popup banner + toast 兩處）
-- **v1.6.4** — Patch 級更新不再提示，避免高頻打擾
-- **v1.6.1** — GitHub Releases 自動更新提示（給手動安裝 / unpacked 使用者）
-
----
-
 ## v1.8.x
+
+**v1.8.66** — 文案 / 文件 / 隱私 / 版本紀錄整套清理。**Extension UI 改動**:`shinkansen/options/options.html` + `shinkansen/lib/i18n.js` 8 語 dict 的 `options.apiKey.hint.html` 刪掉「(含帳單設定等容易遺漏的步驟)」括號(API Key 申請教學連結 hint 縮短)。**新增 docs/release-notes.{html,en.html}**:給 Chrome Web Store / Firefox Add-ons 使用者看的「商店上架版本對比更新紀錄」,3 段(v1.4.22 → v1.8.30 / v1.8.30 → v1.8.38 / v1.8.38 → v1.8.55),中性語氣、無 emoji、bullet 精選 5–15 條,每段先一句 lead 點主軸再列重點;雙語對齊 + 語言切換器。CHANGELOG.md 原「使用者功能變更摘要」section 整段刪除(由 release-notes 取代),CHANGELOG 維持純技術紀錄。docs/index.html footer 與 hero 加「更新紀錄 / Release notes」連結;順手修 en footer privacy-policy 連結指向 .en.html。README.md / README.en.md「功能變更紀錄 / Changelog」連結改成指向 release-notes.html。**SPEC.md 結構整理**:刪除 §2.2、§17.10 / §17.11 / §17.12 過時內容,§17 開頭 stale note 修正(「規劃中(尚未實作)」→「v1.8.45 起 beta 上線」)+ dangling §17.10 cross-ref 清理。**release-notes 更精準收斂**:刪掉 v1.8.30 update 中誤列的內部 / 非 user-facing 條目(「Privacy Policy 跨瀏覽器中性化」/「Landing page 與外圍文件提供英文版」/「中國用語黑名單改名」),保留真正使用者視角更新;「顯示貨幣切換」加上「(限繁中介面)」限定。**自動清快取**:不清,沒動翻譯路徑核心邏輯 / prompt / cache key / hashing,純 UI 文案 + 文件清理。
 
 **v1.8.65** — 文案與文件大清理一輪 + v1.8.64 PDF 翻譯 reader UI i18n 內部 hotfix。**hotfix**:`translate-doc/index.js` + `settings.js` 的 `initI18n()` 漏寫 `window.__SK.STATE.uiLanguage`,動態 `t()` 字串(例 `PRESET_DISPLAY` 的 `doc.settings.preset.main` / `doc.settings.preset.alt`)走 `_readCurrentTarget()` fallback `'zh-TW'` → en UI 下「翻譯設定」modal preset 名稱仍顯示「主要預設 / 預設 2 / 預設 3」。修法:`initI18n()` 同步寫 `window.__SK.STATE = { uiLanguage: dictLang }`,`subscribeUiLanguageChange` callback 也跟著更新 STATE。`i18n-translate-doc.spec.js` 加第 3 條 test 鎖死「動態 t() 走 STATE.uiLanguage」(SANITY 已驗:把 STATE 寫入註解 → 2 specs fail)。**privacy-policy.html 完整更新 + 新增英文版**:§1 從 Gemini-only / 繁中-only 改成 8 語 target + 3 引擎(Gemini / Google Translate / OpenAI 相容自訂);§3 加自訂 Provider API Key 說明、改快取自動清除說明(v1.8.45 之後不自動清);§4 從 1 條對外連線改成 5 條表格(Gemini / Google MT / 自訂端點 / GitHub release check / 匯率 API);§5 改成清單列舉;§6 補 `webNavigation` 權限與 host_permissions 兩條獨立宣告;最後更新日期 2026/04/10 → 2026/05/09。新增 `shinkansen/privacy-policy.en.html`(完全對齊 zh-TW),兩檔頂部加 zh-TW ↔ en 語言切換器,docs/ 同步。**Extension description 全套更新**(14 處:`manifest.json` description / `README.md` 標題 / `README.en.md` 標題 / `docs/index.html` meta description × 3(zh-TW source + zh-TW dict + en dict)/ `_locales/{zh_TW,zh_CN,en,ja,ko,es,fr,de}/messages.json` `extDescription` 8 個):從「Gemini-only / 繁中-only」統一成「網頁 + YouTube 字幕 / 8 語 target / 多引擎 / 資料不經過第三方」,8 語 locale 描述敘事一致(原本 zh_TW / zh_CN 提了「雙語」、其他 6 語提「YouTube 字幕」、各自寫一套)。**README + landing 版本註解大清理**(§21):新增 `CLAUDE.md §21「使用者面對的文件不寫版本註解」`,範圍涵蓋 README.md / README.en.md / docs/index.html(含「近期重大更新」section),例外只剩 CHANGELOG.md / 第三方最低版本要求 / README「目前版本」段。實際清掉 README.md / README.en.md 各 9 處 `(v1.X.Y 起)` / `(since v1.X.Y)` 註解、landing recent.0 條目的「v1.8.59 起,v1.8.64 全部到位」、整段 PDF reader 暫繁中 caveat。**README「近期重大更新」加多語言支援**作為第一條(zh-TW + en 同步)。**option「只翻文章開頭」hint 微調**(`options.gemini.partial.hint` 8 語 + options.html source = 9 處):「前 N 段預覽」→「前幾段預覽」、刪除「（按 DOM 順序,不排序）」技術細節括號。**README「Blocked-word list」段落改寫**:刪掉技術細節 `<forbidden_terms_blacklist>` block + escape hatch 段、改用英文讀者能 actionable 的場景例子(en-GB colour、pt-PT telemóvel、style guide ban "utilize")。**手動觸發 CWS sync workflow**(`gh workflow run sync-cws-version.yml`)抓回 1.8.55 → landing CWS 按鈕版本副標 1.4.22 → 1.8.55(由 GitHub Actions bot push)。**自動清快取**:不清,沒動翻譯路徑核心邏輯 / prompt / cache key / hashing,純文案 + i18n 修補 + UI init 修。
 

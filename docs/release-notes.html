@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shinkansen — 商店上架版本更新紀錄</title>
+  <style>
+    :root {
+      --bg: #fdfdfd;
+      --fg: #1a1a1a;
+      --muted: #555;
+      --accent: #0055aa;
+      --border: #e0e0e0;
+      --section-bg: #f7f8fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a;
+        --fg: #e8e8e8;
+        --muted: #aaa;
+        --accent: #6ab0ff;
+        --border: #333;
+        --section-bg: #222;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.75;
+      padding: 2rem 1.5rem;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.7rem;
+      margin-bottom: 0.4rem;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 2rem;
+    }
+    .lang-switch {
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 2.4rem;
+      margin-bottom: 0.4rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h2 .release-date {
+      font-size: 0.88rem;
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 0.6rem;
+    }
+    .release-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    p { margin-bottom: 0.9rem; }
+    ul { margin-bottom: 1.2rem; padding-left: 1.5rem; }
+    li { margin-bottom: 0.7rem; }
+    li strong { color: var(--fg); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-size: 0.9em;
+      background: var(--section-bg);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+    .lead {
+      background: var(--section-bg);
+      border-left: 3px solid var(--accent);
+      padding: 0.8rem 1rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      font-size: 0.95rem;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <p class="lang-switch"><strong>繁體中文</strong> | <a href="release-notes.en.html">English</a></p>
+
+  <h1>商店上架版本更新紀錄</h1>
+  <p class="subtitle">給 Chrome Web Store 與 Firefox Add-ons 使用者的更新摘要,只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史(含每一個 patch 與技術細節)請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
+
+  <h2>v1.8.55 <span class="release-date">2026-05-05 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v1.8.38</p>
+
+  <p class="lead">這版的兩大主軸:支援更多目標語言、提供 PDF 文件翻譯。</p>
+
+  <ul>
+    <li><strong>多語翻譯目標</strong>:翻譯目標從繁體中文擴充為 8 種語言(繁體中文、簡體中文、英文、日文、韓文、西班牙文、法文、德文)。在設定頁的「翻譯目標語言」分頁切換,所有翻譯模式(網頁、PDF、YouTube 字幕)共用此設定。</li>
+    <li><strong>多語介面</strong>:擴充功能介面同樣支援 8 種語言,包含 popup、設定頁、網頁翻譯進度通知、PDF 文件翻譯閱讀器。可獨立設定或跟著瀏覽器語言推導。</li>
+    <li><strong>PDF 文件翻譯(beta)</strong>:把 PDF 拖到「翻譯文件」分頁,Shinkansen 會在本機解析版面、送翻譯,並以左右並排的雙頁對照模式呈現,供使用者閱讀。可下載成雙語對照 PDF。整份文件全程在瀏覽器內處理,不會上傳到任何伺服器,只有抽取出來的純文字會送到使用者自己設定的翻譯端點。</li>
+    <li><strong>PDF 譯文編輯</strong>:閱讀器內可逐段編輯譯文,支援基本的 markdown 格式(粗體、斜體、連結),內建找/取代功能。儲存後重新生成雙頁預覽。</li>
+    <li><strong>文章術語表</strong>:翻譯前可請 AI 從文章內抽取人名、專有名詞對照表,確認或編輯後再翻譯,確保整份文件的譯名前後一致。對照表可匯入或匯出 JSON。</li>
+    <li><strong>Google Drive 影片字幕翻譯</strong>:YouTube 字幕翻譯機制延伸到 Drive 上的影片,字幕樣式與雙語對照行為一致。</li>
+    <li><strong>YouTube 雙語字幕視覺整合</strong>:雙語模式下中英文字幕共用一塊黑底,徹底解決原本「兩行英文擠掉譯文」與「視覺三塊黑底污染」的問題。</li>
+    <li><strong>雙語對照譯文強調色自訂</strong>:雙語對照模式提供 8 種強調色與深色模式自動配色,深色頁面下對比加強。</li>
+    <li><strong>翻譯記憶不再隨版本更新清除</strong>:擴充功能版本變更時不再自動清除翻譯快取,避免使用者每次升級都掉資料。如需清除,可在 popup 或設定頁手動清。</li>
+    <li><strong>顯示貨幣切換</strong>(限繁中介面):設定頁費用統計可在 USD 與 TWD 之間切換,自動換算。</li>
+  </ul>
+
+  <h2>v1.8.38 <span class="release-date">2026-05-01 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v1.8.30</p>
+
+  <p class="lead">這版以 UX 與跨瀏覽器相容性修補為主。</p>
+
+  <ul>
+    <li><strong>本機 Ollama / llama.cpp 連線解法說明</strong>:設定頁的自訂 Provider 分頁加入「連本機 Ollama / llama.cpp 收到 403?」展開區,內含可行的兩種解法(Ollama 設定 OLLAMA_ORIGINS、或用 hosts 檔指 fake domain)。</li>
+    <li><strong>Arc 等不支援 openOptionsPage 的瀏覽器支援</strong>:在 Arc 上點 popup 的「設定」按鈕現在會正常開啟設定頁。</li>
+    <li><strong>YouTube 關閉 CC 後不再持續送翻譯請求</strong>:使用者按 YouTube 字幕按鈕關閉 CC 時,Shinkansen 會立即暫停字幕翻譯,並隱藏畫面上殘留的中文字幕,避免在使用者已關掉字幕的情況下繼續耗用 token。</li>
+    <li><strong>雙語對照在深色背景頁面對比改善</strong>:雙語對照 wrapper 現在會自動偵測頁面實際背景亮度,深色頁面採用對比加強的配色,避免原本米色底跟父層淺灰文字對比破裂。同時加入圓角、padding 微調、與下一段間距處理。</li>
+    <li><strong>論壇 / 訂閱中 thread 標題偵測修復</strong>:vBulletin 等論壇上「已訂閱中」的 thread(會多包一層 wrapper 與小圖示)標題現在能正確被翻譯。</li>
+  </ul>
+
+  <h2>v1.8.30 <span class="release-date">2026-04-30 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v1.4.22</p>
+
+  <p class="lead">這版距離 v1.4.22 累積了大量功能。以下是對使用者影響最大的更新。</p>
+
+  <ul>
+    <li><strong>極速秒翻</strong>:按下翻譯後 1 秒就看到頁面開始變中文,不必等整批 API 回完才一次塞回頁面(限 Gemini 引擎)。文章前段段落改走 streaming,首字延遲從 2.5–4.4 秒大幅縮短到 1.0–1.2 秒。</li>
+    <li><strong>雙語對照模式</strong>:popup 一鍵切換顯示模式。「單語覆蓋」原地替換、「雙語對照」原文保留,譯文以新段落附加。雙語模式提供 4 種視覺標記(淡底色、左邊細條、波浪底線、無)讓使用者選擇譯文呈現風格。</li>
+    <li><strong>自訂 AI 模型</strong>:除了既有的 Google Gemini 與 Google Translate,新增「自訂 OpenAI 相容端點」分頁,可接 OpenRouter、Together、DeepSeek、Groq、Fireworks、Anthropic Claude、本機 Ollama / llama.cpp 等任何 OpenAI 相容服務,使用百種以上模型。</li>
+    <li><strong>YouTube 自動字幕智慧分句</strong>:YouTube 自動產生的字幕(沒有人工字幕的影片,CC 標記為 auto-generated)原本是按時間切割,每條只有 1–3 個英文字、沒有標點,逐條翻譯失去語意上下文。現在會由 AI 重新依語意分句、補上標點再翻譯,中文字幕從「破碎的詞」變「完整的句子」。預設走「混合模式」,先用本地分句快速顯示,背景同時跑 AI 分句,完成後用更精緻版本替換。</li>
+    <li><strong>只翻文章開頭(節省費用)</strong>:翻譯只跑頁面前幾段(範圍 5-50,預設 25 段),大幅節省 token 用量,適合先預覽再決定是否要看完整篇。翻譯完成後右下角會出現「翻譯剩餘段落」按鈕,點按可繼續翻完整篇,前面已翻好的段落會從本地快取載入,不重複收費。</li>
+    <li><strong>禁用詞清單</strong>:可由使用者編輯的禁用詞對照表(預設 25 條,例如「視頻、軟件、數據、網絡、用戶」),明確要求 AI 不要使用左欄詞彙。</li>
+    <li><strong>翻譯快速鍵與三組預設</strong>:三組可自訂的翻譯預設,每組各綁一個快速鍵(macOS Option+A/S/D、Windows Alt+A/S/D),引擎、模型、標籤都可在設定頁「翻譯快速鍵」自訂。已翻譯狀態下按任一快速鍵還原,翻譯中按任一快速鍵取消。</li>
+    <li><strong>跨 tab 延續翻譯</strong>:在分頁 A 翻譯後,從 A 點連結開新分頁 B(含 Cmd / Ctrl+點連結、target="_blank"、JavaScript 開啟),分頁 B 會自動翻譯並繼承同一組預設。多層延續(B 開 C 也會繼續)。</li>
+    <li><strong>翻譯啟動更快</strong>:長網頁(Wikipedia、論壇、長 Medium)翻譯啟動明顯變快。長頁的首字延遲在多個典型網站平均減少 29%(NPR 從 11.7 秒降到 5.1 秒)。</li>
+    <li><strong>看到譯文順序更直覺</strong>:長網頁翻譯時最先看到的譯文從「導覽列、cookie 同意書、目錄」改為「文章標題與第一段內文」(先翻 main / article 內的段落)。</li>
+    <li><strong>商店升級提示</strong>:Chrome Web Store / Firefox Add-ons 自動更新到新版時,popup 與 toast 會顯示「歡迎升級」提示,列出本版重點功能。Patch 級的小更新不會打擾。</li>
+    <li><strong>「翻譯本頁」工具列按鈕</strong>:工具列圖示現在可以直接觸發翻譯,並可在設定頁指定使用哪一組預設。</li>
+    <li><strong>背景分頁 CPU 與電量降耗</strong>:當分頁切到背景時,Shinkansen 會暫停內容偵測與 SPA 網址輪詢,減少背景分頁的耗電。</li>
+    <li><strong>用量紀錄可即時重新載入</strong>:設定頁的用量紀錄分頁加入「重新載入」按鈕,不必關閉設定頁就能看到最新紀錄。</li>
+    <li><strong>多項 YouTube 字幕體驗改善</strong>:字幕完全旁路 YouTube 原生「一字一字跳」的問題、字幕樣式自動對齊原生 YouTube 字幕、字幕分頁重整(自動翻譯、引擎、進階、視窗、Prompt)、字幕也可套用固定術語表與禁用詞清單(預設關)。</li>
+  </ul>
+
+  <footer>
+    <p>本頁僅列出商店上架版本之間的重點更新。完整版本歷史(含未上架商店的 patch)請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。&copy; 2026 Shinkansen.</p>
+  </footer>
+</body>
+</html>
