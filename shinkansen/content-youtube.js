@@ -2810,6 +2810,17 @@
 
   window.addEventListener('yt-navigate-finish', async () => {
     const YT = SK.YT;
+    // v1.8.68: YouTube SPA 在 quality 切換 / ad break 結束 / player re-mount /
+    // theatre-fullscreen 切換等情境會 fire 假性 yt-navigate-finish(同一影片頁、
+    // videoId 沒變)。原本一律走 reset path → captionMap / displayCues / overlay
+    // 全清 + force reload XHR(~10 秒)→ 使用者看到「中文字幕閃一下變回英文一陣子
+    // 才回到中文」。同 videoId + 翻譯仍 active 時跳過 reset 即可,真正的影片切換
+    // (newVideoId !== YT.videoId)、離開 watch 頁(newVideoId === null)仍走原路徑。
+    const _newVideoId = getVideoIdFromUrl();
+    if (YT.active && _newVideoId && _newVideoId === YT.videoId) {
+      SK.sendLog('info', 'youtube', 'SPA nav skipped (same videoId, still active)', { videoId: _newVideoId });
+      return;
+    }
     const wasActive = YT.active;  // v1.3.1: 記錄是否需要在新影片自動重啟
     if (YT.active) stopYouTubeTranslation(); // stopYouTubeTranslation 內已呼叫 hideCaptionStatus + _debugRemove
     hideCaptionStatus(); // v1.2.55: 確保 SPA 導航後殘留的提示也清掉

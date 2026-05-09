@@ -17,7 +17,19 @@
 
 ## 條目
 
-(目前沒有 pending 條目)
+- **v1.8.68 同 videoId yt-navigate-finish 假性重 fire 不誤清譯文**
+  - 改動:`shinkansen/content-youtube.js` 的 `yt-navigate-finish` listener 開頭加 guard
+    `if (YT.active && newVideoId && newVideoId === YT.videoId) return;`
+  - 為什麼進 PENDING:YouTube SPA 在 quality 切換 / ad break 結束 / player re-mount /
+    theatre-fullscreen 等情境會 fire 假性 `yt-navigate-finish`,但「YouTube 何時 fire」
+    沒最小重現結構(每個情境是否真的會 fire 視 YouTube 內部實作),fixture dispatchEvent
+    自己 fire 只能驗「我們 guard 寫對」、不能驗「YouTube 真的會這樣 fire」。
+  - 真實場景驗證來源:user 報告「字幕中文閃一下變回英文一陣子才回到中文」對應 log
+    `shinkansen-log-20260509-073527.json`(seq 10 / 17 兩次 SPA navigation reset,
+    一次首頁 → 影片正常,另一次需確認是否同 videoId 重 fire)。
+  - 之後要做:user 下次閃到時 dump 完整 log(含 `category: youtube` 的
+    `SPA navigation reset` 條目),確認確實有「same videoId reset」場景觸發,
+    再寫對應 spec / 退役本條。
 
 <!-- v1.8.46 清空紀錄(2026-05-05):
   - W6 譯文 PDF 下載對 owner-password + AESv2 弱加密 PDF 失敗(Trimble TDC6 SpecSheet)
