@@ -102,18 +102,16 @@
   <h2>v1.8.67 <span class="release-date">2026-05-09 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.8.55</p>
 
-  <p class="lead">這版的兩大主軸:翻譯目標與介面雙雙擴充為 8 種語言、複雜頁面雙語對照模式大幅收斂。</p>
+  <p class="lead">這版的兩大主軸：翻譯目標與介面雙雙擴充為 8 種語言、複雜頁面雙語對照模式大幅收斂。</p>
 
   <ul>
-    <li><strong>多語翻譯目標</strong>:翻譯目標從繁體中文擴充為 8 種語言(繁體中文、簡體中文、英文、日文、韓文、西班牙文、法文、德文)。在設定頁的「翻譯目標語言」分頁切換,所有翻譯模式(網頁、PDF、YouTube 字幕、自訂模型)共用此設定;預設依瀏覽器語言自動推導。</li>
-    <li><strong>多語介面</strong>:Popup、設定頁、網頁翻譯進度通知、PDF 文件翻譯閱讀器全部 i18n 化,同樣支援 8 種語言。介面語系可以跟翻譯目標語言獨立設定(例如「英文介面 + 翻成繁中」)。</li>
-    <li><strong>CJK 譯文字形變體正確</strong>:翻成日文 / 韓文時,譯文採用對應 locale 的字體 stack,避免站點原本鎖死繁中字體時譯文出現字形錯位(例如日文「査」字身仍是中文版)。</li>
-    <li><strong>GitHub / Medium 等複雜頁面雙語對照大幅修補</strong>:雙語對照模式累積 15+ 條結構性修補,例如 GitHub 程式碼區塊不再被翻譯蓋掉、檔名欄位不亂翻、表格 cell 跟譯文之間有像樣呼吸空間、commit 日期不再觸發 LLM 幻想長文、Medium 引用文字譯文不衝出 column、按讚 / 留言計數不被誤翻等。</li>
-    <li><strong>論壇 / SaaS 短文字導覽列翻譯修復</strong>:採用 Bootstrap nav-pills / swiper carousel 等慣例(把 navigation anchor 標 <code>role="button"</code>)的網站,主選單短文字現在會被正確翻譯;同時收緊 dropdown trigger 偵測避免破壞下拉選單結構。</li>
-    <li><strong>自訂 Provider 強化段序號標記(預設開啟)</strong>:自訂 OpenAI 相容 Provider 連本機量化模型(Ollama / llama.cpp 跑 gemma-4 / Qwen 量化版等)時,改用更穩固的段序號標記,避免被誤翻成「N1、N2」等殘留洩漏到譯文。商用 API 使用者(OpenRouter / DeepSeek / Groq 等)可在「自訂模型」分頁關掉省 token。</li>
-    <li><strong>隱私政策完整更新 + 英文版</strong>:隱私政策補上 8 語 target、3 引擎(Gemini / Google Translate / OpenAI 相容)、5 條對外連線(含匯率 API / GitHub release check)的最新狀態,並新增英文版。</li>
-    <li><strong>設定頁體驗修補一輪</strong>:翻譯模型參數 / 字幕翻譯 Prompt section 收進「進階」摺疊區、「逾時時間」label 改顯示秒(原本顯毫秒)、「金額顯示幣值」section 只在繁中介面顯示、tab bar 在英文 / 簡中介面下會自動折行,避免最後一個分頁被擠出框外。</li>
-    <li><strong>Log 系統修補</strong>:設定頁 Log 分頁打開後能看到背景 service worker 重啟前的歷史紀錄、清除按鈕真的清乾淨(原本 SW 重啟後舊紀錄又會冒出來)。</li>
+    <li><strong>多語翻譯目標</strong>：翻譯目標從繁體中文擴充為 8 種語言（繁體中文、簡體中文、英文、日文、韓文、西班牙文、法文、德文）。在設定頁的「翻譯目標語言」分頁切換，所有翻譯模式（網頁、PDF、YouTube 字幕、自訂模型）共用此設定；預設依瀏覽器語言自動推導。</li>
+    <li><strong>多語介面</strong>：Popup、設定頁、網頁翻譯進度通知、PDF 文件翻譯閱讀器全部 i18n 化，同樣支援 8 種語言。介面語系可以跟翻譯目標語言獨立設定（例如「英文介面 + 翻成繁中」）。</li>
+    <li><strong>CJK 譯文字形變體正確</strong>：翻成日文 / 韓文時，譯文採用對應 locale 的字體 stack，避免站點原本鎖死繁中字體時譯文出現字形錯位（例如日文「査」字身仍是中文版）。</li>
+    <li><strong>GitHub / Medium 等複雜頁面雙語對照大幅修補</strong>：雙語對照模式累積 15+ 條結構性修補，例如 GitHub 程式碼區塊不再被翻譯蓋掉、檔名欄位不亂翻、表格 cell 跟譯文之間有像樣呼吸空間、commit 日期不再觸發 LLM 幻想長文、Medium 引用文字譯文不衝出 column、按讚 / 留言計數不被誤翻等。</li>
+    <li><strong>自訂 Provider 強化段序號標記（預設開啟）</strong>：自訂 OpenAI 相容 Provider 連本機量化模型（Ollama / llama.cpp 跑 gemma-4 / Qwen 量化版等）時，改用更穩固的段序號標記，避免被誤翻成「N1、N2」等殘留洩漏到譯文。商用 API 使用者（OpenRouter / DeepSeek / Groq 等）可在「自訂模型」分頁關掉省 token。</li>
+    <li><strong>隱私政策完整更新 + 英文版</strong>：隱私政策補上 8 語 target、3 引擎（Gemini / Google Translate / OpenAI 相容）、5 條對外連線（含匯率 API / GitHub release check）的最新狀態，並新增英文版。</li>
+    <li><strong>Log 系統修補</strong>：設定頁 Log 分頁打開後能看到背景 service worker 重啟前的歷史紀錄、清除按鈕真的清乾淨（原本 SW 重啟後舊紀錄又會冒出來）。</li>
   </ul>
 
   <h2>v1.8.55 <span class="release-date">2026-05-05 上架</span></h2>
