@@ -11,7 +11,7 @@
 //
 // 範圍:
 //   - README.md ↔ README.en.md
-//   - API-KEY-SETUP.md ↔ API-KEY-SETUP.en.md
+//   - docs/API-KEY-SETUP.md ↔ docs/API-KEY-SETUP.en.md
 // 未來新增雙語檔時加進 PAIRS 陣列。
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,7 +24,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 
 const PAIRS = [
   { zh: 'README.md', en: 'README.en.md' },
-  { zh: 'API-KEY-SETUP.md', en: 'API-KEY-SETUP.en.md' },
+  { zh: 'docs/API-KEY-SETUP.md', en: 'docs/API-KEY-SETUP.en.md' },
 ];
 
 function readRepoFile(rel) {

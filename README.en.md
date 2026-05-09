@@ -24,7 +24,7 @@ Most web translation tools forward every page you read to a third-party server, 
 
 ## Performance
 
-We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over a thousand paragraphs): memory usage *dropped* (Chinese is more compact than English), the page stayed responsive throughout (95%+ of the time is spent waiting for the API; the browser does almost no extra work), and once translation finished the DOM was clean with no leftover artifacts. Translating the entire page with the cheapest model costs under USD $0.08; translated content is automatically cached, so re-opening the same page is free. Full numbers in [PERFORMANCE.md](PERFORMANCE.md).
+We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over a thousand paragraphs): memory usage *dropped* (Chinese is more compact than English), the page stayed responsive throughout (95%+ of the time is spent waiting for the API; the browser does almost no extra work), and once translation finished the DOM was clean with no leftover artifacts. Translating the entire page with the cheapest model costs under USD $0.08; translated content is automatically cached, so re-opening the same page is free. Full numbers in [PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ## Features
 
@@ -73,7 +73,7 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
 
 ## First-time setup
 
-1. Get a Gemini API key — see the [API key setup guide](API-KEY-SETUP.en.md) for step-by-step instructions
+1. Get a Gemini API key — see the [API key setup guide](docs/API-KEY-SETUP.en.md) for step-by-step instructions
 2. Click the Shinkansen icon in the toolbar → "Settings"
 3. Paste your Gemini API key
 4. Default model is `gemini-3-flash-preview`, Service Tier `DEFAULT`
@@ -294,7 +294,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.8.66 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.8.67 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

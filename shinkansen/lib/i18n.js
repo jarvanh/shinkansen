@@ -148,7 +148,7 @@
     'options.apiKey.showAria': '顯示 API Key',
     'options.apiKey.hideAria': '隱藏 API Key',
     'options.apiKey.testAria': '測試 API Key',
-    'options.apiKey.hint.html': '還沒有 API Key？請參考 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 申請教學</a>',
+    'options.apiKey.hint.html': '還沒有 API Key？請參考 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 申請教學</a>',
 
     // ── options 翻譯快速鍵 ───────────────────────────────
     'options.preset.heading': '翻譯快速鍵',
@@ -909,7 +909,7 @@
     'options.apiKey.showAria': '显示 API Key',
     'options.apiKey.hideAria': '隐藏 API Key',
     'options.apiKey.testAria': '测试 API Key',
-    'options.apiKey.hint.html': '还没有 API Key？请参考 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 申请教程</a>',
+    'options.apiKey.hint.html': '还没有 API Key？请参考 <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 申请教程</a>',
 
     // ── options 翻译快捷键 ───────────────────────────────
     'options.preset.heading': '翻译快捷键',
@@ -1668,7 +1668,7 @@
     'options.apiKey.showAria': 'Show API Key',
     'options.apiKey.hideAria': 'Hide API Key',
     'options.apiKey.testAria': 'Test API Key',
-    'options.apiKey.hint.html': "Don't have an API Key? See <a href=\"https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.en.md\" target=\"_blank\" rel=\"noopener\">Gemini API Key setup guide</a>",
+    'options.apiKey.hint.html': "Don't have an API Key? See <a href=\"https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.en.md\" target=\"_blank\" rel=\"noopener\">Gemini API Key setup guide</a>",
 
     // ── options translation shortcuts ─────────────────────
     'options.preset.heading': 'Translation shortcuts',
@@ -2427,7 +2427,7 @@
     'options.apiKey.showAria': 'API Key を表示',
     'options.apiKey.hideAria': 'API Key を非表示',
     'options.apiKey.testAria': 'API Key をテスト',
-    'options.apiKey.hint.html': 'API Key をお持ちでない方は <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 取得ガイド</a> を参照してください',
+    'options.apiKey.hint.html': 'API Key をお持ちでない方は <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 取得ガイド</a> を参照してください',
 
     // ── options 翻訳ショートカット ───────────────────────────
     'options.preset.heading': '翻訳ショートカット',
@@ -3186,7 +3186,7 @@
     'options.apiKey.showAria': 'API Key 표시',
     'options.apiKey.hideAria': 'API Key 숨기기',
     'options.apiKey.testAria': 'API Key 테스트',
-    'options.apiKey.hint.html': 'API Key가 없으신가요? <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 발급 가이드</a>를 참조하세요',
+    'options.apiKey.hint.html': 'API Key가 없으신가요? <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" target="_blank" rel="noopener">Gemini API Key 발급 가이드</a>를 참조하세요',
 
     // ── options 번역 단축키 ───────────────────────────────
     'options.preset.heading': '번역 단축키',
@@ -3944,7 +3944,7 @@
     'options.apiKey.showAria': 'Mostrar API Key',
     'options.apiKey.hideAria': 'Ocultar API Key',
     'options.apiKey.testAria': 'Probar API Key',
-    'options.apiKey.hint.html': '¿Aún no tienes una API Key? Consulta la <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">guía para obtener una Gemini API Key</a>',
+    'options.apiKey.hint.html': '¿Aún no tienes una API Key? Consulta la <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" target="_blank" rel="noopener">guía para obtener una Gemini API Key</a>',
 
     // ── options atajos de traducción ───────────────────────────
     'options.preset.heading': 'Atajos de traducción',
@@ -4702,7 +4702,7 @@
     'options.apiKey.showAria': 'Afficher l\'API Key',
     'options.apiKey.hideAria': 'Masquer l\'API Key',
     'options.apiKey.testAria': 'Tester l\'API Key',
-    'options.apiKey.hint.html': 'Vous n\'avez pas encore d\'API Key ? Consultez le <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">guide d\'obtention de Gemini API Key</a>',
+    'options.apiKey.hint.html': 'Vous n\'avez pas encore d\'API Key ? Consultez le <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" target="_blank" rel="noopener">guide d\'obtention de Gemini API Key</a>',
 
     // ── options raccourcis de traduction ───────────────────────────
     'options.preset.heading': 'Raccourcis de traduction',
@@ -5460,7 +5460,7 @@
     'options.apiKey.showAria': 'API Key anzeigen',
     'options.apiKey.hideAria': 'API Key verbergen',
     'options.apiKey.testAria': 'API Key testen',
-    'options.apiKey.hint.html': 'Noch keinen API Key? Siehe <a href="https://github.com/jimmysu0309/shinkansen/blob/main/API-KEY-SETUP.md" target="_blank" rel="noopener">Anleitung zum Beantragen eines Gemini API Key</a>',
+    'options.apiKey.hint.html': 'Noch keinen API Key? Siehe <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md" target="_blank" rel="noopener">Anleitung zum Beantragen eines Gemini API Key</a>',
 
     // ── options Übersetzungs-Tastenkürzel ───────────────────────────
     'options.preset.heading': 'Übersetzungs-Tastenkürzel',
