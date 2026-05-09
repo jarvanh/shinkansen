@@ -112,7 +112,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen 設定',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新紀錄</a>',
 
     'options.action.save': '儲存設定',
     'options.action.show': '顯示',
@@ -873,7 +873,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen 设置',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">项目主页</a>，功能介绍与使用说明请参考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">项目主页</a>，功能介绍与使用说明请参考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新记录</a>',
 
     'options.action.save': '保存设置',
     'options.action.show': '显示',
@@ -1632,7 +1632,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen settings',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=en" target="_blank" rel="noopener">Project home</a>. For features and usage, see the <a href="https://github.com/jimmysu0309/shinkansen/blob/main/README.en.md" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=en" target="_blank" rel="noopener">Project home</a>. For features and usage, see the <a href="https://github.com/jimmysu0309/shinkansen/blob/main/README.en.md" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Release notes</a>',
 
     'options.action.save': 'Save settings',
     'options.action.show': 'Show',
@@ -2391,7 +2391,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen 設定',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ja" target="_blank" rel="noopener">プロジェクトサイト</a>、機能紹介と使い方は <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> をご覧ください',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ja" target="_blank" rel="noopener">プロジェクトサイト</a>、機能紹介と使い方は <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">リリースノート</a> をご覧ください',
 
     'options.action.save': '設定を保存',
     'options.action.show': '表示',
@@ -3150,7 +3150,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen 설정',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ko" target="_blank" rel="noopener">프로젝트 홈페이지</a>, 기능 소개와 사용 방법은 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>를 참조하세요',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ko" target="_blank" rel="noopener">프로젝트 홈페이지</a>, 기능 소개와 사용 방법은 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">릴리스 노트</a>를 참조하세요',
 
     'options.action.save': '설정 저장',
     'options.action.show': '표시',
@@ -3908,7 +3908,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Ajustes de Shinkansen',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=es" target="_blank" rel="noopener">Página del proyecto</a>; para descripción de funciones e instrucciones de uso consulta el <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=es" target="_blank" rel="noopener">Página del proyecto</a>; para descripción de funciones e instrucciones de uso consulta el <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notas de la versión</a>',
 
     'options.action.save': 'Guardar ajustes',
     'options.action.show': 'Mostrar',
@@ -4666,7 +4666,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Paramètres de Shinkansen',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=fr" target="_blank" rel="noopener">Page du projet</a> ; pour la présentation des fonctionnalités et le mode d\'emploi, consultez le <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=fr" target="_blank" rel="noopener">Page du projet</a> ; pour la présentation des fonctionnalités et le mode d\'emploi, consultez le <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notes de version</a>',
 
     'options.action.save': 'Enregistrer les paramètres',
     'options.action.show': 'Afficher',
@@ -5424,7 +5424,7 @@
     'options.tab.log': 'Debug',
 
     'options.title': 'Shinkansen-Einstellungen',
-    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=de" target="_blank" rel="noopener">Projektseite</a>; Funktionsbeschreibung und Anleitung siehe <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a>',
+    'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=de" target="_blank" rel="noopener">Projektseite</a>; Funktionsbeschreibung und Anleitung siehe <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Versionshinweise</a>',
 
     'options.action.save': 'Einstellungen speichern',
     'options.action.show': 'Anzeigen',
