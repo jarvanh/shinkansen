@@ -99,7 +99,7 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store and Firefox Add-ons. Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
-  <h2>v1.8.67 <span class="release-date">Released 2026-05-09</span></h2>
+  <h2>v1.9.0 <span class="release-date">Released 2026-05-09</span></h2>
   <p class="release-meta">Compared with the previous store version v1.8.55</p>
 
   <p class="lead">Two main themes: both the translation target and the UI now span 8 languages, and complex page layouts get major bilingual-mode polish.</p>
@@ -111,6 +111,7 @@
     <li><strong>Major bilingual-mode fixes for GitHub / Medium and other complex pages</strong>: bilingual mode received 15+ structural fixes — GitHub code blocks no longer overlay translations, filename cells are no longer mistranslated, table cells now have proper breathing room from the translation block, commit dates no longer trigger LLM hallucination of long stories, Medium pull-quote translations no longer overflow the column, like / comment counts are no longer mistranslated, and more.</li>
     <li><strong>Custom provider strong segment markers (default on)</strong>: when using a custom OpenAI-compatible provider against locally quantized models (Ollama / llama.cpp running gemma-4 / Qwen quantized), Shinkansen now uses sturdier segment markers so they aren't mistranslated as "N1, N2" leaking into the output. Commercial API users (OpenRouter / DeepSeek / Groq, etc.) can turn this off in the "Custom model" tab to save tokens.</li>
     <li><strong>Full privacy policy update + English version</strong>: the privacy policy now reflects the 8 target languages, 3 engines (Gemini / Google Translate / OpenAI-compatible), and 5 outbound connections (including FX rate API / GitHub release check), and is now available in English.</li>
+    <li><strong>YouTube subtitles "Chinese flickers back to English" fix</strong>: in some YouTube playback scenarios (quality switch, ad break end, player remount, theatre toggle), YouTube fires phantom navigation events that previously caused Shinkansen to reset subtitle translation state and re-fetch captions (~10 seconds), so users saw the translated subtitle flicker back to English for a while before returning. This release adds a guard: if it's the same video and translation is still active, the reset is skipped — flicker gone.</li>
     <li><strong>Log system fixes</strong>: the Log tab in settings now loads history from before a service-worker restart, and the "Clear" button actually clears persisted entries (previously, old logs would reappear after each SW restart).</li>
   </ul>
 

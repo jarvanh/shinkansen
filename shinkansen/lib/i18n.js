@@ -63,7 +63,7 @@
     'popup.shortcut.value': '{shortcut} 快速切換',
     'popup.shortcut.unset': '未設定快捷鍵',
     'popup.footer.options': '設定',
-    'popup.footer.translateDoc': '翻譯文件（beta）',
+    'popup.footer.translateDoc': '翻譯文件',
 
     // ── 共用 ──────────────────────────────────────────────
     'common.errorUnknown': '未知錯誤',
@@ -824,7 +824,7 @@
     'popup.shortcut.value': '{shortcut} 快速切换',
     'popup.shortcut.unset': '未设置快捷键',
     'popup.footer.options': '设置',
-    'popup.footer.translateDoc': '翻译文档（beta）',
+    'popup.footer.translateDoc': '翻译文档',
 
     // ── 共用 ──────────────────────────────────────────────
     'common.errorUnknown': '未知错误',
@@ -1583,7 +1583,7 @@
     'popup.shortcut.value': '{shortcut} quick toggle',
     'popup.shortcut.unset': 'No shortcut set',
     'popup.footer.options': 'Settings',
-    'popup.footer.translateDoc': 'Translate document (beta)',
+    'popup.footer.translateDoc': 'Translate document',
 
     // ── common ────────────────────────────────────────────
     'common.errorUnknown': 'Unknown error',
@@ -2342,7 +2342,7 @@
     'popup.shortcut.value': '{shortcut} で素早く切り替え',
     'popup.shortcut.unset': 'ショートカット未設定',
     'popup.footer.options': '設定',
-    'popup.footer.translateDoc': 'ドキュメント翻訳（beta）',
+    'popup.footer.translateDoc': 'ドキュメント翻訳',
 
     // ── 共通 ──────────────────────────────────────────────
     'common.errorUnknown': '不明なエラー',
@@ -3101,7 +3101,7 @@
     'popup.shortcut.value': '{shortcut} 빠른 전환',
     'popup.shortcut.unset': '단축키 미설정',
     'popup.footer.options': '설정',
-    'popup.footer.translateDoc': '문서 번역 (beta)',
+    'popup.footer.translateDoc': '문서 번역',
 
     // ── 공용 ──────────────────────────────────────────────
     'common.errorUnknown': '알 수 없는 오류',
@@ -3859,7 +3859,7 @@
     'popup.shortcut.value': '{shortcut} para alternar rápido',
     'popup.shortcut.unset': 'Sin atajo asignado',
     'popup.footer.options': 'Ajustes',
-    'popup.footer.translateDoc': 'Traducir documento (beta)',
+    'popup.footer.translateDoc': 'Traducir documento',
 
     // ── común ──────────────────────────────────────────────
     'common.errorUnknown': 'Error desconocido',
@@ -4617,7 +4617,7 @@
     'popup.shortcut.value': '{shortcut} pour basculer rapidement',
     'popup.shortcut.unset': 'Aucun raccourci défini',
     'popup.footer.options': 'Paramètres',
-    'popup.footer.translateDoc': 'Traduire un document (beta)',
+    'popup.footer.translateDoc': 'Traduire un document',
 
     // ── commun ──────────────────────────────────────────────
     'common.errorUnknown': 'Erreur inconnue',
@@ -5375,7 +5375,7 @@
     'popup.shortcut.value': '{shortcut} zum schnellen Umschalten',
     'popup.shortcut.unset': 'Kein Tastenkürzel festgelegt',
     'popup.footer.options': 'Einstellungen',
-    'popup.footer.translateDoc': 'Dokument übersetzen (beta)',
+    'popup.footer.translateDoc': 'Dokument übersetzen',
 
     // ── allgemein ──────────────────────────────────────────────
     'common.errorUnknown': 'Unbekannter Fehler',

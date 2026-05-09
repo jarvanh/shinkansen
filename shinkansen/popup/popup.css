@@ -78,7 +78,7 @@ footer {
   display: flex;
   align-items: center;
   /* v1.8.60: 三個 footer 子元素改 3 等寬欄 + 文字置中。en UI 後 label 變長
-     (Translate document (beta) / quick toggle 等)會 wrap,space-between 排法
+     (Translate document / quick toggle 等)會 wrap,space-between 排法
      會讓「Settings」擠左、長 label 擠中右,視覺不平衡。改 flex: 1 1 0 + text-align: center
      讓三欄等寬,wrap 也固定欄內置中。 */
   padding: 10px 16px;
