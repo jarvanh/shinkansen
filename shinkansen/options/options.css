@@ -830,8 +830,8 @@ a:hover { text-decoration: underline; }
 }
 .model-pricing-row {
   display: grid;
-  grid-template-columns: 1fr 120px 120px;
-  gap: 12px;
+  grid-template-columns: 1fr 110px 110px 90px;
+  gap: 10px;
   align-items: center;
   padding: 10px 12px;
   border: 1px solid #d2d2d7;

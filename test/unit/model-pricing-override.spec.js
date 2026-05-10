@@ -3,10 +3,14 @@
 // 對應 v1.6.14 修法:Google 改價時內建表會過時,使用者可在「Gemini 分頁 → 模型計價」
 // 用 settings.modelPricingOverrides 個別覆蓋。新簽名 getPricingForModel(model, settings)。
 //
-// 優先順序:
-//   1. settings.modelPricingOverrides[model](兩欄都是合法數字才採用)
-//   2. fallback MODEL_PRICING 內建表
-//   3. 找不到 → null(呼叫端 fallback 全域 settings.pricing)
+// v1.9.2 修改:
+//   - 回傳物件多 cachedDiscount 欄位(0-1,cache 命中省下的比例,Gemini 2.5+ 預設 0.90)。
+//   - input/output 與 cachedDiscount 各自獨立 fallback——可只覆蓋折扣不覆蓋價格,反之亦然。
+//
+// 優先順序(每欄獨立):
+//   inputPerMTok / outputPerMTok 兩欄合法 → 用 override;否則 fallback 內建表
+//   cachedDiscount 0-1 範圍 → 用 override;否則 fallback 內建表(Gemini 預設 0.90)
+//   無 override 且無內建表 → null(呼叫端 fallback 全域 settings.pricing)
 //
 // SANITY 紀錄(已驗證):把 override 分支整段移除 → "override 優先" spec fail,
 // 還原後全綠。
@@ -20,9 +24,11 @@ test.describe('getPricingForModel: override 優先', () => {
         'gemini-3-flash-preview': { inputPerMTok: 1.23, outputPerMTok: 4.56 },
       },
     };
+    // v1.9.2: cachedDiscount 沒覆蓋 → 走內建表預設(0.90)
     expect(getPricingForModel('gemini-3-flash-preview', settings)).toEqual({
       inputPerMTok: 1.23,
       outputPerMTok: 4.56,
+      cachedDiscount: 0.90,
     });
   });
 
@@ -35,6 +41,39 @@ test.describe('getPricingForModel: override 優先', () => {
     expect(getPricingForModel('gemini-3.1-pro-preview', settings)).toEqual({
       inputPerMTok: 3.5,
       outputPerMTok: 14.0,
+      cachedDiscount: 0.90,
+    });
+  });
+
+  test('v1.9.2: 只覆蓋 cachedDiscount 不覆蓋價格 → input/output 走內建,折扣走 override', () => {
+    const settings = {
+      modelPricingOverrides: {
+        'gemini-3-flash-preview': { cachedDiscount: 0.50 },
+      },
+    };
+    expect(getPricingForModel('gemini-3-flash-preview', settings)).toEqual({
+      inputPerMTok: MODEL_PRICING['gemini-3-flash-preview'].inputPerMTok,
+      outputPerMTok: MODEL_PRICING['gemini-3-flash-preview'].outputPerMTok,
+      cachedDiscount: 0.50,
+    });
+  });
+
+  test('v1.9.2: cachedDiscount 不在 0-1 範圍 → 視為無 override 走內建', () => {
+    const cases = [{ cachedDiscount: 1.5 }, { cachedDiscount: -0.1 }, { cachedDiscount: 'abc' }];
+    for (const ov of cases) {
+      const settings = { modelPricingOverrides: { 'gemini-3-flash-preview': ov } };
+      expect(getPricingForModel('gemini-3-flash-preview', settings).cachedDiscount).toBe(0.90);
+    }
+  });
+
+  test('v1.9.2: 三欄全 override(包含 cachedDiscount)', () => {
+    const settings = {
+      modelPricingOverrides: {
+        'gemini-3-flash-preview': { inputPerMTok: 1, outputPerMTok: 5, cachedDiscount: 0.6 },
+      },
+    };
+    expect(getPricingForModel('gemini-3-flash-preview', settings)).toEqual({
+      inputPerMTok: 1, outputPerMTok: 5, cachedDiscount: 0.6,
     });
   });
 

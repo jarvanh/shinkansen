@@ -9,10 +9,17 @@
 // v1.6.14:加入 LAST_CALIBRATED_DATE + settings.modelPricingOverrides。
 // Google 改價時內建表會過時,使用者可在「Gemini 分頁 → 模型計價」逐模型覆蓋。
 // getPricingForModel 簽名加 settings 參數,先查 override 再 fallback 內建。
+//
+// v1.9.2:加入 cachedDiscount(0-1,cache 命中省下的比例)。Gemini 2.5+ 起 implicit
+// cache 命中折扣為 90%(命中部分付 10%)→ 預設 0.90。早於 v1.9.2 的版本硬編 0.75
+// (Gemini 2.0 時代),會讓 cache 命中部分被高估 1.5×。input/output 與 cachedDiscount
+// 三者於 override 表獨立 fallback——使用者可只覆蓋折扣不覆蓋價格,反之亦然。
+export const DEFAULT_GEMINI_CACHED_DISCOUNT = 0.90;
+
 export const MODEL_PRICING = {
-  'gemini-3.1-flash-lite-preview': { inputPerMTok: 0.10, outputPerMTok: 0.30 },
-  'gemini-3-flash-preview':        { inputPerMTok: 0.50, outputPerMTok: 3.00 },
-  'gemini-3.1-pro-preview':        { inputPerMTok: 2.00, outputPerMTok: 12.00 },
+  'gemini-3.1-flash-lite-preview': { inputPerMTok: 0.10, outputPerMTok: 0.30, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
+  'gemini-3-flash-preview':        { inputPerMTok: 0.50, outputPerMTok: 3.00, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
+  'gemini-3.1-pro-preview':        { inputPerMTok: 2.00, outputPerMTok: 12.00, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
 };
 
 // v1.6.14:內建表校準日期。UI 顯示「(YYYY-MM 校準)」提示使用者可能過時。
@@ -20,24 +27,28 @@ export const MODEL_PRICING = {
 export const LAST_CALIBRATED_DATE = '2026-04';
 
 /**
- * 查模型計價,優先順序:
- *   1. settings.modelPricingOverrides[model] 內 input/output 都是合法數字 → 用 override
- *   2. fallback MODEL_PRICING 內建表
- *   3. 找不到 → null(呼叫端要 fallback 到 settings.pricing 全域 fallback)
+ * 查模型計價,各欄位獨立 fallback(v1.9.2 起):
+ *   inputPerMTok / outputPerMTok / cachedDiscount 三欄各自先查 override 再 fallback 內建表。
+ *   使用者可只覆蓋折扣不覆蓋價格,反之亦然。
+ *   找不到內建 entry 且 override 沒填整組 → null(呼叫端再走 settings.pricing 全域 fallback)。
  *
  * @param {string} model 模型 ID
  * @param {object|null} settings 完整 settings(可只帶 modelPricingOverrides)
  */
 export function getPricingForModel(model, settings = null) {
   if (!model) return null;
-  const override = settings?.modelPricingOverrides?.[model];
-  if (override
-      && Number.isFinite(Number(override.inputPerMTok))
-      && Number.isFinite(Number(override.outputPerMTok))) {
-    return {
-      inputPerMTok: Number(override.inputPerMTok),
-      outputPerMTok: Number(override.outputPerMTok),
-    };
-  }
-  return MODEL_PRICING[model] || null;
+  const override = settings?.modelPricingOverrides?.[model] || {};
+  const builtIn = MODEL_PRICING[model] || null;
+  const oIn = Number(override.inputPerMTok);
+  const oOut = Number(override.outputPerMTok);
+  const oDisc = Number(override.cachedDiscount);
+  const overrideHasPrices = Number.isFinite(oIn) && Number.isFinite(oOut);
+  if (!builtIn && !overrideHasPrices) return null;
+  return {
+    inputPerMTok:  overrideHasPrices ? oIn  : builtIn.inputPerMTok,
+    outputPerMTok: overrideHasPrices ? oOut : builtIn.outputPerMTok,
+    cachedDiscount: (Number.isFinite(oDisc) && oDisc >= 0 && oDisc <= 1)
+      ? oDisc
+      : (builtIn?.cachedDiscount ?? DEFAULT_GEMINI_CACHED_DISCOUNT),
+  };
 }

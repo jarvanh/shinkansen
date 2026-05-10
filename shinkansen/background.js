@@ -147,29 +147,42 @@ function computeCostUSD(inputTokens, outputTokens, pricing) {
 /**
  * v0.48: 計算套用 implicit / explicit context cache 折扣後的實付費用。
  * v1.8.20: 改成可注入折扣比例（cachedRate = cache 命中部分相對全價的比例）。
- * 各家公告：
- *   - Gemini implicit cache: 命中收 25% （省 75%)
- *   - OpenAI prompt cache:    命中收 50% （省 50%)
- *   - Anthropic Claude read:  命中收 10% （省 90%);write 是 +25% 的另一條，本擴充功能
- *                             不主動建 cache，只看 read，所以僅處理命中折扣。
- *   - 不確定的 provider:      預設用 0.5 的中間值，低估比高估保守。
+ * v1.9.2: 預設 fallback rate 從 0.25 改 0.10——Gemini 2.5+ 起 implicit cache 是 90% off
+ *         (命中部分付 10%),不再是 2.0 時代的 75% off;且新 caller 一律從 settings 帶
+ *         明確 cachedDiscount,fallback 只給「沒帶值」的舊 caller 用,給 Gemini 現實值
+ *         比 OpenAI 舊 50% 中間值更實用。
  *
  * 公式：effectiveInput = (inputTokens - cachedTokens) + cachedTokens × cachedRate
  */
 function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing, cachedRate) {
   const rate = (typeof cachedRate === 'number' && cachedRate >= 0 && cachedRate <= 1)
     ? cachedRate
-    : 0.25; // 預設 Gemini 75% 折扣（向下相容既有 caller)
+    : 0.10; // 預設 Gemini 2.5+ 90% off
   const uncached = Math.max(0, inputTokens - cachedTokens);
   const effectiveInput = uncached + cachedTokens * rate;
   return computeCostUSD(effectiveInput, outputTokens, pricing);
 }
 
 /**
- * v1.8.20: 依自訂 Provider baseUrl 推斷 cache 命中折扣比例。
- * 真值比例不應該硬編碼成 0.25 套到所有 provider —— OpenAI cache 折扣 50%、
- * Claude 高達 90%，套 0.25 對 OpenAI 會低估費用約 50%、對 Claude 會高估 70%。
- * 由 baseUrl 簡單字串判斷，使用者用 OpenRouter 等 aggregator 時走預設 0.5 中間值。
+ * v1.9.2: 從 pricing 物件取出 cache 命中部分相對全價的比例。
+ * pricing.cachedDiscount(0-1,命中省下的比例)→ rate = 1 - discount。
+ * 沒填 / 不合法 → 回 null,呼叫端決定 fallback。
+ *
+ * @param {object|null} pricing
+ * @returns {number|null}
+ */
+function pricingToCachedRate(pricing) {
+  const d = Number(pricing?.cachedDiscount);
+  if (!Number.isFinite(d) || d < 0 || d > 1) return null;
+  return 1 - d;
+}
+
+/**
+ * v1.8.20: 依自訂 Provider baseUrl 推斷 cache 命中折扣比例,作為 customProvider.cachedDiscount
+ *         沒填時的二級 fallback。
+ * v1.9.2: 數值對齊 2026-05 各家現況——OpenAI 新世代(GPT-5+)up to 90% off、
+ *         DeepSeek 約 98% off、xAI 75-90%、Claude 90%。
+ * 由 baseUrl 簡單字串判斷,使用者用 OpenRouter 等 aggregator 時走預設 0.5 中間值。
  *
  * @param {string} baseUrl
  * @returns {number} cache 命中部分相對全價的比例（0-1)
@@ -177,9 +190,24 @@ function computeBilledCostUSD(inputTokens, cachedTokens, outputTokens, pricing, 
 function getCustomCacheHitRate(baseUrl) {
   const url = String(baseUrl || '').toLowerCase();
   if (url.includes('anthropic.com')) return 0.10;        // Claude read 90% off
-  if (url.includes('openai.com')) return 0.50;            // OpenAI prompt cache 50% off
-  if (url.includes('deepseek.com')) return 0.10;          // DeepSeek context cache hit 90% off
+  if (url.includes('openai.com')) return 0.10;            // OpenAI 新世代(GPT-5+) up to 90% off
+  if (url.includes('deepseek.com')) return 0.02;          // DeepSeek context cache hit ~98% off
+  if (url.includes('x.ai')) return 0.20;                  // xAI Grok ~80% off(因 model 而異)
   return 0.50;                                            // 未知 provider 中間值
+}
+
+/**
+ * v1.9.2: customProvider 路徑 cache 命中比例查找順序:
+ *   1. customProvider.cachedDiscount 合法 → 用使用者設定
+ *   2. fallback baseUrl 自動推導(getCustomCacheHitRate)
+ *
+ * @param {object} cp customProvider 設定物件
+ * @returns {number} cache 命中部分相對全價的比例（0-1)
+ */
+function resolveCustomProviderCachedRate(cp) {
+  const fromSettings = pricingToCachedRate(cp);
+  if (fromSettings !== null) return fromSettings;
+  return getCustomCacheHitRate(cp?.baseUrl);
 }
 
 // ─── Extension icon badge（已翻譯紅點提示） ─────────────────
@@ -1138,15 +1166,19 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     }
 
     // 計費（跟 handleTranslate 一致）
+    // v1.9.2: cache 命中折扣從 effectivePricing.cachedDiscount 讀取(預設 Gemini 90% off)
+    const cachedRate = pricingToCachedRate(effectivePricing) ?? 0.10;
+    const cachedSavedRatio = 1 - cachedRate;
     const billedInputTokens = Math.max(
       0,
-      Math.round(result.usage.inputTokens - (result.usage.cachedTokens || 0) * 0.75),
+      Math.round(result.usage.inputTokens - (result.usage.cachedTokens || 0) * cachedSavedRatio),
     );
     const billedCostUSD = computeBilledCostUSD(
       result.usage.inputTokens,
       result.usage.cachedTokens || 0,
       result.usage.outputTokens,
       effectivePricing,
+      cachedRate,
     );
 
     browser.tabs.sendMessage(tabId, {
@@ -1365,17 +1397,20 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     // 3.5 累計到全域使用量統計
     // v0.48: 改為累計「實付」值（套用 implicit cache 折扣後的等效 input tokens
     // 與實付費用），讓 popup 累計顯示的 token / 費用等於 Gemini 帳單實際扣款。
-    // billedInputTokens = inputTokens - cachedTokens × 0.75
-    //   （未命中的 token 全價 + 命中的 token 25% 折扣 → 等效 token 數）
+    // v1.9.2: cache 命中折扣從 effectivePricing.cachedDiscount 讀(預設 Gemini 90% off);
+    //         舊硬編 0.75 是 Gemini 2.0 時代值,2.5+ 起應為 0.90。
+    const cachedRate = pricingToCachedRate(effectivePricing) ?? 0.10;
+    const cachedSavedRatio = 1 - cachedRate;
     billedInputTokens = Math.max(
       0,
-      Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * 0.75),
+      Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * cachedSavedRatio),
     );
     billedCostUSD = computeBilledCostUSD(
       batchUsage.inputTokens,
       batchUsage.cachedTokens || 0,
       batchUsage.outputTokens,
       effectivePricing,
+      cachedRate,
     );
   }
 
@@ -1621,7 +1656,8 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   const result = cached.slice();
   missingIdxs.forEach((idx, k) => { result[idx] = fresh[k]; });
 
-  const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+  // v1.9.2: cache 命中折扣優先讀 cp.cachedDiscount,沒填 fallback baseUrl 自動推導
+  const cachedRate = resolveCustomProviderCachedRate(cp);
   const cachedSavedRatio = 1 - cachedRate;
   return {
     result,
@@ -1774,17 +1810,21 @@ async function handleExtractGlossary(payload, sender) {
 
   // 5. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
-    const billedInputTokens = Math.max(
-      0,
-      Math.round(usage.inputTokens - (usage.cachedTokens || 0) * 0.75),
-    );
     const glossaryModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model || 'unknown';
     const glossaryPricing = getPricingForModel(glossaryModel, settings) || settings.pricing;
+    // v1.9.2: cache 命中折扣從 glossaryPricing.cachedDiscount 讀(預設 Gemini 90% off)
+    const cachedRate = pricingToCachedRate(glossaryPricing) ?? 0.10;
+    const cachedSavedRatio = 1 - cachedRate;
+    const billedInputTokens = Math.max(
+      0,
+      Math.round(usage.inputTokens - (usage.cachedTokens || 0) * cachedSavedRatio),
+    );
     const billedCostUSD = computeBilledCostUSD(
       usage.inputTokens,
       usage.cachedTokens || 0,
       usage.outputTokens,
       glossaryPricing,
+      cachedRate,
     );
     await usageDB.logTranslation({
       url: sender?.tab?.url || '',
@@ -1859,7 +1899,8 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
 
   // 4. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
-    const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+    // v1.9.2: cache 命中折扣優先讀 cp.cachedDiscount,沒填 fallback baseUrl 自動推導
+    const cachedRate = resolveCustomProviderCachedRate(cp);
     const cachedSavedRatio = 1 - cachedRate;
     const billedInputTokens = Math.max(
       0,

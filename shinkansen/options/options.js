@@ -88,6 +88,7 @@ async function load() {
   // v1.6.16: 後備路徑單價 UI 已移除（對應 input element 不存在），不再從 settings 載入到 UI。
   // settings.pricing 仍保留 storage 結構作 belt-and-suspenders(background.js:610 fallback 路徑保留）。
   // v1.6.14: per-model 計價覆蓋
+  // v1.9.2: 加 cachedDiscount(0-1)欄位,UI 顯示百分比(0-100);儲存仍為比例(0-1)
   const overrides = s.modelPricingOverrides || {};
   const fillOverride = (id, model, key) => {
     const el = $(id);
@@ -95,12 +96,21 @@ async function load() {
     const v = overrides[model]?.[key];
     el.value = (Number.isFinite(Number(v)) ? Number(v) : '');
   };
+  const fillOverrideDiscount = (id, model) => {
+    const el = $(id);
+    if (!el) return;
+    const v = overrides[model]?.cachedDiscount;
+    el.value = (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) : '');
+  };
   fillOverride('override-lite-input',  'gemini-3.1-flash-lite-preview', 'inputPerMTok');
   fillOverride('override-lite-output', 'gemini-3.1-flash-lite-preview', 'outputPerMTok');
+  fillOverrideDiscount('override-lite-discount', 'gemini-3.1-flash-lite-preview');
   fillOverride('override-flash-input', 'gemini-3-flash-preview', 'inputPerMTok');
   fillOverride('override-flash-output','gemini-3-flash-preview', 'outputPerMTok');
+  fillOverrideDiscount('override-flash-discount', 'gemini-3-flash-preview');
   fillOverride('override-pro-input',   'gemini-3.1-pro-preview', 'inputPerMTok');
   fillOverride('override-pro-output',  'gemini-3.1-pro-preview', 'outputPerMTok');
+  fillOverrideDiscount('override-pro-discount', 'gemini-3.1-pro-preview');
   $('whitelist').value = (s.domainRules.whitelist || []).join('\n');
   $('debugLog').checked = s.debugLog;
 
@@ -205,6 +215,10 @@ async function load() {
   $('cp-temperature').value = (typeof cp.temperature === 'number') ? cp.temperature : 0.7;
   $('cp-inputPerMTok').value = cp.inputPerMTok != null ? cp.inputPerMTok : '';
   $('cp-outputPerMTok').value = cp.outputPerMTok != null ? cp.outputPerMTok : '';
+  // v1.9.2: cache 命中折扣 — UI 顯示百分比(0-100),儲存仍為比例(0-1);null/undefined → 空白
+  $('cp-cachedDiscount').value = (Number.isFinite(Number(cp.cachedDiscount))
+    ? Math.round(Number(cp.cachedDiscount) * 100)
+    : '');
   // v1.6.18: thinking 控制
   const validLevels = ['auto', 'off', 'low', 'medium', 'high'];
   const tl = validLevels.includes(cp.thinkingLevel) ? cp.thinkingLevel : 'auto';
@@ -901,24 +915,41 @@ async function _saveImpl() {
       return [1, 2, 3].includes(v) ? v : 2;
     })(),
     // v1.6.14: per-model 計價覆蓋（Google 改價時使用者自填）。
-    // 兩欄都是合法數字才寫入 entry，任一欄空白整個 model 不存（走內建表）。
+    // v1.9.2: cachedDiscount 獨立欄位,可單獨覆蓋(只填折扣不填價格也合法)。
+    //   input/output 兩欄都是合法數字才寫入 input/output entry,任一欄空白 → 走內建表;
+    //   cachedDiscount 獨立 — UI 0-100% 轉成 0-1 比例存,空白 → 走內建表(預設 90%)。
+    //   只要任一欄有值,該 model 在 overrides 物件就有 entry(即便只填 discount)。
     modelPricingOverrides: (() => {
-      const collect = (model, inputId, outputId) => {
-        const i = $(inputId)?.value?.trim();
-        const o = $(outputId)?.value?.trim();
-        if (i === '' || o === '') return null;
-        const ni = Number(i), no = Number(o);
-        if (!Number.isFinite(ni) || !Number.isFinite(no) || ni < 0 || no < 0) return null;
-        return { model, inputPerMTok: ni, outputPerMTok: no };
+      const collect = (model, inputId, outputId, discountId) => {
+        const i = $(inputId)?.value?.trim() ?? '';
+        const o = $(outputId)?.value?.trim() ?? '';
+        const d = $(discountId)?.value?.trim() ?? '';
+        const entry = { model };
+        if (i !== '' && o !== '') {
+          const ni = Number(i), no = Number(o);
+          if (Number.isFinite(ni) && Number.isFinite(no) && ni >= 0 && no >= 0) {
+            entry.inputPerMTok = ni;
+            entry.outputPerMTok = no;
+          }
+        }
+        if (d !== '') {
+          const nd = Number(d);
+          if (Number.isFinite(nd) && nd >= 0 && nd <= 100) {
+            entry.cachedDiscount = nd / 100; // UI 百分比 → 儲存比例
+          }
+        }
+        // entry 只有 model 一個 key → 沒有任何合法覆蓋值
+        return Object.keys(entry).length > 1 ? entry : null;
       };
       const rows = [
-        collect('gemini-3.1-flash-lite-preview', 'override-lite-input',  'override-lite-output'),
-        collect('gemini-3-flash-preview',         'override-flash-input', 'override-flash-output'),
-        collect('gemini-3.1-pro-preview',         'override-pro-input',   'override-pro-output'),
+        collect('gemini-3.1-flash-lite-preview', 'override-lite-input',  'override-lite-output',  'override-lite-discount'),
+        collect('gemini-3-flash-preview',         'override-flash-input', 'override-flash-output', 'override-flash-discount'),
+        collect('gemini-3.1-pro-preview',         'override-pro-input',   'override-pro-output',   'override-pro-discount'),
       ].filter(Boolean);
       const out = {};
       for (const r of rows) {
-        out[r.model] = { inputPerMTok: r.inputPerMTok, outputPerMTok: r.outputPerMTok };
+        const { model, ...rest } = r;
+        out[model] = rest;
       }
       return out;
     })(),
@@ -954,6 +985,14 @@ async function _saveImpl() {
       temperature: parseUserNum($('cp-temperature').value, DEFAULTS.customProvider?.temperature ?? 0.7),
       inputPerMTok: parseUserNum($('cp-inputPerMTok').value, 0),
       outputPerMTok: parseUserNum($('cp-outputPerMTok').value, 0),
+      // v1.9.2: UI 0-100% → 儲存比例 0-1;空白 → null(讓 background 走 baseUrl 自動推導)
+      cachedDiscount: (() => {
+        const raw = $('cp-cachedDiscount')?.value?.trim();
+        if (!raw) return null;
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+        return n / 100;
+      })(),
       thinkingLevel: (() => {
         const v = $('cp-thinking-level')?.value;
         return ['auto', 'off', 'low', 'medium', 'high'].includes(v) ? v : 'auto';
@@ -1171,9 +1210,9 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   // v1.6.16: 後備路徑單價 UI 已移除，reset 不再動 settings.pricing 欄位。
   // v1.6.14: per-model override 欄位 reset 為空（預設 modelPricingOverrides:{} 對應 UI 全空 = 走內建表）。
   for (const id of [
-    'override-lite-input',  'override-lite-output',
-    'override-flash-input', 'override-flash-output',
-    'override-pro-input',   'override-pro-output',
+    'override-lite-input',  'override-lite-output',  'override-lite-discount',
+    'override-flash-input', 'override-flash-output', 'override-flash-discount',
+    'override-pro-input',   'override-pro-output',   'override-pro-discount',
   ]) {
     const el = $(id);
     if (el) el.value = '';
@@ -1566,6 +1605,15 @@ function sanitizeImport(raw) {
       }
       prClean[key] = v;
     }
+    // v1.9.2: cachedDiscount 0-1 範圍
+    if ('cachedDiscount' in pr) {
+      const v = pr.cachedDiscount;
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1) {
+        prClean.cachedDiscount = v;
+      } else {
+        warnings.push(_t('options.import.warningSkipNeg', { key: 'cachedDiscount' }));
+      }
+    }
     if (Object.keys(prClean).length > 0) clean.pricing = prClean;
   }
 
@@ -1613,6 +1661,13 @@ function sanitizeImport(raw) {
     }
     if (typeof cp.inputPerMTok === 'number' && cp.inputPerMTok >= 0) cpClean.inputPerMTok = cp.inputPerMTok;
     if (typeof cp.outputPerMTok === 'number' && cp.outputPerMTok >= 0) cpClean.outputPerMTok = cp.outputPerMTok;
+    // v1.9.2: cachedDiscount 0-1,null 表示走 baseUrl 自動推導
+    if (cp.cachedDiscount === null) cpClean.cachedDiscount = null;
+    else if (typeof cp.cachedDiscount === 'number'
+        && Number.isFinite(cp.cachedDiscount)
+        && cp.cachedDiscount >= 0 && cp.cachedDiscount <= 1) {
+      cpClean.cachedDiscount = cp.cachedDiscount;
+    }
     if (Object.prototype.hasOwnProperty.call(cp, 'apiKey')) {
       warnings.push(_t('options.import.warningCpApiKey'));
     }
@@ -1982,19 +2037,32 @@ let _customProviderCache = { model: '' };
 /**
  * 把 record.model 對映成 preset 的 label（顯示用）。
  * - 'google-translate' → engine='google' 的 preset 標籤
- * - 等於 customProvider.model → engine='openai-compat' 的 preset 標籤
+ * - engine='openai-compat'(或 model 不像 Gemini)→ engine='openai-compat' 的 preset 標籤;
+ *   沒對映 preset 時退到 path 最後一段(`accounts/fireworks/models/qwen3p6` → `qwen3p6`)
  * - 等於某 preset.model（engine='gemini'）→ 該 preset 標籤
  * - 都不命中 → 回退原本的 short model（去掉 gemini-/-preview 前後綴）
+ *
+ * v1.9.2:engine 加為可選參數。row-level caller 帶 r.engine;aggregate 路徑(top model /
+ *        filter dropdown)沒 engine 資訊時走 model ID 啟發式判斷(Gemini ID 都是 `gemini-`
+ *        開頭,其他即視為 customProvider 路徑)。修舊行為:customProvider 已換 model 後,
+ *        過去用該 model 的紀錄會 fallback 顯示原始 ID(可能是 path-style 長字串)。
  */
-function modelToLabel(modelId) {
+function modelToLabel(modelId, engine) {
   if (!modelId) return '—';
   if (modelId === 'google-translate') {
     const p = _presetsCache.find(x => x.engine === 'google');
     return p?.label || 'Google MT';
   }
-  if (_customProviderCache.model && modelId === _customProviderCache.model) {
-    const p = _presetsCache.find(x => x.engine === 'openai-compat');
-    if (p) return p.label;
+  // openai-compat 路徑:明示 engine='openai-compat',或 model ID 不像 Gemini(後者用於 aggregate
+  // 路徑沒帶 engine 的情境)。Gemini model ID 一律以 'gemini-' 開頭,啟發式可靠。
+  // 顯示策略:取 path 最後一段(provider/family/model → model)。直接用 preset label「自訂模型」
+  // 會讓所有 customProvider 紀錄(包含換 model 前後)看起來相同,filter dropdown 兩個選項看起來
+  // 一樣;path 最後一段保留可區分性又不會撐爆欄位寬度。
+  const looksLikeGemini = modelId.startsWith('gemini-');
+  const isCustom = engine === 'openai-compat' || (!engine && !looksLikeGemini);
+  if (isCustom) {
+    const last = modelId.split('/').pop();
+    return last || modelId;
   }
   const p = _presetsCache.find(x => x.engine === 'gemini' && x.model === modelId);
   if (p) return p.label;
@@ -2275,7 +2343,7 @@ function renderTable(records) {
     // v1.5.7: 模型欄顯示 preset label；查不到才回退 model id 短名
     // v1.8.19: label 放寬到 30 字後 col-model 加 max-width + ellipsis,
     //          完整 label 由 title attr 補（hover tooltip)
-    const shortModel = modelToLabel(r.model);
+    const shortModel = modelToLabel(r.model, r.engine);
     const shortModelEsc = escapeHtml(shortModel);
     // 術語表抽取的紀錄（source='glossary'）在標題前加標籤，讓使用者一眼分辨
     // 同 url 的主翻譯紀錄與術語表紀錄（兩者通常 model 不同，費用各自計算）

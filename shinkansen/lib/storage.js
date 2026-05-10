@@ -409,9 +409,11 @@ export const DEFAULT_SETTINGS = {
   },
   // 計價設定（USD per 1M tokens)。預設值為 gemini-3-flash-preview 的官方報價，
   // 使用者換模型時請自行至設定頁調整。
+  // v1.9.2:cachedDiscount(0-1,cache 命中省下的比例)。Gemini 2.5+ 起 90% off → 0.90。
   pricing: {
     inputPerMTok: 0.50,
     outputPerMTok: 3.00,
+    cachedDiscount: 0.90,
   },
   // v0.69: 全文術語表一致化設定
   glossary: {
@@ -593,6 +595,10 @@ export const DEFAULT_SETTINGS = {
     temperature: 0.7,
     inputPerMTok: 0.75,                 // OpenRouter GPT-5.4 Mini input 單價（USD / 1M tokens，2026-05 校準）
     outputPerMTok: 4.5,                 // 同上 output 單價
+    // v1.9.2:cache 命中折扣(0-1,命中省下的比例)。預設 0.90 對齊預設模型 GPT-5.4 Mini
+    // 的 90% off。使用者換 provider/model 時自行調整 — Anthropic 90%、DeepSeek 98%、
+    // xAI 75-90%、舊 OpenAI 模型 50%。null 表示走 baseUrl 自動推導(getCustomCacheHitRate)。
+    cachedDiscount: 0.90,
     // v1.6.18: thinking 控制（統一 5 級對映 + 進階 JSON 透傳）。
     //   thinkingLevel:'auto' 不送任何 thinking 參數，讓 provider 自選預設;
     //   'off' / 'low' / 'medium' / 'high' 由 lib/openai-compat-thinking.js 偵測 provider 後

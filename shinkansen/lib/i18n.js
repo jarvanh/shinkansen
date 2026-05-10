@@ -270,6 +270,7 @@
     'options.gemini.pricing.proAria': 'Pro {field} 覆蓋',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
+    'options.gemini.pricing.cachedDiscountHint.html': '三欄依序為 <strong>input / output 單價</strong>(USD/M tokens)與 <strong>cache 命中折扣</strong>(%，例：90 = 命中部分省 90%)。Gemini 2.5 起 implicit cache 預設 90% off',
 
     'options.gemini.partial.heading': '節省模式',
     'options.gemini.partial.toggle': '只翻文章開頭',
@@ -408,6 +409,8 @@
     'options.cp.pricing.intro.html': '請填入 input / output 單價，系統會用來估算翻譯費用顯示在翻譯完成通知與「用量紀錄」分頁。填 <strong>0</strong> 代表不顯示費用（token 數仍會記錄）',
     'options.cp.pricing.inputLabel': 'Input tokens 單價（USD / 1M tokens）',
     'options.cp.pricing.outputLabel': 'Output tokens 單價（USD / 1M tokens）',
+    'options.cp.pricing.cachedDiscountLabel': 'Cache 命中折扣（%，例：90 = 命中部分省 90%）',
+    'options.cp.pricing.cachedDiscountHint': '各家公告：Anthropic 90%、新 OpenAI(GPT-5+)90%、DeepSeek 98%、xAI 75-90%、舊 OpenAI 50%。空白 → 依 Base URL 自動推導',
 
     'options.cp.modelDisplayUnset': '（未設定）',
     'options.cp.targetMismatch.html': '⚠ 你已客製化此 prompt；切換目標語言<strong>不會自動覆蓋</strong>你的版本。要套用新目標語言預設，請清空欄位儲存（系統會自動走對應預設），或點下方「重置」按鈕',
@@ -1032,6 +1035,7 @@
     'options.gemini.pricing.proAria': 'Pro {field} 覆盖',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
+    'options.gemini.pricing.cachedDiscountHint.html': '三栏依次为 <strong>input / output 单价</strong>(USD/M tokens)与 <strong>cache 命中折扣</strong>(%，例：90 = 命中部分省 90%)。Gemini 2.5 起 implicit cache 默认 90% off',
 
     'options.gemini.partial.heading': '节省模式',
     'options.gemini.partial.toggle': '只翻文章开头',
@@ -1170,6 +1174,8 @@
     'options.cp.pricing.intro.html': '请填入 input / output 单价，系统会用来估算翻译费用显示在翻译完成通知与「用量记录」分页。填 <strong>0</strong> 代表不显示费用（token 数仍会记录）',
     'options.cp.pricing.inputLabel': 'Input tokens 单价（USD / 1M tokens）',
     'options.cp.pricing.outputLabel': 'Output tokens 单价（USD / 1M tokens）',
+    'options.cp.pricing.cachedDiscountLabel': 'Cache 命中折扣（%，例：90 = 命中部分省 90%）',
+    'options.cp.pricing.cachedDiscountHint': '各家公告：Anthropic 90%、新 OpenAI(GPT-5+)90%、DeepSeek 98%、xAI 75-90%、旧 OpenAI 50%。空白 → 依 Base URL 自动推导',
 
     'options.cp.modelDisplayUnset': '（未设置）',
     'options.cp.targetMismatch.html': '⚠ 你已自定义此 prompt；切换目标语言<strong>不会自动覆盖</strong>你的版本。要应用新目标语言默认，请清空字段保存（系统会自动走对应默认），或点下方「重置」按钮',
@@ -1792,6 +1798,7 @@
     'options.gemini.pricing.proAria': 'Pro {field} override',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
+    'options.gemini.pricing.cachedDiscountHint.html': 'The three columns are <strong>input / output price</strong> (USD/M tokens) and <strong>cache-hit discount</strong> (%, e.g. 90 = cached portion saves 90%). Gemini 2.5+ implicit cache defaults to 90% off',
 
     'options.gemini.partial.heading': 'Save mode',
     'options.gemini.partial.toggle': 'Translate only article opening',
@@ -1930,6 +1937,8 @@
     'options.cp.pricing.intro.html': 'Fill in input / output prices; the system estimates translation cost for the completion notification and "Usage history" tab. <strong>0</strong> means do not display cost (token count is still recorded)',
     'options.cp.pricing.inputLabel': 'Input tokens price (USD / 1M tokens)',
     'options.cp.pricing.outputLabel': 'Output tokens price (USD / 1M tokens)',
+    'options.cp.pricing.cachedDiscountLabel': 'Cache-hit discount (%, e.g. 90 = cached portion saves 90%)',
+    'options.cp.pricing.cachedDiscountHint': 'Provider rates: Anthropic 90%, new OpenAI (GPT-5+) 90%, DeepSeek 98%, xAI 75-90%, legacy OpenAI 50%. Leave blank → auto-detect by Base URL',
 
     'options.cp.modelDisplayUnset': '(Not set)',
     'options.cp.targetMismatch.html': '⚠ You have customized this prompt; switching target language <strong>will not auto-overwrite</strong> your version. To apply the new target language default, clear the field and save (system uses corresponding default), or click the "Reset" button below',
@@ -2552,6 +2561,7 @@
     'options.gemini.pricing.proAria': 'Pro {field} 上書き',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
+    'options.gemini.pricing.cachedDiscountHint.html': '3 つの列は順に <strong>input / output 単価</strong>（USD/M tokens）と <strong>cache ヒット割引</strong>（%、例：90 = ヒット部分は 90% 節約）。Gemini 2.5 以降、implicit cache はデフォルト 90% off',
 
     'options.gemini.partial.heading': '節約モード',
     'options.gemini.partial.toggle': '記事冒頭のみ翻訳',
@@ -2690,6 +2700,8 @@
     'options.cp.pricing.intro.html': 'input / output 単価を入力すると、システムが翻訳コストを推定して翻訳完了通知と「使用量履歴」タブに表示します。<strong>0</strong> でコスト非表示（token 数は記録されます）',
     'options.cp.pricing.inputLabel': 'Input tokens 単価（USD / 1M tokens）',
     'options.cp.pricing.outputLabel': 'Output tokens 単価（USD / 1M tokens）',
+    'options.cp.pricing.cachedDiscountLabel': 'Cache ヒット割引（%、例：90 = ヒット部分は 90% 節約）',
+    'options.cp.pricing.cachedDiscountHint': '各社公表値：Anthropic 90%、新 OpenAI（GPT-5+）90%、DeepSeek 98%、xAI 75-90%、旧 OpenAI 50%。空欄 → Base URL から自動推定',
 
     'options.cp.modelDisplayUnset': '（未設定）',
     'options.cp.targetMismatch.html': '⚠ このプロンプトをカスタマイズしています。目標言語を切り替えても<strong>自動的に上書きされません</strong>。新しい目標言語のデフォルトを適用するには、フィールドを空にして保存（システムが対応するデフォルトを自動使用）するか、下の「リセット」ボタンを押してください',
@@ -3312,6 +3324,7 @@
     'options.gemini.pricing.proAria': 'Pro {field} 덮어쓰기',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
+    'options.gemini.pricing.cachedDiscountHint.html': '세 열은 차례대로 <strong>input / output 단가</strong>(USD/M tokens)와 <strong>cache 적중 할인</strong>(%, 예: 90 = 적중 부분 90% 절약)입니다. Gemini 2.5부터 implicit cache 기본 90% off',
 
     'options.gemini.partial.heading': '절약 모드',
     'options.gemini.partial.toggle': '문서 시작 부분만 번역',
@@ -3450,6 +3463,8 @@
     'options.cp.pricing.intro.html': 'input / output 단가를 입력하면 시스템이 번역 비용을 추정하여 번역 완료 알림과 "사용 기록" 탭에 표시합니다. <strong>0</strong>은 비용 미표시 (token 수는 여전히 기록됨)',
     'options.cp.pricing.inputLabel': 'Input tokens 단가 (USD / 1M tokens)',
     'options.cp.pricing.outputLabel': 'Output tokens 단가 (USD / 1M tokens)',
+    'options.cp.pricing.cachedDiscountLabel': 'Cache 적중 할인 (%, 예: 90 = 적중 부분 90% 절약)',
+    'options.cp.pricing.cachedDiscountHint': '제공사 공시값: Anthropic 90%, 신 OpenAI(GPT-5+) 90%, DeepSeek 98%, xAI 75-90%, 구 OpenAI 50%. 비워두면 → Base URL로 자동 추론',
 
     'options.cp.modelDisplayUnset': '(미설정)',
     'options.cp.targetMismatch.html': '⚠ 이 prompt를 커스터마이즈했습니다. 대상 언어를 전환해도 <strong>자동으로 덮어쓰지 않습니다</strong>. 새 대상 언어 기본값을 적용하려면 필드를 비우고 저장 (시스템이 대응하는 기본값을 자동으로 사용) 하거나 아래 "재설정" 버튼을 누르세요',
@@ -4071,6 +4086,7 @@
     'options.gemini.pricing.proAria': 'Sobrescribir Pro {field}',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
+    'options.gemini.pricing.cachedDiscountHint.html': 'Las tres columnas son <strong>precio input / output</strong> (USD/M tokens) y <strong>descuento de cache hit</strong> (%, ej.: 90 = la parte cacheada ahorra 90%). Desde Gemini 2.5, la implicit cache es por defecto 90% off',
 
     'options.gemini.partial.heading': 'Modo ahorro',
     'options.gemini.partial.toggle': 'Traducir solo el principio del artículo',
@@ -4209,6 +4225,8 @@
     'options.cp.pricing.intro.html': 'Introduce el precio de input / output y el sistema estimará el coste de la traducción y lo mostrará en la notificación de fin y en la pestaña "Historial de uso". Pon <strong>0</strong> si no quieres ver el coste (los tokens se siguen contabilizando)',
     'options.cp.pricing.inputLabel': 'Precio Input tokens (USD / 1M tokens)',
     'options.cp.pricing.outputLabel': 'Precio Output tokens (USD / 1M tokens)',
+    'options.cp.pricing.cachedDiscountLabel': 'Descuento de cache hit (%, ej.: 90 = la parte cacheada ahorra 90%)',
+    'options.cp.pricing.cachedDiscountHint': 'Tarifas oficiales: Anthropic 90%, OpenAI nuevo (GPT-5+) 90%, DeepSeek 98%, xAI 75-90%, OpenAI antiguo 50%. En blanco → autodetectar por Base URL',
 
     'options.cp.modelDisplayUnset': '(sin asignar)',
     'options.cp.targetMismatch.html': '⚠ Has personalizado este prompt; cambiar el idioma de destino <strong>no lo sobrescribe automáticamente</strong>. Para aplicar el predeterminado del nuevo idioma, vacía el campo y guarda (el sistema usará el predeterminado correspondiente), o pulsa el botón "Restablecer" de abajo',
@@ -4830,6 +4848,7 @@
     'options.gemini.pricing.proAria': 'Surcharger Pro {field}',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
+    'options.gemini.pricing.cachedDiscountHint.html': 'Les trois colonnes sont, dans l\'ordre, <strong>tarif input / output</strong> (USD/M tokens) et <strong>remise sur cache hit</strong> (%, ex. : 90 = la portion en cache économise 90%). Depuis Gemini 2.5, l\'implicit cache est par défaut à 90% off',
 
     'options.gemini.partial.heading': 'Mode économie',
     'options.gemini.partial.toggle': 'Traduire uniquement le début de l\'article',
@@ -4968,6 +4987,8 @@
     'options.cp.pricing.intro.html': 'Saisissez le prix d\'input / output, le système estime le coût de la traduction et l\'affiche dans la notification de fin et dans l\'onglet « Historique d\'utilisation ». Mettez <strong>0</strong> pour ne pas afficher le coût (les tokens restent comptabilisés)',
     'options.cp.pricing.inputLabel': 'Tarif tokens Input (USD / 1M tokens)',
     'options.cp.pricing.outputLabel': 'Tarif tokens Output (USD / 1M tokens)',
+    'options.cp.pricing.cachedDiscountLabel': 'Remise sur cache hit (%, ex. : 90 = la portion en cache économise 90%)',
+    'options.cp.pricing.cachedDiscountHint': 'Tarifs publiés : Anthropic 90%, nouveau OpenAI (GPT-5+) 90%, DeepSeek 98%, xAI 75-90%, ancien OpenAI 50%. Vide → détection automatique selon le Base URL',
 
     'options.cp.modelDisplayUnset': '(non défini)',
     'options.cp.targetMismatch.html': '⚠ Vous avez personnalisé ce prompt ; changer la langue cible <strong>ne l\'écrase pas automatiquement</strong>. Pour appliquer la valeur par défaut de la nouvelle langue, videz le champ et enregistrez (le système utilisera la valeur par défaut correspondante), ou cliquez sur le bouton « Réinitialiser » ci-dessous',
@@ -5587,6 +5608,7 @@
     'options.gemini.pricing.flashLiteAria': 'Flash Lite {field} überschreiben',
     'options.gemini.pricing.flashAria': 'Flash {field} überschreiben',
     'options.gemini.pricing.proAria': 'Pro {field} überschreiben',
+    'options.gemini.pricing.cachedDiscountHint.html': 'Die drei Spalten sind <strong>Input- / Output-Preis</strong> (USD/M Tokens) und <strong>Cache-Hit-Rabatt</strong> (%, z. B. 90 = der gecachte Anteil spart 90%). Ab Gemini 2.5 hat Implicit Cache standardmäßig 90% off',
     'options.gemini.pricing.fieldInput': 'input',
     'options.gemini.pricing.fieldOutput': 'output',
 
@@ -5727,6 +5749,8 @@
     'options.cp.pricing.intro.html': 'Trage die Input- / Output-Preise ein, das System schätzt damit die Übersetzungskosten und zeigt sie in der Übersetzungsabschluss-Benachrichtigung und im Reiter „Nutzungsverlauf" an. <strong>0</strong> bedeutet keine Kostenanzeige (Token-Anzahl wird trotzdem aufgezeichnet)',
     'options.cp.pricing.inputLabel': 'Preis Input-Tokens (USD / 1M Tokens)',
     'options.cp.pricing.outputLabel': 'Preis Output-Tokens (USD / 1M Tokens)',
+    'options.cp.pricing.cachedDiscountLabel': 'Cache-Hit-Rabatt (%, z. B. 90 = der gecachte Anteil spart 90%)',
+    'options.cp.pricing.cachedDiscountHint': 'Anbieter-Tarife: Anthropic 90%, neues OpenAI (GPT-5+) 90%, DeepSeek 98%, xAI 75-90%, altes OpenAI 50%. Leer → automatische Erkennung anhand der Base URL',
 
     'options.cp.modelDisplayUnset': '(nicht festgelegt)',
     'options.cp.targetMismatch.html': '⚠ Du hast diesen Prompt angepasst; ein Wechsel der Zielsprache <strong>überschreibt ihn nicht automatisch</strong>. Um den Standard der neuen Zielsprache anzuwenden, leere das Feld und speichere (das System verwendet automatisch den entsprechenden Standard) oder klicke unten auf „Zurücksetzen"',

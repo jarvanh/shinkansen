@@ -137,9 +137,11 @@ test.describe('handleExtractGlossaryCustomProvider(OpenAI-compat): 寫入 Indexe
   });
 
   test('用 cachedRate 算 billedInputTokens(跟 customProvider 主路徑一致,各家折扣不同)', () => {
-    // OpenAI / Anthropic / DeepSeek 的 cache 命中折扣率不同,用 getCustomCacheHitRate
-    // 推 baseUrl 對應的 rate,而非硬編碼 0.25
-    expect(body).toMatch(/getCustomCacheHitRate\s*\(/);
+    // OpenAI / Anthropic / DeepSeek 的 cache 命中折扣率不同。v1.9.2 起改走
+    // resolveCustomProviderCachedRate(cp) — 先讀 cp.cachedDiscount 使用者設定,沒填時
+    // 再 fallback baseUrl 自動推導(getCustomCacheHitRate)。整條路徑核心是 cachedRate 變數
+    // 進到 billedInputTokens 與 computeBilledCostUSD,而非硬編碼 0.25。
+    expect(body).toMatch(/resolveCustomProviderCachedRate\s*\(\s*cp\s*\)/);
   });
 
   test('只在 usage > 0 時寫入', () => {

@@ -391,6 +391,7 @@
           </div>
           <input type="number" id="override-lite-input" step="0.01" min="0" placeholder="0.10" aria-label="Flash Lite input 覆蓋">
           <input type="number" id="override-lite-output" step="0.01" min="0" placeholder="0.30" aria-label="Flash Lite output 覆蓋">
+          <input type="number" id="override-lite-discount" step="1" min="0" max="100" placeholder="90" aria-label="Flash Lite cache hit discount %" class="cached-discount-input">
         </div>
         <div class="model-pricing-row" data-model="gemini-3-flash-preview">
           <div class="model-pricing-label">
@@ -399,6 +400,7 @@
           </div>
           <input type="number" id="override-flash-input" step="0.01" min="0" placeholder="0.50" aria-label="Flash input 覆蓋">
           <input type="number" id="override-flash-output" step="0.01" min="0" placeholder="3.00" aria-label="Flash output 覆蓋">
+          <input type="number" id="override-flash-discount" step="1" min="0" max="100" placeholder="90" aria-label="Flash cache hit discount %" class="cached-discount-input">
         </div>
         <div class="model-pricing-row" data-model="gemini-3.1-pro-preview">
           <div class="model-pricing-label">
@@ -407,8 +409,13 @@
           </div>
           <input type="number" id="override-pro-input" step="0.01" min="0" placeholder="2.00" aria-label="Pro input 覆蓋">
           <input type="number" id="override-pro-output" step="0.01" min="0" placeholder="12.00" aria-label="Pro output 覆蓋">
+          <input type="number" id="override-pro-discount" step="1" min="0" max="100" placeholder="90" aria-label="Pro cache hit discount %" class="cached-discount-input">
         </div>
       </div>
+      <p class="muted" style="font-size: 12px; margin-top: 6px;" data-i18n-html="options.gemini.pricing.cachedDiscountHint.html">
+        三欄依序為 <strong>input / output 單價</strong>(USD/M tokens)與 <strong>cache 命中折扣</strong>(%，例：90 = 命中部分省 90%)。
+        Gemini 2.5 起 implicit cache 預設 90% off
+      </p>
 
     </section>
 
@@ -802,6 +809,13 @@
       <label>
         <span data-i18n="options.cp.pricing.outputLabel">Output tokens 單價（USD / 1M tokens）</span>
         <input type="number" id="cp-outputPerMTok" step="0.01" min="0" placeholder="0">
+      </label>
+      <label>
+        <span data-i18n="options.cp.pricing.cachedDiscountLabel">Cache 命中折扣（%，例：90 = 命中部分省 90%）</span>
+        <input type="number" id="cp-cachedDiscount" step="1" min="0" max="100" placeholder="90">
+        <small class="muted" data-i18n="options.cp.pricing.cachedDiscountHint">
+          各家公告：Anthropic 90%、新 OpenAI(GPT-5+)90%、DeepSeek 98%、xAI 75-90%、舊 OpenAI 50%。空白 → 依 Base URL 自動推導
+        </small>
       </label>
     </section>
 
