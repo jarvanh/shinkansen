@@ -1736,7 +1736,6 @@
   // v1.8.40: 字幕已是目標語言時不送 LLM 翻譯
   // YouTube /api/timedtext URL 帶 lang= 參數(例如 'en' / 'zh-Hant' / 'ja')
   // 明確匹配 target → 直接 skip,避免浪費 token 翻自己。
-  // 設計上這裡只看 URL lang(快、便宜、不誤判),內容 heuristic 留未來增強。
   // P1 (v1.8.59): 依 STATE.targetLanguage 決定 skip 集合(取代原寫死 zh-TW 集合)。
   const SKIP_LANGS_BY_TARGET = {
     'zh-TW': new Set(['zh-Hant', 'zh-TW', 'zh-HK', 'zh-MO']),
@@ -1748,11 +1747,32 @@
     'fr':    new Set(['fr', 'fr-FR', 'fr-CA', 'fr-BE', 'fr-CH']),
     'de':    new Set(['de', 'de-DE', 'de-AT', 'de-CH']),
   };
+  // 模糊 lang:URL lang 不足以分辨繁簡(YouTube 對部分人工字幕只標 base lang `zh`,
+  // 不附 -Hant / -Hans variant),target=zh-TW / zh-CN 時必須看內容才能決定要不要 skip。
+  // 其他 target(en / ja / ko / es / fr / de)沒有此類歧義,維持只看 URL lang。
+  const _AMBIGUOUS_LANGS_BY_TARGET = {
+    'zh-TW': new Set(['zh']),
+    'zh-CN': new Set(['zh']),
+  };
+  function _sampleCaptionText() {
+    const segs = SK.YT.rawSegments;
+    if (!segs || segs.length === 0) return '';
+    // 取前 30 條串接,夠 SK.detectTextLang 的簡體特徵字比例統計
+    return segs.slice(0, 30).map(s => s.text || '').join('').slice(0, 500);
+  }
   function _shouldSkipBecauseAlreadyInTarget() {
-    if (!SK.YT.captionLang) return false;
+    const captionLang = SK.YT.captionLang;
+    if (!captionLang) return false;
     const target = SK.STATE?.targetLanguage || 'zh-TW';
     const skipSet = SKIP_LANGS_BY_TARGET[target];
-    return skipSet ? skipSet.has(SK.YT.captionLang) : false;
+    if (skipSet && skipSet.has(captionLang)) return true;
+    // 模糊 lang fallback:用內容偵測補判
+    const ambig = _AMBIGUOUS_LANGS_BY_TARGET[target];
+    if (ambig && ambig.has(captionLang) && typeof SK.isAlreadyInTarget === 'function') {
+      const sample = _sampleCaptionText();
+      if (sample && SK.isAlreadyInTarget(sample, target)) return true;
+    }
+    return false;
   }
   // P1 deprecation alias:既有 spec(youtube-skip-already-zh-hant.spec.js)reference 此舊名
   function _shouldSkipBecauseAlreadyTraditionalChinese() {

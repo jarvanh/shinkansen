@@ -27,6 +27,14 @@
 //   「翻譯中…」永久殘留)。SANITY(已驗證 2026-05-05):
 //   把 _shouldShowTranslatingStatus 改成永遠回 true + 移掉 skip 路徑的
 //   hideCaptionStatus → status case fail。還原後 pass。
+//
+// v1.9.3 補:URL lang=`zh`(模糊 base lang)時靠內容偵測補判 — YouTube 對部分
+//   人工字幕只標 lang=zh 不附 -Hant/-Hans variant(實測影片 OR4nfW-LPDA 即此例),
+//   舊邏輯 captionLang='zh' 不在 SKIP_LANGS_BY_TARGET 集合 → 不 skip → 字幕原本
+//   已是繁中還照送 Gemini + 「翻譯中…」殘留。修法:_shouldSkipBecauseAlreadyInTarget
+//   對 target ∈ {zh-TW, zh-CN} + lang='zh' 時走 SK.isAlreadyInTarget 內容偵測。
+//   SANITY(已驗證 2026-05-11):把 _AMBIGUOUS_LANGS_BY_TARGET['zh-TW'] 改成空集合
+//   → trad+lang=zh 那條 fail(TRANSLATE_SUBTITLE_BATCH 被呼叫)。還原後 pass。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -39,6 +47,23 @@ const MOCK_JSON3 = JSON.stringify({
     { tStartMs: 0,    segs: [{ utf8: '這是繁體中文字幕第一句' }] },
     { tStartMs: 3000, segs: [{ utf8: '這是繁體中文字幕第二句' }] },
     { tStartMs: 6000, segs: [{ utf8: '這是繁體中文字幕第三句' }] },
+  ],
+});
+
+// v1.9.3 內容偵測 fixture:lang=zh 模糊標籤時靠這些 sample 跑 SK.detectTextLang
+// 繁中 sample 內無 SIMPLIFIED_ONLY_CHARS 命中字,簡中 sample 命中比例遠 > 0.2
+const MOCK_JSON3_TRAD_CONTENT = JSON.stringify({
+  events: [
+    { tStartMs: 0,    segs: [{ utf8: '對真正懂行的玩家而言這個問題並不存在' }] },
+    { tStartMs: 3000, segs: [{ utf8: '他們認為應該如此而且車體設計極為精緻' }] },
+    { tStartMs: 6000, segs: [{ utf8: '唯一的問題在於價格與供應量遠超出預期' }] },
+  ],
+});
+const MOCK_JSON3_SIMP_CONTENT = JSON.stringify({
+  events: [
+    { tStartMs: 0,    segs: [{ utf8: '对真正懂行的玩家而言这个问题并不存在' }] },
+    { tStartMs: 3000, segs: [{ utf8: '他们认为应该如此而且车体设计极为精致' }] },
+    { tStartMs: 6000, segs: [{ utf8: '唯一的问题在于价格与供应量远超出预期' }] },
   ],
 });
 
@@ -225,6 +250,139 @@ test.describe('youtube-skip-already-zh-hant', () => {
     expect(
       calls,
       `captionLang=zh-Hans 應送 TRANSLATE_SUBTITLE_BATCH(簡中讓 LLM 簡轉繁),實際 ${calls} 次`,
+    ).toBeGreaterThan(0);
+
+    await page.close();
+  });
+
+  // v1.9.3 模糊 lang fallback:lang=zh 時靠內容偵測補判 ─────────
+  // 4 個交叉 case 確保 _AMBIGUOUS_LANGS_BY_TARGET fallback 正確:
+  //   trad content + target=zh-TW → skip(實機觸發本次 bug 的場景)
+  //   simp content + target=zh-TW → 不 skip(LLM 簡轉繁)
+  //   simp content + target=zh-CN → skip
+  //   trad content + target=zh-CN → 不 skip(LLM 繁轉簡)
+
+  async function _setupSkipFallbackPage({ context, localServer, target, fixtureJson, lang }) {
+    const page = await context.newPage();
+    await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.ytp-caption-window-container', { timeout: 10_000, state: 'attached' });
+
+    const { evaluate } = await getShinkansenEvaluator(page);
+    await evaluate(`window.__SK.isYouTubePage = () => true`);
+    await evaluate(`window.__SK.STATE.targetLanguage = ${JSON.stringify(target)}`);
+
+    await evaluate(`
+      window.__translateBatchCalled = 0;
+      chrome.runtime.sendMessage = async function(msg) {
+        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH') {
+          window.__translateBatchCalled++;
+          const texts = (msg.payload && msg.payload.texts) || [];
+          return { ok: true, result: texts.map(t => '[' + ${JSON.stringify(target)} + '] ' + t),
+            usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0,
+                     billedInputTokens: 1, billedCostUSD: 0, cacheHits: 0 }};
+        }
+        if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH_STREAM') {
+          return { ok: false, error: 'streaming disabled in test' };
+        }
+        return { ok: true };
+      };
+    `);
+
+    await evaluate(`window.__SK.translateYouTubeSubtitles()`);
+
+    await evaluate(`
+      window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
+        detail: {
+          url: 'https://www.youtube.com/api/timedtext?v=${VIDEO_ID}&lang=${lang}',
+          responseText: ${fixtureJson},
+        }
+      }));
+    `);
+
+    return { page, evaluate };
+  }
+
+  test('lang=zh + 繁中內容 + target=zh-TW → skip(模糊 lang fallback,本次實機 bug)', async ({ context, localServer }) => {
+    const { page, evaluate } = await _setupSkipFallbackPage({
+      context, localServer, target: 'zh-TW', fixtureJson: MOCK_JSON3_TRAD_CONTENT, lang: 'zh',
+    });
+
+    // skip 路徑只跑 ~50ms;送 API 路徑 ~500ms+,給 800ms 等
+    await page.waitForTimeout(800);
+
+    const calls = await evaluate(`window.__translateBatchCalled`);
+    expect(
+      calls,
+      `lang=zh + 繁中內容 + target=zh-TW 應 skip(本次 OR4nfW-LPDA 實機 bug),實際 ${calls} 次`,
+    ).toBe(0);
+
+    const captionLang = await evaluate(`window.__SK.YT.captionLang`);
+    expect(captionLang).toBe('zh');
+
+    const statusEl = await evaluate(`
+      (() => { const el = document.getElementById('__sk-yt-caption-status'); return el ? el.textContent : null; })()
+    `);
+    expect(
+      statusEl,
+      `lang=zh + 繁中內容 skip 翻譯時「翻譯中…」status 不該殘留,實際 textContent=${JSON.stringify(statusEl)}`,
+    ).toBeNull();
+
+    await page.close();
+  });
+
+  test('lang=zh + 簡中內容 + target=zh-TW → 不 skip(LLM 簡轉繁)', async ({ context, localServer }) => {
+    const { page, evaluate } = await _setupSkipFallbackPage({
+      context, localServer, target: 'zh-TW', fixtureJson: MOCK_JSON3_SIMP_CONTENT, lang: 'zh',
+    });
+
+    const start = Date.now();
+    while (Date.now() - start < 5000) {
+      const c = await evaluate(`window.__translateBatchCalled`);
+      if (c > 0) break;
+      await page.waitForTimeout(50);
+    }
+
+    const calls = await evaluate(`window.__translateBatchCalled`);
+    expect(
+      calls,
+      `lang=zh + 簡中內容 + target=zh-TW 應送 API(簡轉繁),實際 ${calls} 次`,
+    ).toBeGreaterThan(0);
+
+    await page.close();
+  });
+
+  test('lang=zh + 簡中內容 + target=zh-CN → skip', async ({ context, localServer }) => {
+    const { page, evaluate } = await _setupSkipFallbackPage({
+      context, localServer, target: 'zh-CN', fixtureJson: MOCK_JSON3_SIMP_CONTENT, lang: 'zh',
+    });
+
+    await page.waitForTimeout(800);
+
+    const calls = await evaluate(`window.__translateBatchCalled`);
+    expect(
+      calls,
+      `lang=zh + 簡中內容 + target=zh-CN 應 skip,實際 ${calls} 次`,
+    ).toBe(0);
+
+    await page.close();
+  });
+
+  test('lang=zh + 繁中內容 + target=zh-CN → 不 skip(LLM 繁轉簡)', async ({ context, localServer }) => {
+    const { page, evaluate } = await _setupSkipFallbackPage({
+      context, localServer, target: 'zh-CN', fixtureJson: MOCK_JSON3_TRAD_CONTENT, lang: 'zh',
+    });
+
+    const start = Date.now();
+    while (Date.now() - start < 5000) {
+      const c = await evaluate(`window.__translateBatchCalled`);
+      if (c > 0) break;
+      await page.waitForTimeout(50);
+    }
+
+    const calls = await evaluate(`window.__translateBatchCalled`);
+    expect(
+      calls,
+      `lang=zh + 繁中內容 + target=zh-CN 應送 API(繁轉簡),實際 ${calls} 次`,
     ).toBeGreaterThan(0);
 
     await page.close();
