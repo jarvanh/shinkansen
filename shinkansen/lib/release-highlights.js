@@ -28,7 +28,7 @@ export const RELEASE_HIGHLIGHTS = [
   '新增**多語翻譯**，可翻成 8 種語言（繁中 / 簡中 / 英 / 日 / 韓 / 西 / 法 / 德）；介面也支援 8 語',
   '新增**PDF 文件翻譯**，把 PDF 拖進來就能在本機翻，可下載雙語對照 PDF',
   '新增**雙語對照模式**，原文 + 譯文並列顯示',
-  '新增**自訂 AI 模型**，可接 OpenRouter / Claude / DeepSeek / Ollama 本機等所有模型',
+  '新增**自訂 AI 模型**，可接 OpenRouter / Claude / Ollama 本機等所有模型',
   '新增**極速秒翻**，按下翻譯 1 秒看到頁面開始變中文（限 Gemini）',
   '新增**字幕 AI 分句**，YouTube 自動字幕重新分句，中文更自然',
 ];

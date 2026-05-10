@@ -17,6 +17,38 @@
 
 ## 條目
 
+- **popup 累計費用 = IndexedDB usage stats(單一資料源 path 合一)**
+  - 改動:拔掉 `background.js` 的 `usageStats` storage.local 累計 path(`addUsage` /
+    `getUsageStats` / `resetUsageStats` / `USAGE_STATS` / `RESET_USAGE`),popup 改送
+    `QUERY_USAGE_STATS` 讀 IndexedDB stats,與 options 用量明細分頁同源。
+  - Bug 症狀:options 點「清除紀錄」只清 IndexedDB,popup 累計金額 path 沒被清,
+    繼續顯示舊累計值。Root cause 是同一份「累計費用」事實由兩條獨立 path 維護
+    必 drift(CLAUDE.md §1.1 規則 5)。
+  - 為什麼進 PENDING:架構收斂消除 root cause,沒辦法用 fixture HTML 抽最小重現
+    結構(要載入 popup HTML 攔 `browser.runtime.sendMessage` 驗送出 message type
+    與 response 處理,工程量比一般 fixture spec 大)。短期靠 grep / static check
+    禁止 `USAGE_STATS` / `RESET_USAGE` 訊息名再被加進 background.js 即可,
+    但 spec 還沒寫。
+  - 之後要做:寫 unit spec 對 `shinkansen/background.js` 內容做 static check,
+    asserting `MESSAGE_HANDLERS` 不含 `USAGE_STATS` / `RESET_USAGE`,
+    且 popup.js 送的 usage message type 是 `QUERY_USAGE_STATS`。
+
+- **術語表抽取用量寫進 IndexedDB(`source='glossary'`)**
+  - 改動:`background.js` 的 `handleExtractGlossary`(Gemini)/
+    `handleExtractGlossaryCustomProvider`(OpenAI-compat)兩個 handler 結尾,
+    在 `usage.inputTokens > 0 || usage.outputTokens > 0` 時組 record + 呼叫
+    `usageDB.logTranslation({ ..., source: 'glossary' })`。
+  - Bug 症狀:過去這兩條 path 只寫 `storage.local['usageStats']` 累計值
+    (popup grand total),不進 IndexedDB,所以 options 用量明細永遠不含術語表
+    費用 — 兩邊本來就 drift。前一輪「path 合一」拔掉 `usageStats` 後變成
+    兩邊都漏。本輪補上 IndexedDB 寫入,讓所有 token 用量都進單一資料源。
+  - 為什麼進 PENDING:跟前一條同性質(架構級寫入規範,單條 fixture 抽不出最小
+    重現)。需要 unit spec mock `usageDB.logTranslation` + 模擬呼叫 handler,
+    驗 `source='glossary'` record 確實被寫入。
+  - 之後要做:寫 unit spec 載入 `background.js` 的 glossary handler,模擬
+    `extractGlossary` / `extractGlossaryCustom` 回 `usage.inputTokens > 0`,
+    asserting `usageDB.logTranslation` 被呼叫一次且 `record.source === 'glossary'`。
+
 - **v1.8.68 同 videoId yt-navigate-finish 假性重 fire 不誤清譯文**
   - 改動:`shinkansen/content-youtube.js` 的 `yt-navigate-finish` listener 開頭加 guard
     `if (YT.active && newVideoId && newVideoId === YT.videoId) return;`

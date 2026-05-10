@@ -2277,7 +2277,12 @@ function renderTable(records) {
     //          完整 label 由 title attr 補（hover tooltip)
     const shortModel = modelToLabel(r.model);
     const shortModelEsc = escapeHtml(shortModel);
-    const title = escapeHtml(r.title || _t('common.untitled'));
+    // 術語表抽取的紀錄（source='glossary'）在標題前加標籤，讓使用者一眼分辨
+    // 同 url 的主翻譯紀錄與術語表紀錄（兩者通常 model 不同，費用各自計算）
+    const sourceTagHtml = r.source === 'glossary'
+      ? `<span class="usage-source-tag">[${escapeHtml(_t('options.usage.sourceGlossary'))}] </span>`
+      : '';
+    const title = sourceTagHtml + escapeHtml(r.title || _t('common.untitled'));
     const urlDisplay = escapeHtml(shortenUrl(r.url || ''));
     const urlFull = escapeHtml(r.url || '');
     // v1.0.30: Gemini implicit cache hit rate（Google Translate 不適用）

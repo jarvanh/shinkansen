@@ -135,54 +135,8 @@ browser.alarms?.onAlarm.addListener((alarm) => {
   refreshExchangeRate().catch(err => debugLog('warn', 'exchange-rate', 'alarm fetch failed', { error: err.message }));
 });
 
-// ─── 使用量累計（browser.storage.local) ────────────────────
-// 結構：
-//   usageStats: {
-//     totalInputTokens: number,
-//     totalOutputTokens: number,
-//     totalCostUSD: number,
-//     since: ISO timestamp  // 最後一次重置時間
-//   }
-const USAGE_KEY = 'usageStats';
-
-async function getUsageStats() {
-  const { [USAGE_KEY]: s } = await browser.storage.local.get(USAGE_KEY);
-  return s || {
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    totalCostUSD: 0,
-    since: new Date().toISOString(),
-  };
-}
-
-// v1.8.20: 序列化 addUsage 寫入。原版 read-modify-write 沒鎖，跨 tab 並行翻譯時兩個
-// await getUsageStats() 各拿舊值 → 後寫覆蓋前寫 → 累計用量永久遺失一筆。
-// 改 promise chain 排隊：每次 addUsage 接在 _usageWriteQueue 之後跑，保證序列化。
-let _usageWriteQueue = Promise.resolve();
-async function addUsage(inputTokens, outputTokens, costUSD) {
-  const next = _usageWriteQueue.then(async () => {
-    const s = await getUsageStats();
-    s.totalInputTokens += inputTokens;
-    s.totalOutputTokens += outputTokens;
-    s.totalCostUSD += costUSD;
-    await browser.storage.local.set({ [USAGE_KEY]: s });
-    return s;
-  });
-  // 防止單次 reject 卡住整條 queue:catch 後 swallow，但仍把 result/error return 給 caller
-  _usageWriteQueue = next.catch(() => {});
-  return next;
-}
-
-async function resetUsageStats() {
-  const fresh = {
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    totalCostUSD: 0,
-    since: new Date().toISOString(),
-  };
-  await browser.storage.local.set({ [USAGE_KEY]: fresh });
-  return fresh;
-}
+// 累計用量（grand total）由 IndexedDB usage-db.js 透過 QUERY_USAGE_STATS 提供。
+// 不再額外維護 storage.local 累計欄位，避免與明細紀錄 drift。
 
 function computeCostUSD(inputTokens, outputTokens, pricing) {
   const inRate = Number(pricing?.inputPerMTok) || 0;
@@ -725,14 +679,6 @@ const messageHandlers = {
     async: true,
     handler: () => cache.stats(),
   },
-  USAGE_STATS: {
-    async: true,
-    handler: () => getUsageStats(),
-  },
-  RESET_USAGE: {
-    async: true,
-    handler: () => resetUsageStats(),
-  },
   SET_BADGE_TRANSLATED: {
     async: true,
     handler: (_, sender) => setTranslatedBadge(sender?.tab?.id),
@@ -1202,7 +1148,6 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
       result.usage.outputTokens,
       effectivePricing,
     );
-    await addUsage(billedInputTokens, result.usage.outputTokens, billedCostUSD);
 
     browser.tabs.sendMessage(tabId, {
       type: 'STREAMING_DONE',
@@ -1432,7 +1377,6 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
       batchUsage.outputTokens,
       effectivePricing,
     );
-    await addUsage(billedInputTokens, batchUsage.outputTokens, billedCostUSD);
   }
 
   // 4. 合併結果（快取 + 新翻譯）按原順序回傳
@@ -1671,23 +1615,6 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
 
     // 4. 寫回快取
     await cache.setBatch(missingTexts, fresh, suffix);
-
-    // 5. 累計用量
-    // v1.8.20: 折扣比例依 provider 推斷——OpenAI/Claude/DeepSeek 各家 cache 命中折扣率不同，
-    // 原本硬編碼 0.25 套所有 provider 對 OpenAI 系統性低估 50% 成本。
-    const cachedRate = getCustomCacheHitRate(cp.baseUrl);
-    const cachedSavedRatio = 1 - cachedRate;
-    const billedInput = Math.max(
-      0, Math.round(batchUsage.inputTokens - (batchUsage.cachedTokens || 0) * cachedSavedRatio),
-    );
-    const billedCost = computeBilledCostUSD(
-      batchUsage.inputTokens,
-      batchUsage.cachedTokens || 0,
-      batchUsage.outputTokens,
-      { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 },
-      cachedRate,
-    );
-    await addUsage(billedInput, batchUsage.outputTokens, billedCost);
   }
 
   // 6. 合併結果
@@ -1845,23 +1772,36 @@ async function handleExtractGlossary(payload, sender) {
     await cache.setGlossary(inputHash, glossary, glossarySuffix);
   }
 
-  // 5. 累計使用量統計
-  // v1.7.2: glossary 用獨立 model（預設 Flash Lite）時，pricing 也要對應該 model,
-  // 不能再用 settings.pricing（那是主翻譯 model 的 pricing)。
+  // 5. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
-    const billedInput = Math.max(
+    const billedInputTokens = Math.max(
       0,
       Math.round(usage.inputTokens - (usage.cachedTokens || 0) * 0.75),
     );
-    const glossaryModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model;
+    const glossaryModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model || 'unknown';
     const glossaryPricing = getPricingForModel(glossaryModel, settings) || settings.pricing;
-    const billedCost = computeBilledCostUSD(
+    const billedCostUSD = computeBilledCostUSD(
       usage.inputTokens,
       usage.cachedTokens || 0,
       usage.outputTokens,
       glossaryPricing,
     );
-    await addUsage(billedInput, usage.outputTokens, billedCost);
+    await usageDB.logTranslation({
+      url: sender?.tab?.url || '',
+      title: sender?.tab?.title || '',
+      engine: 'gemini',
+      model: glossaryModel,
+      inputTokens: usage.inputTokens || 0,
+      outputTokens: usage.outputTokens || 0,
+      cachedTokens: usage.cachedTokens || 0,
+      billedInputTokens,
+      billedCostUSD,
+      segments: 0,
+      cacheHits: 0,
+      durationMs: 0,
+      timestamp: Date.now(),
+      source: 'glossary',
+    });
   }
 
   debugLog('info', 'glossary', 'glossary extraction complete', {
@@ -1917,16 +1857,40 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
     await cache.setGlossary(inputHash, glossary, glossarySuffix);
   }
 
-  // 4. 累計用量（自訂 Provider 用 customProvider.inputPerMTok / outputPerMTok 計價)
+  // 4. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
-    const billedInput = Math.max(0, Math.round(usage.inputTokens - (usage.cachedTokens || 0) * 0.75));
+    const cachedRate = getCustomCacheHitRate(cp.baseUrl);
+    const cachedSavedRatio = 1 - cachedRate;
+    const billedInputTokens = Math.max(
+      0,
+      Math.round(usage.inputTokens - (usage.cachedTokens || 0) * cachedSavedRatio),
+    );
     const cpPricing = (cp.inputPerMTok || cp.outputPerMTok)
       ? { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 }
       : null;
-    const billedCost = computeBilledCostUSD(
-      usage.inputTokens, usage.cachedTokens || 0, usage.outputTokens, cpPricing,
+    const billedCostUSD = computeBilledCostUSD(
+      usage.inputTokens,
+      usage.cachedTokens || 0,
+      usage.outputTokens,
+      cpPricing,
+      cachedRate,
     );
-    await addUsage(billedInput, usage.outputTokens, billedCost);
+    await usageDB.logTranslation({
+      url: sender?.tab?.url || '',
+      title: sender?.tab?.title || '',
+      engine: 'openai-compat',
+      model: cp.model || '<server-default>',
+      inputTokens: usage.inputTokens || 0,
+      outputTokens: usage.outputTokens || 0,
+      cachedTokens: usage.cachedTokens || 0,
+      billedInputTokens,
+      billedCostUSD,
+      segments: 0,
+      cacheHits: 0,
+      durationMs: 0,
+      timestamp: Date.now(),
+      source: 'glossary',
+    });
   }
 
   debugLog('info', 'glossary', 'openai-compat glossary extraction complete', {
@@ -1984,6 +1948,9 @@ async function runW7CacheMigration(triggerLabel) {
 }
 browser.runtime.onStartup?.addListener(() => { runW7CacheMigration('onStartup'); });
 runW7CacheMigration('sw-init'); // SW 冷啟動也跑一次（防 onStartup 沒觸發的 case，如更新 install)
+
+// 累計用量 path 合一（IndexedDB 為單一資料源）後，storage.local['usageStats'] 殘餘清掉
+browser.storage.local.remove('usageStats').catch(() => {});
 
 browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   debugLog('info', 'system', `extension ${reason}`, {

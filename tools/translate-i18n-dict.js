@@ -87,7 +87,7 @@ function buildSystemPrompt(target) {
 1. 輸出簡體字符,使用中國大陸軟件慣用語。${TW_TO_CN_MAP}
 2. 保留所有 {placeholder} 佔位符不變(如 {count}、{version}、{cost} 等),包括佔位符內的字母順序。
 3. 保留所有 HTML tag 不變(<strong>、<a>、<code>、<br>、<em> 等)、URL、和 HTML attribute(href、target、rel、class、id)。
-4. 保留所有英文技術術語(API Key、Gemini、OpenRouter、Manifest V3、cache、token、tier、prompt、placeholder、Service Tier、Temperature、Top P、Top K、Tokens、CSV、JSON、Ollama、llama.cpp、Anthropic、DeepSeek、Llama、Qwen、Grok、OpenAI、Claude、Chrome、Firefox 等)
+4. 保留所有英文技術術語(API Key、Gemini、OpenRouter、Manifest V3、cache、token、tier、prompt、placeholder、Service Tier、Temperature、Top P、Top K、Tokens、CSV、JSON、Ollama、llama.cpp、Anthropic、Llama、Qwen、Grok、OpenAI、Claude、Chrome、Firefox 等)
 5. 中文上下文中的標點符號**全部使用中文全角標點**(,。!?:;—、《》「」『』()),不使用半角符號。但純英文上下文(如 "Service Tier"、"Top P")保留半角空格與符號。
 6. 譯文長度應接近原文(避免明顯加詞)。
 7. 完整保留 emoji(🎉 📦 ⚠ ✓ ✗ 等)。
@@ -113,7 +113,7 @@ Strict rules:
 1. Output natural, concise English suitable for software UI.
 2. Preserve every {placeholder} unchanged (e.g. {count}, {version}, {cost}). Do not translate or reorder them.
 3. Preserve every HTML tag (<strong>, <a>, <code>, <br>, <em>, etc.), URL, and HTML attribute (href, target, rel, class, id).
-4. Preserve technical terms exactly: API Key, Gemini, OpenRouter, Manifest V3, cache, token, tier, prompt, placeholder, Service Tier, Temperature, Top P, Top K, Tokens, CSV, JSON, Ollama, llama.cpp, Anthropic, DeepSeek, Llama, Qwen, Grok, OpenAI, Claude, Chrome, Firefox.
+4. Preserve technical terms exactly: API Key, Gemini, OpenRouter, Manifest V3, cache, token, tier, prompt, placeholder, Service Tier, Temperature, Top P, Top K, Tokens, CSV, JSON, Ollama, llama.cpp, Anthropic, Llama, Qwen, Grok, OpenAI, Claude, Chrome, Firefox.
 5. Use standard English half-width punctuation (, . ! ? : ; - " ').
 6. Keep emoji unchanged (🎉 📦 ⚠ ✓ ✗ etc).
 7. Keep length close to source (avoid extra words).

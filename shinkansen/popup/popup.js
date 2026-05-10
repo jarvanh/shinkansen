@@ -28,16 +28,17 @@ const statusEl = $('status');
 
 async function refreshUsageInfo() {
   try {
-    // v1.8.41：讀 displayCurrency + cached rate 決定金額顯示幣值
-    // 兩個 storage read 並行，失敗時走 fallback(USD or rate=31.6)，不阻塞 UI
+    // 讀 displayCurrency + cached rate 決定金額顯示幣值。
+    // grand total 走 IndexedDB getStats（與用量明細分頁同源，避免 drift）。
     const [resp, currencyState] = await Promise.all([
-      browser.runtime.sendMessage({ type: 'USAGE_STATS' }),
+      browser.runtime.sendMessage({ type: 'QUERY_USAGE_STATS' }),
       readCurrencyState(),
     ]);
-    if (resp?.ok) {
-      const totalTok = (resp.totalInputTokens || 0) + (resp.totalOutputTokens || 0);
+    const stats = resp?.ok ? resp.stats : null;
+    if (stats) {
+      const totalTok = (stats.totalInputTokens || 0) + (stats.totalOutputTokens || 0);
       $('usage-info').textContent = t('popup.usage.value', {
-        cost: formatMoney(resp.totalCostUSD || 0, currencyState),
+        cost: formatMoney(stats.totalBilledCostUSD || 0, currencyState),
         tokens: formatTokens(totalTok),
       });
     } else {

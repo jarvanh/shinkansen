@@ -657,7 +657,7 @@
       <h2 data-i18n="options.cp.heading">自訂 OpenAI 相容模型</h2>
       <p class="muted" data-i18n="options.cp.intro1">
         想用 Gemini 之外的模型？設定一組 OpenAI 相容端點即可接
-        OpenRouter（含 Anthropic / Gemini / DeepSeek / Llama / Qwen / Grok 等百種模型）、
+        OpenRouter（含 Anthropic / Gemini / Llama / Qwen / Grok 等百種模型）、
         Ollama 本機、Together、Groq、Fireworks、OpenAI 自家等
       </p>
       <p class="muted" data-i18n="options.cp.intro2">
@@ -707,7 +707,7 @@
         <small class="muted" data-i18n-html="options.cp.modelHint.html">
           OpenRouter 的 model ID 格式為 <code>provider/model</code>（如
           <code>anthropic/claude-sonnet-4-5</code>、<code>google/gemini-3-flash</code>、
-          <code>deepseek/deepseek-chat</code>）；其他端點直接填 model 名稱。
+          <code>meta-llama/llama-3.1-70b</code>）；其他端點直接填 model 名稱。
           本機 server（llama.cpp / Ollama）啟動時若已鎖定 model 可留空，request 不送此欄位即用 server 預設
         </small>
       </label>
@@ -754,11 +754,11 @@
           </select>
           <small class="muted" data-i18n-html="options.cp.thinkingHint.html">
             依 baseUrl 與模型自動翻譯成對應 provider 的 thinking API
-            （OpenRouter <code>reasoning.effort</code>、DeepSeek <code>extra_body.thinking</code>、
-            Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、
-            Grok <code>reasoning_effort</code>、Qwen <code>extra_body.enable_thinking</code>）。
+            （OpenRouter <code>reasoning.effort</code>、Claude <code>thinking.type</code>、
+            OpenAI o-series <code>reasoning_effort</code>、Grok <code>reasoning_effort</code>、
+            Qwen <code>extra_body.enable_thinking</code>）。
             翻譯任務 thinking 通常無感但會多花 token；建議「關閉」省成本，
-            除非你的模型只能在 thinking 開啟時翻譯（如 DeepSeek-R1 / QwQ）。
+            除非你的模型只能在 thinking 開啟時翻譯（如 QwQ）。
             不認識的 provider 走「自動」
           </small>
         </label>
@@ -771,7 +771,7 @@
           本機量化模型（如 gemma-4 量化版）會把預設的「<code>«1»</code> <code>«2»</code>」段序號誤譯為「N1、N2」洩漏到譯文。
           開啟後改用 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 格式，弱模型不會誤翻；
           代價是每段批次多約 7 tokens（input + output 雙倍開銷）。
-          商用 API（OpenRouter / DeepSeek / Groq 等）不需此選項，但開啟也無害
+          商用 API（OpenRouter / Groq 等）不需此選項，但開啟也無害
         </small>
 
         <label style="margin-top: 8px;">

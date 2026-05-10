@@ -8,8 +8,12 @@
 //   Grok:       https://docs.x.ai/docs/guides/reasoning
 //   Qwen:       https://help.aliyun.com/zh/model-studio/deep-thinking
 //
-// SANITY 紀錄(已驗證):把 detectProvider 對 openrouter 的判斷改成 false 後,
-// OpenRouter 相關 spec(level=off / level=high / 預設 baseUrl)三條 fail,還原後全綠。
+// SANITY 紀錄（已驗證）:
+//   1. 把 detectProvider 對 openrouter 的判斷改成 false 後,OpenRouter 相關 spec
+//      （level=off / level=high / 預設 baseUrl）三條 fail,還原後全綠。
+//   2. 把 detectProvider default 從 'openai-compat-generic' 改回 'unknown' 後,
+//      Fireworks / Together / Groq / DeepInfra / 自架 proxy 跑 vendor model 的 generic 行為
+//      spec 全部 fail,還原後全綠。
 import { test, expect } from '@playwright/test';
 import {
   detectProvider, buildNativeThinking, safeParseJson, deepMerge, buildThinkingPayload,
@@ -38,8 +42,9 @@ test.describe('detectProvider: baseUrl 優先', () => {
   test('OpenAI o-series native(baseUrl + model name 都對才 hit)', () => {
     expect(detectProvider('https://api.openai.com/v1', 'o1-mini')).toBe('openai-o');
     expect(detectProvider('https://api.openai.com/v1', 'o3')).toBe('openai-o');
-    // baseUrl 是 OpenAI 但 model 不是 o-series → 不認(可能是 gpt-4 之類非 reasoning)
-    expect(detectProvider('https://api.openai.com/v1', 'gpt-4o')).toBe('unknown');
+    // baseUrl 是 OpenAI 但 model 不是 o-series → fallback 走通用（送 reasoning_effort，
+    // 對非 reasoning model 會被 OpenAI 忽略，不會 4xx）
+    expect(detectProvider('https://api.openai.com/v1', 'gpt-4o')).toBe('openai-compat-generic');
   });
 
   test('Qwen DashScope', () => {
@@ -47,28 +52,38 @@ test.describe('detectProvider: baseUrl 優先', () => {
   });
 });
 
-test.describe('detectProvider: model name fallback(baseUrl 無線索)', () => {
-  test('自架 proxy 但 model name 含 deepseek', () => {
-    expect(detectProvider('https://my-proxy.local/v1', 'deepseek/deepseek-v4-pro')).toBe('deepseek');
+test.describe('detectProvider: baseUrl 不認得 → openai-compat-generic', () => {
+  // 設計理由（見 openai-compat-thinking.js JSDoc）:過去版本對未知 baseUrl 用 model 名
+  // 推 vendor schema（model 含 'qwen' → 走 Qwen extra_body.enable_thinking），但實際上
+  // 「未知 baseUrl」最常見的是 aggregator 或自架 OpenAI-compat proxy,這些都吃 OpenAI
+  // 標準 reasoning_effort,送 vendor 原生欄位會被靜默忽略 → thinking 設定無效。
+  // 改成 default 走通用 schema 後,即便 vendor 不支援 reasoning_effort 也只會被忽略,
+  // 不會 4xx,比寫死 aggregator 名單更穩健。
+
+  test('Fireworks AI 跑 vendor model（主要受影響的 case）', () => {
+    expect(detectProvider('https://api.fireworks.ai/inference/v1', 'accounts/fireworks/models/qwen3p6-plus')).toBe('openai-compat-generic');
+    expect(detectProvider('https://api.fireworks.ai/inference/v1', 'accounts/fireworks/models/deepseek-v4')).toBe('openai-compat-generic');
   });
 
-  test('自架 proxy 但 model name 含 claude', () => {
-    expect(detectProvider('https://my-proxy.local/v1', 'anthropic/claude-3-5')).toBe('claude');
+  test('Together AI / Groq / DeepInfra 跑 vendor model', () => {
+    expect(detectProvider('https://api.together.xyz/v1', 'qwen/qwen3-max')).toBe('openai-compat-generic');
+    expect(detectProvider('https://api.groq.com/openai/v1', 'deepseek-r1-distill')).toBe('openai-compat-generic');
+    expect(detectProvider('https://api.deepinfra.com/v1/openai', 'meta-llama/llama-3.3-70b')).toBe('openai-compat-generic');
   });
 
-  test('自架 proxy 但 model name 含 grok', () => {
-    expect(detectProvider('http://localhost:11434/v1', 'grok-4.20-multi-agent')).toBe('grok');
+  test('自架 OpenAI-compat proxy（LiteLLM / 自製 server / localhost）— model 名含 vendor 關鍵字也不再被攔截', () => {
+    // 過去 model 含 'qwen' / 'claude' / 'deepseek' / 'grok' 會走 vendor schema,現在一律走通用
+    expect(detectProvider('https://my-proxy.local/v1', 'qwen3-flash')).toBe('openai-compat-generic');
+    expect(detectProvider('https://my-proxy.local/v1', 'qwq-32b')).toBe('openai-compat-generic');
+    expect(detectProvider('https://my-proxy.local/v1', 'anthropic/claude-3-5')).toBe('openai-compat-generic');
+    expect(detectProvider('https://my-proxy.local/v1', 'deepseek/deepseek-v4-pro')).toBe('openai-compat-generic');
+    expect(detectProvider('http://localhost:11434/v1', 'grok-4.20-multi-agent')).toBe('openai-compat-generic');
+    expect(detectProvider('https://my-proxy.local/v1', 'mistral-large')).toBe('openai-compat-generic');
   });
 
-  test('自架 proxy 但 model name 含 qwen / qwq', () => {
-    expect(detectProvider('http://localhost:11434/v1', 'qwen3-flash')).toBe('qwen');
-    expect(detectProvider('http://localhost:11434/v1', 'qwq-32b')).toBe('qwen');
-  });
-
-  test('完全不認識 → unknown', () => {
-    expect(detectProvider('https://my-proxy.local/v1', 'mistral-large')).toBe('unknown');
-    expect(detectProvider('', '')).toBe('unknown');
-    expect(detectProvider(null, null)).toBe('unknown');
+  test('空 / null baseUrl → 預設通用', () => {
+    expect(detectProvider('', '')).toBe('openai-compat-generic');
+    expect(detectProvider(null, null)).toBe('openai-compat-generic');
   });
 });
 
@@ -82,7 +97,7 @@ test.describe('buildNativeThinking: auto / 各 provider × level', () => {
     expect(buildNativeThinking('grok', 'auto')).toEqual({});
     expect(buildNativeThinking('qwen', 'auto')).toEqual({});
     expect(buildNativeThinking('openai-o', 'auto')).toEqual({});
-    expect(buildNativeThinking('unknown', 'auto')).toEqual({});
+    expect(buildNativeThinking('openai-compat-generic', 'auto')).toEqual({});
   });
 
   test('OpenRouter: off → reasoning.exclude / level → reasoning.effort', () => {
@@ -121,9 +136,17 @@ test.describe('buildNativeThinking: auto / 各 provider × level', () => {
     expect(buildNativeThinking('qwen', 'high')).toEqual({ extra_body: { enable_thinking: true } });
   });
 
-  test('unknown provider 一律回 {}(不送未知參數避免 4xx)', () => {
-    expect(buildNativeThinking('unknown', 'off')).toEqual({});
-    expect(buildNativeThinking('unknown', 'high')).toEqual({});
+  test('OpenAI-compat 通用:reasoning_effort none/low/medium/high(top-level,不需 extra_body 展平)', () => {
+    expect(buildNativeThinking('openai-compat-generic', 'off')).toEqual({ reasoning_effort: 'none' });
+    expect(buildNativeThinking('openai-compat-generic', 'low')).toEqual({ reasoning_effort: 'low' });
+    expect(buildNativeThinking('openai-compat-generic', 'medium')).toEqual({ reasoning_effort: 'medium' });
+    expect(buildNativeThinking('openai-compat-generic', 'high')).toEqual({ reasoning_effort: 'high' });
+  });
+
+  test('未知 provider 字串（不在 switch case）走 default,等同 openai-compat-generic', () => {
+    // default case 已合進 openai-compat-generic,所以任意未知字串都走通用 schema
+    expect(buildNativeThinking('some-future-vendor', 'off')).toEqual({ reasoning_effort: 'none' });
+    expect(buildNativeThinking('some-future-vendor', 'high')).toEqual({ reasoning_effort: 'high' });
   });
 });
 

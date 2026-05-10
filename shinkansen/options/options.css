@@ -478,6 +478,12 @@ a:hover { text-decoration: underline; }
   white-space: nowrap;
 }
 
+/* 術語表抽取紀錄的標題前綴標籤 */
+.usage-source-tag {
+  font-size: 11px;
+  color: #86868b;
+}
+
 /* v1.8.39: 用量明細分頁 */
 .usage-pagination {
   display: flex;

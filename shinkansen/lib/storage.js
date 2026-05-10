@@ -573,32 +573,41 @@ export const DEFAULT_SETTINGS = {
   modelPricingOverrides: {},
   // v1.5.7: 自訂 OpenAI-compatible Provider。
   // engine='openai-compat' 的 preset 會走 lib/openai-compat.js 透過 chat.completions
-  // endpoint 翻譯，可接 OpenRouter / Together / DeepSeek / Groq / Ollama 等 provider。
+  // endpoint 翻譯，可接 OpenRouter / Together / Groq / Ollama 等 provider。
   // apiKey 不存 sync（getSettings 會從 storage.local 的 customProviderApiKey 注入），
   // systemPrompt 獨立於 Gemini（黑名單與固定術語表仍共用、由 buildEffectiveSystemInstruction 注入），
   // 但「預設值」與 Gemini 相同——使用者第一次打開分頁就有完整可用的 prompt，要動再動。
   //
-  // v1.6.16: baseUrl/model/pricing 預填 OpenRouter DeepSeek V4 Pro，使用者只要填 API Key
-  // 就能啟動。資料來源 https://openrouter.ai/deepseek/deepseek-v4-pro(2026-04 校準）。
-  // 既有使用者升級後若 storage 內已有 customProvider entry（例如打開過自訂模型分頁）,
-  // 此預設不會覆蓋（getSettings 對 customProvider 走淺 merge,saved 在後）；要套用新預設
-  // 需手動清空欄位或重新匯入設定。新使用者第一次打開設定頁就看到預填值。
+  // baseUrl/model/pricing 預設套用 OpenRouter GPT-5.4 Mini（2026-05 校準價格）：
+  // 使用者第一次打開自訂模型分頁就能直接用，只需填 OpenRouter API key 即可開始翻譯。
+  // 想換 provider / model 仍可在 options 頁面覆蓋這幾個欄位。
+  // 既有使用者升級後若 storage 內已有 customProvider entry，此預設不會覆蓋
+  // （getSettings 對 customProvider 走淺 merge，saved 在後）。
+  // 邊界 case：既有使用者若 saved 物件有 baseUrl/model 但缺 inputPerMTok/outputPerMTok
+  // （過去預設都 0），升級後會吃到 GPT-5.4 Mini 預設價（0.75 / 4.50），跟實際 model
+  // 計費可能不符 — 在 options 頁面手動覆蓋價格即可修正。
   customProvider: {
     baseUrl: 'https://openrouter.ai/api/v1',
-    model: 'deepseek/deepseek-v4-pro',
+    model: 'openai/gpt-5.4-mini',
     systemPrompt: DEFAULT_SYSTEM_PROMPT, // 預設與 Gemini 相同；空字串時 adapter 套用簡短 fallback
     temperature: 0.7,
-    inputPerMTok: 0.435,                // OpenRouter DeepSeek V4 Pro Standard tier 參考價
-    outputPerMTok: 0.87,
+    inputPerMTok: 0.75,                 // OpenRouter GPT-5.4 Mini input 單價（USD / 1M tokens，2026-05 校準）
+    outputPerMTok: 4.5,                 // 同上 output 單價
     // v1.6.18: thinking 控制（統一 5 級對映 + 進階 JSON 透傳）。
-    //   thinkingLevel:'auto' 不送任何 thinking 參數，讓 provider 自選預設（最安全 fallback);
+    //   thinkingLevel:'auto' 不送任何 thinking 參數，讓 provider 自選預設;
     //   'off' / 'low' / 'medium' / 'high' 由 lib/openai-compat-thinking.js 偵測 provider 後
-    //   翻譯成對應 API 寫法（OpenRouter unified reasoning / DeepSeek extra_body.thinking /
-    //   Claude thinking.type / OpenAI o reasoning_effort / Grok reasoning_effort / Qwen
-    //   extra_body.enable_thinking)。
+    //   翻譯成對應 API 寫法（OpenRouter unified reasoning / Claude thinking.type /
+    //   OpenAI o reasoning_effort / Grok reasoning_effort / Qwen extra_body.enable_thinking /
+    //   通用 OpenAI-compat reasoning_effort）。
     //   extraBodyJson：使用者自填 JSON 字串，deep merge 到 request body，可覆蓋自動 mapping
     //   並加 provider 專屬參數（top_k / metadata 等）。預設空白（進階使用者才需要）。
-    thinkingLevel: 'auto',
+    //
+    //   為什麼預設 'off' 而非 'auto':aggregator（Fireworks / Together / Groq / DeepInfra 等）
+    //   接的 reasoning model 預設行為不可信 — 實測 Fireworks-Qwen3.6-Plus 不送 thinking 參數
+    //   時翻一段平均 56 秒，reasoning_effort='none' 後降到 1.2 秒（差 ~47×）。預設 'auto'
+    //   會讓新使用者第一次接 customProvider 就踩翻譯永遠跑不完的坑；預設 'off' 反而對
+    //   非 reasoning model 無害（reasoning_effort 被忽略）。使用者要 thinking 主動選即可。
+    thinkingLevel: 'off',
     extraBodyJson: '',
     // 多段翻譯序號標記格式。true = 用 <<<SHINKANSEN_SEG-N>>>(本機量化模型如 gemma-4 量化版
     // 不會把這種 token 誤翻成「N1、N2」);false = 用緊湊 «N»(token 開銷小、商用 LLM 適用)。

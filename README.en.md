@@ -13,7 +13,7 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 - Added **Multi-language support** — translate into 8 languages (Traditional Chinese / Simplified Chinese / English / Japanese / Korean / Spanish / French / German); the extension UI is also available in all 8 languages.
 - Added **Instant Translation** — see the page start turning Chinese within 1 second of pressing translate (Gemini only).
 - Added **Bilingual mode** — original text and translation shown side by side.
-- Added **Custom AI models** — bring your own OpenRouter / Claude / DeepSeek / local Ollama, etc.
+- Added **Custom AI models** — bring your own OpenRouter / Claude / local Ollama, etc.
 - Added **AI subtitle re-segmentation** — YouTube auto-generated captions are re-segmented by AI for more natural Chinese subtitles.
 - Added **Blocked-word list** — explicitly tell the AI model to avoid words you don't want appearing in the translation.
 - Added **Translate opening only** — preview the first N paragraphs to save tokens.
@@ -33,7 +33,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Preserves page layout**: text is replaced in place; fonts, sizes, colors, and links are kept; bold and italics survive untouched.
 - **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the popup. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
 - **Three translation engines**: Gemini (AI translation, best quality, requires API key) + Google Translate (unofficial free endpoint, no API key, faster) + Custom model — switch freely depending on what you're reading.
-- **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / DeepSeek / Groq / local Ollama, hundreds of models.
+- **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with Traditional Chinese; styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
 - **Bilingual subtitles**: one-click toggle in the popup makes subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. YouTube and Google Drive videos share the same setting. Details in "Bilingual subtitles" below.
@@ -208,7 +208,7 @@ The custom glossary takes priority over auto glossary consistency. During transl
 
 In addition to Gemini and Google Translate, you can connect one OpenAI-compatible endpoint to use any model other than Gemini — for example:
 
-- **OpenRouter** (`https://openrouter.ai/api/v1`): one endpoint, hundreds of models — Anthropic / Gemini / DeepSeek / Llama / Qwen / Grok / xAI / Mistral, etc.
+- **OpenRouter** (`https://openrouter.ai/api/v1`): one endpoint, hundreds of models — Anthropic / Gemini / Llama / Qwen / Grok / xAI / Mistral, etc.
 - **Together / Groq / Fireworks** and other model providers
 - **Local Ollama** (`http://localhost:11434/v1`): run open-source models on your own machine — zero cost, zero latency
 - **OpenAI directly** (`https://api.openai.com/v1`)
@@ -232,7 +232,7 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
 - **Cache partitioning**: the cache key includes a base URL hash — different endpoints with the same model name don't pollute each other
 - **API key not synced**: `customProvider.apiKey` lives only in your local browser — not synced across devices, not included in JSON export
 - **No rate limiter**: OpenRouter and friends handle quotas themselves; 429 retry-with-backoff is built in
-- **Strong segment markers** (on by default): local quantized models (e.g. gemma-4 quantized) tend to mistranslate the compact `«1» «2»` segment markers as natural language ("N1, N2") and leak them into the output. With this on, multi-segment batches use `<<<SHINKANSEN_SEG-N>>>` instead — weak models don't mistranslate it. Cost: about 7 extra tokens per segment. Commercial APIs (OpenRouter / DeepSeek / Groq, etc.) typically don't need this, but leaving it on is harmless
+- **Strong segment markers** (on by default): local quantized models (e.g. gemma-4 quantized) tend to mistranslate the compact `«1» «2»` segment markers as natural language ("N1, N2") and leak them into the output. With this on, multi-segment batches use `<<<SHINKANSEN_SEG-N>>>` instead — weak models don't mistranslate it. Cost: about 7 extra tokens per segment. Commercial APIs (OpenRouter / Groq, etc.) typically don't need this, but leaving it on is harmless
 
 ### Limitations
 
