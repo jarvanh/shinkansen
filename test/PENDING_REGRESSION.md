@@ -17,51 +17,38 @@
 
 ## 條目
 
-- **popup 累計費用 = IndexedDB usage stats(單一資料源 path 合一)**
-  - 改動:拔掉 `background.js` 的 `usageStats` storage.local 累計 path(`addUsage` /
-    `getUsageStats` / `resetUsageStats` / `USAGE_STATS` / `RESET_USAGE`),popup 改送
-    `QUERY_USAGE_STATS` 讀 IndexedDB stats,與 options 用量明細分頁同源。
-  - Bug 症狀:options 點「清除紀錄」只清 IndexedDB,popup 累計金額 path 沒被清,
-    繼續顯示舊累計值。Root cause 是同一份「累計費用」事實由兩條獨立 path 維護
-    必 drift(CLAUDE.md §1.1 規則 5)。
-  - 為什麼進 PENDING:架構收斂消除 root cause,沒辦法用 fixture HTML 抽最小重現
-    結構(要載入 popup HTML 攔 `browser.runtime.sendMessage` 驗送出 message type
-    與 response 處理,工程量比一般 fixture spec 大)。短期靠 grep / static check
-    禁止 `USAGE_STATS` / `RESET_USAGE` 訊息名再被加進 background.js 即可,
-    但 spec 還沒寫。
-  - 之後要做:寫 unit spec 對 `shinkansen/background.js` 內容做 static check,
-    asserting `MESSAGE_HANDLERS` 不含 `USAGE_STATS` / `RESET_USAGE`,
-    且 popup.js 送的 usage message type 是 `QUERY_USAGE_STATS`。
+(目前沒有 pending 條目)
 
-- **術語表抽取用量寫進 IndexedDB(`source='glossary'`)**
-  - 改動:`background.js` 的 `handleExtractGlossary`(Gemini)/
-    `handleExtractGlossaryCustomProvider`(OpenAI-compat)兩個 handler 結尾,
-    在 `usage.inputTokens > 0 || usage.outputTokens > 0` 時組 record + 呼叫
-    `usageDB.logTranslation({ ..., source: 'glossary' })`。
-  - Bug 症狀:過去這兩條 path 只寫 `storage.local['usageStats']` 累計值
-    (popup grand total),不進 IndexedDB,所以 options 用量明細永遠不含術語表
-    費用 — 兩邊本來就 drift。前一輪「path 合一」拔掉 `usageStats` 後變成
-    兩邊都漏。本輪補上 IndexedDB 寫入,讓所有 token 用量都進單一資料源。
-  - 為什麼進 PENDING:跟前一條同性質(架構級寫入規範,單條 fixture 抽不出最小
-    重現)。需要 unit spec mock `usageDB.logTranslation` + 模擬呼叫 handler,
-    驗 `source='glossary'` record 確實被寫入。
-  - 之後要做:寫 unit spec 載入 `background.js` 的 glossary handler,模擬
-    `extractGlossary` / `extractGlossaryCustom` 回 `usage.inputTokens > 0`,
-    asserting `usageDB.logTranslation` 被呼叫一次且 `record.source === 'glossary'`。
+<!-- v1.9.1+ 清空紀錄(2026-05-10):
+  - v1.8.68 同 videoId yt-navigate-finish guard → 已補 test/unit/youtube-spa-nav-guard.spec.js
+    (7 case + SANITY 過。鎖 guard 邏輯架構:listener 找得到 / 取 newVideoId /
+    三段式條件 active+truthy+===videoId / early return / guard 在 reset path 之前 /
+    reset path 仍在 / 命中記 'SPA nav skipped' log。SANITY:暫時拔掉 guard 整段 →
+    4 條 fail 還原 → 全綠)
+  - **訊號層次說明**(§1.1 規則 3):本 spec 鎖「我們的 guard 邏輯寫對」、**不鎖**
+    「YouTube 真的會 fire 假性同 videoId 的 yt-navigate-finish」。後者是 YouTube
+    內部行為,fixture dispatchEvent 自己 fire 永遠驗不到 — 這層靠 user 觀察 +
+    production 體感持續驗證。
 
-- **v1.8.68 同 videoId yt-navigate-finish 假性重 fire 不誤清譯文**
-  - 改動:`shinkansen/content-youtube.js` 的 `yt-navigate-finish` listener 開頭加 guard
-    `if (YT.active && newVideoId && newVideoId === YT.videoId) return;`
-  - 為什麼進 PENDING:YouTube SPA 在 quality 切換 / ad break 結束 / player re-mount /
-    theatre-fullscreen 等情境會 fire 假性 `yt-navigate-finish`,但「YouTube 何時 fire」
-    沒最小重現結構(每個情境是否真的會 fire 視 YouTube 內部實作),fixture dispatchEvent
-    自己 fire 只能驗「我們 guard 寫對」、不能驗「YouTube 真的會這樣 fire」。
-  - 真實場景驗證來源:user 報告「字幕中文閃一下變回英文一陣子才回到中文」對應 log
-    `shinkansen-log-20260509-073527.json`(seq 10 / 17 兩次 SPA navigation reset,
-    一次首頁 → 影片正常,另一次需確認是否同 videoId 重 fire)。
-  - 之後要做:user 下次閃到時 dump 完整 log(含 `category: youtube` 的
-    `SPA navigation reset` 條目),確認確實有「same videoId reset」場景觸發,
-    再寫對應 spec / 退役本條。
+  popup 累計費用 path 合一 + 術語表抽取寫入 IndexedDB 兩條退役紀錄見下方
+-->
+
+<!-- v1.9.1 清空紀錄(2026-05-10):
+  - popup 累計費用 path 合一 → 已補 test/unit/usage-path-architecture.spec.js
+    (12 條 case:USAGE_STATS / RESET_USAGE handler 不存在 + addUsage / getUsageStats
+    / resetUsageStats / USAGE_KEY 不再定義 + storage.local.set('usageStats') 不存在
+    + QUERY_USAGE_STATS handler 仍在且走 usageDB.getStats + popup.js 送
+    QUERY_USAGE_STATS / 讀 totalBilledCostUSD / 不送 USAGE_STATS / 不讀 totalCostUSD;
+    SANITY:暫時把 USAGE_STATS handler 加回 background.js → 對應 spec fail,
+    還原後全綠)
+  - 術語表抽取用量寫進 IndexedDB(source='glossary')→ 已補
+    test/unit/usage-glossary-record.spec.js(16 條 case:Gemini + OpenAI-compat
+    兩條 handler 各驗 logTranslation 呼叫 / source='glossary' / engine 標籤 /
+    model 欄位 fallback / billedCostUSD / 包在 if (usage > 0) block 內 / 用
+    getCustomCacheHitRate 推 cache 折扣率;SANITY:暫時把 Gemini handler 內的
+    usageDB.logTranslation 改名 → 對應 2 條 spec fail,還原後全綠)
+-->
+
 
 <!-- v1.8.46 清空紀錄(2026-05-05):
   - W6 譯文 PDF 下載對 owner-password + AESv2 弱加密 PDF 失敗(Trimble TDC6 SpecSheet)
