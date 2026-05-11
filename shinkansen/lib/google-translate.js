@@ -3,6 +3,8 @@
 // 此端點非官方，無公開文件；業界通例用於瀏覽器擴充功能（Immersive Translation、read-frog 等）。
 // 注意：Google 可能隨時更動此端點，屬灰色地帶，不建議作為唯一翻譯引擎。
 
+import { debugLog } from './logger.js';
+
 // U+2063 INVISIBLE SEPARATOR × 3：翻譯過程中幾乎不會被 MT 引擎改動，用作批次分隔符。
 const SEP = '\n\u2063\u2063\u2063\n';
 
@@ -53,11 +55,52 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
   if (cur.length > 0) groups.push(cur);
 
   // ─── 逐組翻譯，合併回原索引 ──────────────────────────────────
+  // needsRetry:暫存「翻完跟原文一樣」的 unit,整批跑完後逐筆 retry。
+  // Why retry:Google MT 對「整組大半已經是 target 語言」的混合批次會整批 source 原樣
+  // 回傳(自動偵測判定整批 ≈ target,連夾在裡面少數真正需要翻的 unit 也跳過)。
+  // 真實案例:X(Twitter)推文討論串裡,引用推文是英文 + 多數回覆是簡中,簡中被偵測
+  // 為已是 zh,整組 14 段全部原文 echo,連那段英文引用推文也沒翻。
+  // 改 sl=auto → sl=fixed 解不掉(我們不知道每 unit 真實源語言);最穩的補救是
+  // 每筆獨立再打一次:單筆送 sl=auto 偵測通常更準,真翻得出來。
+  const needsRetry = [];
   for (const group of groups) {
     const joined = group.map(g => g.text).join(SEP);
     const parts = await _fetchTranslate(joined, tl);
     group.forEach((g, j) => {
-      result[g.idx] = parts[j] ?? g.text; // 解析失敗時 fallback 原文
+      const tr = parts[j];
+      if (tr == null) {
+        // SEP 邊界丟失 → 用原文當 placeholder,稍後逐筆 retry
+        result[g.idx] = g.text;
+        needsRetry.push(g);
+      } else if (tr.trim() === (g.text || '').trim()) {
+        // Google MT echo 原文 → 寫入但標記 retry(retry 失敗仍維持此值,呼叫端
+        // 會判讀成「已是 target,不需改」)
+        result[g.idx] = tr;
+        needsRetry.push(g);
+      } else {
+        result[g.idx] = tr;
+      }
+    });
+  }
+
+  // ─── 逐筆 retry ────────────────────────────────────────────
+  if (needsRetry.length > 0) {
+    let recoveredCount = 0;
+    for (const g of needsRetry) {
+      try {
+        const single = await _fetchTranslate(g.text, tl);
+        const tr = single[0];
+        if (tr != null && tr.trim() !== (g.text || '').trim()) {
+          result[g.idx] = tr;
+          recoveredCount++;
+        }
+      } catch (_) {
+        // 單筆失敗就放著,維持 echo 值;不阻擋整批
+      }
+    }
+    await debugLog('info', 'api', 'google batch retry done', {
+      attempted: needsRetry.length,
+      recovered: recoveredCount,
     });
   }
 

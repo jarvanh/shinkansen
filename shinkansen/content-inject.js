@@ -148,7 +148,9 @@
   function injectIntoTarget(target, content) {
     const isString = typeof content === 'string';
 
-    // (B) 條件：含媒體 && (target 是 heading [H1-H6] || target 無 CONTAINER_TAGS 直屬子元素)
+    // (B) 條件:target 內單一文字區塊(textBearingChildCount <= 1)+ 有東西值得保留
+    //         (媒體 OR 空結構占位子,後者對應 lazy-loaded media container)
+    //         + (heading 例外 || 無 CONTAINER 子元素 || 有空結構占位子)
     //
     // v1.5.7: heading 例外。WordPress 主題（如 nippper.com）會把 hero 圖塞進 <h1> 內：
     //   <h1><img class="wp-post-image"><div><span>標題</span></div></h1>
@@ -157,10 +159,36 @@
     // 「文字節點分散在多個結構容器」的 vBulletin 情境，所以強制走 (B) media-preserving
     // 把譯文塞進最長文字節點、IMG 保留位置不動。
     // 用 tag name 規範（HTML5 語意層）判斷不是站點 class，屬結構性通則（CLAUDE.md §8）。
+    //
+    // textBearingChildCount 守門:target 直屬有 ≥ 2 個含文字的 element children 時跳過 (B)。
+    // (B) 的 findLongestTextNode 假設「單一主文字區塊 + 媒體」,挑 main → 清空其他 text node →
+    // walk up 把空 inline 殼移除（v1.2.2 為 Gmail Team Picks 加的）。當「IMG 把多個 inline 文字
+    // 區塊切開」時這個假設破:把 main 所在以外的 SPAN 整顆當空殼移除,front 段落就消失。
+    // 真實案例:X(Twitter) 推文 `<div data-testid="tweetText">[<span>intro</span>, <img alt="🤯">,
+    // <span>rest</span>]</div>` — IMG emoji 把推文切成兩個 SPAN 文字區塊,(B) 把 SPAN[0] 殺掉,
+    // 譯文只剩後半段 + 浮動 IMG。
+    // 結構性通則(§8):描述「target 內多個 text-bearing 兄弟元素被媒體切開」這個結構,不綁站點 / class。
+    //
+    // hasEmptyPlaceholderChild 守門:target 直屬有 element child「自身有 children 但無 text」
+    // → 視為 lazy-loaded media container 占位子。即使 containsMedia 此刻 false(IMG / 背景圖
+    // 還沒 lazy-load),也走 (B) 保結構。否則 (A) clean-slate 會把占位 DIV 連同 image lazy-load
+    // 容器一起清掉,後續 X 的 lazy load 找不到容器,圖片永遠不顯示。
+    // 真實案例:X 推文裡帶 URL card preview,結構為
+    //   <a><div(empty img placeholder, has children no text)><div(title)></a>
+    // (A) 清掉 → cardLink.children = [],只剩 a.textContent = 翻完的標題,大圖預覽消失。
+    // 結構性通則(§8):描述「element child 自身有 children 但無 text 文字內容」這個 lazy-load
+    // pattern,不綁 X / class / data-testid。任何 SPA 用 placeholder DIV 等 image lazy-load
+    // 注入的場景都會踩到。
     const isHeading = /^H[1-6]$/.test(target.tagName);
     const hasContainerChild = Array.from(target.children).some(c =>
       SK.CONTAINER_TAGS.has(c.tagName));
-    if (SK.containsMedia(target) && (isHeading || !hasContainerChild)) {
+    const textBearingChildCount = Array.from(target.children).filter(c =>
+      (c.textContent || '').trim().length > 0).length;
+    const hasEmptyPlaceholderChild = Array.from(target.children).some(c =>
+      c.children.length > 0 && (c.textContent || '').trim().length === 0);
+    const containsMediaOrPlaceholder = SK.containsMedia(target) || hasEmptyPlaceholderChild;
+    if (containsMediaOrPlaceholder && textBearingChildCount <= 1
+        && (isHeading || !hasContainerChild || hasEmptyPlaceholderChild)) {
       // (B) media-preserving path
       if (!isString) {
         let fragHasBr = false;

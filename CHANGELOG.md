@@ -7,6 +7,18 @@
 
 ## v1.9.x
 
+**v1.9.5** — X(Twitter)推文翻譯四項結構性修法:Google MT batch echo 補救(per-unit retry)+ IMG 切多 inline SPAN inject 守門(textBearingChildCount)+ lazy-load 圖片占位子保留(hasEmptyPlaceholderChild)+ 短簡中字偵測覆蓋率擴充(補 35 常見簡中字到 SIMPLIFIED_ONLY_CHARS)。
+
+**1. Google MT 批次 echo 補救**(`lib/google-translate.js` `translateGoogleBatch` 加 needsRetry):Google MT 對「整批內容大半已是 target 語言」的混合批次會 auto-detect 判定整組不需翻、整組 source 原樣回傳,連夾在裡面少數真正需翻的 unit 也跳過。真實案例:X 推文討論串裡英文引用推文夾在多數簡中回覆中,整組 14 段全部原文 echo,連那段英文引用推文也沒翻。修法:整批跑完後對「翻完跟原文一樣」的 unit 逐筆單獨重打一次(單筆 sl=auto 偵測通常更準),retry 失敗仍維持原值(視為「已是 target,不需改」)。**實機**:X 推文 17 段 echo,retry 救回 13 段。Spec 缺(`lib/google-translate.js` 是 ES module 走 Playwright fetch,要 mock harness 才能驗 retry 路徑),進 PENDING_REGRESSION。
+
+**2. IMG 切多 inline SPAN inject 守門**(`content-inject.js` `injectIntoTarget` 加 `textBearingChildCount > 1` 跳 (B)):X 推文 body 結構 `<div data-testid="tweetText">[<span>intro</span>, <img alt="🤯">, <span>rest</span>]</div>` — IMG emoji 把推文切成兩個 inline 文字區塊。注入走 (B) media-preserving 路徑時,`findLongestTextNode` 挑 SPAN[1] 內較長 text node 當 main,清掉其他 text node 後 walk-up(v1.2.2 為 Gmail Team Picks 加的空殼移除)把 SPAN[0] 整顆當空殼移除 → 譯文前段消失。修法:target 直屬有 ≥ 2 個含文字 element children 時跳過 (B) 走 (A) clean-slate,deserialized fragment 完整 append。**Regression spec**:`test/regression/inject-img-between-text-spans.spec.js` + fixture + SANITY 已驗。
+
+**3. lazy-load 圖片占位子保留**(`content-inject.js` `injectIntoTarget` 加 `hasEmptyPlaceholderChild` 進 (B) 守門):X URL card preview 結構 `<a><div(empty img placeholder, has children no text)><div(title)></a>` — placeholder DIV 是 lazy-load 圖片容器(有 children 維持 layout 但暫無文字)。注入時 `containsMedia(<a>)` = false(IMG 還沒 lazy-load 進來),走 (A) clean-slate 把 placeholder 連同所有 children 清掉 → 後續 X 想 lazy-load 圖片找不到容器 → 大圖預覽永遠消失。修法:加 `hasEmptyPlaceholderChild` 偵測,擴展 (B) 觸發條件 + 例外掉 `hasContainerChild` 限制,讓單一文字區塊 + lazy-load 占位子也走 (B) 結構保留。**Regression spec**:`test/regression/inject-lazy-media-placeholder.spec.js` + fixture + SANITY 已驗。
+
+**4. SIMPLIFIED_ONLY_CHARS 覆蓋率擴充**(`content-detect.js` 補 35 個常見簡中字):`detectTextLang` 用 simp/cjk ≥ 0.2 判 zh-Hans。短文(< 30 cjk)在 set 命中率低時 ratio 過不了門檻會被誤判 zh-Hant。真實案例:X 引用文章卡片標題「手冲咖啡进阶指北：冠军参数如何变成你的日常 - 少数派」23 cjk 內含 8 簡中字,但原 set 只有「进 数 变 数」4 字命中,4/23 ≈ 0.17 < 0.2 → 整段被當「已是繁中」跳過,卡片標題永遠不翻。修法:補上「冲 阶 军 参 个 国 几 网 听 觉 实 给 红 终 经 历 论 类 优 报 视 业 谢 该 帶 怀 紧 创 际 综 钟 销 续 责 资 兴」常見高頻簡中字。**Regression spec**:`test/regression/detect-lang-simp-coverage.spec.js` + fixture + SANITY 已驗(對照組短繁中、短英文偵測不受影響)。
+
+---
+
 **v1.9.4** — Twitter / Reddit / Threads / Mastodon 等 virtualized scroll 站四項體感修復(SPA observer maxWait + virtualization by-text reuse + 短簡中 lang attribute hint + white-space:pre-wrap 換行保留)+ Debug Bridge 擴充(TRANSLATE_ENGINE / GET_SPA_DEBUG)。
 
 **1. SPA observer maxWait timer**(`content-spa.js` + `content-ns.js` `SPA_OBSERVER_MAX_WAIT_MS=2000`):過去純 idle debounce(1s)在使用者連續滑動時被 mutation 不停 reset → spaObserverRescan 永遠不 fire → 譯文要等使用者停手 1s + Google MT batch 5–10s 共 6–11s 才出現。加 maxWait timer 從第一次 arm 起算 2s 後強制 fire(idle / maxWait 哪個先 fire 都觸發,另一個 cancel)。**實機**:Twitter Lyra reply mount → translate 從 5.1s 降到 3.2s,使用者「還在繼續滑」就看到譯文追上。**Regression spec**:`test/regression/spa-observer-max-wait.spec.js` 4 條 case(常數值、第一次 arm 兩 timer 都 active、連續 arm idle reset 但 maxWait 不 reset、stopSpaObserver 清兩個 timer)+ SANITY 已驗。
