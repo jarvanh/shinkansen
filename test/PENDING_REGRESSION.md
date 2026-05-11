@@ -17,10 +17,16 @@
 
 ## 條目
 
-- **Google Translate 批次 echo 原文 → 逐筆 retry 補救**
-  `lib/google-translate.js` 修法:當混合語言批次裡 Google MT 對某 unit 回傳「跟原文一樣」(整批 majority 已是 target → auto-detect 判定整組不需翻,連夾在裡面少數需翻的 unit 也 echo),整批跑完後對這些 unit 逐筆單獨重打一次。實測 X(Twitter)推文討論串(英文引用推文夾在多數簡中回覆裡)17 段被 echo,retry 救回 13 段。
-  Spec 缺:需要 mock fetch 回 source-as-translation 才能驗 retry 路徑被觸發 + 結果寫回。`lib/google-translate.js` 是 ES module、現有 spec 都走 Playwright + 真 fetch,要新增 mock harness(或抽 unit test)才能寫。
-  人眼驗收:用 X 推文 https://x.com/AYi_AInotes/status/2053121974734291359 走 Google MT 翻譯,引用推文(Garry Tan tweet)前後 diff:fix 前 quoted tweet 維持英文,fix 後 quoted tweet 變繁中。
+(目前沒有 pending 條目)
+
+<!-- v1.9.5 清空紀錄(2026-05-11):
+  - Google Translate 批次 echo 原文 → 逐筆 retry 補救 → 已補
+    test/unit/google-translate-batch.spec.js 加 3 條 case(批次內某 unit echo / 整批全 echo /
+    retry 仍 echo 維持原值)+ SANITY 驗(註解掉 needsRetry 區塊 → 3 條 fail,還原後全綠)。
+    走 unit test 路徑(import lib/google-translate.js + mock globalThis.fetch),
+    比 Playwright fixture 模 sendMessage 路徑直接,跟 v1.4.0 既有 7 條測試共用同檔同 mock 模式。
+-->
+
 
 <!-- v1.9.1+ 清空紀錄(2026-05-10):
   - v1.8.68 同 videoId yt-navigate-finish guard → 已補 test/unit/youtube-spa-nav-guard.spec.js
