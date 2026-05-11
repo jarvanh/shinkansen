@@ -677,6 +677,21 @@ const messageHandlers = {
       return handleTranslateCustom(payload, sender, '_oc_yt_asr', overrides, false, false);
     },
   },
+  // Drive 影片 ASR 字幕走自訂 Provider 時的入口。跟 TRANSLATE_ASR_SUBTITLE_BATCH_CUSTOM
+  // 結構對齊(共用 ASR JSON timestamp prompt + parseAsrResponse),只差 cache key '_oc_drive_yt_asr'
+  // 避免跟 YouTube('_oc_yt_asr')及 Gemini Drive ASR('_drive_yt_asr')互相污染。
+  TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM: {
+    async: true,
+    handler: async (payload, sender) => {
+      const s = await getSettings();
+      const yt = s.ytSubtitle || {};
+      const overrides = {
+        systemPrompt: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage),
+        temperature: yt.temperature ?? 0.1,
+      };
+      return handleTranslateCustom(payload, sender, '_oc_drive_yt_asr', overrides, false, false);
+    },
+  },
   // v1.6.1: 使用者點 toast 內「下載」連結或「×」時，標記今日已顯示更新提示（每日節流）
   UPDATE_NOTICE_DISMISSED: {
     async: true,

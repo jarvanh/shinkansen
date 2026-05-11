@@ -7,6 +7,30 @@
 
 ## v1.9.x
 
+**v1.9.7** — 修頁面翻譯 rescan / SPA observer / SPA nav 三條增量路徑的 provider 分流 drift。使用者選 Google MT 翻 X(Twitter)等 SPA 站,首翻成功後捲動觸發 rescan 的新單元全部走錯到 Gemini path → 沒設 Gemini key 全 fail(體感:只翻到一半就停);openai-compat preset 與 preset modelOverride 也屬同根因 silently 換 provider / 模型。Drive viewer 字幕翻譯本來完全不支援 openai-compat,順手補上。
+
+**1. 頁面翻譯 incremental 路徑 provider 分流**（`content-ns.js` / `content.js` / `content-spa.js`)
+
+- `STATE.translationContext = { provider, engine, modelOverride, glossary } | null` 新欄位記錄首翻完整參數;`translateBy` 擴充 `'openai-compat'` 值(原本只記 `'gemini' | 'google' | null`,openai-compat 偽裝成 gemini)。
+- `SK.translateUnitsByProvider(units, opts)` 新 router:rescan / SPA observer 增量批次依 ctx.provider 分流到 `SK.translateUnits`(gemini / openai-compat)或 `SK.translateUnitsGoogle`(google MT);Google MT 不回 pageUsage 由 router 補 null 給 caller(pickRescanToast)。
+- `SK.replayTranslateByProvider()` 新 router:SPA nav 走 `stickySlot=null` fallback 時依 ctx.provider 重放對應整頁翻譯函式(原本硬走 `SK.translatePage()` Gemini)。
+- 三處 caller swap:`content.js:154` `rescanTick` / `content-spa.js:796` `spaObserverRescan` / `content-spa.js:88` SPA nav fallback。
+- Set context 三處:Gemini / openai-compat 翻譯成功(`content.js:996`)、Google MT 翻譯成功(`content.js:1467`)、restorePage 清空(`content.js:1205`)。`resetForSpaNavigation` 故意不清,SPA 換頁延續引擎。
+
+**2. Drive viewer 字幕翻譯支援 openai-compat**（`content-drive.js` + `background.js`）
+
+- `_normalizeDriveEngine(v)` 純函式統一把原值轉為三選一(`'google' | 'openai-compat' | 'gemini'`),未知值 fallback `'gemini'`。原本硬編碼 `=== 'google' ? 'google' : 'gemini'` 會把 openai-compat silently 收歛到 Gemini。
+- `_runOneBatchCustom` 結構同 `_runOneBatchGemini`,只差送 `TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM` 給 background。
+- worker dispatch switch 加 `'openai-compat'` 分支(原本只有 google / gemini 兩條)。
+- background `TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM` handler 走 `handleTranslateCustom`,cacheTag `_oc_drive_yt_asr`(跟 YouTube `_oc_yt_asr` + Gemini Drive `_drive_yt_asr` 都區隔)。
+
+**3. Regression**
+
+- `test/regression/inject-rescan-provider-routing.spec.js` 新檔 6 test,驗 router 三 provider 分流 + ctx=null 防禦性 fallback + replay router 四 case。SANITY:暫時拿掉 google 分支 → google test fail。
+- `test/regression/drive-engine-normalize.spec.js` 新檔 3 test,驗 `_driveNormalizeEngine` 三類有效值對映 + 未知值 fallback。SANITY:暫時拿掉 openai-compat 分支 → openai-compat case fail。
+
+**為什麼不建議手動清快取**:本版改的是 dispatch routing,既有譯文沒寫錯;只是新段落以前走錯 provider 沒翻成功 / 偷偷換模型(不會寫進 cache,因為 fail 或寫進對應 provider 的 cache key 區段)。沿用既有 cache 不會誤觸壞譯文。
+
 **v1.9.6** — 文件翻譯支援 OpenAI-compatible 自訂 provider（Ollama / llama.cpp / OpenRouter 等）+ Google MT preset 早期拒絕守門。社群 PR #44（@ajer001）為主貢獻，本版另補 Google MT preset 在文件翻譯路徑的早期拒絕。
 
 **1. 文件翻譯走 OpenAI-compatible 自訂 provider**（PR #44，`background.js` + `translate-doc/`）：原本選自訂 provider preset 翻 PDF 會 silently fall through 跑 Gemini handler，碰到錯 key 或錯 model。修法：

@@ -151,7 +151,7 @@
     const newUnits = SK.collectParagraphs();
     if (newUnits.length > 0) {
       try {
-        const { done, failures } = await SK.translateUnits(newUnits);
+        const { done, failures } = await SK.translateUnitsByProvider(newUnits);
         if (!STATE.translated) return;
         if (done > 0) {
           SK.sendLog('info', 'translate', 'rescan caught new units', { done, failures: failures.length, attempt: rescanAttempts + 1 });
@@ -990,7 +990,16 @@
       }
 
       STATE.translated = true;
-      STATE.translatedBy = 'gemini';  // v1.4.0
+      // openai-compat 視為獨立 provider 記錄,避免 rescan / SPA nav 把它誤當 Gemini replay。
+      const _providerUsed = options.engine === 'openai-compat' ? 'openai-compat' : 'gemini';
+      STATE.translatedBy = _providerUsed;  // v1.4.0
+      // 把本次翻譯參數記下供 SPA observer rescan / 延遲 rescan / SPA nav replay 重放同引擎+模型+術語表。
+      STATE.translationContext = {
+        provider: _providerUsed,
+        engine: options.engine || null,
+        modelOverride: options.modelOverride || null,
+        glossary: glossary || null,
+      };
       STATE.stickyTranslate = true;
       STATE.stickySlot = options.slot ?? null;  // v1.4.12: 記錄 preset slot 供 SPA 續翻 + 跨 tab 繼承
       SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
@@ -1193,6 +1202,7 @@
     STATE.translationCache?.clear?.();  // v1.5.0
     STATE.translated = false;
     STATE.translatedBy = null;  // v1.4.0
+    STATE.translationContext = null;
     STATE.translatedMode = null;  // v1.5.0
     STATE.stickyTranslate = false;
     STATE.stickySlot = null;    // v1.4.12
@@ -1277,6 +1287,47 @@
     });
 
     return { done, total, failures, chars: totalChars };
+  };
+
+  // ─── Provider-aware rescan / SPA replay router ──────────────────────
+  // rescanTick(content.js)/ spaObserverRescan(content-spa.js)/ SPA nav fallback 統一過這兩個 router,
+  // 依 STATE.translationContext 分流到首次翻譯時使用的 provider + 參數,
+  // 避免「首翻用 Google MT / openai-compat,rescan 卻 fallback 到預設 Gemini」這類 drift
+  // (對應 CLAUDE.md 全域 §5 單一資料源原則)。
+
+  // 增量翻譯路徑:回傳 { done, total, failures, pageUsage?, rpdWarning? }。
+  // Google MT 不回 pageUsage / rpdWarning,caller(pickRescanToast)對 pageUsage 為 null 走 success toast,可接受。
+  SK.translateUnitsByProvider = async function translateUnitsByProvider(units, opts = {}) {
+    const ctx = STATE.translationContext;
+    if (!ctx) {
+      // 防禦性:理論上 rescan 一定在 translated=true 之後觸發,context 應已 set;
+      // 若意外無 context,fallback 走預設 Gemini path(舊行為)。
+      SK.sendLog?.('warn', 'translate', 'translateUnitsByProvider: no translationContext, fallback to default gemini');
+      return SK.translateUnits(units, opts);
+    }
+    if (ctx.provider === 'google') {
+      const r = await SK.translateUnitsGoogle(units, opts);
+      return { ...r, pageUsage: null, rpdWarning: null };
+    }
+    // gemini / openai-compat 共用 SK.translateUnits,以 engine 欄位區分。
+    return SK.translateUnits(units, {
+      ...opts,
+      engine: ctx.engine || undefined,
+      modelOverride: ctx.modelOverride || undefined,
+      glossary: ctx.glossary || undefined,
+    });
+  };
+
+  // SPA nav fallback(stickyTranslate=true 但 stickySlot=null)用:依首翻 provider 重新整頁翻譯。
+  // 主要 cover 走 Opt+G (Google MT 無 slot) 或 autoTranslate 舊路徑的 SPA 換頁情境。
+  SK.replayTranslateByProvider = function replayTranslateByProvider() {
+    const ctx = STATE.translationContext;
+    if (!ctx) return SK.translatePage();
+    if (ctx.provider === 'google') return SK.translatePageGoogle();
+    return SK.translatePage({
+      engine: ctx.engine || undefined,
+      modelOverride: ctx.modelOverride || undefined,
+    });
   };
 
   // ─── v1.4.0: Google Translate 翻譯整頁 ──────────────────────
@@ -1412,6 +1463,8 @@
 
       STATE.translated = true;
       STATE.translatedBy = 'google';  // v1.4.0
+      // 同 Gemini 路徑記錄 provider context 供 rescan / SPA nav replay。Google MT 無 model / glossary 參數。
+      STATE.translationContext = { provider: 'google' };
       STATE.stickyTranslate = true;
       STATE.stickySlot = gtOptions.slot ?? null;  // v1.4.12
       SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});

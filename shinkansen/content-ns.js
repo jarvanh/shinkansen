@@ -50,7 +50,12 @@ if (window.__shinkansen_loaded) {
   // ─── 共用狀態 ──────────────────────────────────────────
   SK.STATE = {
     translated: false,
-    translatedBy: null,      // v1.4.0: 'gemini' | 'google' | null
+    translatedBy: null,      // v1.4.0: 'gemini' | 'google' | 'openai-compat' | null
+    // 記錄本次成功翻譯使用的完整 provider 上下文,供 SPA observer rescan / 延遲 rescan /
+    // SPA nav 換頁延續翻譯時 replay 同一引擎與參數。
+    // null = 尚未成功翻譯;restorePage 清空。resetForSpaNavigation 故意不清(SPA 換頁要記得引擎)。
+    // shape: { provider: 'gemini'|'google'|'openai-compat', engine?, modelOverride?, glossary? }
+    translationContext: null,
     translating: false,      // v0.80: 翻譯進行中（防止重複觸發 + 支援中途取消）
     abortController: null,   // v0.80: AbortController，翻譯中按 Alt+S 或離開頁面時 abort
     cache: new Map(),       // 段落文字 → 譯文

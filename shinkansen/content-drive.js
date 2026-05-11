@@ -199,10 +199,19 @@
     }
   }
 
-  // 暴露給 spec 用(drive-bilingual-overlay 路徑 A regression)
+  // 把 popup engine 設定原值轉為 Drive 路徑接受的三選一,未知值 fallback 'gemini'。
+  // 定義在 runtime gate 之前讓 regression spec 也能驗(localServer 主機名 ≠ drive.google.com)。
+  function _normalizeDriveEngine(v) {
+    if (v === 'google') return 'google';
+    if (v === 'openai-compat') return 'openai-compat';
+    return 'gemini';
+  }
+
+  // 暴露給 spec 用(drive-bilingual-overlay 路徑 A regression / drive-engine-normalize)
   SK._driveEnsureOverlay = _ensureOverlay;
   SK._driveRenderActiveCue = _renderActiveCue;
   SK._driveFindOverlappingSrcText = _findOverlappingSrcText;
+  SK._driveNormalizeEngine = _normalizeDriveEngine;
 
   // ─── Runtime gate ───────────────────────────────────
   // 只在 Drive viewer top frame 啟動實際 runtime(message listener / batch 翻譯 / iframe 偵測)。
@@ -217,7 +226,8 @@
 
   // ─── ytSubtitle 設定追蹤(autoTranslate + engine + bilingualMode)──
   // commit 5a':共用 YouTube 字幕設定塊,user 不需要為 Drive 額外設定。
-  // commit 5b:engine 分流(預設 'gemini' 走 D' LLM 合句,'google' 走 GT 逐段翻免費)。
+  // commit 5b:engine 分流('gemini' 走 D' LLM 合句 / 'google' 走 GT 逐段翻免費 /
+  //          'openai-compat' 走 OpenAI-compat ASR LLM,跟 Gemini D' 模式對齊只是換 provider)。
   // v1.8.54:bilingualMode 從本地 let 改放 DRIVE.bilingualMode,讓 _renderActiveCue 同源讀取
   let _autoTranslateEnabled = true;
   let _engine = 'gemini';
@@ -225,7 +235,7 @@
     try {
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
       _autoTranslateEnabled = ytSubtitle.autoTranslate !== false;
-      _engine = ytSubtitle.engine === 'google' ? 'google' : 'gemini';
+      _engine = _normalizeDriveEngine(ytSubtitle.engine);
       DRIVE.bilingualMode = ytSubtitle.bilingualMode === true;
       SK.sendLog('info', 'drive', 'settings loaded (from ytSubtitle)', {
         autoTranslate: _autoTranslateEnabled,
@@ -242,7 +252,7 @@
       _autoTranslateEnabled = nextEnabled;
       SK.sendLog('info', 'drive', 'autoTranslate setting changed', { enabled: nextEnabled });
     }
-    const nextEngine = newVal.engine === 'google' ? 'google' : 'gemini';
+    const nextEngine = _normalizeDriveEngine(newVal.engine);
     if (nextEngine !== _engine) {
       _engine = nextEngine;
       SK.sendLog('info', 'drive', 'engine setting changed', { engine: nextEngine });
@@ -518,6 +528,71 @@
     });
   }
 
+  // ─── 單批翻譯:OpenAI-compat D' 模式(自訂 Provider 走 LLM 自由合句 + 時間戳對齊) ──
+  // 結構跟 _runOneBatchGemini 對齊,只差送 TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM 給
+  // background 的 handleTranslateCustom(走使用者自訂 baseUrl / model / apiKey)。
+  // 跟 YouTube ASR 自訂 Provider 路徑同源(共用 ASR JSON timestamp 協定 + parseAsrResponse)。
+  async function _runOneBatchCustom(batch, batchIdx, totalBatches) {
+    if (batch.length === 0) return;
+
+    const inputArr = batch.map((seg, i) => {
+      const next = batch[i + 1];
+      const endMs = next ? next.startMs : seg.startMs + 1500;
+      return { s: seg.startMs, e: endMs, t: seg.text };
+    });
+    const inputJson = JSON.stringify(inputArr);
+
+    let res;
+    try {
+      res = await SK.safeSendMessage({
+        type: 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM',
+        payload: { texts: [inputJson], glossary: null },
+      });
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} openai-compat sendMessage failed`, {
+        error: e?.message || String(e),
+      });
+      return;
+    }
+
+    if (!res?.ok) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} openai-compat failed`, {
+        error: res?.error || 'unknown',
+      });
+      return;
+    }
+
+    const rawText = res.result?.[0] || '';
+    let entries;
+    try {
+      entries = SK.ASR.parseAsrResponse(rawText);
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed (openai-compat)`, {
+        error: e?.message || String(e),
+        rawHead: rawText.slice(0, 200),
+      });
+      return;
+    }
+
+    let pushedCount = 0;
+    for (const entry of entries) {
+      const sStart = Number(entry.s);
+      const sEnd = Number(entry.e);
+      const text = String(entry.t || '').trim();
+      if (!Number.isFinite(sStart) || !Number.isFinite(sEnd) || sEnd < sStart || !text) continue;
+      DRIVE.entries.push({ startMs: sStart, endMs: sEnd, text });
+      pushedCount++;
+    }
+    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (openai-compat)`, {
+      llmEntryCount: entries.length,
+      pushedToOverlay: pushedCount,
+      totalOverlayEntries: DRIVE.entries.length,
+      usage: res.usage,
+    });
+  }
+
   // ─── DRIVE_ASR_CAPTIONS handler ───────────────────────
   async function _handleCaptionsMessage(message) {
     if (!_autoTranslateEnabled) {
@@ -574,9 +649,11 @@
           SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
           return;
         }
-        // engine 切換在 worker 開始前 latch(避免一輪內混用 google/gemini 結果)
+        // engine 切換在 worker 開始前 latch(避免一輪內混用 google / gemini / openai-compat 結果)
         if (_engine === 'google') {
           await _runOneBatchGoogle(batches[idx], idx, totalBatches);
+        } else if (_engine === 'openai-compat') {
+          await _runOneBatchCustom(batches[idx], idx, totalBatches);
         } else {
           await _runOneBatchGemini(batches[idx], idx, totalBatches);
         }

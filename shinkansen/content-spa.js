@@ -86,8 +86,14 @@
         SK.sendLog('info', 'spa', 'SPA nav: sticky translate active, re-triggering preset', { url: location.href, slot: prevSlot });
         SK.handleTranslatePreset(prevSlot);
       } else {
-        SK.sendLog('info', 'spa', 'SPA nav: sticky translate active, auto-translating (no preset slot)', { url: location.href });
-        SK.translatePage();
+        // stickySlot=null 路徑(Opt+G 走 Google MT、autoTranslate 舊路徑)依 translationContext replay
+        // 對應 provider,不再硬走 Gemini。translationContext 在 resetForSpaNavigation 故意不清。
+        SK.sendLog('info', 'spa', 'SPA nav: sticky translate active, replay by provider (no preset slot)', { url: location.href, provider: STATE.translationContext?.provider || null });
+        if (typeof SK.replayTranslateByProvider === 'function') {
+          SK.replayTranslateByProvider();
+        } else {
+          SK.translatePage();
+        }
       }
       return;
     }
@@ -793,7 +799,7 @@
       SK.showToast('loading', SK.t('toast.translateNew', { done: 0, total: newUnits.length }), { progress: 0, startTimer: true });
     }, 200);
     try {
-      const { done, failures, pageUsage } = await SK.translateUnits(newUnits, {
+      const { done, failures, pageUsage } = await SK.translateUnitsByProvider(newUnits, {
         onProgress: (d, t) => {
           // 只在 loading toast 已顯示時才更新 progress(避免「toast 還沒顯示卻被 onProgress 喚出」)
           if (loadingShown) {
