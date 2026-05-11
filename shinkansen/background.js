@@ -2030,6 +2030,24 @@ async function runW7CacheMigration(triggerLabel) {
 browser.runtime.onStartup?.addListener(() => { runW7CacheMigration('onStartup'); });
 runW7CacheMigration('sw-init'); // SW 冷啟動也跑一次（防 onStartup 沒觸發的 case，如更新 install)
 
+// v1.9.8 一次性 migration:Google MT 混批 garbage cache 清除。
+// Bug:v1.9.8 之前 Google MT 對中英混排頁面的混批會把英文段攪成 garbage 寫進 cache;
+// 新版分群避免後續 fetch 被攪,但既有 cache entry 不修法本身解不掉,SPA rescan 撈 hit
+// 仍會吐 garbage。掃掉 tc_*_gt[_drive|_yt|...] entry,Gemini / openai-compat cache 不動。
+const V198_GOOGLE_MT_CACHE_FLAG = '__shinkansen_v198_google_mt_cache_cleared';
+async function runV198GoogleMtCacheClear(triggerLabel) {
+  try {
+    const r = await cache.migrateClearGoogleMtCacheOnce(V198_GOOGLE_MT_CACHE_FLAG);
+    if (r.ranMigration) {
+      debugLog('info', 'cache', `v1.9.8 Google MT cache cleared (${triggerLabel})`, { cleared: r.cleared });
+    }
+  } catch (err) {
+    debugLog('warn', 'cache', 'v1.9.8 Google MT cache clear failed', { error: err && err.message, trigger: triggerLabel });
+  }
+}
+browser.runtime.onStartup?.addListener(() => { runV198GoogleMtCacheClear('onStartup'); });
+runV198GoogleMtCacheClear('sw-init');
+
 // 累計用量 path 合一（IndexedDB 為單一資料源）後，storage.local['usageStats'] 殘餘清掉
 browser.storage.local.remove('usageStats').catch(() => {});
 
@@ -2042,6 +2060,7 @@ browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   const currentVersion = browser.runtime.getManifest().version;
   await cache.checkVersionAndClear(currentVersion);
   await runW7CacheMigration('onInstalled');
+  await runV198GoogleMtCacheClear('onInstalled');
 
   // v1.6.5: CWS 自動更新到 major / minor 新版時，寫 welcomeNotice 讓使用者下次
   // 開 popup 或翻譯成功 toast 時看到「🎉 已升級至 vX.Y」+ 重大更新清單。

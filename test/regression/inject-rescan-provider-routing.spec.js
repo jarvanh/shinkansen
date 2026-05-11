@@ -25,6 +25,10 @@
 // SK.translateUnits → test 2「provider=google 應呼叫 translateUnitsGoogle」fail
 // (lastCalled='translateUnits');還原後全綠。
 //
+// v1.9.8 SANITY(已驗證):google 分支的 return 暫時改回 pageUsage: null →
+// test 2「純 cache hit 透傳 cacheHits」fail(pageUsage 變 null,toEqual 失敗);
+// 還原為 { cacheHits: r.cacheHits || 0 } 後 pass。
+//
 // 本檔不驗:真實 API 呼叫(無 key)/ rescan 觸發時機(已有 spa-virtualization-by-text-reuse 等覆蓋)。
 
 import { test, expect } from '../fixtures/extension.js';
@@ -55,12 +59,16 @@ test('STATE.translationContext 欄位存在,新 page 為 null', async ({ context
   await page.close();
 });
 
-test('translateUnitsByProvider:ctx.provider=google → 走 translateUnitsGoogle', async ({ context, localServer }) => {
+test('translateUnitsByProvider:ctx.provider=google → 走 translateUnitsGoogle,純 cache hit 透傳 cacheHits 給 pickRescanToast', async ({ context, localServer }) => {
   const page = await context.newPage();
   await page.goto(`${localServer.baseUrl}/guard-overwrite.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('p#target', { timeout: 10_000 });
   const { evaluate } = await getShinkansenEvaluator(page);
 
+  // v1.9.8: Google MT 路徑改回 pageUsage: { cacheHits },支援「rescan 純 cache hit
+  // silent」(對應 spa-observer-pure-cache-hit-silent.spec.js)。
+  // 模擬 translateUnitsGoogle 回 cacheHits=3、done=3 → router 應包成
+  // pageUsage: { cacheHits: 3 },讓 pickRescanToast 命中 isPureCacheHit 走 silent。
   const result = await evaluate(`
     (async () => {
       const SK = window.__SK;
@@ -68,11 +76,14 @@ test('translateUnitsByProvider:ctx.provider=google → 走 translateUnitsGoogle'
       const origUnits = SK.translateUnits;
       const origGoogle = SK.translateUnitsGoogle;
       SK.translateUnits = async (units, opts) => { calls.push({ fn: 'translateUnits', opts: opts || {} }); return { done: 0, total: 0, failures: [], pageUsage: {} }; };
-      SK.translateUnitsGoogle = async (units, opts) => { calls.push({ fn: 'translateUnitsGoogle', opts: opts || {} }); return { done: 0, total: 0, failures: [], chars: 0 }; };
+      SK.translateUnitsGoogle = async (units, opts) => {
+        calls.push({ fn: 'translateUnitsGoogle', opts: opts || {} });
+        return { done: 3, total: 3, failures: [], chars: 0, cacheHits: 3 };
+      };
       try {
         SK.STATE.translationContext = { provider: 'google' };
         const ret = await SK.translateUnitsByProvider([{ kind: 'element', el: document.body }]);
-        return { calls, hasPageUsageField: 'pageUsage' in ret, pageUsage: ret.pageUsage };
+        return { calls, hasPageUsageField: 'pageUsage' in ret, pageUsage: ret.pageUsage, done: ret.done };
       } finally {
         SK.translateUnits = origUnits;
         SK.translateUnitsGoogle = origGoogle;
@@ -83,7 +94,8 @@ test('translateUnitsByProvider:ctx.provider=google → 走 translateUnitsGoogle'
   expect(result.calls.length, '應有恰好 1 次 dispatch').toBe(1);
   expect(result.calls[0].fn, '應呼叫 translateUnitsGoogle').toBe('translateUnitsGoogle');
   expect(result.hasPageUsageField, 'Google MT 路徑回傳應補 pageUsage 欄位給 caller(pickRescanToast 用)').toBe(true);
-  expect(result.pageUsage, 'Google MT 無 pageUsage,router 應補 null').toBeNull();
+  expect(result.pageUsage, 'router 應把 cacheHits 包進 pageUsage,給 pickRescanToast 判 silent').toEqual({ cacheHits: 3 });
+  expect(result.done, 'cacheHits === done → 純 cache hit 場景').toBe(3);
 
   await page.close();
 });

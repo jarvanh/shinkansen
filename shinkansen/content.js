@@ -1239,6 +1239,7 @@
 
     let done = 0;
     let totalChars = 0;
+    let totalCacheHits = 0;
     const failures = [];
 
     const jobs = packBatches(texts, units, slotsList, 20, 4000, SK.BATCH0_UNITS, SK.BATCH0_CHARS);
@@ -1255,6 +1256,7 @@
         }, BATCH_TIMEOUT_MS);
         if (!response?.ok) throw new Error(response?.error || '未知錯誤');
         totalChars += response.usage?.chars || 0;
+        totalCacheHits += response.usage?.cacheHits || 0;
         const translations = response.result;
         translations.forEach((tr, j) => {
           const unit = job.units[j];
@@ -1284,9 +1286,10 @@
 
     SK.sendLog('info', 'translate', 'translateUnitsGoogle complete', {
       elapsed: Date.now() - t0All, done, total, failures: failures.length, chars: totalChars,
+      cacheHits: totalCacheHits,
     });
 
-    return { done, total, failures, chars: totalChars };
+    return { done, total, failures, chars: totalChars, cacheHits: totalCacheHits };
   };
 
   // ─── Provider-aware rescan / SPA replay router ──────────────────────
@@ -1296,7 +1299,10 @@
   // (對應 CLAUDE.md 全域 §5 單一資料源原則)。
 
   // 增量翻譯路徑:回傳 { done, total, failures, pageUsage?, rpdWarning? }。
-  // Google MT 不回 pageUsage / rpdWarning,caller(pickRescanToast)對 pageUsage 為 null 走 success toast,可接受。
+  // v1.9.8: Google MT 路徑改回 pageUsage: { cacheHits },讓 pickRescanToast 能
+  // 正確判別「純 cache hit 應 silent」。先前回 null 讓 SPA rescan 每次撈 cache
+  // 都跳「已翻譯 N 段新內容」success toast,在 X / Threads 等不斷 lazy-load 的
+  // 站滑動時被使用者體感為「不斷彈 toast 干擾」。
   SK.translateUnitsByProvider = async function translateUnitsByProvider(units, opts = {}) {
     const ctx = STATE.translationContext;
     if (!ctx) {
@@ -1307,7 +1313,7 @@
     }
     if (ctx.provider === 'google') {
       const r = await SK.translateUnitsGoogle(units, opts);
-      return { ...r, pageUsage: null, rpdWarning: null };
+      return { ...r, pageUsage: { cacheHits: r.cacheHits || 0 }, rpdWarning: null };
     }
     // gemini / openai-compat 共用 SK.translateUnits,以 engine 欄位區分。
     return SK.translateUnits(units, {

@@ -7,6 +7,32 @@
 
 ## v1.9.x
 
+**v1.9.8** — 修 Google MT 在中英混排頁面(X / Threads / Reddit 等)把英文段攪成 garbage 的混批問題 + SPA observer rescan 在虛擬化 timeline 滑動時不斷彈「已翻譯 N 段新內容」toast 的噪音。三條 fix:
+
+**1. Google MT 混批 garbage 修法**(`lib/google-translate.js`)
+
+- 加 `dominantScript(text)` helper,按字面 CJK / Latin 主導語言把 texts 預先分群,各群獨立 fetch
+- Bug 真實案例:X 推文討論串父推文簡中 + 主推文英文 + UI 標籤繁中,混批送 Google `sl=auto` 偵測整批為 zh-CN → 簡中→繁中翻得通,但夾在裡面的英文段被當「簡中變體」字碼級轉換,譯文出現「No API billing, no latingle m...」「mid-m​​etal 判​​版ds5.」這類英文殘骸 + 漢字殘渣 garbage
+- v1.9.5 echo retry 救不到:retry 條件是 `tr.trim() === text.trim()`(完整 echo),garbage 不是 echo → 不進 retry path → 直接寫進 cache + DOM
+- 分群後 Google 每次只看到「全 CJK」或「全 Latin」同質 batch,sl=auto 偵測不再被混批拉錯。同 script 純批維持原行為(全 CJK / 全 Latin 仍 1 次 fetch)
+- 新 spec:`test/unit/google-translate-batch.spec.js` 加 4 case(混批分 2 fetch / 全 CJK 1 fetch / 全 Latin 1 fetch / 段內混雜以主導判定),共 15 條全綠
+- SANITY:暫時把分群 `byScript[dominantScript(t)]` 改回 `byScript.cjk` 強塞同群 → 混批 + 段內混雜 2 條 fail,還原後 pass
+
+**2. SPA observer rescan 純 / 部分 cache hit silent**(`content.js` + `content-spa.js`)
+
+- `translateUnitsGoogle` 累計 `response.usage.cacheHits` 上傳,return 含 `cacheHits` 欄位;`translateUnitsByProvider` Google 分支從回 `pageUsage: null` 改成 `pageUsage: { cacheHits: r.cacheHits || 0 }`,讓既有 `pickRescanToast` 純 cache hit 路徑生效(原本 Google MT 路徑不回 cacheHits 一律走 success toast)
+- `pickRescanToast` silent 條件從「全部 cache hit」(`cacheHits === done`)放寬到「有任何 cache hit」(`cacheHits > 0`)。X / Reddit / Threads 等虛擬化 timeline scroll 反覆觸發「2 hit + 1 miss」混合,逐段 toast 噪音化;SPA rescan 是被動行為使用者沒按按鈕、沒期待 toast 回饋,silent 合適
+- `SPA_OBSERVER_SEEN_TEXTS_TTL_MS` 1500 → 30000(30 秒)。原 1.5s 給 YouTube hover 短時間重 render 設,但 X / Reddit scroll 上下間隔常 > 1.5s,seen-text 過期同段 fragment 推文反覆進 translateUnitsByProvider。YouTube hover 場景 30s 內 byText cache 已存,inject 路徑直接 reuse 不依賴 seen-text,行為不變
+- spec 更新:`spa-observer-pure-cache-hit-silent.spec.js` 第 2 條從鎖死「混合 success toast」改鎖「混合 silent」;`inject-rescan-provider-routing.spec.js` 第 2 條從驗 `pageUsage = null` 改驗 `pageUsage = { cacheHits: 3 }`
+- SANITY:`hasAnyCacheHit` 條件退回嚴格「全 hit」→ 新「混合 silent」spec fail,還原後 pass;Google 分支 return 退回 `pageUsage: null` → routing spec fail,還原後 pass
+
+**3. v1.9.8 載入時自動清 Google MT 舊 garbage cache**(`lib/cache.js` + `background.js`)
+
+- 新 helper `migrateClearGoogleMtCacheOnce(flagKey)`:scope 限於 `tc_<sha1>_gt[*]` keys(正則 `/^tc_[0-9a-f]{40}_gt/`),Gemini / openai-compat / Drive viewer / glossary 等不動。理由:garbage 只發生在 Google MT 混批路徑,Gemini 等其他 provider cache 不受影響,沿用 v1.8.45「版本變更不動 Gemini cache」設計意圖(避免使用者已付費翻譯被連帶損失)
+- background 在 sw-init / onStartup / onInstalled 三處呼叫,flag `__shinkansen_v198_google_mt_cache_cleared` 防重複跑
+- 新 spec:`test/unit/google-mt-cache-migration.spec.js` 4 case(scope 隔離 / flag idempotent / 沒 _gt entry 也設 flag / regex 邊界防誤刪)
+- SANITY:把 regex 改 `/_gt/` 寬鬆寫法 → 邊界 spec fail(誤刪 `_yt_gt` 假 entry),還原後 pass
+
 **v1.9.7** — 修頁面翻譯 rescan / SPA observer / SPA nav 三條增量路徑的 provider 分流 drift。使用者選 Google MT 翻 X(Twitter)等 SPA 站,首翻成功後捲動觸發 rescan 的新單元全部走錯到 Gemini path → 沒設 Gemini key 全 fail(體感:只翻到一半就停);openai-compat preset 與 preset modelOverride 也屬同根因 silently 換 provider / 模型。Drive viewer 字幕翻譯本來完全不支援 openai-compat,順手補上。
 
 **1. 頁面翻譯 incremental 路徑 provider 分流**（`content-ns.js` / `content.js` / `content-spa.js`)

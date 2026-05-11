@@ -20,6 +20,33 @@ function _normalizeTl(targetLanguage) {
   return SUPPORTED_TL.has(targetLanguage) ? targetLanguage : 'zh-TW';
 }
 
+// v1.9.8: 偵測 text 的主導 letter script(CJK / Latin)。
+// Google MT 的 sl=auto 對整個 fetch 請求(SEP 串接的多 unit)做一次語言偵測,
+// 所以混批時 Google 用整批多數派 lang 為偵測結果,夾在裡面的少數派 lang 段被
+// 誤譯成 garbage(英文殘骸 + 漢字殘渣)。真實案例:X(Twitter)推文討論串
+// 父推文簡中 + 主推文英文 + UI 標籤繁中,英文段被當「簡中變體」字碼級轉換,
+// 譯文出現「No API billing, no latingle m...」「mid-m​​etal 判​​版ds5.」這種
+// garbage。echo retry 條件是 `tr.trim() === text.trim()`(完整 echo),這類
+// 部分 garbage 不是 echo 所以救不到。
+//
+// 解法:預先按字面 CJK / Latin 主導把 texts 分成同質群,各群獨立打 fetch,
+// 讓 Google 每次只看到「全 CJK」或「全 Latin」的同質 batch,sl=auto 不再
+// 被混批拉錯。'other' 主導(純符號 / 數字 / 短文)沒明確語言,跟 CJK 一組
+// 維持原行為(中文版面常見的數字 / 符號夾在 CJK 文章內 Google 會原樣保留)。
+function dominantScript(text) {
+  let cjk = 0, latin = 0;
+  for (const ch of text || '') {
+    const c = ch.codePointAt(0);
+    if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF)) {
+      cjk++;
+    } else if ((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)) {
+      latin++;
+    }
+  }
+  if (cjk + latin === 0) return 'cjk';
+  return cjk >= latin ? 'cjk' : 'latin';
+}
+
 /**
  * 批次翻譯字串陣列（自動偵測語言 → targetLanguage）。
  * 內部用 SEP 串接多段文字為單一請求，若 URL 過長則自動拆多次請求後合併。
@@ -35,33 +62,44 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
   const totalChars = texts.reduce((s, t) => s + (t?.length || 0), 0);
   const result = new Array(texts.length).fill('');
 
-  // ─── 依 URL 長度分組 ─────────────────────────────────────────
-  const groups = [];
-  let cur = [];
-  let curEncodedLen = 0;
-  const encodedSep = encodeURIComponent(SEP).length;
-
+  // ─── 先按 dominant script 分群,再依 URL 長度分組 ──────────────
+  // v1.9.8: dominantScript 分群避免混批 garbage(見上方註解)。
+  // 同 script 內仍須按 URL 長度切批(Google 端點 q 參數有實質上限)。
+  const byScript = { cjk: [], latin: [] };
   for (let i = 0; i < texts.length; i++) {
     const t = texts[i] || '';
-    const eLen = encodeURIComponent(t).length + encodedSep;
-    if (cur.length > 0 && curEncodedLen + eLen > MAX_URL_ENCODED_CHARS) {
-      groups.push(cur);
-      cur = [];
-      curEncodedLen = 0;
-    }
-    cur.push({ idx: i, text: t });
-    curEncodedLen += eLen;
+    byScript[dominantScript(t)].push({ idx: i, text: t });
   }
-  if (cur.length > 0) groups.push(cur);
+
+  const groups = [];
+  const encodedSep = encodeURIComponent(SEP).length;
+  for (const script of ['cjk', 'latin']) {
+    const items = byScript[script];
+    if (items.length === 0) continue;
+    let cur = [];
+    let curEncodedLen = 0;
+    for (const item of items) {
+      const eLen = encodeURIComponent(item.text).length + encodedSep;
+      if (cur.length > 0 && curEncodedLen + eLen > MAX_URL_ENCODED_CHARS) {
+        groups.push(cur);
+        cur = [];
+        curEncodedLen = 0;
+      }
+      cur.push(item);
+      curEncodedLen += eLen;
+    }
+    if (cur.length > 0) groups.push(cur);
+  }
 
   // ─── 逐組翻譯，合併回原索引 ──────────────────────────────────
   // needsRetry:暫存「翻完跟原文一樣」的 unit,整批跑完後逐筆 retry。
-  // Why retry:Google MT 對「整組大半已經是 target 語言」的混合批次會整批 source 原樣
-  // 回傳(自動偵測判定整批 ≈ target,連夾在裡面少數真正需要翻的 unit 也跳過)。
-  // 真實案例:X(Twitter)推文討論串裡,引用推文是英文 + 多數回覆是簡中,簡中被偵測
-  // 為已是 zh,整組 14 段全部原文 echo,連那段英文引用推文也沒翻。
-  // 改 sl=auto → sl=fixed 解不掉(我們不知道每 unit 真實源語言);最穩的補救是
-  // 每筆獨立再打一次:單筆送 sl=auto 偵測通常更準,真翻得出來。
+  // Why retry:即便 v1.9.8 已分 script,同 script 群仍可能整組被偵測「已是
+  // target」整批 echo(例:全是「已是繁中」的批次,target=zh-TW)。
+  // 真實案例 v1.9.5:X 推文討論串簡中 + 英文混雜整組 14 段全 echo;v1.9.8 起
+  // 該案例改走「英文段獨立成 latin 群」路徑直接解,本 retry 留作 same-script
+  // 內被誤判 echo 的 safety net。
+  // 改 sl=auto → sl=fixed 解不掉(我們不知道每 unit 真實源語言);最穩的補救
+  // 是每筆獨立再打一次:單筆送 sl=auto 偵測通常更準,真翻得出來。
   const needsRetry = [];
   for (const group of groups) {
     const joined = group.map(g => g.text).join(SEP);

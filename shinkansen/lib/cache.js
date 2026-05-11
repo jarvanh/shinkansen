@@ -445,6 +445,37 @@ export async function migrateClearTranslationCacheOnce(flagKey) {
 }
 
 /**
+ * 一次性 migration:只清掉 Google MT 路徑的翻譯 cache(tc_<sha1>_gt[...])。
+ * Gemini / openai-compat 路徑(tc_<sha1>'' / _yt / _doc / _oc_*)不動,避免使用者
+ * 為了清 Google MT garbage 損失 Gemini 已付費翻譯結果。
+ *
+ * 觸發時機:v1.9.8 修了「混批 Google MT 把英文段攪成 garbage」(英文殘骸 +
+ * 漢字殘渣),這類 garbage 已寫進 cache。新版只阻止下一次 fetch 被混批拖垮,
+ * 既有 garbage entry 還躺在 storage,SPA rescan / 重翻同頁撈 cache hit 仍會
+ * 直接吐 garbage。本 migration 一次性掃掉 Google MT cache,讓所有 Google MT
+ * 翻譯下次重打 API 走新分群路徑。Gemini cache 不受影響。
+ *
+ * Key 結構:`tc_<sha1 40 hex>_gt[_drive|_yt|_lang<x>...]`。
+ * 過濾用正則 /^tc_[0-9a-f]{40}_gt/ 從 sha1 後第一格認 `_gt` 邊界,Gemini /
+ * openai-compat 等其他 provider suffix(''/'_yt'/'_oc_yt'/'_doc' etc.)不會誤刪。
+ *
+ * @param {string} flagKey 例 '__shinkansen_v198_google_mt_cache_cleared'
+ * @returns {Promise<{ cleared: number, ranMigration: boolean }>}
+ */
+export async function migrateClearGoogleMtCacheOnce(flagKey) {
+  const flagged = await browser.storage.local.get(flagKey);
+  if (flagged[flagKey]) return { cleared: 0, ranMigration: false };
+  const all = await browser.storage.local.get(null);
+  const gtRe = /^tc_[0-9a-f]{40}_gt/;
+  const gtKeys = Object.keys(all).filter((k) => gtRe.test(k));
+  if (gtKeys.length > 0) {
+    await browser.storage.local.remove(gtKeys);
+  }
+  await browser.storage.local.set({ [flagKey]: true });
+  return { cleared: gtKeys.length, ranMigration: true };
+}
+
+/**
  * 比對 manifest 版本與儲存版本,版本變更時更新標記。
  *
  * v1.8.45 起改成「不清快取」:過去版本變更會 clearAll(),理由是 prompt / cache

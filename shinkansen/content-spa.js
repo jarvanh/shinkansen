@@ -185,7 +185,14 @@
   //     yt-attributed-string re-render 把譯文抹回原文,使用者下次 hover 應該重看到中文)
   // SPA rescan 走 cache lookup 路徑,同段原文翻過一次後 cache 永遠 hit,後續 inject 0 API
   // 成本,即使 TTL 過期重 inject 也不會爆 cost。
-  const SPA_OBSERVER_SEEN_TEXTS_TTL_MS = 1500;
+  // v1.9.8: 1500 → 30000(30 秒)。原 1.5s 是給 YouTube hover description 短時間
+  // 重 render 場景設,但 X / Reddit / Threads / Mastodon 等虛擬化 timeline scroll
+  // 上下間隔常常 > 1.5s,過期後同段 fragment 推文(by-text reuse 不收 fragment)被
+  // 當「新 unit」反覆進 translateUnitsByProvider → 偶有 cache miss(virtualization
+  // mount/unmount 後序列化結果微差)→ 真打 API + success toast 干擾。
+  // YouTube hover 場景 30s 內 byText cache 已存,inject 路徑直接 reuse 不依賴 seen-text,
+  // 行為不變。中期方案是讓 fragment unit 也走 by-text reuse(SPEC-PRIVATE 記)。
+  const SPA_OBSERVER_SEEN_TEXTS_TTL_MS = 30_000;
   const spaObserverSeenTexts = new Map();
   function isSeenTextRecent(text) {
     const ts = spaObserverSeenTexts.get(text);
@@ -713,8 +720,14 @@
     if (failedCount > 0) {
       return { type: 'error', msg: `新內容翻譯部分失敗:${failedCount} / ${totalRequested} 段` };
     }
-    const isPureCacheHit = pageUsage && pageUsage.cacheHits === done && done > 0;
-    if (isPureCacheHit) return { type: 'silent' };
+    // v1.9.8: silent 條件從「全部 cache hit」放寬到「有任何 cache hit」。
+    // SPA rescan 是 scroll / lazy-load 被動觸發,使用者沒按按鈕、沒期待 toast 回饋;
+    // 在 X / Reddit / Threads 等虛擬化 timeline 場景 mount/unmount 同段推文常產出
+    // 「2 hit + 1 miss」這類混合,逐段 toast 噪音化。pageUsage.cacheHits > 0 暗示
+    // 「使用者之前翻過部分內容、現在的 rescan 主要在 reuse 舊資料」,silent 合適。
+    // pageUsage.cacheHits === 0 才是真正「全新翻 N 段」場景,保留 success toast 通知。
+    const hasAnyCacheHit = pageUsage && pageUsage.cacheHits > 0 && done > 0;
+    if (hasAnyCacheHit) return { type: 'silent' };
     return { type: 'success', msg: `已翻譯 ${done} 段新內容` };
   }
   SK._pickRescanToast = pickRescanToast;
