@@ -591,6 +591,8 @@
     'doc.parsing.warn': '提醒：{message}',
     'doc.parsing.fail': '解析失敗：{error}',
 
+    'doc.error.googleNotSupportedInDoc': '文件翻譯目前不支援 Google Translate 預設，請點上方「翻譯設定」改用 Gemini 或自訂模型（OpenAI 相容）預設',
+
     'doc.result.title': '解析完成',
     'doc.result.row.filename': '檔名',
     'doc.result.row.pages': '頁數',
@@ -1355,6 +1357,8 @@
     'doc.parsing.warn': '提示：{message}',
     'doc.parsing.fail': '解析失败：{error}',
 
+    'doc.error.googleNotSupportedInDoc': '文档翻译目前不支持 Google Translate 预设，请点上方「翻译设置」改用 Gemini 或自定义模型（OpenAI 兼容）预设',
+
     'doc.result.title': '解析完成',
     'doc.result.row.filename': '文件名',
     'doc.result.row.pages': '页数',
@@ -2117,6 +2121,8 @@
     'doc.parsing.btn.cancel': 'Cancel',
     'doc.parsing.warn': 'Notice: {message}',
     'doc.parsing.fail': 'Parse failed: {error}',
+
+    'doc.error.googleNotSupportedInDoc': 'Document translation does not currently support Google Translate presets. Click "Translation settings" above and switch to a Gemini or custom (OpenAI-compatible) preset.',
 
     'doc.result.title': 'Parsing complete',
     'doc.result.row.filename': 'Filename',
@@ -2881,6 +2887,8 @@
     'doc.parsing.warn': '注意：{message}',
     'doc.parsing.fail': '解析に失敗：{error}',
 
+    'doc.error.googleNotSupportedInDoc': 'ドキュメント翻訳は現在 Google Translate プリセットに対応していません。上の「翻訳設定」をクリックし、Gemini またはカスタムモデル（OpenAI 互換）プリセットに切り替えてください。',
+
     'doc.result.title': '解析完了',
     'doc.result.row.filename': 'ファイル名',
     'doc.result.row.pages': 'ページ数',
@@ -3644,6 +3652,8 @@
     'doc.parsing.warn': '알림: {message}',
     'doc.parsing.fail': '분석 실패: {error}',
 
+    'doc.error.googleNotSupportedInDoc': '문서 번역은 현재 Google Translate 프리셋을 지원하지 않습니다. 위의 "번역 설정"을 클릭하여 Gemini 또는 사용자 정의 모델(OpenAI 호환) 프리셋으로 전환하세요.',
+
     'doc.result.title': '분석 완료',
     'doc.result.row.filename': '파일명',
     'doc.result.row.pages': '페이지 수',
@@ -4405,6 +4415,8 @@
     'doc.parsing.btn.cancel': 'Cancelar',
     'doc.parsing.warn': 'Aviso: {message}',
     'doc.parsing.fail': 'Análisis fallido: {error}',
+
+    'doc.error.googleNotSupportedInDoc': 'La traducción de documentos actualmente no admite el preset Google Translate. Haz clic en «Configuración de traducción» arriba y cambia a un preset Gemini o de modelo personalizado (compatible con OpenAI).',
 
     'doc.result.title': 'Análisis completo',
     'doc.result.row.filename': 'Nombre del archivo',
@@ -5168,6 +5180,8 @@
     'doc.parsing.warn': 'Avis : {message}',
     'doc.parsing.fail': 'Échec de l\'analyse : {error}',
 
+    'doc.error.googleNotSupportedInDoc': 'La traduction de documents ne prend actuellement pas en charge le préréglage Google Translate. Cliquez sur « Paramètres de traduction » ci-dessus et passez à un préréglage Gemini ou de modèle personnalisé (compatible OpenAI).',
+
     'doc.result.title': 'Analyse terminée',
     'doc.result.row.filename': 'Nom du fichier',
     'doc.result.row.pages': 'Pages',
@@ -5929,6 +5943,8 @@
     'doc.parsing.btn.cancel': 'Abbrechen',
     'doc.parsing.warn': 'Hinweis: {message}',
     'doc.parsing.fail': 'Analyse fehlgeschlagen: {error}',
+
+    'doc.error.googleNotSupportedInDoc': 'Dokumentübersetzung unterstützt derzeit keine Google Translate-Voreinstellungen. Klicken Sie oben auf „Übersetzungseinstellungen" und wechseln Sie zu einer Gemini- oder benutzerdefinierten Modellvoreinstellung (OpenAI-kompatibel).',
 
     'doc.result.title': 'Analyse abgeschlossen',
     'doc.result.row.filename': 'Dateiname',

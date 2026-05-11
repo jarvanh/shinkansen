@@ -33,6 +33,12 @@ const TRANSLATABLE_TYPES = new Set(['paragraph', 'heading', 'list-item', 'captio
  */
 export async function translateDocument(doc, options = {}) {
   const { modelOverride, glossary, signal, onProgress = () => {}, engine = 'gemini' } = options;
+  // v1.9.6: Google MT 沒 doc handler（沒 batch-aware marker / glossary 注入機制），
+  // 早期擋 + throw，避免 silent fall-through 跑 Gemini 用錯 key / 錯 model。
+  // UI 層（index.js startTranslate）會在更早攔下並顯示提示，這裡是防禦深度。
+  if (engine === 'google') {
+    throw new Error('translate-doc: Google Translate engine 不支援文件翻譯');
+  }
   const startTime = Date.now();
 
   // 1) 收集所有需翻譯 block(扁平化，保 order 用 readingOrder + page)
@@ -250,6 +256,11 @@ export async function translateDocument(doc, options = {}) {
  */
 export async function translateSingleBlock(block, options = {}) {
   const { modelOverride, glossary, engine = 'gemini' } = options;
+  // v1.9.6: Google MT 不支援文件翻譯，retry 路徑同步擋（理論上 UI 層已先擋掉走不到這，
+  // 但 currentEngine 是 module state，測試 / 程式錯誤造成 stale 時這裡是最後守門）
+  if (engine === 'google') {
+    return { ok: false, error: 'translate-doc: Google Translate engine 不支援文件翻譯' };
+  }
   if (!block || !block.plainText) return { ok: false, error: 'no plainText' };
 
   console.log('[Shinkansen] retry block', block.blockId, 'modelOverride=', modelOverride || '(default)');

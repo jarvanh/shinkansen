@@ -85,6 +85,22 @@ function clearError() {
   el.hidden = true;
 }
 
+// v1.9.6: stage-result 用 inline banner（不踢回 upload stage，讓使用者保留已解析的
+// 文件，改 preset / 設定後再點翻譯）
+function showResultError(msg) {
+  const el = $('result-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function clearResultError() {
+  const el = $('result-error');
+  if (!el) return;
+  el.textContent = '';
+  el.hidden = true;
+}
+
 function setParsingDetail(text) {
   $('parsing-detail').textContent = text;
 }
@@ -110,6 +126,7 @@ function releaseCurrentDoc() {
 
 async function handleFile(file) {
   clearError();
+  clearResultError();
 
   const pre = preflightFile(file);
   if (pre.level === 'error') {
@@ -1212,6 +1229,8 @@ function bindSettingsDialogUI() {
     try {
       await chrome.storage.local.set({ translateDocPresetSlot: slot });
     } catch (_) { /* ignore */ }
+    // v1.9.6: 改 preset 後清掉「Google MT 不支援」banner（讓使用者切到 Gemini / 自訂後不留殘影）
+    clearResultError();
     dlg.close();
   });
   $('settings-clear-doc-cache-btn').addEventListener('click', async () => {
@@ -2006,6 +2025,16 @@ async function startTranslate() {
   if (!currentDoc) return;
 
   const { engine, modelOverride } = await resolvePreset();
+
+  // v1.9.6: Google MT 沒文件翻譯 handler（沒 batch-aware marker / glossary 注入機制），
+  // 早期擋 + 顯示 banner，讓使用者改 preset 再試；不踢回 upload stage（保留已解析文件）
+  if (engine === 'google') {
+    showResultError(t('doc.error.googleNotSupportedInDoc'));
+    showStage('result');
+    return;
+  }
+
+  clearResultError();
   currentModelOverride = modelOverride;
   currentEngine = engine;
 

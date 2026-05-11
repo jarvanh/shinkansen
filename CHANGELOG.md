@@ -7,6 +7,26 @@
 
 ## v1.9.x
 
+**v1.9.6** — 文件翻譯支援 OpenAI-compatible 自訂 provider（Ollama / llama.cpp / OpenRouter 等）+ Google MT preset 早期拒絕守門。社群 PR #44（@ajer001）為主貢獻，本版另補 Google MT preset 在文件翻譯路徑的早期拒絕。
+
+**1. 文件翻譯走 OpenAI-compatible 自訂 provider**（PR #44，`background.js` + `translate-doc/`）：原本選自訂 provider preset 翻 PDF 會 silently fall through 跑 Gemini handler，碰到錯 key 或錯 model。修法：
+
+- `background.js` 加 `TRANSLATE_DOC_BATCH_CUSTOM` handler，用 doc 專屬 `systemPrompt`（`getEffectiveDocSystemPrompt + DOC_INLINE_MARKER_INSTRUCTION`）+ `td.temperature` 走 `handleTranslateCustom`，cacheTag `_oc_doc` 跟一般網頁翻譯 `_oc` 分區
+- `translate-doc/translate.js` 依 `engine` 路由：`openai-compat` → `TRANSLATE_DOC_BATCH_CUSTOM`，其他 → `TRANSLATE_DOC_BATCH`（沿用既有 Gemini path）
+- `translate-doc/index.js` `resolveModelOverride()` → `resolvePreset()` 回傳 `{ engine, modelOverride }`，`gemini` 以外不送 `modelOverride`（自訂 provider 用 `settings.customProvider.model`，preset 不該覆蓋）
+- `reader.js` retry path 帶 `engine` + `glossary`（v1.8.49 起 retry 沿用同 preset 的引擎）
+- `_oc_doc` cache key 加 `temperature` suffix（跟 Gemini `_doc` path 對齊），使用者改文件 temperature 不會 hit 舊快取
+- `handleTranslate` / `handleTranslateCustom` 共用 `buildFixedGlossaryEntries` + `preferArticleGlossaryEntries` helper（DRY，兩條 path 不再分叉）
+- i18n 三語在「翻譯設定 → 使用哪組預設」提示加註「文件翻譯目前不支援 Google Translate 預設」
+
+**2. Google MT preset 早期拒絕**（`translate-doc/index.js` + `translate-doc/translate.js`）：i18n 提示之外加實際守門。Google MT 沒文件翻譯 handler（沒 batch-aware marker / glossary 注入機制），選 Google preset 翻 PDF 會 silent fall through 跑 Gemini。修法三處 guard：
+
+- `translateDocument()` `engine === 'google'` 早期 `throw`
+- `translateSingleBlock()` retry path 同步擋（回 `ok:false`）
+- `index.js startTranslate()` 入口擋：呼叫 `resolvePreset` 後若 `engine === 'google'` 顯示 inline error banner（stage-result 內的 `#result-error`，套用既有 `.error-banner` style），不踢回 upload stage（保留已解析文件）。改 preset 後 banner 自動清空
+- i18n 三語新增 `doc.error.googleNotSupportedInDoc`，指引使用者去「翻譯設定」改用 Gemini 或自訂模型
+- **Regression spec**：`test/unit/translate-doc-engine-routing.spec.js` 加 2 條 case（`translateDocument` google → throw、`translateSingleBlock` google → ok:false），SANITY 已驗（拔掉兩處 guard → 2 條 fail，還原後全綠）
+
 **v1.9.5** — X(Twitter)推文翻譯四項結構性修法:Google MT batch echo 補救(per-unit retry)+ IMG 切多 inline SPAN inject 守門(textBearingChildCount)+ lazy-load 圖片占位子保留(hasEmptyPlaceholderChild)+ 短簡中字偵測覆蓋率擴充(補 35 常見簡中字到 SIMPLIFIED_ONLY_CHARS)。
 
 **1. Google MT 批次 echo 補救**(`lib/google-translate.js` `translateGoogleBatch` 加 needsRetry):Google MT 對「整批內容大半已是 target 語言」的混合批次會 auto-detect 判定整組不需翻、整組 source 原樣回傳,連夾在裡面少數真正需翻的 unit 也跳過。真實案例:X 推文討論串裡英文引用推文夾在多數簡中回覆中,整組 14 段全部原文 echo,連那段英文引用推文也沒翻。修法:整批跑完後對「翻完跟原文一樣」的 unit 逐筆單獨重打一次(單筆 sl=auto 偵測通常更準),retry 失敗仍維持原值(視為「已是 target,不需改」)。**實機**:X 推文 17 段 echo,retry 救回 13 段。Spec 缺(`lib/google-translate.js` 是 ES module 走 Playwright fetch,要 mock harness 才能驗 retry 路徑),進 PENDING_REGRESSION。
