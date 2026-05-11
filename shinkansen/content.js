@@ -39,6 +39,22 @@
     } else if (action === 'TRANSLATE') {
       respond({ ok: true, triggered: true });
       SK.translatePage();
+    } else if (action === 'TRANSLATE_ENGINE') {
+      // Debug Bridge:指定翻譯引擎觸發整頁翻譯
+      // engine: 'gemini'(預設,等同 TRANSLATE)| 'google'(Google MT)| 'openai-compat'
+      const eng = (e.detail && e.detail.engine) || 'gemini';
+      respond({ ok: true, triggered: true, engine: eng });
+      if (eng === 'google') {
+        SK.translatePageGoogle({ label: 'Google MT (debug bridge)' });
+      } else if (eng === 'openai-compat') {
+        SK.translatePage({ engine: 'openai-compat', label: 'OpenAI-compat (debug bridge)' });
+      } else {
+        SK.translatePage();
+      }
+    } else if (action === 'GET_SPA_DEBUG') {
+      // Debug Bridge:暴露 SPA observer 內部狀態(含 mutation/rescan counters)
+      const info = SK._spaDebug ? SK._spaDebug() : null;
+      respond({ ok: true, spa: info });
     } else if (action === 'RESTORE') {
       if (STATE.translated) {
         restorePage();
@@ -1123,6 +1139,8 @@
         SK.restoreLocaleStyling?.(el);
       });
       STATE.originalHTML.clear();
+      STATE.translatedHTML?.clear?.();
+      STATE.translatedHTMLByText?.clear?.();
       if (detached > 0) {
         SK.sendLog?.('warn', 'system', 'restoreOriginalHTMLAndReset: skipped detached elements', { detached });
       }
@@ -1168,6 +1186,7 @@
     }
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
+    STATE.translatedHTMLByText?.clear?.();
     STATE.originalText?.clear?.();
     STATE.originalLang?.clear?.();
     STATE.originalFontFamily?.clear?.();

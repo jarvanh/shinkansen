@@ -10,6 +10,10 @@
   let spaLastUrl = location.href;
   let spaObserver = null;
   let spaObserverDebounceTimer = null;
+  // maxWait timer:即使 mutation 連續來 idle timer 一直 reset,從第一次 arm 起算
+  // 最多 SK.SPA_OBSERVER_MAX_WAIT_MS 強制 fire。避免使用者連續滑 virtualized
+  // timeline(Twitter / Reddit / Threads)時譯文永遠出不來。
+  let spaObserverMaxWaitTimer = null;
   let spaObserverRescanCount = 0;
   let contentGuardInterval = null;
   const GUARD_SWEEP_INTERVAL_MS = 1000;
@@ -33,6 +37,7 @@
     stopSpaObserver();
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
+    STATE.translatedHTMLByText?.clear?.();
     STATE.originalText?.clear?.();
     STATE.cache.clear();
     STATE.translated = false;
@@ -190,6 +195,28 @@
   SK._isSeenTextRecent = isSeenTextRecent;
   SK._SPA_OBSERVER_SEEN_TEXTS_TTL_MS = SPA_OBSERVER_SEEN_TEXTS_TTL_MS;
 
+  // Debug Bridge 用:暴露 SPA observer 內部狀態以判斷 rescan 是否 fire / 為何 silent
+  SK._spaDebug = function _spaDebug() {
+    return {
+      observerActive: !!spaObserver,
+      debounceArmed: !!spaObserverDebounceTimer,
+      maxWaitArmed: !!spaObserverMaxWaitTimer,
+      rescanCount: spaObserverRescanCount,
+      seenTextsSize: spaObserverSeenTexts.size,
+      contentGuardActive: !!contentGuardInterval,
+      guardVisibleSetSize: guardVisibleSet ? guardVisibleSet.size : null,
+      stateTranslated: STATE.translated,
+      stateTranslating: STATE.translating,
+      stickyTranslate: STATE.stickyTranslate,
+      partialModeActive: STATE.partialModeActive,
+      mutationBatchesSeen: _dbgMutationBatchesSeen,
+      hasNewContentTrueCount: _dbgHasNewContentTrueCount,
+      debounceArmedCount: _dbgDebounceArmedCount,
+      earlyReturnNotTranslated: _dbgEarlyReturnNotTranslated,
+      earlyReturnMaxRescans: _dbgEarlyReturnMaxRescans,
+    };
+  };
+
   SK.startSpaObserver = function startSpaObserver() {
     if (spaObserver) return;
     spaObserverRescanCount = 0;
@@ -240,6 +267,58 @@
     guardVisibleSet = null;
   }
 
+  // SPA virtualization 對抗:inject 完成同步把 originalText → savedHTML 寫進 STATE.translatedHTMLByText,
+  // 之後 SPA observer rescan 看到 textContent 命中此 cache 的「全新 element」,直接 inject 既有譯文,
+  // 不送 API、不重翻、譯文一致(典型場景:Twitter / Reddit / Threads / Mastodon virtualized timeline
+  // 滑出 viewport 後使用者滑回頂,React unmount 原 element + 重 mount 全新 element)。
+  SK._recordTranslatedByText = function _recordTranslatedByText(el, savedHTML) {
+    if (!STATE.translatedHTMLByText) return;
+    if (!el || !savedHTML) return;
+    const orig = STATE.originalText && STATE.originalText.get(el);
+    if (!orig) return;
+    STATE.translatedHTMLByText.set(orig, savedHTML);
+  };
+
+  // SPA observer rescan 收進的 newUnits 預檢:對 element unit 用 textContent 查 byText cache,
+  // 命中 → reuse 既有譯文 inject + 加 attribute + 補 STATE.translatedHTML,從 newUnits 移除。
+  // fragment unit 暫不適用(by-text key 對應 fragment 文字而非 el.textContent,
+  // fragment inject 路徑替換 startNode→endNode 區間不是整個 innerHTML,reuse 邏輯複雜)。
+  // 暴露給 spec 跟 spaObserverRescan 共用。
+  SK.spaByTextReuse = function spaByTextReuse(units) {
+    const reused = [];
+    const remaining = [];
+    if (!STATE.translatedHTMLByText || STATE.translatedHTMLByText.size === 0) {
+      return { reused, remaining: units.slice() };
+    }
+    for (const unit of units) {
+      if (unit.kind !== 'element' || !unit.el || !unit.el.isConnected) {
+        remaining.push(unit);
+        continue;
+      }
+      if (unit.el.hasAttribute('data-shinkansen-translated')) {
+        // 已被別的 path inject 過(防同 batch 內重複)— 不收進 reused 也不送 newUnits
+        continue;
+      }
+      const text = (unit.el.textContent || '').trim();
+      const savedHTML = STATE.translatedHTMLByText.get(text);
+      if (!savedHTML) { remaining.push(unit); continue; }
+      try {
+        // AMO source review: savedHTML 來自 STATE.translatedHTMLByText(本 extension 自存
+        // 的 inject 後 innerHTML),無 user input 流入。see BUILD.md §innerHTML
+        unit.el.innerHTML = savedHTML;
+        unit.el.setAttribute('data-shinkansen-translated', '1');
+        STATE.translatedHTML.set(unit.el, savedHTML);
+        STATE.originalText?.set?.(unit.el, text);
+        SK._guardObserveEl?.(unit.el);
+        reused.push(unit);
+      } catch (_) {
+        // innerHTML write 失敗(罕見,例如 contenteditable 父限制)→ 丟回 remaining 走正常翻譯
+        remaining.push(unit);
+      }
+    }
+    return { reused, remaining };
+  };
+
   // v1.8.20: injection 路徑寫入 STATE 後呼叫此 hook,把新元素加進 IO 訂閱。
   // 修 v1.8.14 IO subset 設計缺口:`initGuardIntersectionObserver` 只 observe 啟動快照,
   // 後續 SPA rescan 翻新一批的譯段從未進 `guardVisibleSet` → guard sweep(走 IO subset)
@@ -256,6 +335,10 @@
     if (spaObserverDebounceTimer) {
       clearTimeout(spaObserverDebounceTimer);
       spaObserverDebounceTimer = null;
+    }
+    if (spaObserverMaxWaitTimer) {
+      clearTimeout(spaObserverMaxWaitTimer);
+      spaObserverMaxWaitTimer = null;
     }
     if (contentGuardInterval) {
       clearInterval(contentGuardInterval);
@@ -383,9 +466,16 @@
   // 「修復後元素 textContent」斷言。
   SK._testRunContentGuardProd = function() { runContentGuard(); };
 
+  // Debug counters(對應 SK._spaDebug 暴露)— 不寫 log 以免 flood
+  let _dbgMutationBatchesSeen = 0;
+  let _dbgHasNewContentTrueCount = 0;
+  let _dbgDebounceArmedCount = 0;
+  let _dbgEarlyReturnNotTranslated = 0;
+  let _dbgEarlyReturnMaxRescans = 0;
   function onSpaObserverMutations(mutations) {
-    if (!STATE.translated) { stopSpaObserver(); return; }
-    if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) return;
+    _dbgMutationBatchesSeen++;
+    if (!STATE.translated) { _dbgEarlyReturnNotTranslated++; stopSpaObserver(); return; }
+    if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) { _dbgEarlyReturnMaxRescans++; return; }
 
     // mutation-driven 譯文守護(高頻路徑):
     // 框架(典型 YouTube yt-attributed-string)在 hover 觸發 re-render 時會在
@@ -415,10 +505,35 @@
       )
     );
     if (!hasNewContent) return;
-
-    if (spaObserverDebounceTimer) clearTimeout(spaObserverDebounceTimer);
-    spaObserverDebounceTimer = setTimeout(spaObserverRescan, SK.SPA_OBSERVER_DEBOUNCE_MS);
+    _dbgHasNewContentTrueCount++;
+    _dbgDebounceArmedCount++;
+    armSpaObserverRescan();
   }
+
+  // Idle debounce + maxWait combined:
+  //   - idle timer 每次 mutation reset(SPA_OBSERVER_DEBOUNCE_MS)
+  //   - maxWait timer 第一次 arm 時設,連續 mutation 不 reset(SPA_OBSERVER_MAX_WAIT_MS)
+  //   - 哪個先 fire 就 trigger rescan,另一個 cancel
+  // Why:Twitter / Reddit / Threads 等 virtualized scroll 站,使用者連續滑動期間
+  // mutation 不停,純 debounce 永遠被 reset → rescan 不 fire → 譯文遲遲不出現。
+  // maxWait 保證即使連續滑也至少 SPA_OBSERVER_MAX_WAIT_MS 一次 fire,使用者體感
+  // 「滑動期間譯文也會週期性追上」。
+  function armSpaObserverRescan() {
+    if (spaObserverDebounceTimer) clearTimeout(spaObserverDebounceTimer);
+    spaObserverDebounceTimer = setTimeout(triggerSpaObserverRescan, SK.SPA_OBSERVER_DEBOUNCE_MS);
+    if (!spaObserverMaxWaitTimer) {
+      spaObserverMaxWaitTimer = setTimeout(triggerSpaObserverRescan, SK.SPA_OBSERVER_MAX_WAIT_MS);
+    }
+  }
+
+  function triggerSpaObserverRescan() {
+    if (spaObserverDebounceTimer) { clearTimeout(spaObserverDebounceTimer); spaObserverDebounceTimer = null; }
+    if (spaObserverMaxWaitTimer) { clearTimeout(spaObserverMaxWaitTimer); spaObserverMaxWaitTimer = null; }
+    spaObserverRescan();
+  }
+  // 給 spec / debug 用
+  SK._armSpaObserverRescan = armSpaObserverRescan;
+  SK._SPA_OBSERVER_MAX_WAIT_MS = SK.SPA_OBSERVER_MAX_WAIT_MS;
 
   /**
    * 偵測「譯後 element 被框架整個替換」並把譯文 reapply 到新 element。
@@ -615,7 +730,10 @@
 
   async function spaObserverRescan() {
     spaObserverDebounceTimer = null;
-    if (!STATE.translated) return;
+    if (!STATE.translated) {
+      SK.sendLog('info', 'spa', 'SPA rescan fired but STATE.translated=false, skipping');
+      return;
+    }
     // v1.8.5: 「只翻文章開頭」啟用時,SPA observer 偵測到新內容也不翻 — 使用者明確只想要文章開頭。
     if (STATE.partialModeActive) {
       SK.sendLog('info', 'spa', 'partialMode: skip SPA observer rescan');
@@ -628,7 +746,26 @@
     spaObserverRescanCount++;
 
     let newUnits = SK.collectParagraphs();
-    if (newUnits.length === 0) return;
+    if (newUnits.length === 0) {
+      SK.sendLog('info', 'spa', `SPA rescan #${spaObserverRescanCount}: collectParagraphs returned 0 units (all already attribute-marked or filtered)`);
+      return;
+    }
+
+    // by-text reuse:對 element unit 用原 textContent 查 STATE.translatedHTMLByText,命中
+    // 直接 reuse 既有譯文 inject 進新 element + 加 attribute + 補 STATE.translatedHTML,
+    // 從 newUnits 移除。修「Twitter / Reddit / Threads virtualization unmount + remount 全新
+    // element 重翻」bug。0 API 成本,且譯文跟初翻一致(避免 cache miss 重打 API 譯文略差)。
+    {
+      const { reused, remaining } = SK.spaByTextReuse(newUnits);
+      if (reused.length > 0) {
+        SK.sendLog('info', 'spa', `SPA rescan #${spaObserverRescanCount}: by-text reuse ${reused.length} units (no API call)`);
+      }
+      newUnits = remaining;
+      if (newUnits.length === 0) {
+        SK.sendLog('info', 'spa', `SPA rescan #${spaObserverRescanCount}: all units served from by-text cache, no API`);
+        return;
+      }
+    }
 
     // v1.2.1: 過濾掉 TTL 內已翻譯過的文字,防止頁面 widget 週期性重設 DOM 造成無限迴圈。
     // TTL 過期允許重 inject(典型場景:YouTube hover 把譯文抹回原文後使用者重 hover)。

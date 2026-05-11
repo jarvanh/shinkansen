@@ -354,6 +354,7 @@
         STATE.translatedHTML.set(el, el.innerHTML);
         SK.refreshAncestorSavedHTML?.(el);
         SK._guardObserveEl?.(el); // v1.8.20: 把新譯段註冊進 IO subset
+        SK._recordTranslatedByText?.(el, el.innerHTML);
         return;
       }
       const cleaned = SK.stripStrayPlaceholderMarkers(translation);
@@ -366,6 +367,7 @@
         STATE.translatedHTML.set(el, el.innerHTML);
         SK.refreshAncestorSavedHTML?.(el);
         SK._guardObserveEl?.(el);
+        SK._recordTranslatedByText?.(el, el.innerHTML);
         return;
       }
       plainTextFallback(el, cleaned);
@@ -374,6 +376,7 @@
       STATE.translatedHTML.set(el, el.innerHTML);
       SK.refreshAncestorSavedHTML?.(el);
       SK._guardObserveEl?.(el);
+      SK._recordTranslatedByText?.(el, el.innerHTML);
       return;
     }
 
@@ -383,6 +386,7 @@
     STATE.translatedHTML.set(el, el.innerHTML);
     SK.refreshAncestorSavedHTML?.(el);
     SK._guardObserveEl?.(el);
+    SK._recordTranslatedByText?.(el, el.innerHTML);
   };
 
   function injectFragmentTranslation(unit, translation, slots) {
@@ -433,6 +437,9 @@
     STATE.translatedHTML.set(el, el.innerHTML);
     SK.refreshAncestorSavedHTML?.(el);
     SK._guardObserveEl?.(el);
+    // 注意:fragment unit 的 by-text key 對應原 fragment 文字(startNode → endNode 串接),
+    // 不是整個 el.textContent。SPA observer rescan 路徑用 unitText() 算 fragment 原文後查 cache,
+    // 此處 el 是 fragment 父容器,key 不對,故此 record 行為不對 fragment 路徑寫 byText。
   }
 
   // 暴露 resolveWriteTarget / injectIntoTarget 供 Debug API testInject 使用

@@ -8,10 +8,28 @@
   const PH_OPEN = SK.PH_OPEN;
   const PH_CLOSE = SK.PH_CLOSE;
 
+  // 父 element 的 effective white-space 是 pre/pre-wrap/pre-line/break-spaces 時,
+  // textContent 內的 \n 是視覺換行(不是會被瀏覽器 collapse 成 space 的純 source whitespace)。
+  // 序列化時這些 \n 必須跟 <br> 共用  sentinel 路徑,否則接著 /\s+/g normalize 會
+  // 把 \n 壓成 space,送 LLM/Google MT 的 text 失去原始換行,譯文回來不知如何還原。
+  // 真實場景:Twitter / Reddit / Threads / Mastodon / Discord web 等用 SPAN + textContent
+  // \n + white-space: pre-wrap 顯示換行(完全不用 <br>)。React 社群常見 pattern。
+  function shouldPreserveTextNewlines(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    const cs = el.ownerDocument?.defaultView?.getComputedStyle?.(el);
+    if (!cs) return false;
+    const ws = cs.whiteSpace;
+    return ws === 'pre' || ws === 'pre-wrap' || ws === 'pre-line' || ws === 'break-spaces';
+  }
+  // 暴露給 spec 用
+  SK._shouldPreserveTextNewlines = shouldPreserveTextNewlines;
+
   // ─── 序列化 ───────────────────────────────────────────
 
   SK.serializeWithPlaceholders = function serializeWithPlaceholders(el) {
-    return serializeNodeIterable(el.childNodes);
+    return serializeNodeIterable(el.childNodes, {
+      preserveNewlines: shouldPreserveTextNewlines(el),
+    });
   };
 
   // ─── Google Translate 專用序列化 ──────────────────────
@@ -55,16 +73,21 @@
     return count;
   }
 
-  function serializeNodeIterableForGoogle(topLevelNodes) {
+  function serializeNodeIterableForGoogle(topLevelNodes, opts) {
     const slots = [];
     let out = '';
+    const preserveNewlines = !!(opts && opts.preserveNewlines);
     // v1.8.13: paired marker 過閾值 → 降級為純文字模式(slots 仍可含
     // atomic,但不再產生 paired【N】/【/N】標記)。
     const degrade = countPairedInlineForGT(topLevelNodes) > GT_MAX_PAIRED_SLOTS;
     function walk(nodeList) {
       for (const child of nodeList) {
         if (child.nodeType === Node.TEXT_NODE) {
-          out += child.nodeValue;
+          // pre/pre-wrap/pre-line:textNode 內 \n 是視覺換行,轉  跟 BR 共用 sentinel,
+          // 避開後續 /\s+/g collapse 把 \n 壓成 space。
+          out += preserveNewlines
+            ? child.nodeValue.replace(/\n/g, '')
+            : child.nodeValue;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           // Inline <code> 在 HARD_EXCLUDE_TAGS 是給 walker 擋整個 code 區塊用的,
           // 但段落內 inline <code> 走到 serialize 已是另一條路徑,必須當 atomic
@@ -116,7 +139,9 @@
   }
 
   SK.serializeForGoogleTranslate = function serializeForGoogleTranslate(el) {
-    return serializeNodeIterableForGoogle(el.childNodes);
+    return serializeNodeIterableForGoogle(el.childNodes, {
+      preserveNewlines: shouldPreserveTextNewlines(el),
+    });
   };
 
   SK.serializeFragmentForGoogleTranslate = function serializeFragmentForGoogleTranslate(unit) {
@@ -127,7 +152,11 @@
       if (cur === unit.endNode) break;
       cur = cur.nextSibling;
     }
-    return serializeNodeIterableForGoogle(nodes);
+    // fragment 容器是 startNode 的 parent
+    const parent = unit.startNode && unit.startNode.parentElement;
+    return serializeNodeIterableForGoogle(nodes, {
+      preserveNewlines: shouldPreserveTextNewlines(parent),
+    });
   };
 
   // 將 Google MT 回傳的【N】/【/N】/【*N】換回⟦N⟧/⟦/N⟧/⟦*N⟧，
@@ -147,16 +176,24 @@
       if (cur === unit.endNode) break;
       cur = cur.nextSibling;
     }
-    return serializeNodeIterable(nodes);
+    const parent = unit.startNode && unit.startNode.parentElement;
+    return serializeNodeIterable(nodes, {
+      preserveNewlines: shouldPreserveTextNewlines(parent),
+    });
   };
 
-  function serializeNodeIterable(topLevelNodes) {
+  function serializeNodeIterable(topLevelNodes, opts) {
     const slots = [];
     let out = '';
+    const preserveNewlines = !!(opts && opts.preserveNewlines);
     function walk(nodeList) {
       for (const child of nodeList) {
         if (child.nodeType === Node.TEXT_NODE) {
-          out += child.nodeValue;
+          // pre/pre-wrap/pre-line:textNode 內 \n 是視覺換行,轉  跟 BR 共用 sentinel,
+          // 避開後續 /\s+/g collapse 把 \n 壓成 space。
+          out += preserveNewlines
+            ? child.nodeValue.replace(/\n/g, "")
+            : child.nodeValue;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           // Inline <code> 在 HARD_EXCLUDE_TAGS 是給 walker 擋整個 code 區塊用的,
           // 但段落內 inline <code> 走到 serialize 已是另一條路徑,必須當 atomic

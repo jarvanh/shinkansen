@@ -102,6 +102,51 @@
     return SK.isAlreadyInTarget(text, 'zh-TW');
   };
 
+  // 讀 element 自身或最近 ancestor 的 lang attribute,return lowercase or null。
+  // 用於 isCandidateText 對社群網站(Twitter / Reddit / Threads / Mastodon / Discord web)的
+  // lang attribute 信號優先於純文字 detect — short text(< 30 cjk)時 SIMP 集合命中率
+  // 跨不過 0.2 閾值會被誤判 zh-Hant skip,但 Twitter 等站對每則內容都標 lang(simp tweet
+  // 標 "zh"、繁中 tweet 標 "zh-TW"/"zh-Hant"),用此信號可 robust 判斷。
+  function getElementLangHint(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return null;
+    let cur = el;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      if (cur.lang) return cur.lang.toLowerCase();
+      const attr = cur.getAttribute && cur.getAttribute('lang');
+      if (attr) return attr.toLowerCase();
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+  // 暴露給 spec 用
+  SK._getElementLangHint = getElementLangHint;
+
+  // 對應 target,根據 lang attribute 決定是否「已是目標語言」(skip)或「明確需要翻」。
+  // 回傳:'skip'(明確已是 target)/ 'translate'(明確需要翻)/ 'unknown'(無 hint 或 lang 不對應)
+  // unknown 由 caller fallback 到純文字 detectTextLang。
+  function langHintDecision(langHint, target) {
+    if (!langHint) return 'unknown';
+    // 規範化:zh-Hant / zh-TW / zh-HK / zh-MO 都視為 zh-Hant 系列;
+    //         zh / zh-Hans / zh-CN / zh-SG 都視為 zh-Hans 系列(zh 無後綴 Twitter 對簡中標)。
+    const isZhHant = /^zh-(hant|tw|hk|mo)$/i.test(langHint);
+    const isZhHans = langHint === 'zh' || /^zh-(hans|cn|sg)$/i.test(langHint);
+    if (target === 'zh-TW') {
+      if (isZhHant) return 'skip';
+      if (isZhHans) return 'translate';
+    } else if (target === 'zh-CN') {
+      if (isZhHans) return 'skip';
+      if (isZhHant) return 'translate';
+    } else if (target === 'en') {
+      if (/^en\b/i.test(langHint)) return 'skip';
+    } else if (target === 'ja') {
+      if (/^ja\b/i.test(langHint)) return 'skip';
+    } else if (target === 'ko') {
+      if (/^ko\b/i.test(langHint)) return 'ko' === target ? 'skip' : 'unknown';
+    }
+    return 'unknown';
+  }
+  SK._langHintDecision = langHintDecision;
+
   function isCandidateText(el) {
     // v1.6.9: textContent 取代 innerText——innerText 觸發 layout 重算（每呼叫一次
     // 都 force layout reflow，在 leaf div/span 全頁掃描路徑會被呼叫上千次）。
@@ -110,11 +155,20 @@
     // 子隱藏」混排（極罕見），對長度/語言判斷不足以改變結果。
     const text = el.textContent?.trim();
     if (!text || text.length < 2) return false;
+    if (!/[\p{L}]/u.test(text)) return false;
     // P1: target-aware「已是目標語言」跳過。STATE.targetLanguage 由 content.js translatePage
     //     開始時從 storage 注入,預設 'zh-TW' 維持既有行為。
     const target = SK.STATE?.targetLanguage || 'zh-TW';
+    // lang attribute hint 優先於純文字 detect:
+    //   social 站(Twitter / Reddit / Threads / Mastodon)對每則內容標 lang;
+    //   短簡中 tweet(< 30 cjk)SIMP 集合命中率跨不過 0.2 閾值會被誤判 zh-Hant skip。
+    //   明確 lang attribute 信號比 SIMP 統計強得多,優先使用。沒 lang 的站維持純文字 detect。
+    const langHint = getElementLangHint(el);
+    const decision = langHintDecision(langHint, target);
+    if (decision === 'skip') return false;
+    if (decision === 'translate') return true;
+    // unknown(沒 lang 或 lang 不對應)→ fallback 到純文字 detect
     if (SK.isAlreadyInTarget(text, target)) return false;
-    if (!/[\p{L}]/u.test(text)) return false;
     return true;
   }
 

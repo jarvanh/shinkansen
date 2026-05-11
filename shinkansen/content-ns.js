@@ -68,6 +68,15 @@ if (window.__shinkansen_loaded) {
     // 沒這條 fallback 的話，新 element 不在 translatedHTML 也不在 originalHTML,
     // Content Guard 完全認不出它，使用者捲動觸發 re-render 後譯文就永久消失。
     originalText: new Map(), // el → snapshot 的 textContent.trim()
+    // by-text secondary cache:原始 textContent → savedHTML(已 inject 的 innerHTML)。
+    // 用於對抗 SPA virtualization(Twitter / Reddit / Threads / Mastodon)。virtualization
+    // 把被翻譯的 element 完全 unmount,使用者再滑回來時 React 建立全新 element 沒有 attribute
+    // 也不在 translatedHTML 內 → SPA observer 視為新內容 → 走 collectParagraphs + translateUnits
+    // → 即使 cache hit 也會重新 inject + 短暫 flicker;若 serialize 後 placeholder index 微差導致
+    // cache miss,還會真打 API 重翻一次,且譯文可能跟原本不同(token / batch context 影響)。
+    // 修法:inject 完成同步把 originalText → savedHTML 寫進此 Map;SPA observer rescan 時
+    // 用此 Map 預檢 newUnits,命中就 reuse 既有譯文 inject 進新 element,0 API + 譯文一致。
+    translatedHTMLByText: new Map(),
     // v1.0.23: 續翻模式
     stickyTranslate: false,
     // v1.4.12: 記錄本次翻譯使用的 preset slot（1/2/3），供 SPA 導航續翻 + 跨 tab sticky 用。
@@ -296,6 +305,13 @@ if (window.__shinkansen_loaded) {
 
   // SPA 動態載入常數
   SK.SPA_OBSERVER_DEBOUNCE_MS = 1000;
+  // maxWait:即使 mutation 連續來 debounce 持續被 reset,從第一次 arm 起算最多
+  // 等 2 秒就強制 fire 一次 rescan。對抗 Twitter / Threads / Reddit / Mastodon 等
+  // virtualized scroll 站「使用者連續滑動 → debounce 永遠 reset → 譯文遲遲不出現」
+  // 體感問題。設 2000ms 是體感與 batching 效率的折衷:debounce 1s + maxWait 2s
+  // 表示「使用者停手 1s 內 fire,連續滑也每 2s fire」,batch 仍有合併機會不會退化成
+  // 每 mutation 一個 API call。
+  SK.SPA_OBSERVER_MAX_WAIT_MS = 2000;
   SK.SPA_OBSERVER_MAX_RESCANS = Infinity;
   SK.SPA_OBSERVER_MAX_UNITS = 50;
   SK.SPA_NAV_SETTLE_MS = 800;
