@@ -7,6 +7,19 @@
 
 ## v1.9.x
 
+**v1.9.12** — icon-48 漢字 brand alignment + macOS Safari Mac App Store 上架前置 Phase 2 完整收尾。
+
+**對 Chrome / Firefox 使用者可見改動**:
+- icon-48 從新幹線車頭換成漢字「新」，跟 icon-16 / icon-32 brand 一致。影響 extension management page 與 popup chrome menu 上的 48px icon 顯示（toolbar 用的 icon-16 / icon-32 本來就是漢字版，沒變）
+
+**內部工作 — macOS Safari Mac App Store 上架前置 Phase 2**（不影響 Chrome / Firefox 使用者）:
+- `tools/safari-build.sh` / `safari-bootstrap.sh` / `safari-export-options.plist` 三檔 build pipeline:rsync `shinkansen/` → Safari Extension Resources/ + sed patch pbxproj `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` + xcodebuild archive / exportArchive + source-drift forcing function;manual signing 走 Mac App Distribution + Mac Installer Distribution 兩 cert,pin 兩 bundle ID → provisioning profile
+- `safari-app/` Xcode project 入 repo（由 `xcrun safari-web-extension-converter` 產出，`.gitignore` 從整個 ignore 改成只 ignore Resources/ + build/ + xcuserdata/ + .DS_Store)
+- macOS host App 改用 SwiftUI(`ShinkansenApp.swift` / `ContentView.swift` / `Localizable.xcstrings`,en + zh-Hant 雙語）取代 converter 預設 AppKit + Storyboard template。主畫面：新幹線 brand icon + 標題 + 副標 + 兩個 button（打開 Safari 擴充功能設定 / API Key 教學）+ footer 連結（隱私權政策 / 專案主頁 / 上架版本紀錄 / 版本號）per-locale 切中英版 docs URL
+- pbxproj 加 `INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"` 滿足 ASC `altool --validate-app` 要求
+- AppIcon.appiconset 10 sizes（從 Claude Design 出的 `icon-1024.png` 新幹線車頭 source 用 sips 切）
+- ASC App entry「Shinkansen Translator」建好（原預期「Shinkansen」被 Apple 名稱檢查 hard block 觸發 SPEC §23.9 risk #1，走 fallback 加 descriptor 規避 trademark)+ 雙語 metadata(name / subtitle / description / keywords / promotional text / privacy URL / marketing URL / support URL)+ Categories(Productivity / Reference)+ Copyright + Age Rating 4+（全 NONE / false questionnaire)+ App Privacy(Data Not Collected nutrition label)+ 截圖 2880×1800 雙語各 1 張全 upload via ASC API skill。Phase 3 待 Reviewer Info + Submit for Review。
+
 **v1.9.11** — macOS Safari `<input type="date">` baseline 對齊真機修法（v1.9.10 follow-up patch）。
 
 v1.9.10 用 `::-webkit-datetime-edit-fields-wrapper`（Chrome 內部結構，Safari 不認）的修法在真機完全沒生效。v1.9.11 加 setTimeout 1.5s 在 options.js 末尾彈紅框 dump 真機 computed style（debug code release 前已拿掉），從 line-height: 13px（預設） = font-size 看出 line-box 預設靠 content area 頂端對齊 → root cause 鎖死。
