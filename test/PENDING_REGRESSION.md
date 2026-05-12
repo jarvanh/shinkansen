@@ -17,28 +17,56 @@
 
 ## 條目
 
-### v1.9.10:options.js Safari detection 改用 body class + event delegation(2026-05-12)
+(目前沒有 pending 條目)
 
-- **症狀**:macOS Safari Web Extension 真機驗證(Phase 1 上架前 smoke test)發現 options 頁面「翻譯快速鍵」section intro 顯示完整 `chrome://extensions/shortcuts` link(廢 link,Safari 不允許 extension UI 改快速鍵)
-- **修在**:`shinkansen/options/options.js` line 1733-1760 + `shinkansen/options/options.css`(新增 `body.runtime-safari` rule)
-- **root cause**:原 pattern 「per-element addEventListener + inline style」被 `data-i18n-html` 的 applyI18n 用 innerHTML 重設 `<p>` 時整個吹掉(新建 anchor 沒 listener / 沒 inline style)。改用 `document.body.classList.add('runtime-' + platform)` + event delegation 綁 document
-- **為什麼還不能寫測試**:options.js 是 2000+ 行 module 含一堆 top-level side effects,要 unit test detection 邏輯必須先把 detection 抽 pure function(refactor 超出當前 bug fix 範圍);Playwright fixture extension 載入的 runtime URL 固定 `chrome-extension://`,無法 mock 成 `safari-web-extension://` 驗 Safari 分支
-- **連帶 fix**:Chrome / Firefox 上 anchor click listener 也一直被 applyI18n 吹掉(沒人發現,因為 anchor href="#" 點下去靜悄悄沒事),event delegation 一起解
-- **手動 SANITY 紀錄**:✅ **2026-05-12 macOS Safari 真機已視覺驗收** — Xcode rebuild + Safari reload extension + options 頁面看「翻譯快速鍵」section,anchor 隱藏(顯示「鍵位可至 變更」,中間空格)
+<!-- v1.9.11 清空紀錄(2026-05-12,Phase 1 macOS Safari 真機驗證 + Phase 1.5 release 完整收尾):
 
-### v1.9.11:options.css Safari `<input type="date">` line-height 微調對齊(2026-05-12,v1.9.10 follow-up)
+  ★ 兩條皆 **永久 path B**(自動化測試永遠寫不出來),SANITY 視覺驗收完成 + 已 release,
+    queue 不再追蹤。原因:options.js 2000+ 行 module top-level side effect 多 + Playwright
+    extension runtime URL 鎖 `chrome-extension://` 無法 mock `safari-web-extension://` /
+    Playwright Chromium webkit ≠ 真實 Safari webkit baseline 渲染。
 
-- **症狀**:用量紀錄頁面 `2026/05/05` date input 在 macOS Safari 上 Y 軸沒跟同 row 的 `00:00` select stepper 對齊(視覺偏上 7-8px)
-- **修在**:`shinkansen/options/options.css`(B2 區塊)
-- **root cause**:Safari 26 macOS 對 `<input type="date">` 即使套 `-webkit-appearance: textfield`,內部 `::-webkit-datetime-edit` pseudo-element 仍保留 webkit 自家 layout 規則,line-box 預設靠 content area 頂端對齊(非 center);加上拉丁數字 0-9 visual weight 偏底部,geometric center 對齊 ≠ visual center
-- **修法歷程**(v1.9.10 → v1.9.11 working tree):
-  - v1.9.10:用 `::-webkit-datetime-edit-fields-wrapper` selector(Chrome 內部結構,Safari 不認)+ `display: flex; align-items: center` → **完全沒生效**
-  - v1.9.11 中間嘗試:`-webkit-appearance: textfield` + `::-webkit-datetime-edit { padding: 0; margin: 0; line-height: 1 }` + `padding-top: 4px` → 沒生效(textfield mode 仍頂端對齊)
-  - v1.9.11 真機 computed style debug 後最終修:`-webkit-appearance: textfield` + `line-height: 25px`(on input + `::-webkit-datetime-edit`)。25px 是當前字型(-apple-system + PingFang TC + 13px)的 visual sweet spot,baseline 推到對齊
-  - 過程:加 setTimeout 1.5s 在 options.js 末尾彈紅框 dump computed style,從真實數字看 line-height: 13px(預設)= font-size = 文字只佔 13px,line-box 預設靠頂端對齊 → root cause 鎖死。debug code 已拿掉
-- **為什麼還不能寫測試**:webkit baseline 渲染差異,Playwright Chromium 跟真實 Safari webkit 行為不同(Chromium 上已對齊,不會 reproduce);Playwright `playwright.webkit` 跟 Safari Web Extension 環境仍有差距。完全靠視覺驗收
-- **手動 SANITY 紀錄**:✅ **2026-05-12 macOS Safari 真機已視覺驗收 line-height 25px 對齊**(歷時 30 → 28 → 26 → 25 四輪微調,Jimmy 視覺確認 25 pixel-perfect)
-- **狀態**:v1.9.11 已 release(2026-05-12),v1.9.10 的錯誤 selector 修法被取代,真機已 SANITY 通過
+  ── B1: v1.9.10 options.js Safari detection 改用 body class + event delegation ──
+  - 症狀:macOS Safari 真機 options 頁「翻譯快速鍵」section intro 顯示廢 `chrome://extensions/shortcuts`
+    link(Safari 不允許 extension UI 改快速鍵,留 link 對 Safari user 是廢資訊)
+  - 修在:`options/options.js` line 1733-1760 + `options/options.css` 加 `body.runtime-safari` rule
+  - root cause:原 pattern「per-element addEventListener + inline style」被 `data-i18n-html` 的
+    applyI18n 用 innerHTML 重設 `<p>` 時整個吹掉。改用 `document.body.classList.add('runtime-' + platform)`
+    + event delegation 綁 document
+  - 連帶 fix:Chrome / Firefox 一直被 i18n 吹掉的隱性 anchor click listener bug(沒人發現,
+    因為 anchor href="#" 點下去靜悄悄沒事),event delegation 一起解
+  - 為什麼永遠寫不出 spec:options.js 2000+ 行 module 含一堆 top-level side effects,
+    要 unit test detection 邏輯必須先把 detection 抽 pure function(超出當前 bug fix 範圍,
+    沒計畫 refactor);Playwright fixture extension 載入的 runtime URL 鎖 `chrome-extension://`,
+    無法 mock 成 `safari-web-extension://` 驗 Safari 分支
+  - SANITY:✅ 2026-05-12 macOS Safari 真機已視覺驗收 — Xcode rebuild + Safari reload extension +
+    options「翻譯快速鍵」section anchor 隱藏(顯示「鍵位可至 變更」中間空格)
+
+  ── B2: v1.9.11 options.css Safari `<input type="date">` line-height 25px 對齊 ──
+  - 症狀:用量紀錄頁面 date input(2026/05/05)在 macOS Safari 上 Y 軸沒跟同 row 的 `00:00`
+    select stepper 對齊(視覺偏上 ~7px)
+  - 修在:`options/options.css` `body.runtime-safari .usage-date-label input[type="date"]`
+    + `::-webkit-datetime-edit` pseudo
+  - root cause:Safari 26 macOS 對 `<input type="date">` 即使套 `-webkit-appearance: textfield`,
+    內部 `::-webkit-datetime-edit` pseudo-element line-box 仍預設靠 content area 頂端對齊
+    (非 center);加上拉丁數字 0-9 visual weight 偏底部,geometric center 對齊 ≠ visual center
+  - 修法:`-webkit-appearance: textfield` + `line-height: 25px`(on input + `::-webkit-datetime-edit`)。
+    25px 是當前字型(-apple-system + PingFang TC + 13px)的 visual sweet spot
+  - 修法歷程(燒 3 輪才鎖到):
+    * v1.9.10:`::-webkit-datetime-edit-fields-wrapper` selector(Chrome 內部結構,Safari 不認)
+      + `display: flex; align-items: center` → 真機完全沒生效
+    * v1.9.11 中間嘗試:`-webkit-appearance: textfield` + `::-webkit-datetime-edit {
+      padding: 0; margin: 0; line-height: 1 }` + `padding-top: 4px` → 沒生效
+    * v1.9.11 final:加 setTimeout 1.5s 在 options.js 末尾彈紅框 dump 真機 computed style
+      (CLAUDE.md §11 真實資料優先,避免再憑視覺猜),從 line-height: 13px(預設) = font-size
+      看出 line-box 預設靠頂端對齊 → root cause 鎖死。歷時 30 → 28 → 26 → 25 四輪微調,
+      Jimmy 視覺確認 25 pixel-perfect。debug code release 前已拿掉
+  - 為什麼永遠寫不出 spec:webkit baseline 渲染差異,Playwright Chromium 跟真實 Safari webkit
+    行為不同(Chromium 上已對齊,不會 reproduce);Playwright `playwright.webkit` 跟 Safari
+    Web Extension 環境也有差距。完全靠真機視覺驗收
+  - SANITY:✅ 2026-05-12 macOS Safari 真機已視覺驗收 line-height 25px pixel-perfect 對齊
+-->
+
 
 <!-- v1.9.5 清空紀錄(2026-05-11):
   - Google Translate 批次 echo 原文 → 逐筆 retry 補救 → 已補
