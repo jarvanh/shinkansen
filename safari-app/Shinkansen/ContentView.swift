@@ -6,13 +6,34 @@ import SafariServices
 
 private let extensionBundleIdentifier = "app.shinkansen.macos.Extension"
 
-private let repoURL = URL(string: "https://github.com/jimmysu0309/shinkansen")!
 private let apiKeyGuideURL = URL(string: "https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md")!
-private let privacyPolicyURL = URL(string: "https://jimmysu0309.github.io/shinkansen/privacy-policy.html")!
 
 struct ContentView: View {
+    @Environment(\.locale) private var locale
+
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
+    private var isZhHant: Bool {
+        locale.language.languageCode?.identifier == "zh"
+    }
+
+    // privacy-policy / release-notes 是 docs/ 內中英分檔,直接 per-locale 切檔名
+    private var privacyPolicyURL: URL {
+        let file = isZhHant ? "privacy-policy.html" : "privacy-policy.en.html"
+        return URL(string: "https://jimmysu0309.github.io/shinkansen/\(file)")!
+    }
+
+    private var releaseNotesURL: URL {
+        let file = isZhHant ? "release-notes.html" : "release-notes.en.html"
+        return URL(string: "https://jimmysu0309.github.io/shinkansen/\(file)")!
+    }
+
+    // 專案主頁是 single-file i18n,帶 ?lang= 強制 override 使用者瀏覽器 navigator.language / localStorage saved
+    private var homepageURL: URL {
+        let lang = isZhHant ? "zh-TW" : "en"
+        return URL(string: "https://jimmysu0309.github.io/shinkansen/?lang=\(lang)")!
     }
 
     var body: some View {
@@ -78,7 +99,9 @@ struct ContentView: View {
         HStack(spacing: 16) {
             Link("privacy_policy", destination: privacyPolicyURL)
             Text(verbatim: "·").foregroundStyle(.tertiary)
-            Link("GitHub", destination: repoURL)
+            Link("homepage", destination: homepageURL)
+            Text(verbatim: "·").foregroundStyle(.tertiary)
+            Link("release_notes", destination: releaseNotesURL)
             Text(verbatim: "·").foregroundStyle(.tertiary)
             Text(verbatim: "v\(appVersion)").foregroundStyle(.secondary)
         }
