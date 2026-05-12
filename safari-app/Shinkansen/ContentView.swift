@@ -32,7 +32,7 @@ struct ContentView: View {
 
     private var header: some View {
         VStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage ?? NSImage())
+            Image("LargeIcon")
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 96, height: 96)
