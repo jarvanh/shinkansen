@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Mac App Store distribution method;產 .pkg 直接上傳 ASC -->
+    <key>method</key>
+    <string>app-store-connect</string>
+
+    <!-- Apple Developer Team ID(SPEC-PRIVATE §23.12 紀錄,2026-05-12 reserve) -->
+    <key>teamID</key>
+    <string>PR6NG3PH45</string>
+
+    <!-- Manual signing — 明確 pin profile + cert,避免 Xcode 走 ASC auto-fetch
+         又跟本機已有 profile 不對盤 -->
+    <key>signingStyle</key>
+    <string>manual</string>
+
+    <!-- App + Extension binary sign 用 Mac App Distribution cert -->
+    <key>signingCertificate</key>
+    <string>3rd Party Mac Developer Application: Zhimin Su (PR6NG3PH45)</string>
+
+    <!-- .pkg installer 包裝用 Mac Installer Distribution cert -->
+    <key>installerSigningCertificate</key>
+    <string>3rd Party Mac Developer Installer: Zhimin Su (PR6NG3PH45)</string>
+
+    <!-- Bundle ID → Provisioning Profile name 對映 -->
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>app.shinkansen.macos</key>
+        <string>Shinkansen Mac App Store</string>
+        <key>app.shinkansen.macos.Extension</key>
+        <string>Shinkansen Extension Mac App Store</string>
+    </dict>
+
+    <!-- export 留 .pkg 在本機,用 Transporter 手動上傳;Phase 4 自動化 -->
+    <key>destination</key>
+    <string>export</string>
+
+    <!-- 上傳 dSYM 給 ASC 做 crash symbolication(App Store distribution 必須) -->
+    <key>uploadSymbols</key>
+    <true/>
+</dict>
+</plist>

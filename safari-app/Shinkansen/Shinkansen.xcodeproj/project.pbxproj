@@ -1,0 +1,658 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		9E1032342FB3050200706F81 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032332FB3050200706F81 /* Assets.xcassets */; };
+		9E10323B2FB3050200706F81 /* Shinkansen Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9E10323A2FB3050200706F81 /* Shinkansen Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9E1032402FB3050200706F81 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E10323F2FB3050200706F81 /* SafariWebExtensionHandler.swift */; };
+		9E1032642FB3050300706F81 /* options in Resources */ = {isa = PBXBuildFile; fileRef = 9E10324C2FB3050300706F81 /* options */; };
+		9E1032652FB3050300706F81 /* popup in Resources */ = {isa = PBXBuildFile; fileRef = 9E10324D2FB3050300706F81 /* popup */; };
+		9E1032662FB3050300706F81 /* content.css in Resources */ = {isa = PBXBuildFile; fileRef = 9E10324E2FB3050300706F81 /* content.css */; };
+		9E1032672FB3050300706F81 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 9E10324F2FB3050300706F81 /* LICENSE */; };
+		9E1032682FB3050300706F81 /* content-youtube-main.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032502FB3050300706F81 /* content-youtube-main.js */; };
+		9E1032692FB3050300706F81 /* privacy-policy.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032512FB3050300706F81 /* privacy-policy.html */; };
+		9E10326A2FB3050300706F81 /* THIRD-PARTY-NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032522FB3050300706F81 /* THIRD-PARTY-NOTICES.md */; };
+		9E10326B2FB3050300706F81 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032532FB3050300706F81 /* background.js */; };
+		9E10326C2FB3050300706F81 /* content-drive.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032542FB3050300706F81 /* content-drive.js */; };
+		9E10326D2FB3050300706F81 /* translate-doc in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032552FB3050300706F81 /* translate-doc */; };
+		9E10326E2FB3050300706F81 /* content-drive-iframe.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032562FB3050300706F81 /* content-drive-iframe.js */; };
+		9E10326F2FB3050300706F81 /* content-toast.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032572FB3050300706F81 /* content-toast.js */; };
+		9E1032702FB3050300706F81 /* content-spa.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032582FB3050300706F81 /* content-spa.js */; };
+		9E1032712FB3050300706F81 /* content-detect.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032592FB3050300706F81 /* content-detect.js */; };
+		9E1032722FB3050300706F81 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = 9E10325A2FB3050300706F81 /* icons */; };
+		9E1032732FB3050300706F81 /* content-youtube.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E10325B2FB3050300706F81 /* content-youtube.js */; };
+		9E1032742FB3050300706F81 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 9E10325C2FB3050300706F81 /* manifest.json */; };
+		9E1032752FB3050300706F81 /* lib in Resources */ = {isa = PBXBuildFile; fileRef = 9E10325D2FB3050300706F81 /* lib */; };
+		9E1032762FB3050300706F81 /* content-ns.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E10325E2FB3050300706F81 /* content-ns.js */; };
+		9E1032772FB3050300706F81 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 9E10325F2FB3050300706F81 /* _locales */; };
+		9E1032782FB3050300706F81 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032602FB3050300706F81 /* content.js */; };
+		9E1032792FB3050300706F81 /* privacy-policy.en.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032612FB3050300706F81 /* privacy-policy.en.html */; };
+		9E10327A2FB3050300706F81 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032622FB3050300706F81 /* content-serialize.js */; };
+		9E10327B2FB3050300706F81 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E1032632FB3050300706F81 /* content-inject.js */; };
+		9E615A8E2FB320A700EE6E7E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E615A8B2FB320A600EE6E7E /* ContentView.swift */; };
+		9E615A8F2FB320A700EE6E7E /* ShinkansenApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E615A8D2FB320A600EE6E7E /* ShinkansenApp.swift */; };
+		9E615A902FB320A700EE6E7E /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 9E615A8C2FB320A600EE6E7E /* Localizable.xcstrings */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9E10323C2FB3050200706F81 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9E1032172FB3050100706F81 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9E1032392FB3050200706F81;
+			remoteInfo = "Shinkansen Extension";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9E1032472FB3050200706F81 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9E10323B2FB3050200706F81 /* Shinkansen Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		9E10321F2FB3050100706F81 /* Shinkansen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shinkansen.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9E1032332FB3050200706F81 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9E1032352FB3050200706F81 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9E10323A2FB3050200706F81 /* Shinkansen Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Shinkansen Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9E10323F2FB3050200706F81 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		9E1032412FB3050200706F81 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9E10324C2FB3050300706F81 /* options */ = {isa = PBXFileReference; lastKnownFileType = folder; name = options; path = Resources/options; sourceTree = "<group>"; };
+		9E10324D2FB3050300706F81 /* popup */ = {isa = PBXFileReference; lastKnownFileType = folder; name = popup; path = Resources/popup; sourceTree = "<group>"; };
+		9E10324E2FB3050300706F81 /* content.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = content.css; path = Resources/content.css; sourceTree = "<group>"; };
+		9E10324F2FB3050300706F81 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = Resources/LICENSE; sourceTree = "<group>"; };
+		9E1032502FB3050300706F81 /* content-youtube-main.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-youtube-main.js"; path = "Resources/content-youtube-main.js"; sourceTree = "<group>"; };
+		9E1032512FB3050300706F81 /* privacy-policy.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.html"; path = "Resources/privacy-policy.html"; sourceTree = "<group>"; };
+		9E1032522FB3050300706F81 /* THIRD-PARTY-NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "THIRD-PARTY-NOTICES.md"; path = "Resources/THIRD-PARTY-NOTICES.md"; sourceTree = "<group>"; };
+		9E1032532FB3050300706F81 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = Resources/background.js; sourceTree = "<group>"; };
+		9E1032542FB3050300706F81 /* content-drive.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-drive.js"; path = "Resources/content-drive.js"; sourceTree = "<group>"; };
+		9E1032552FB3050300706F81 /* translate-doc */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "translate-doc"; path = "Resources/translate-doc"; sourceTree = "<group>"; };
+		9E1032562FB3050300706F81 /* content-drive-iframe.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-drive-iframe.js"; path = "Resources/content-drive-iframe.js"; sourceTree = "<group>"; };
+		9E1032572FB3050300706F81 /* content-toast.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-toast.js"; path = "Resources/content-toast.js"; sourceTree = "<group>"; };
+		9E1032582FB3050300706F81 /* content-spa.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-spa.js"; path = "Resources/content-spa.js"; sourceTree = "<group>"; };
+		9E1032592FB3050300706F81 /* content-detect.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-detect.js"; path = "Resources/content-detect.js"; sourceTree = "<group>"; };
+		9E10325A2FB3050300706F81 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = Resources/icons; sourceTree = "<group>"; };
+		9E10325B2FB3050300706F81 /* content-youtube.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-youtube.js"; path = "Resources/content-youtube.js"; sourceTree = "<group>"; };
+		9E10325C2FB3050300706F81 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = Resources/manifest.json; sourceTree = "<group>"; };
+		9E10325D2FB3050300706F81 /* lib */ = {isa = PBXFileReference; lastKnownFileType = folder; name = lib; path = Resources/lib; sourceTree = "<group>"; };
+		9E10325E2FB3050300706F81 /* content-ns.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-ns.js"; path = "Resources/content-ns.js"; sourceTree = "<group>"; };
+		9E10325F2FB3050300706F81 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = Resources/_locales; sourceTree = "<group>"; };
+		9E1032602FB3050300706F81 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
+		9E1032612FB3050300706F81 /* privacy-policy.en.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.en.html"; path = "Resources/privacy-policy.en.html"; sourceTree = "<group>"; };
+		9E1032622FB3050300706F81 /* content-serialize.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-serialize.js"; path = "Resources/content-serialize.js"; sourceTree = "<group>"; };
+		9E1032632FB3050300706F81 /* content-inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-inject.js"; path = "Resources/content-inject.js"; sourceTree = "<group>"; };
+		9E615A8B2FB320A600EE6E7E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		9E615A8C2FB320A600EE6E7E /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		9E615A8D2FB320A600EE6E7E /* ShinkansenApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShinkansenApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9E10321C2FB3050100706F81 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E1032372FB3050200706F81 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9E1032162FB3050100706F81 = {
+			isa = PBXGroup;
+			children = (
+				9E615A8B2FB320A600EE6E7E /* ContentView.swift */,
+				9E615A8C2FB320A600EE6E7E /* Localizable.xcstrings */,
+				9E615A8D2FB320A600EE6E7E /* ShinkansenApp.swift */,
+				9E1032212FB3050100706F81 /* Shinkansen */,
+				9E10323E2FB3050200706F81 /* Shinkansen Extension */,
+				9E1032202FB3050100706F81 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9E1032202FB3050100706F81 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9E10321F2FB3050100706F81 /* Shinkansen.app */,
+				9E10323A2FB3050200706F81 /* Shinkansen Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9E1032212FB3050100706F81 /* Shinkansen */ = {
+			isa = PBXGroup;
+			children = (
+				9E1032332FB3050200706F81 /* Assets.xcassets */,
+				9E1032352FB3050200706F81 /* Info.plist */,
+				9E1032242FB3050100706F81 /* Resources */,
+			);
+			path = Shinkansen;
+			sourceTree = "<group>";
+		};
+		9E1032242FB3050100706F81 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		9E10323E2FB3050200706F81 /* Shinkansen Extension */ = {
+			isa = PBXGroup;
+			children = (
+				9E10324B2FB3050300706F81 /* Resources */,
+				9E10323F2FB3050200706F81 /* SafariWebExtensionHandler.swift */,
+				9E1032412FB3050200706F81 /* Info.plist */,
+			);
+			path = "Shinkansen Extension";
+			sourceTree = "<group>";
+		};
+		9E10324B2FB3050300706F81 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				9E10324C2FB3050300706F81 /* options */,
+				9E10324D2FB3050300706F81 /* popup */,
+				9E10324E2FB3050300706F81 /* content.css */,
+				9E10324F2FB3050300706F81 /* LICENSE */,
+				9E1032502FB3050300706F81 /* content-youtube-main.js */,
+				9E1032512FB3050300706F81 /* privacy-policy.html */,
+				9E1032522FB3050300706F81 /* THIRD-PARTY-NOTICES.md */,
+				9E1032532FB3050300706F81 /* background.js */,
+				9E1032542FB3050300706F81 /* content-drive.js */,
+				9E1032552FB3050300706F81 /* translate-doc */,
+				9E1032562FB3050300706F81 /* content-drive-iframe.js */,
+				9E1032572FB3050300706F81 /* content-toast.js */,
+				9E1032582FB3050300706F81 /* content-spa.js */,
+				9E1032592FB3050300706F81 /* content-detect.js */,
+				9E10325A2FB3050300706F81 /* icons */,
+				9E10325B2FB3050300706F81 /* content-youtube.js */,
+				9E10325C2FB3050300706F81 /* manifest.json */,
+				9E10325D2FB3050300706F81 /* lib */,
+				9E10325E2FB3050300706F81 /* content-ns.js */,
+				9E10325F2FB3050300706F81 /* _locales */,
+				9E1032602FB3050300706F81 /* content.js */,
+				9E1032612FB3050300706F81 /* privacy-policy.en.html */,
+				9E1032622FB3050300706F81 /* content-serialize.js */,
+				9E1032632FB3050300706F81 /* content-inject.js */,
+			);
+			name = Resources;
+			path = "Shinkansen Extension";
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9E10321E2FB3050100706F81 /* Shinkansen */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9E1032482FB3050200706F81 /* Build configuration list for PBXNativeTarget "Shinkansen" */;
+			buildPhases = (
+				9E10321B2FB3050100706F81 /* Sources */,
+				9E10321C2FB3050100706F81 /* Frameworks */,
+				9E10321D2FB3050100706F81 /* Resources */,
+				9E1032472FB3050200706F81 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9E10323D2FB3050200706F81 /* PBXTargetDependency */,
+			);
+			name = Shinkansen;
+			packageProductDependencies = (
+			);
+			productName = Shinkansen;
+			productReference = 9E10321F2FB3050100706F81 /* Shinkansen.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9E1032392FB3050200706F81 /* Shinkansen Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9E1032442FB3050200706F81 /* Build configuration list for PBXNativeTarget "Shinkansen Extension" */;
+			buildPhases = (
+				9E1032362FB3050200706F81 /* Sources */,
+				9E1032372FB3050200706F81 /* Frameworks */,
+				9E1032382FB3050200706F81 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Shinkansen Extension";
+			packageProductDependencies = (
+			);
+			productName = "Shinkansen Extension";
+			productReference = 9E10323A2FB3050200706F81 /* Shinkansen Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9E1032172FB3050100706F81 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					9E10321E2FB3050100706F81 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					9E1032392FB3050200706F81 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+				};
+			};
+			buildConfigurationList = 9E10321A2FB3050100706F81 /* Build configuration list for PBXProject "Shinkansen" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9E1032162FB3050100706F81;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9E1032202FB3050100706F81 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9E10321E2FB3050100706F81 /* Shinkansen */,
+				9E1032392FB3050200706F81 /* Shinkansen Extension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9E10321D2FB3050100706F81 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E1032342FB3050200706F81 /* Assets.xcassets in Resources */,
+				9E615A902FB320A700EE6E7E /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E1032382FB3050200706F81 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E1032752FB3050300706F81 /* lib in Resources */,
+				9E10327B2FB3050300706F81 /* content-inject.js in Resources */,
+				9E1032762FB3050300706F81 /* content-ns.js in Resources */,
+				9E10326B2FB3050300706F81 /* background.js in Resources */,
+				9E1032712FB3050300706F81 /* content-detect.js in Resources */,
+				9E1032732FB3050300706F81 /* content-youtube.js in Resources */,
+				9E1032682FB3050300706F81 /* content-youtube-main.js in Resources */,
+				9E10327A2FB3050300706F81 /* content-serialize.js in Resources */,
+				9E1032722FB3050300706F81 /* icons in Resources */,
+				9E1032692FB3050300706F81 /* privacy-policy.html in Resources */,
+				9E1032662FB3050300706F81 /* content.css in Resources */,
+				9E1032792FB3050300706F81 /* privacy-policy.en.html in Resources */,
+				9E10326A2FB3050300706F81 /* THIRD-PARTY-NOTICES.md in Resources */,
+				9E10326C2FB3050300706F81 /* content-drive.js in Resources */,
+				9E10326F2FB3050300706F81 /* content-toast.js in Resources */,
+				9E1032782FB3050300706F81 /* content.js in Resources */,
+				9E1032642FB3050300706F81 /* options in Resources */,
+				9E1032672FB3050300706F81 /* LICENSE in Resources */,
+				9E1032702FB3050300706F81 /* content-spa.js in Resources */,
+				9E1032742FB3050300706F81 /* manifest.json in Resources */,
+				9E10326D2FB3050300706F81 /* translate-doc in Resources */,
+				9E10326E2FB3050300706F81 /* content-drive-iframe.js in Resources */,
+				9E1032772FB3050300706F81 /* _locales in Resources */,
+				9E1032652FB3050300706F81 /* popup in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9E10321B2FB3050100706F81 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E615A8E2FB320A700EE6E7E /* ContentView.swift in Sources */,
+				9E615A8F2FB320A700EE6E7E /* ShinkansenApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E1032362FB3050200706F81 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E1032402FB3050200706F81 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9E10323D2FB3050200706F81 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9E1032392FB3050200706F81 /* Shinkansen Extension */;
+			targetProxy = 9E10323C2FB3050200706F81 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		9E1032422FB3050200706F81 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		9E1032432FB3050200706F81 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		9E1032452FB3050200706F81 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1.9.11;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.9.11;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.macos.Extension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9E1032462FB3050200706F81 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1.9.11;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 1.9.11;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.macos.Extension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		9E1032492FB3050200706F81 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1.9.11;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shinkansen/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = "";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.9.11;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.macos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9E10324A2FB3050200706F81 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1.9.11;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shinkansen/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = "";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.9.11;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.macos;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9E10321A2FB3050100706F81 /* Build configuration list for PBXProject "Shinkansen" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E1032422FB3050200706F81 /* Debug */,
+				9E1032432FB3050200706F81 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9E1032442FB3050200706F81 /* Build configuration list for PBXNativeTarget "Shinkansen Extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E1032452FB3050200706F81 /* Debug */,
+				9E1032462FB3050200706F81 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9E1032482FB3050200706F81 /* Build configuration list for PBXNativeTarget "Shinkansen" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E1032492FB3050200706F81 /* Debug */,
+				9E10324A2FB3050200706F81 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9E1032172FB3050100706F81 /* Project object */;
+}

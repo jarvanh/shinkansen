@@ -10,6 +10,10 @@ test/reports/
 
 # 本機打包輸出
 dist/
+build/
+shinkansen-firefox-*.zip
+shinkansen-chrome-*.zip
+shinkansen-macos-*.pkg
 
 # docs 工作區素材
 docs/excluded/
@@ -41,7 +45,10 @@ DEBUG-BOARD.md
 # Claude Code ScheduleWakeup transient lock
 .claude/scheduled_tasks.lock
 
-# macOS Safari Web Extension Xcode project — Phase 1.5 暫時整個 ignore
-# (一次性 `xcrun safari-web-extension-converter` 產出,Phase 2 build pipeline 穩定後
-#  改成 commit `safari-app/` 但 ignore Resources/ + build/。對應 SPEC-PRIVATE §23.5)
-safari-app/
+# macOS Safari Web Extension Xcode project — Phase 2 起 commit project 骨架,
+# 只 ignore build artifacts / per-user Xcode state / rsync 進來的 Extension Resources
+# (對應 SPEC-PRIVATE §23.5)
+safari-app/**/build/
+safari-app/**/.DS_Store
+safari-app/**/xcuserdata/
+safari-app/Shinkansen/Shinkansen Extension/Resources/
