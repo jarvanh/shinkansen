@@ -7,6 +7,18 @@
 
 ## v1.9.x
 
+**v1.9.11** — macOS Safari `<input type="date">` baseline 對齊真機修法（v1.9.10 follow-up patch）。
+
+v1.9.10 用 `::-webkit-datetime-edit-fields-wrapper`（Chrome 內部結構，Safari 不認）的修法在真機完全沒生效。v1.9.11 加 setTimeout 1.5s 在 options.js 末尾彈紅框 dump 真機 computed style（debug code release 前已拿掉），從 line-height: 13px（預設） = font-size 看出 line-box 預設靠 content area 頂端對齊 → root cause 鎖死。
+
+**修在**（`options/options.css` `body.runtime-safari` scope）：
+- `.usage-date-label input[type="date"]`:`-webkit-appearance: textfield`（取消 Safari NSDatePicker chrome，`type=date` semantic 不變，focus 仍彈日曆 picker）+ `line-height: 25px`
+- `::-webkit-datetime-edit` pseudo：`line-height: 25px`
+
+**root cause**:Safari 26 macOS 對 `<input type="date">` 即使套 `-webkit-appearance: textfield`，內部 `::-webkit-datetime-edit` pseudo-element line-box 仍預設靠 content area 頂端對齊（非 center）；加上拉丁數字 0-9 visual weight 偏底部（ascender > descender），geometric center 對齊 ≠ visual center。25px 是當前字型（-apple-system + PingFang TC + 13px）的 visual sweet spot。歷時 30 → 28 → 26 → 25 四輪微調，Jimmy 視覺確認 pixel-perfect。Chrome / Chromium 對 datetime-edit vertical center 已 patch，不需此修法，`body.runtime-safari` selector scope 嚴格只在 Safari runtime 套用。
+
+**為什麼不寫 regression spec**:webkit baseline 渲染差異，Playwright Chromium 跟真實 Safari webkit 行為不同（Chromium 上已對齊，不會 reproduce）；Playwright `playwright.webkit` 跟 Safari Web Extension 環境也有差距。完全靠視覺驗收（2026-05-12 macOS Safari 真機驗證通過，對應 `PENDING_REGRESSION.md` 路徑 B 條目）。
+
 **v1.9.10** — Options 三平台 anchor click listener 修法 + macOS Safari 上架前置補丁。兩條 fix:
 
 **1. Options「翻譯快速鍵」段落 anchor click 修法**(`options/options.js` + `options/options.css`)

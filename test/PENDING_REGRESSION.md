@@ -24,15 +24,21 @@
 - **root cause**:原 pattern 「per-element addEventListener + inline style」被 `data-i18n-html` 的 applyI18n 用 innerHTML 重設 `<p>` 時整個吹掉(新建 anchor 沒 listener / 沒 inline style)。改用 `document.body.classList.add('runtime-' + platform)` + event delegation 綁 document
 - **為什麼還不能寫測試**:options.js 是 2000+ 行 module 含一堆 top-level side effects,要 unit test detection 邏輯必須先把 detection 抽 pure function(refactor 超出當前 bug fix 範圍);Playwright fixture extension 載入的 runtime URL 固定 `chrome-extension://`,無法 mock 成 `safari-web-extension://` 驗 Safari 分支
 - **連帶 fix**:Chrome / Firefox 上 anchor click listener 也一直被 applyI18n 吹掉(沒人發現,因為 anchor href="#" 點下去靜悄悄沒事),event delegation 一起解
-- **手動 SANITY 紀錄(待 Jimmy Phase 1.5 視覺驗收)**:macOS Safari 真機,Xcode rebuild → Safari reload extension → options 頁面看「翻譯快速鍵」section,預期 anchor 隱藏(CSS `body.runtime-safari .open-shortcuts-link { display: none }` 生效)
+- **手動 SANITY 紀錄**:✅ **2026-05-12 macOS Safari 真機已視覺驗收** — Xcode rebuild + Safari reload extension + options 頁面看「翻譯快速鍵」section,anchor 隱藏(顯示「鍵位可至 變更」,中間空格)
 
-### v1.9.10:options.css Safari webkit `<input type="date">` baseline 對齊(2026-05-12)
+### v1.9.11:options.css Safari `<input type="date">` line-height 微調對齊(2026-05-12,v1.9.10 follow-up)
 
-- **症狀**:用量紀錄頁面 `2026/05/05` date input 在 macOS Safari 上 Y 軸沒跟同 row 的 `00:00` select stepper 對齊(視覺偏上)
-- **修在**:`shinkansen/options/options.css` 加 `body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; align-items: center; height: 100%; }`
-- **root cause**:webkit `::-webkit-datetime-edit-fields-wrapper` 預設不垂直 center(Chrome / Chromium 已 patch 對齊,Safari 沿用上游 webkit 行為)
-- **為什麼還不能寫測試**:webkit baseline 是渲染層差異,Playwright Chromium 跟真實 Safari webkit 行為不同(Chromium 上已對齊,不會 reproduce bug);Playwright `playwright.webkit` 雖是 Safari clone 但跟真實 Safari Web Extension 環境仍有差距。完全靠視覺驗收
-- **手動 SANITY 紀錄(待 Jimmy Phase 1.5 視覺驗收)**:Xcode rebuild → Safari reload → 用量紀錄頁面截圖比對「2026/05/05」、`00 : 00`、`從` / `到` label、`現在時間` button 全部 baseline 對齊
+- **症狀**:用量紀錄頁面 `2026/05/05` date input 在 macOS Safari 上 Y 軸沒跟同 row 的 `00:00` select stepper 對齊(視覺偏上 7-8px)
+- **修在**:`shinkansen/options/options.css`(B2 區塊)
+- **root cause**:Safari 26 macOS 對 `<input type="date">` 即使套 `-webkit-appearance: textfield`,內部 `::-webkit-datetime-edit` pseudo-element 仍保留 webkit 自家 layout 規則,line-box 預設靠 content area 頂端對齊(非 center);加上拉丁數字 0-9 visual weight 偏底部,geometric center 對齊 ≠ visual center
+- **修法歷程**(v1.9.10 → v1.9.11 working tree):
+  - v1.9.10:用 `::-webkit-datetime-edit-fields-wrapper` selector(Chrome 內部結構,Safari 不認)+ `display: flex; align-items: center` → **完全沒生效**
+  - v1.9.11 中間嘗試:`-webkit-appearance: textfield` + `::-webkit-datetime-edit { padding: 0; margin: 0; line-height: 1 }` + `padding-top: 4px` → 沒生效(textfield mode 仍頂端對齊)
+  - v1.9.11 真機 computed style debug 後最終修:`-webkit-appearance: textfield` + `line-height: 25px`(on input + `::-webkit-datetime-edit`)。25px 是當前字型(-apple-system + PingFang TC + 13px)的 visual sweet spot,baseline 推到對齊
+  - 過程:加 setTimeout 1.5s 在 options.js 末尾彈紅框 dump computed style,從真實數字看 line-height: 13px(預設)= font-size = 文字只佔 13px,line-box 預設靠頂端對齊 → root cause 鎖死。debug code 已拿掉
+- **為什麼還不能寫測試**:webkit baseline 渲染差異,Playwright Chromium 跟真實 Safari webkit 行為不同(Chromium 上已對齊,不會 reproduce);Playwright `playwright.webkit` 跟 Safari Web Extension 環境仍有差距。完全靠視覺驗收
+- **手動 SANITY 紀錄**:✅ **2026-05-12 macOS Safari 真機已視覺驗收 line-height 25px 對齊**(歷時 30 → 28 → 26 → 25 四輪微調,Jimmy 視覺確認 25 pixel-perfect)
+- **狀態**:v1.9.11 已 release(2026-05-12),v1.9.10 的錯誤 selector 修法被取代,真機已 SANITY 通過
 
 <!-- v1.9.5 清空紀錄(2026-05-11):
   - Google Translate 批次 echo 原文 → 逐筆 retry 補救 → 已補

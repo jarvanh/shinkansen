@@ -296,15 +296,40 @@ a:hover { text-decoration: underline; }
    1. .open-shortcuts-link 在 Safari 隱藏 — Safari 不允許 extension UI 改快速鍵
       (Apple 限制),chrome://extensions/shortcuts 與 about:addons 都打不開,
       留 link 對 Safari user 是廢資訊
-   2. Safari webkit ::-webkit-datetime-edit-fields-wrapper 預設不垂直 center,
-      導致 <input type="date"> 文字偏上,跟同 row select stepper 對不齊 */
+   2. Safari `<input type="date">` 文字 baseline 偏上,跟同 row select stepper 對不齊。
+      v1.9.10 試 `::-webkit-datetime-edit-fields-wrapper`(Chrome 內部結構,Safari 不認)
+      + v1.9.11 試 `::-webkit-datetime-edit` padding/margin/line-height + padding-top 4px
+      都沒生效(Safari 26 macOS 對 type=date 已改用 native NSDatePicker style,webkit
+      shadow DOM 內部 pseudo selector 不再有效)。最終走 `-webkit-appearance: textfield`
+      把 visual style 變成普通 text field,baseline 對齊問題消失。**semantic type=date
+      未改**,Safari focus 仍會彈出 native 日曆 widget(只是失去 input box 右側日曆 icon)。
+      參考:8yd.no/article/date-input-height-in-safari */
 body.runtime-safari .open-shortcuts-link {
   display: none;
 }
-body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit-fields-wrapper {
-  display: flex;
-  align-items: center;
-  height: 100%;
+body.runtime-safari .usage-date-label input[type="date"] {
+  /* v1.9.11 真機 computed style debug 後修(2026-05-12):
+     Safari 26 macOS 對 `<input type="date">` 即使套 `-webkit-appearance: textfield`,
+     內部 `::-webkit-datetime-edit` pseudo-element 仍保留 webkit 自家 layout 規則,
+     line-box 預設靠 content area 頂端對齊(非 center),導致文字偏上 ~7px。
+     修法:
+     1. `-webkit-appearance: textfield`:取消 native NSDatePicker chrome,
+        type=date semantic 不變(focus 仍彈日曆 picker)
+     2. `line-height: 25px`:撐高 line-box(預設 13px = font-size)+ 微調抵消
+        拉丁數字 0-9 visual weight 偏底部的視覺差(ascender > descender)。
+        line-box 撐滿 30px content area(geometric center)時數字仍 visual 偏低,
+        25px 是當前字型(-apple-system + PingFang TC + 13px)的 visual sweet spot,
+        baseline 推到跟同 row select stepper 對齊
+     Chrome / Chromium 對 datetime-edit vertical center 已 patch,不需此修法,
+     `body.runtime-safari` selector scope 嚴格只在 Safari runtime 套用(三層保護:
+     body class 由 _extUrl prefix 偵測 + chrome-extension:// 永不 match runtime-safari)
+     參考:8yd.no/article/date-input-height-in-safari */
+  -webkit-appearance: textfield;
+  appearance: textfield;
+  line-height: 25px;
+}
+body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit {
+  line-height: 25px;
 }
 .usage-time-select {
   /* HH / MM select — 寬度自定義（不被全域 select 樣式撐大），24h 制 */
