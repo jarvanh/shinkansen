@@ -99,6 +99,25 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store 與 Firefox Add-ons 使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v1.9.8 <span class="release-date">2026-05-12 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v1.9.0</p>
+
+  <p class="lead">這版以 X（Twitter）、Threads、Reddit、Mastodon 等社群網站的翻譯體驗修補為主軸，並修正過去高估的費用顯示與用量紀錄對不起來的問題。</p>
+
+  <ul>
+    <li><strong>社群網站（X、Threads、Reddit、Mastodon）翻譯體驗大幅修補</strong>：這些「滑動才載入新內容」的網站累積了多項修補——連續滑動時譯文不再要等使用者停手才出現（實測 5.1 秒降到 3.2 秒）；滑離畫面後再滑回去不再重複付費翻譯，也不再產生跟先前不一樣的譯文；含換行的推文翻完維持多行（原本被壓成一行）；推文中夾表情符號圖片把文字切成多區塊時，譯文不再吃掉前半段；X 連結卡片預覽翻完，後面才載入進來的大圖不再消失；短的簡中內容（社群網站只標「中文」沒分繁簡的、或文章卡片標題太短的）不再被誤判為已是繁中而跳過翻譯。</li>
+    <li><strong>Google Translate 在中英混排頁面譯出亂碼的問題修復</strong>：用 Google Translate 翻 X、Threads、Reddit 等中英混排頁面時，英文段不再被當成簡中變體而攪成亂碼（像「No API billing, no latingle m...」這類英文殘渣夾雜漢字碎片）。升級後會自動清掉一次本版以前 Google Translate 留下的亂碼譯文紀錄；Gemini 與自訂模型的翻譯記憶不動，使用者過去付費翻譯過的內容不會被連帶清掉。</li>
+    <li><strong>滑動補翻不再跳重複通知</strong>：會即時載入新內容的網站，滑到已經翻譯過的段落時不再彈「已翻譯 N 段新內容」通知。滑動補翻是被動行為（使用者沒按按鈕），跳通知就只是干擾。</li>
+    <li><strong>選 Google Translate 或自訂模型翻動態網站不再偷偷換成 Gemini</strong>：過去使用者選 Google Translate 或自訂模型翻 X 等會即時載入新內容的網站，第一次翻譯成功後，滑動載入的新內容會偷偷改走 Gemini（沒設 Gemini 金鑰就全部失敗，使用者體感「只翻到一半就停了」）。本版整個翻譯過程都按使用者選的引擎一致到底。</li>
+    <li><strong>PDF 文件翻譯支援自訂 OpenAI 相容服務</strong>：選自訂模型的預設組翻 PDF 不再偷偷退回用 Gemini，本機 Ollama、llama.cpp 或 OpenRouter 等服務都能拿來翻 PDF。選 Google Translate 預設組翻 PDF 改顯示明確錯誤訊息，引導使用者改用 Gemini 或自訂模型（Google Translate 本身沒文件翻譯能力）。</li>
+    <li><strong>Google Drive 影片字幕翻譯支援自訂 OpenAI 相容服務</strong>：過去只支援 Gemini 與 Google Translate，這版補上。</li>
+    <li><strong>YouTube「明明是中文還被翻一次」修復</strong>：YouTube 部分人工字幕的語系標籤只標「中文」（沒分繁中或簡中）。原本系統因為對不上具體繁中或簡中標籤，即使影片字幕已是繁中還是會被送去翻譯。本版改用實際內容判斷，字幕已是目標語系（繁中或簡中）就不再多翻一次。</li>
+    <li><strong>費用顯示修正 + 重複命中折扣可自訂</strong>：過去用量明細與通知顯示的「實付費用」對重複命中部分固定算 25%（Gemini 2.0 時代的折扣值）。Gemini 2.5+ 起改為重複部分只付 10%，本版同步更新，並開放自訂模型的重複命中折扣設定（各家服務差異大，從 2% 到 50% 不等）。<strong>對既有使用者影響：升級後 Gemini 費用顯示降為原本約 0.4×，自訂模型 OpenRouter 路徑降為約 0.2×——這是修正過去高估，不是倒退。</strong></li>
+    <li><strong>用量紀錄統一資料來源</strong>：過去工具列圖示顯示的累計費用走一條來源、設定頁用量明細走另一條，兩邊會對不起來；設定頁「清除紀錄」只清明細，工具列圖示仍顯示舊累計值。本版兩邊統一到同一份紀錄。術語表抽取消耗的 token 與費用也納入用量明細（前綴「[術語表]」）。</li>
+    <li><strong>自訂模型「思考模式關閉」真的有效</strong>：過去接 Fireworks、Together、Groq、DeepInfra 等服務跑 Qwen、DeepSeek 等思考型模型時，「思考模式」選「關閉」會被默默忽略，使用者明明設「關閉」模型還是花長時間思考。本版改送標準參數，選「關閉」實測從 56 秒降到 1.2 秒。</li>
+    <li><strong>自訂模型預設改為 OpenRouter GPT-5.4 Mini</strong>：新使用者打開「自訂模型」分頁只需填 OpenRouter API 金鑰就能用，不必自填 API 網址、模型名稱與兩個價格欄位。</li>
+  </ul>
+
   <h2>v1.9.0 <span class="release-date">2026-05-09 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.8.55</p>
 
