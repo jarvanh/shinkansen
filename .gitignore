@@ -40,3 +40,8 @@ DEBUG-BOARD.md
 
 # Claude Code ScheduleWakeup transient lock
 .claude/scheduled_tasks.lock
+
+# macOS Safari Web Extension Xcode project — Phase 1.5 暫時整個 ignore
+# (一次性 `xcrun safari-web-extension-converter` 產出,Phase 2 build pipeline 穩定後
+#  改成 commit `safari-app/` 但 ignore Resources/ + build/。對應 SPEC-PRIVATE §23.5)
+safari-app/

@@ -17,7 +17,22 @@
 
 ## 條目
 
-(目前沒有 pending 條目)
+### v1.9.10:options.js Safari detection 改用 body class + event delegation(2026-05-12)
+
+- **症狀**:macOS Safari Web Extension 真機驗證(Phase 1 上架前 smoke test)發現 options 頁面「翻譯快速鍵」section intro 顯示完整 `chrome://extensions/shortcuts` link(廢 link,Safari 不允許 extension UI 改快速鍵)
+- **修在**:`shinkansen/options/options.js` line 1733-1760 + `shinkansen/options/options.css`(新增 `body.runtime-safari` rule)
+- **root cause**:原 pattern 「per-element addEventListener + inline style」被 `data-i18n-html` 的 applyI18n 用 innerHTML 重設 `<p>` 時整個吹掉(新建 anchor 沒 listener / 沒 inline style)。改用 `document.body.classList.add('runtime-' + platform)` + event delegation 綁 document
+- **為什麼還不能寫測試**:options.js 是 2000+ 行 module 含一堆 top-level side effects,要 unit test detection 邏輯必須先把 detection 抽 pure function(refactor 超出當前 bug fix 範圍);Playwright fixture extension 載入的 runtime URL 固定 `chrome-extension://`,無法 mock 成 `safari-web-extension://` 驗 Safari 分支
+- **連帶 fix**:Chrome / Firefox 上 anchor click listener 也一直被 applyI18n 吹掉(沒人發現,因為 anchor href="#" 點下去靜悄悄沒事),event delegation 一起解
+- **手動 SANITY 紀錄(待 Jimmy Phase 1.5 視覺驗收)**:macOS Safari 真機,Xcode rebuild → Safari reload extension → options 頁面看「翻譯快速鍵」section,預期 anchor 隱藏(CSS `body.runtime-safari .open-shortcuts-link { display: none }` 生效)
+
+### v1.9.10:options.css Safari webkit `<input type="date">` baseline 對齊(2026-05-12)
+
+- **症狀**:用量紀錄頁面 `2026/05/05` date input 在 macOS Safari 上 Y 軸沒跟同 row 的 `00:00` select stepper 對齊(視覺偏上)
+- **修在**:`shinkansen/options/options.css` 加 `body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; align-items: center; height: 100%; }`
+- **root cause**:webkit `::-webkit-datetime-edit-fields-wrapper` 預設不垂直 center(Chrome / Chromium 已 patch 對齊,Safari 沿用上游 webkit 行為)
+- **為什麼還不能寫測試**:webkit baseline 是渲染層差異,Playwright Chromium 跟真實 Safari webkit 行為不同(Chromium 上已對齊,不會 reproduce bug);Playwright `playwright.webkit` 雖是 Safari clone 但跟真實 Safari Web Extension 環境仍有差距。完全靠視覺驗收
+- **手動 SANITY 紀錄(待 Jimmy Phase 1.5 視覺驗收)**:Xcode rebuild → Safari reload → 用量紀錄頁面截圖比對「2026/05/05」、`00 : 00`、`從` / `到` label、`現在時間` button 全部 baseline 對齊
 
 <!-- v1.9.5 清空紀錄(2026-05-11):
   - Google Translate 批次 echo 原文 → 逐筆 retry 補救 → 已補

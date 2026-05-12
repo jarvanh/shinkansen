@@ -292,6 +292,20 @@ a:hover { text-decoration: underline; }
 .usage-date-label input[type="date"] {
   width: 130px;
 }
+/* v1.9.10(2026-05-12 macOS Safari 真機驗證後加):
+   1. .open-shortcuts-link 在 Safari 隱藏 — Safari 不允許 extension UI 改快速鍵
+      (Apple 限制),chrome://extensions/shortcuts 與 about:addons 都打不開,
+      留 link 對 Safari user 是廢資訊
+   2. Safari webkit ::-webkit-datetime-edit-fields-wrapper 預設不垂直 center,
+      導致 <input type="date"> 文字偏上,跟同 row select stepper 對不齊 */
+body.runtime-safari .open-shortcuts-link {
+  display: none;
+}
+body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
 .usage-time-select {
   /* HH / MM select — 寬度自定義（不被全域 select 樣式撐大），24h 制 */
   width: 56px !important;

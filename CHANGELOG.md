@@ -7,6 +7,22 @@
 
 ## v1.9.x
 
+**v1.9.10** — Options 三平台 anchor click listener 修法 + macOS Safari 上架前置補丁。兩條 fix:
+
+**1. Options「翻譯快速鍵」段落 anchor click 修法**(`options/options.js` + `options/options.css`)
+
+原 pattern「per-element addEventListener + inline style」被 `data-i18n-html` 套用 `applyI18n` 用 innerHTML 重設 `<p>` 時整個吹掉(新建 anchor 沒 listener 也沒 inline style)。改用 `document.body.classList.add('runtime-' + platform)` + 綁 document 的 event delegation,anchor 重建後仍有效。
+
+連帶 fix:Chrome / Firefox 環境一直被 i18n 吹掉的 click listener bug — 原本點「鍵位可至 chrome://extensions/shortcuts 變更」link 沒反應(沒人發現,因為 href="#" 點下去靜悄悄)。
+
+**2. macOS Safari 上架前置補丁**(`options/options.css`,2026-05-12 Phase 1 macOS Safari 真機驗證後加)
+
+新增兩條 `body.runtime-safari` CSS rule:
+- `.open-shortcuts-link { display: none }`:Safari 不允許 extension UI 改快速鍵(Apple 限制),`chrome://extensions/shortcuts` 與 `about:addons` 在 Safari 都打不開,留 link 對 Safari user 是廢資訊。
+- `::-webkit-datetime-edit-fields-wrapper { display: flex; align-items: center; height: 100% }`:Safari webkit `<input type="date">` 內部 baseline 預設不垂直 center(Chromium 已 patch,Safari 沿用上游 webkit 行為),用量紀錄 date input 文字跟同 row select stepper 對不齊。
+
+對應 `PENDING_REGRESSION.md` 兩條(路徑 B,webkit baseline 渲染差異 / runtime URL mock 都不易自動化,走視覺驗收)。
+
 **v1.9.9** — YouTube 字幕翻譯沒字幕影片的 toast / 等待狀態 / SPA 導航體驗修法。四條 fix:
 
 **1. 沒字幕影片的 toast 文字**(`content-youtube.js` + `lib/i18n.js`)

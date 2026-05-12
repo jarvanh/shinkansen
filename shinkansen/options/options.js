@@ -1734,30 +1734,32 @@ $('import-input').addEventListener('change', async (e) => {
 // 用 runtime.getURL('') 的 prefix 精確區分 Chrome / Firefox / Safari，
 // 比 globalThis.chrome 偵測更可靠（Firefox 全域 chrome 不存在但 browser 在）。
 //   chrome-extension://    → Chrome / Edge → chrome://extensions/shortcuts
-//   moz-extension://       → Firefox       → about:addons（Firefox 沒有深連到 shortcut UI）
-//   safari-web-extension:// → Safari       → 隱藏連結（Safari 不支援 about:* / chrome://*）
+//   moz-extension://       → Firefox       → about:addons
+//   safari-web-extension:// → Safari       → CSS 隱藏連結(Safari 不允許 extension UI 改快速鍵)
+//
+// v1.9.10(macOS Safari 真機驗證後修):改用「body class + event delegation」
+// 取代「per-element addEventListener + inline style」。原 pattern 有兩個 bug:
+//   1. `data-i18n-html` 的 applyI18n 用 innerHTML 重設 <p>,新建出來的 anchor 沒 listener 也沒 inline style
+//   2. Safari 看到完整 chrome:// 廢 link;Chrome / Firefox 點 link 也沒反應(沒人發現)
+// body class 不會被 innerHTML 影響;event delegation 綁 document,anchor 重建後仍有效。
 const _extUrl = browser.runtime.getURL('');
-// v1.8.22: 改 querySelectorAll(class) 支援多個 chrome://extensions/shortcuts 連結
-// （例：翻譯快速鍵段落 + YouTube 無邊模式段落各放一個）。
-const _shortcutsLinks = document.querySelectorAll('.open-shortcuts-link');
-if (_extUrl.startsWith('moz-extension://')) {
-  _shortcutsLinks.forEach((link) => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      browser.tabs.create({ url: 'about:addons' });
-    });
-  });
-} else if (_extUrl.startsWith('chrome-extension://')) {
-  _shortcutsLinks.forEach((link) => {
-    link.addEventListener('click', (e) => {
-      e.preventDefault();
-      browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
-    });
-  });
-} else {
-  // Safari 或其他：隱藏連結（無法 tabs.create 到內建設定 URL）
-  _shortcutsLinks.forEach((link) => { link.style.display = 'none'; });
-}
+let _shortcutsPlatform = 'safari'; // fallback:無法 deep-link 到內建設定 URL 的環境
+if (_extUrl.startsWith('chrome-extension://')) _shortcutsPlatform = 'chrome';
+else if (_extUrl.startsWith('moz-extension://')) _shortcutsPlatform = 'firefox';
+document.body.classList.add(`runtime-${_shortcutsPlatform}`);
+
+// Event delegation:綁 document,anchor 被 data-i18n-html replace 重建後仍有效
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.open-shortcuts-link');
+  if (!link) return;
+  e.preventDefault();
+  if (_shortcutsPlatform === 'chrome') {
+    browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  } else if (_shortcutsPlatform === 'firefox') {
+    browser.tabs.create({ url: 'about:addons' });
+  }
+  // safari 分支:CSS body.runtime-safari 已隱藏 link,理論上點不到
+});
 
 // ═══════════════════════════════════════════════════════════
 // v1.0.29: 固定術語表 CRUD
