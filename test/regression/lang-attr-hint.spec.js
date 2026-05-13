@@ -116,7 +116,7 @@ test('langHintDecision:target=zh-TW 各 lang 結果', async ({ context, localSer
   await page.close();
 });
 
-test('isCandidateText:Leesp 短簡中 lang=zh 應 return true(被 lang hint 救回,非 SIMP 統計)', async ({
+test('isCandidateText:Leesp 短簡中 lang=zh 應 collected(雙向偵測 + lang hint 雙重保障)', async ({
   context,
   localServer,
 }) => {
@@ -129,12 +129,11 @@ test('isCandidateText:Leesp 短簡中 lang=zh 應 return true(被 lang hint 救�
     (() => {
       const SK = window.__SK;
       SK.STATE.targetLanguage = 'zh-TW';
-      // 對 Leesp 文字直接呼叫 detectTextLang 應誤判 zh-Hant(SIMP 命中率 < 0.2)
+      // v1.9.15 雙向偵測修法後,Leesp 短簡中應已直接判 zh-Hans(不需 lang hint 救援)。
+      // lang hint 仍保留為更極端 case 的備援(極短文字 / 命中率為 0 等)。
       const text = document.querySelector('#tweet-zh-shortsimp').textContent.trim();
       const detected = SK.detectTextLang(text);
       const isAlready = SK.isAlreadyInTarget(text, 'zh-TW');
-      // 但 isCandidateText 用 lang attribute 救回 → return true(該翻)
-      // 透過 collectParagraphsWithStats 走整套 walker + 補抓邏輯間接驗
       const r = window.__shinkansen.collectParagraphsWithStats();
       const leespUnit = r.units.find(u => /品牌大使/.test(u.textPreview || ''));
       return {
@@ -145,9 +144,9 @@ test('isCandidateText:Leesp 短簡中 lang=zh 應 return true(被 lang hint 救�
       };
     })()
   `);
-  expect(result.detected, 'detectTextLang 對短簡中應誤判 zh-Hant(這是 root cause)').toBe('zh-Hant');
-  expect(result.isAlready, 'isAlreadyInTarget zh-TW 對誤判 zh-Hant 應 return true').toBe(true);
-  expect(result.leespCollected, 'isCandidateText 應用 lang=zh hint 救回 → unit 該被 collect').toBe(true);
+  expect(result.detected, 'v1.9.15 雙向偵測後 detectTextLang 應正確判 zh-Hans').toBe('zh-Hans');
+  expect(result.isAlready, 'target=zh-TW 對 zh-Hans 文字應回 false(需翻譯)').toBe(false);
+  expect(result.leespCollected, 'Leesp 短簡中段應 collected(無論是 detect 直接命中還是 lang hint 救回)').toBe(true);
 
   await page.close();
 });

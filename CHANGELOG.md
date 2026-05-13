@@ -7,6 +7,23 @@
 
 ## v1.9.x
 
+**v1.9.15** — SC 文章偵測雙向修正+「P 內含廣告卡片」結構性偵測修補。eet-china.com 等中國技術新聞站常見「SC 文章內文穿插廣告卡片」結構之前會被偵測誤殺,導致段落留在原文不翻;本版兩條 root cause 一起修。
+
+**對使用者可見改動**:
+- 中國技術新聞站(eet-china、半導體相關科技媒體)文章先前約半數段落沒翻譯,留在原文。修補後從 7/17 → 17/17 全段正確翻譯。實測 eet-china.com「摩尔线程一季度扭亏为盈」一文,先前 9 段不翻+1 段被廣告卡片誤殺,修法後全部段落正常翻成繁中
+- 不影響既有翻譯行為(YouTube 字幕、其他英文/日文/韓文網站、PDF 翻譯路徑等)。SANITY 與既有 33 條 detect/lang/target/media-card 相關 regression spec 全綠
+
+**Root cause 1:`detectTextLang` 簡體比例門檻誤判**
+- 原邏輯:`simpCount / cjkCount >= 0.2 → zh-Hans`,否則 zh-Hant。SC 技術新聞含大量人名/機構名/同形字/英數字混排,簡體獨用字佔比常落在 0.10–0.18,被誤判 zh-Hant → `isAlreadyInTarget('zh-TW')` 回 true → 整段跳過
+- 修法:`detectTextLang` 加雙向偵測。新增 `TRADITIONAL_ONLY_CHARS` set,與 `SIMPLIFIED_ONLY_CHARS` 一一對應繁體寫法。在 cjkRatio ≥ 0.5 分支加 short-circuit:`simpCount > 0 && tradCount === 0` 直接判 zh-Hans;`tradCount > 0 && simpCount === 0` 直接判 zh-Hant;兩邊都命中或都沒命中走既有比例 fallback(維持 v0.76 短文補字策略)
+- 規格:`shinkansen/content-detect.js`(`detectTextLang`)+ regression `test/regression/detect-lang-bidirectional.spec.js`(8 case + SANITY)
+
+**Root cause 2:`mediaCardSkip` 誤殺「文字主體+內嵌廣告卡片」結構**
+- 原邏輯:P/block element 內含 img + 直屬子有 CONTAINER_TAGS(DIV/SECTION 等)→ 整段 FILTER_SKIP,讓 walker 進去找葉節點。原意是處理 LI 附件卡片(`LI > A.file-preview + DIV.file-content`),避免 inject 把 img 弄丟
+- 誤殺案例:eet-china P 結構為「P > text + B*5 + text + DIV.partner-content」(廣告卡片含 img + nested div),三條件全命中 → 整段純文字 200+ chars 永遠不翻
+- 修法:加第四條 `directTextLength(el) < 20` 例外。directTextLength 是 el 直屬 text node 文字長度總和。eet-china P 直屬有 200+ chars 文字 → 跳過 mediaCardSkip → 走 element 路徑序列化(slot 化 img 與 nested container)。LI 附件卡片 LI 直屬無 text node(file-preview/file-content 都是 element child),directTextLength=0 仍命中 → 既有行為不破壞
+- 規格:`shinkansen/content-detect.js`(`mediaCardSkip` 條件)+ regression `test/regression/detect-media-card-skip-with-text.spec.js`(2 case 含 LI 附件對照組 + SANITY)
+
 **v1.9.14** — Goodreads 等網站 `<span>text<br>text<br>...</span>` 多段內文偵測修補(Case E)+ Gemini 3.1 Flash Lite 從 preview 轉正式版(model ID rename + 一次性 storage migration)。
 
 **對使用者可見改動**:

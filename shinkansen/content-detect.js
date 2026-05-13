@@ -10,6 +10,18 @@
   // "手冲咖啡进阶指北：冠军参数如何变成你的日常 - 少数派" 23 cjk 內含 8 簡中字,但
   // 原 set 只有「进数变数」4 字命中,4/23 ≈ 0.17 < 0.2 → 整段被當「已是繁中」跳過,
   // 卡片標題永遠不翻。補上常見高頻簡中專屬字,讓覆蓋率夠跨過閾值。
+  //
+  // v1.9.15:雙向偵測。原本只查 SIMPLIFIED_ONLY_CHARS 並用 0.2 門檻判 zh-Hans,
+  // 其餘 fallback 為 zh-Hant — 對於簡體比例低於 0.2 的長 SC 文章(常見:技術新聞、
+  // 含大量人名/機構名/同形字/英數混排的中國科技報導)會誤判為 zh-Hant 整篇跳過。
+  // 真實案例:eet-china.com 的「摩尔线程一季报扭亏」文章,9 段簡體比例落在
+  // 0.109-0.183 之間,全部被誤判 zh-Hant 跳過不翻。
+  //
+  // 雙向修法:新增 TRADITIONAL_ONLY_CHARS(跟 SIMPLIFIED_ONLY_CHARS 一一對映繁體寫法),
+  // detectTextLang 同時計算兩邊命中數。任一邊乾淨即 short-circuit:
+  //   - simpCount > 0 且 tradCount == 0 → zh-Hans(肯定 SC)
+  //   - tradCount > 0 且 simpCount == 0 → zh-Hant(肯定 TC)
+  // 兩邊都命中或都沒命中 → 走既有比例邏輯(維持 v0.76 短文補字策略不破壞)。
   const SIMPLIFIED_ONLY_CHARS = new Set(
     '们这对没说还会为从来东车长开关让认应该头电发问时点学两' +
     '乐义习飞马鸟鱼与单亲边连达远运进过选钱铁错阅难页题风' +
@@ -24,8 +36,26 @@
     //   实實 给給 红紅 终終 经經 历歷 论論 类類 优優 报報
     //   视視 业業 谢謝 该該 带帶 怀懷 听聽 觉覺 总總 单單 紧緊
     //   担擔 创創 际際 际 试試 询詢 综綜 务務 务 优優 优 织織
-    //   钟鐘 销銷 续續 责責 资資 状狀 状 涉涉 注 关關 兴興 离離 离
+    //   钟鐘 销銷 续續 责責 资資 状狀 状 涉涉 注 关關 兴興 離離 离
     '冲阶军参个国几网听觉实给红终经历论类优报视业谢该带怀紧创际综钟销续责资兴'
+  );
+
+  // v1.9.15:TRADITIONAL_ONLY_CHARS 與 SIMPLIFIED_ONLY_CHARS 一一對映繁體寫法。
+  // 用於雙向偵測:文字內含繁體獨用字 + 不含簡體獨用字 = 肯定 zh-Hant。
+  // 對映規則:每一個 SC set 內的字,加入其對應的 TC 寫法。例如:
+  //   们→們、国→國、个→個、业→業、实→實、现→現、经→經、网→網、给→給...
+  // 注意:某些 SC 對應多種 TC 寫法(例如「发」對應「發/髮」),只取常用形;
+  // 此 set 同樣不會 100% 完整,但跟 SIMPLIFIED_ONLY_CHARS 對稱可避免兩邊偏差。
+  const TRADITIONAL_ONLY_CHARS = new Set(
+    '們這對沒說還會為從來東車長開關讓認應該頭電發問時點學兩' +
+    '樂義習飛馬鳥魚與單親邊連達遠運進過選錢鐵錯閱難頁題風' +
+    '飯體辦寫農決況淨減劃動務區醫華壓變號葉員圍圖場壞塊' +
+    '聲處備夠將層歲廣張當徑總戰擔擇擁撥擋據換損搖數斷無舊顯' +
+    '機權條極標樣歡殘畢氣匯溝澤淺溫濕滅靈熱愛狀獨環現蓋監盤' +
+    '碼確離種積稱窮競筆節範藥慮雖見規覽計訂訓許設評識證訴試' +
+    '詳語誤讀調貝負貢財貧購貿費趕遞郵釋銀鎖門間隱隨霧靜須領' +
+    '顏飲驅驗雞麥龍龜齒齊復' +
+    '沖階軍參個國幾網聽覺實給紅終經歷論類優報視業謝該帶懷緊創際綜鐘銷續責資興'
   );
 
   const NON_CHINESE_LANG_PREFIX = /^(ja|ko)\b/i;
@@ -35,11 +65,14 @@
   //     既有 isTraditionalChinese 保留為 alias,避免外部 reference 斷掉(spec / 字幕路徑等)。
   //
   // 回傳:'zh-Hant' | 'zh-Hans' | 'ja' | 'ko' | 'en' | 'other'
-  //   - 'zh-Hant' = 繁體中文(cjk 多 + 沒簡體特徵字)
-  //   - 'zh-Hans' = 簡體中文(cjk 多 + 簡體特徵字比例 ≥ 0.2)
+  //   - 'zh-Hant' = 繁體中文(cjk 多 + 沒簡體特徵字 / 繁體特徵字佔優)
+  //   - 'zh-Hans' = 簡體中文(cjk 多 + 簡體特徵字佔優 / 簡體比例 ≥ 0.2)
   //   - 'ja' / 'ko' = htmlLang 明示
   //   - 'en' = 主要 ASCII letter,cjk 比例 < 0.05
   //   - 'other' = 其他狀況(短文字 / 純符號 / 多語混雜等)
+  //
+  // v1.9.15 雙向偵測:同時統計 simp + trad 命中數,任一邊乾淨優先 short-circuit。
+  // 既有比例 fallback(simp/cjk ≥ 0.2)維持,確保「短文補字策略」(v0.76)不被破壞。
   SK.detectTextLang = function detectTextLang(text) {
     const htmlLang = document.documentElement.lang || '';
     if (/^ja\b/i.test(htmlLang)) return 'ja';
@@ -50,6 +83,7 @@
 
     let cjkCount = 0;
     let simpCount = 0;
+    let tradCount = 0;  // v1.9.15 雙向偵測:繁體特徵字命中數
     let kanaCount = 0;
     let hangulCount = 0;
     let asciiLetterCount = 0;
@@ -59,6 +93,7 @@
       if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0x3400 && code <= 0x4DBF)) {
         cjkCount++;
         if (SIMPLIFIED_ONLY_CHARS.has(ch)) simpCount++;
+        if (TRADITIONAL_ONLY_CHARS.has(ch)) tradCount++;
       } else if ((code >= 0x3040 && code <= 0x309F) || (code >= 0x30A0 && code <= 0x30FF)) {
         kanaCount++;
       } else if (code >= 0xAC00 && code <= 0xD7AF) {
@@ -76,7 +111,11 @@
 
     const cjkRatio = cjkCount / lettersOnly.length;
     if (cjkRatio >= 0.5) {
-      // 主要是 CJK ── 依簡體特徵字比例分繁簡
+      // v1.9.15:雙向強訊號優先 short-circuit。任一邊「乾淨」即直接判定,
+      // 不再受 0.2 比例門檻拖累(對應「SC 文章但簡體比例 < 0.2」誤判案例)。
+      if (simpCount > 0 && tradCount === 0) return 'zh-Hans';
+      if (tradCount > 0 && simpCount === 0) return 'zh-Hant';
+      // 兩邊都命中(混合) / 都沒命中(純人名數字)→ 走既有比例邏輯
       if (cjkCount > 0 && simpCount / cjkCount >= 0.2) return 'zh-Hans';
       return 'zh-Hant';
     }
@@ -746,10 +785,21 @@
         // 這結構直屬子節點是 [IMG, DIV]，不加 heading exclusion 會被 mediaCardSkip 誤殺，
         // 整個 H1 跳過、標題完全不翻。判定條件用 tag name 規範（語意層）而非站點 class，
         // 屬於結構性通則（CLAUDE.md 硬規則 §8）。
+        //
+        // v1.9.15: 排除「P/block element 直屬有實質文字(>= 20 chars)」case。
+        // 真實案例:eet-china 文章 P 結構為「P > text + B*5 + text + DIV.partner-content」
+        // 其中 partner-content 是內嵌廣告卡片(內含 img + nested DIV)。原條件 1+2+3 全命中,
+        // 整段 P 被 mediaCardSkip 誤殺,只有廣告卡片內的 anchor / leaf 被葉節點補抓 →
+        // P 的純文字段(2 個 text node 合計 200+ chars)永遠不翻。
+        // 修法判斷:el 直屬文字長度 >= 20 = 文字才是 el 主體,CONTAINER 子是內嵌附屬區塊,
+        // 整段送翻(走 element 路徑 / fragment 路徑)。
+        // 既有 case 不破壞:LI > A.file-preview + DIV.file-content 結構 LI 直屬無文字
+        // (file-preview / file-content 都是 element child),directTextLength=0 仍命中。
         if (
           !/^H[1-6]$/.test(el.tagName) &&
           el.querySelector('img, picture, video') &&
-          Array.from(el.children).some(c => SK.CONTAINER_TAGS.has(c.tagName))
+          Array.from(el.children).some(c => SK.CONTAINER_TAGS.has(c.tagName)) &&
+          directTextLength(el) < 20
         ) {
           if (stats) stats.mediaCardSkip = (stats.mediaCardSkip || 0) + 1;
           return NodeFilter.FILTER_SKIP;
