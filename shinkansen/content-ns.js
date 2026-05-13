@@ -115,7 +115,7 @@ if (window.__shinkansen_loaded) {
   // （例如從 v1.4.11 升級但使用者還未開過設定頁 / onInstalled 沒觸發）。
   // 內容必須與 lib/storage.js DEFAULT_SETTINGS.translatePresets 保持一致。
   SK.DEFAULT_PRESETS = [
-    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite-preview', label: 'Flash Lite' },
+    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'Flash Lite' },
     { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
     { slot: 3, engine: 'google', model: null, label: 'Google MT' },
   ];

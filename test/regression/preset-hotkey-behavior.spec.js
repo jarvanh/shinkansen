@@ -2,7 +2,7 @@
 //
 // 驗證 content.js 的 `handleTranslatePreset(slot)`：
 //   行為 (a) 閒置：依 preset 的 engine + model 啟動翻譯
-//              - slot 1: Gemini Flash Lite (gemini-3.1-flash-lite-preview)
+//              - slot 1: Gemini Flash Lite (gemini-3.1-flash-lite)
 //              - slot 2: Gemini Flash (gemini-3-flash-preview)
 //              - slot 3: Google Translate (no modelOverride)
 //   行為 (b) 翻譯中：呼叫任一 slot 都 abort（`STATE.abortController.abort()`）
@@ -69,7 +69,7 @@ test('preset-hotkey-behavior: idle + slot 1 → translatePage(Gemini Flash Lite)
   expect(tp.length, `translatePage 應被呼叫 1 次，實際 ${tp.length}`).toBe(1);
   expect(tpg.length, `translatePageGoogle 不應被呼叫，實際 ${tpg.length}`).toBe(0);
   expect(tp[0].slot).toBe(1);
-  expect(tp[0].modelOverride).toBe('gemini-3.1-flash-lite-preview');
+  expect(tp[0].modelOverride).toBe('gemini-3.1-flash-lite');
   expect(tp[0].label).toBe('Flash Lite');
 
   await page.close();

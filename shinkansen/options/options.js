@@ -102,9 +102,9 @@ async function load() {
     const v = overrides[model]?.cachedDiscount;
     el.value = (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) : '');
   };
-  fillOverride('override-lite-input',  'gemini-3.1-flash-lite-preview', 'inputPerMTok');
-  fillOverride('override-lite-output', 'gemini-3.1-flash-lite-preview', 'outputPerMTok');
-  fillOverrideDiscount('override-lite-discount', 'gemini-3.1-flash-lite-preview');
+  fillOverride('override-lite-input',  'gemini-3.1-flash-lite', 'inputPerMTok');
+  fillOverride('override-lite-output', 'gemini-3.1-flash-lite', 'outputPerMTok');
+  fillOverrideDiscount('override-lite-discount', 'gemini-3.1-flash-lite');
   fillOverride('override-flash-input', 'gemini-3-flash-preview', 'inputPerMTok');
   fillOverride('override-flash-output','gemini-3-flash-preview', 'outputPerMTok');
   fillOverrideDiscount('override-flash-discount', 'gemini-3-flash-preview');
@@ -942,7 +942,7 @@ async function _saveImpl() {
         return Object.keys(entry).length > 1 ? entry : null;
       };
       const rows = [
-        collect('gemini-3.1-flash-lite-preview', 'override-lite-input',  'override-lite-output',  'override-lite-discount'),
+        collect('gemini-3.1-flash-lite', 'override-lite-input',  'override-lite-output',  'override-lite-discount'),
         collect('gemini-3-flash-preview',         'override-flash-input', 'override-flash-output', 'override-flash-discount'),
         collect('gemini-3.1-pro-preview',         'override-pro-input',   'override-pro-output',   'override-pro-discount'),
       ].filter(Boolean);

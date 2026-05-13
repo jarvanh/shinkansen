@@ -17,7 +17,7 @@
 export const DEFAULT_GEMINI_CACHED_DISCOUNT = 0.90;
 
 export const MODEL_PRICING = {
-  'gemini-3.1-flash-lite-preview': { inputPerMTok: 0.10, outputPerMTok: 0.30, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
+  'gemini-3.1-flash-lite': { inputPerMTok: 0.10, outputPerMTok: 0.30, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
   'gemini-3-flash-preview':        { inputPerMTok: 0.50, outputPerMTok: 3.00, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
   'gemini-3.1-pro-preview':        { inputPerMTok: 2.00, outputPerMTok: 12.00, cachedDiscount: DEFAULT_GEMINI_CACHED_DISCOUNT },
 };

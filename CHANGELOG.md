@@ -7,6 +7,28 @@
 
 ## v1.9.x
 
+**v1.9.14** — Goodreads 等網站 `<span>text<br>text<br>...</span>` 多段內文偵測修補(Case E)+ Gemini 3.1 Flash Lite 從 preview 轉正式版(model ID rename + 一次性 storage migration)。
+
+**對使用者可見改動**:
+- Goodreads 書評區、部分部落格 / 留言區用 `<span class="...">句 1<br>句 2<br>句 3</span>` 包多段文字的結構,先前整段被偵測漏掉留在原文。修補後正常翻譯。實測 Goodreads 該頁 12 條書評,4 條走此 pattern,全部原本漏抓,修法後全部進偵測
+- Flash Lite 模型 ID 從 `gemini-3.1-flash-lite-preview` 改成 `gemini-3.1-flash-lite`(Google 正式版發佈)。既有使用者設定升級時自動 migration,無須手動操作
+
+**root cause**(SPAN+BR 漏抓):
+- `collectParagraphs` 既有 Case A-D 與 leaf-content 補抓對「tag 是 SPAN、直接子節點只有 text + BR(無非 BR element)」這個結構都沒命中。Case D 要 `hasDirectNonBrElement`、leaf-content `span:not(:has(*))` 要無 element 子,兩條都不符。實際上是結構性 gap
+
+**修法**(`shinkansen/content-detect.js`):
+- 在 Case D 之後加 Case E:tag 是 SPAN + 直接 text + BR child + 無非 BR element 子 + `directTextLength >= 20` + `isCandidateText` 通過 + `!hasAncestorExtracted` → push `{ kind: 'element', el }` 走 Case B 風格的整段 element 注入,讓 BR 透過既有 sentinel 流程序列化,LLM 看到 `\n` 分段對應翻譯
+- 結構性通則(對應硬規則 §8):不靠站點 / class 黑白名單,純結構特徵
+
+**Flash Lite preview → stable**:
+- 11 個 active 檔案的 `gemini-3.1-flash-lite-preview` → `gemini-3.1-flash-lite`(預設 presets / 預設 glossary 模型 / pricing table / tier-limits / options dropdown / i18n label 等)
+- `lib/storage.js` 加 `migrateGeminiFlashLiteModelIfNeeded`,`getSettings()` 載入時自動掃 `geminiConfig.model` / `glossary.model` / `ytSubtitle.model` / `translatePresets[*].model` / `pricing` key,偵測舊 ID 改寫成新 ID 並寫回 sync。一次性,沒舊 ID 短路 no-op
+
+**測試**:
+- 新增 `test/regression/detect-inline-span-with-br.spec.js`(3 條:Goodreads 正向 / 短文字負向 / 巢狀 SPAN dedup 負向 + SANITY 紀錄)
+- 新增 `test/regression/fixtures/inline-span-with-br.html`
+- 新增 `test/unit/gemini-flash-lite-model-migration.spec.js`(6 條鎖 migration 各欄位行為)
+
 **v1.9.13** — open Shadow DOM 內容偵測與翻譯支援(web component / Datawrapper 等)。
 
 **對使用者可見改動**:

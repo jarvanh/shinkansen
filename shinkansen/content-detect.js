@@ -647,6 +647,31 @@
                 seen.add(f.startNode);
                 if (stats) stats.inlineMixedSpan = (stats.inlineMixedSpan || 0) + 1;
               }
+            } else if (
+              // Case E (v1.9.14):inline-style 容器 SPAN 直接含 text + BR(無非 BR element 子)。
+              // 典型案例:Goodreads ReviewText 用 <span class="Formatted">句 1<br>句 2<br>句 3</span>
+              // 包多段評論文字;部落格 / 留言區也常見「<span>text<br>text<br>...</span>」結構。
+              // Case A 因 !containsBlockDescendant 失敗;Case B 因 SPAN 不在 CONTAINER_TAGS 失敗;
+              // Case C 因 SPAN 不在 CONTAINER_TAGS 失敗;Case D 因 !hasDirectNonBrElement 失敗;
+              // leaf-content-span 補抓 (span:not(:has(*))) 因 SPAN 有 BR 子失敗 → 過去整段被 SKIP。
+              // 結構特徵:tag 是 SPAN、有直接 text、有 BR child、無非 BR element 子、無 block
+              // 子孫、文字長度 >= 20、isCandidateText 通過。整段當 element 單元(Case B 風格,
+              // 而非 fragment),讓 BR 透過既有 sentinel 流程序列化,LLM 看到 \n 分段對應翻譯。
+              // hasAncestorExtracted 防巢狀 SPAN 重複抽(同 Case D)。
+              // 與 Case D 互斥:Case D 要 hasDirectNonBrElement、本案明確 !hasDirectNonBrElement。
+              el.tagName === 'SPAN' &&
+              !seen.has(el) &&
+              !hasAncestorExtracted(el, fragmentExtracted) &&
+              hasDirectText &&
+              hasBrChild(el) &&
+              !hasDirectNonBrElement(el) &&
+              directTextLength(el) >= 20 &&
+              isCandidateText(el)
+            ) {
+              results.push({ kind: 'element', el });
+              seen.add(el);
+              fragmentExtracted.add(el);
+              if (stats) stats.spanWithBr = (stats.spanWithBr || 0) + 1;
             }
           }
           return NodeFilter.FILTER_SKIP;

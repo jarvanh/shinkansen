@@ -25,7 +25,7 @@ test.describe('presetsRequireGemini', () => {
 
   test('預設組合(2 gemini + 1 google) → true', () => {
     expect(presetsRequireGemini([
-      { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite-preview' },
+      { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite' },
       { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview' },
       { slot: 3, engine: 'google', model: null },
     ])).toBe(true);

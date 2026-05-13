@@ -89,7 +89,7 @@ test.describe('getPricingForModel: override 優先', () => {
   test('其他 model 即使有 override entry 也不影響 fallback 內建表', () => {
     const settings = {
       modelPricingOverrides: {
-        'gemini-3.1-flash-lite-preview': { inputPerMTok: 99, outputPerMTok: 99 },
+        'gemini-3.1-flash-lite': { inputPerMTok: 99, outputPerMTok: 99 },
       },
     };
     // 查詢 flash 不該被 lite 的 override 影響

@@ -429,10 +429,10 @@ export const DEFAULT_SETTINGS = {
     timeoutMs: 60000,                  // 術語表請求逾時（毫秒），超過則 fallback（v0.70: 60s）
     maxTerms: 200,                     // 術語表上限條目數
     // v1.7.2: 術語表獨立模型。空字串表示「跟主翻譯同一個 model」（舊行為）;
-    // 預設 'gemini-3.1-flash-lite-preview' — 術語抽取任務簡單，Flash Lite 比 Flash 快
+    // 預設 'gemini-3.1-flash-lite' — 術語抽取任務簡單，Flash Lite 比 Flash 快
     // 1.5-3 倍且便宜 5 倍。實測啟用 glossary 時 EXTRACT_GLOSSARY 用 Flash 耗時
     // 1.5-7.4 秒，改用 Flash Lite 預期可壓到 0.5-2.5 秒。
-    model: 'gemini-3.1-flash-lite-preview',
+    model: 'gemini-3.1-flash-lite',
   },
   domainRules: { whitelist: [] },
   autoTranslate: false,
@@ -549,7 +549,7 @@ export const DEFAULT_SETTINGS = {
   // label 顯示於 options 頁（未來 toast 也可用）。
   // 行為：閒置按 → 啟動對應 preset；翻譯中按 → abort；已翻譯按任意 → restorePage。
   translatePresets: [
-    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite-preview', label: 'Flash Lite' },
+    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'Flash Lite' },
     { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
     { slot: 3, engine: 'google', model: null, label: 'Google MT' },
   ],
@@ -670,6 +670,54 @@ async function migrateApiKeyIfNeeded(syncSaved) {
   await browser.storage.sync.remove('apiKey');
 }
 
+// 一次性遷移(v1.9.14):Gemini 3.1 Flash Lite 從 preview 轉正式版,model ID 由
+// 'gemini-3.1-flash-lite-preview' 改成 'gemini-3.1-flash-lite'。掃使用者 saved
+// 設定裡所有可能存舊 ID 的欄位(geminiConfig.model / glossary.model / ytSubtitle.model /
+// translatePresets[*].model / pricing key)並改寫,避免 dropdown 選不到 / pricing 查不到。
+// 改寫後 storage.sync.set 寫回去,下次 getSettings 直接讀新 ID。
+export const GEMINI_FLASH_LITE_OLD_ID = 'gemini-3.1-flash-lite-preview';
+export const GEMINI_FLASH_LITE_NEW_ID = 'gemini-3.1-flash-lite';
+export async function migrateGeminiFlashLiteModelIfNeeded(syncSaved) {
+  if (!syncSaved) return;
+  const OLD = GEMINI_FLASH_LITE_OLD_ID;
+  const NEW = GEMINI_FLASH_LITE_NEW_ID;
+  const patch = {};
+
+  if (syncSaved.geminiConfig && syncSaved.geminiConfig.model === OLD) {
+    patch.geminiConfig = { ...syncSaved.geminiConfig, model: NEW };
+  }
+  if (syncSaved.glossary && syncSaved.glossary.model === OLD) {
+    patch.glossary = { ...syncSaved.glossary, model: NEW };
+  }
+  if (syncSaved.ytSubtitle && syncSaved.ytSubtitle.model === OLD) {
+    patch.ytSubtitle = { ...syncSaved.ytSubtitle, model: NEW };
+  }
+  if (Array.isArray(syncSaved.translatePresets)) {
+    let touched = false;
+    const updated = syncSaved.translatePresets.map((p) => {
+      if (p && p.engine === 'gemini' && p.model === OLD) {
+        touched = true;
+        return { ...p, model: NEW };
+      }
+      return p;
+    });
+    if (touched) patch.translatePresets = updated;
+  }
+  if (syncSaved.pricing && Object.prototype.hasOwnProperty.call(syncSaved.pricing, OLD)) {
+    const mergedPricing = { ...syncSaved.pricing };
+    if (!Object.prototype.hasOwnProperty.call(mergedPricing, NEW)) {
+      mergedPricing[NEW] = mergedPricing[OLD];
+    }
+    delete mergedPricing[OLD];
+    patch.pricing = mergedPricing;
+  }
+
+  if (Object.keys(patch).length === 0) return;
+  await browser.storage.sync.set(patch);
+  // 同步寫進 syncSaved,本次 getSettings merge 立即看到新值(避免 cache 半輪寫舊讀新)
+  Object.assign(syncSaved, patch);
+}
+
 // v1.8.14: settings 熱路徑 cache。
 // 之前每筆 debugLog / LOG_USAGE 都呼叫 getSettings() → 每秒上百次 storage IPC。
 // 現在用 module-scope cache + storage.onChanged invalidate,SW 重啟後 module 重 init
@@ -700,6 +748,7 @@ export async function getSettingsCached() {
 export async function getSettings() {
   const saved = await browser.storage.sync.get(null);
   await migrateApiKeyIfNeeded(saved);
+  await migrateGeminiFlashLiteModelIfNeeded(saved);
   // 從 local 讀 apiKey（v0.62 起的正規位置）
   const { [API_KEY_STORAGE_KEY]: apiKey = '' } = await browser.storage.local.get(API_KEY_STORAGE_KEY);
   // P1: 先決定 targetLanguage,後面 forbiddenTerms 預設依此分歧。

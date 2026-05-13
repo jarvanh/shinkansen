@@ -23,7 +23,7 @@ test('pickThinkingConfig: Pro 模型回傳 low(API 強制 thinking-only,minimal 
 test('pickThinkingConfig: Flash 系列回傳 minimal(thoughts=0 不額外計費)', () => {
   expect(pickThinkingConfig('gemini-3-flash-preview')).toEqual({ thinkingLevel: 'minimal' });
   expect(pickThinkingConfig('gemini-3.1-flash-preview')).toEqual({ thinkingLevel: 'minimal' });
-  expect(pickThinkingConfig('gemini-3.1-flash-lite-preview')).toEqual({ thinkingLevel: 'minimal' });
+  expect(pickThinkingConfig('gemini-3.1-flash-lite')).toEqual({ thinkingLevel: 'minimal' });
   expect(pickThinkingConfig('gemini-2.5-flash')).toEqual({ thinkingLevel: 'minimal' });
   expect(pickThinkingConfig('gemini-2.5-flash-lite')).toEqual({ thinkingLevel: 'minimal' });
 });
