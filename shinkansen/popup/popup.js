@@ -6,7 +6,7 @@ import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
 import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
 import { isWorthNotifying } from '../lib/update-check.js';
-import { pickPopupSlot, presetsRequireGemini } from '../lib/storage.js';
+import { pickPopupSlot, presetsRequireGemini, TARGET_LANGUAGES, DEFAULT_SETTINGS } from '../lib/storage.js';
 
 // P2 (v1.8.60):i18n. lib/i18n.js 在 popup.html 內以普通 <script> 早於本 module 載入,
 // 因此 window.__SK.i18n API 必然存在
@@ -221,9 +221,18 @@ async function init() {
   // v0.62 起：autoTranslate 仍走 sync（跨裝置同步），apiKey 改走 local（不同步）
   // P2 (v1.8.60): UI 語系獨立於 targetLanguage,讀 uiLanguage('auto' / 三語)後
   // 透過 I18N.getUiLanguage('auto') 解析為 navigator.language 推導值
-  const { autoTranslate = false, displayMode = 'single', translatePresets = [], uiLanguage } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'uiLanguage']);
+  const { autoTranslate = false, displayMode = 'single', translatePresets = [], uiLanguage, targetLanguage } = await browser.storage.sync.get(['autoTranslate', 'displayMode', 'translatePresets', 'uiLanguage', 'targetLanguage']);
   const { apiKey = '' } = await browser.storage.local.get(['apiKey']);
   $('auto').checked = autoTranslate;
+
+  // 翻譯目標語言 picker(saved 不在合法集合 → 走 DEFAULT_SETTINGS.targetLanguage,
+  // 跟 options 載入相同 fallback)。targetLanguage 是總 switch,影響所有翻譯路徑,
+  // 切了立刻寫 storage(下方 change handler),不需要按「儲存」按鈕。
+  if ($('targetLanguage')) {
+    const tl = (typeof targetLanguage === 'string' && TARGET_LANGUAGES.includes(targetLanguage))
+      ? targetLanguage : DEFAULT_SETTINGS.targetLanguage;
+    $('targetLanguage').value = tl;
+  }
 
   // P2: UI i18n — 寫入 _currentTarget(現在叫「ui dict 語系」更貼切,但變數名沿用),
   // 套 applyI18n,訂閱 storage.uiLanguage 變動
@@ -320,6 +329,19 @@ $('translate-btn').addEventListener('click', async () => {
 
 $('auto').addEventListener('change', async (e) => {
   await browser.storage.sync.set({ autoTranslate: e.target.checked });
+});
+
+// 翻譯目標語言切換 — 立刻寫 storage(content script 下一次翻譯讀新值生效;
+// 舊翻譯快取仍保留,使用者可手動清快取重新翻譯)。non-集合值 fallback DEFAULT
+// 避免損壞值寫進 storage。
+$('targetLanguage').addEventListener('change', async (e) => {
+  const v = e.target.value;
+  const tl = TARGET_LANGUAGES.includes(v) ? v : DEFAULT_SETTINGS.targetLanguage;
+  try {
+    await browser.storage.sync.set({ targetLanguage: tl });
+  } catch (err) {
+    console.error('[shinkansen] targetLanguage set failed', err);
+  }
 });
 
 // v1.5.0: 顯示模式切換 toggle

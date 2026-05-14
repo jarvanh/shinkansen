@@ -28,7 +28,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 
 ## Features
 
-- **Multi-language target + multi-language UI**: translate into 8 languages — Traditional Chinese (Taiwan) / Simplified Chinese (China) / English / Japanese / Korean / Spanish / French / German. Pick in the "Target language" panel of options; all translation paths (web / PDF / YouTube subtitles) share this setting. Popup, settings page, web-translation progress toast, and PDF document reader UI are all available in all 8 UI languages — independent picker, defaults to your browser locale.
+- **Multi-language target + multi-language UI**: translate into 8 languages — Traditional Chinese (Taiwan) / Simplified Chinese (China) / English / Japanese / Korean / Spanish / French / German. Pick in the "Translate to" dropdown inside the toolbar popup; all translation paths (web / PDF / YouTube subtitles) share this setting. Popup, settings page, web-translation progress toast, and PDF document reader UI are all available in all 8 UI languages — independent picker, defaults to your browser locale.
 - **Instant Translation**: see the page start turning into your target language within 1 second of pressing translate — no waiting for the entire batch to come back before any text is updated (Gemini only).
 - **Preserves page layout**: text is replaced in place; fonts, sizes, colors, and links are kept; bold and italics survive untouched.
 - **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the popup. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
@@ -294,7 +294,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.9.13 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.9.16 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

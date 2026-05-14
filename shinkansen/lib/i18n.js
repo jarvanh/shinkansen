@@ -135,11 +135,9 @@
     'options.uiLanguage.heading': '介面語言',
     'options.uiLanguage.label': '擴充功能介面顯示',
     'options.uiLanguage.auto': '自動（跟瀏覽器設定）',
-    'options.uiLanguage.hint': '控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟下方「翻譯目標語言」獨立，互不影響',
+    'options.uiLanguage.hint': '控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟工具列圖示中的「翻譯目標語言」獨立，互不影響',
 
-    'options.target.heading': '翻譯目標語言',
-    'options.target.label': '翻譯成',
-    'options.target.hint.html': '所有翻譯模式（網頁、PDF、YouTube 字幕）共用此目標語言。變更後新翻譯結果會用新語言；舊翻譯快取仍保留，可點工具列圖示再點「清除快取」重新翻譯',
+    'popup.label.targetLanguage': '翻譯成',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -902,11 +900,9 @@
     'options.uiLanguage.heading': '界面语言',
     'options.uiLanguage.label': '扩展功能界面显示',
     'options.uiLanguage.auto': '自动（跟浏览器设置）',
-    'options.uiLanguage.hint': '控制工具栏图标、设置页、翻译进度通知等扩展功能界面字符串的语言。跟下方「翻译目标语言」独立，互不影响',
+    'options.uiLanguage.hint': '控制工具栏图标、设置页、翻译进度通知等扩展功能界面字符串的语言。跟工具栏图标中的「翻译目标语言」独立，互不影响',
 
-    'options.target.heading': '翻译目标语言',
-    'options.target.label': '翻译成',
-    'options.target.hint.html': '所有翻译模式（网页、PDF、YouTube 字幕）共用此目标语言。变更后新翻译结果会用新语言；旧翻译缓存仍保留，可点工具栏图标再点「清除缓存」重新翻译',
+    'popup.label.targetLanguage': '翻译成',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -1667,11 +1663,9 @@
     'options.uiLanguage.heading': 'Interface language',
     'options.uiLanguage.label': 'Extension UI shown in',
     'options.uiLanguage.auto': 'Automatic (follow browser locale)',
-    'options.uiLanguage.hint': 'Controls the language of the toolbar icon, settings page, translation progress toast, and other extension UI strings. Independent from the "Translation target language" setting below',
+    'options.uiLanguage.hint': 'Controls the language of the toolbar icon, settings page, translation progress toast, and other extension UI strings. Independent from the "Translation target language" picker in the toolbar popup',
 
-    'options.target.heading': 'Translation target language',
-    'options.target.label': 'Translate to',
-    'options.target.hint.html': 'All translation modes (web, PDF, YouTube subtitles) share this target language. New translations after change use the new language; old cache is preserved—click the toolbar icon then "Clear cache" to re-translate',
+    'popup.label.targetLanguage': 'Translate to',
 
     // ── options API Key ───────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -2432,11 +2426,9 @@
     'options.uiLanguage.heading': 'インターフェース言語',
     'options.uiLanguage.label': '拡張機能 UI の表示',
     'options.uiLanguage.auto': '自動（ブラウザ設定に従う）',
-    'options.uiLanguage.hint': 'ツールバーアイコン、設定ページ、翻訳進捗通知など拡張機能 UI の言語を制御します。下の「翻訳目標言語」とは独立しており、互いに影響しません',
+    'options.uiLanguage.hint': 'ツールバーアイコン、設定ページ、翻訳進捗通知など拡張機能 UI の言語を制御します。ツールバーポップアップの「翻訳目標言語」とは独立しており、互いに影響しません',
 
-    'options.target.heading': '翻訳目標言語',
-    'options.target.label': '翻訳先',
-    'options.target.hint.html': 'すべての翻訳モード（ウェブページ、PDF、YouTube 字幕）でこの目標言語を共有します。変更後は新しい翻訳に新言語が適用され、既存のキャッシュは保持されます。再翻訳するにはツールバーアイコンから「キャッシュをクリア」してください',
+    'popup.label.targetLanguage': '翻訳先',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -3197,11 +3189,9 @@
     'options.uiLanguage.heading': '인터페이스 언어',
     'options.uiLanguage.label': '확장 프로그램 UI 표시',
     'options.uiLanguage.auto': '자동 (브라우저 설정 따르기)',
-    'options.uiLanguage.hint': '도구 모음 아이콘, 설정 페이지, 번역 진행 알림 등 확장 프로그램 UI의 언어를 제어합니다. 아래 "번역 대상 언어"와 독립적이며 서로 영향을 주지 않습니다',
+    'options.uiLanguage.hint': '도구 모음 아이콘, 설정 페이지, 번역 진행 알림 등 확장 프로그램 UI의 언어를 제어합니다. 도구 모음 팝업의 "번역 대상 언어"와 독립적이며 서로 영향을 주지 않습니다',
 
-    'options.target.heading': '번역 대상 언어',
-    'options.target.label': '번역할 언어',
-    'options.target.hint.html': '모든 번역 모드(웹 페이지, PDF, YouTube 자막)가 이 대상 언어를 공유합니다. 변경 후 새 번역에 새 언어가 적용되며 기존 캐시는 유지됩니다. 다시 번역하려면 도구 모음 아이콘에서 "캐시 지우기"를 클릭하세요',
+    'popup.label.targetLanguage': '번역할 언어',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -3961,11 +3951,9 @@
     'options.uiLanguage.heading': 'Idioma de la interfaz',
     'options.uiLanguage.label': 'Mostrar interfaz de la extensión en',
     'options.uiLanguage.auto': 'Automático (según el navegador)',
-    'options.uiLanguage.hint': 'Controla el idioma de la interfaz de la extensión: icono de la barra de herramientas, página de ajustes, notificaciones de progreso de traducción, etc. Independiente del "Idioma de destino" de abajo, no se afectan entre sí',
+    'options.uiLanguage.hint': 'Controla el idioma de la interfaz de la extensión: icono de la barra de herramientas, página de ajustes, notificaciones de progreso de traducción, etc. Independiente del "Idioma de destino" en el popup de la barra de herramientas, no se afectan entre sí',
 
-    'options.target.heading': 'Idioma de destino',
-    'options.target.label': 'Traducir a',
-    'options.target.hint.html': 'Todos los modos de traducción (web, PDF, subtítulos de YouTube) comparten este idioma de destino. Tras cambiarlo, las nuevas traducciones usan el nuevo idioma; la caché antigua se conserva. Para retraducir haz clic en el icono de la barra de herramientas y luego en "Borrar caché"',
+    'popup.label.targetLanguage': 'Traducir a',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -4725,11 +4713,9 @@
     'options.uiLanguage.heading': 'Langue de l\'interface',
     'options.uiLanguage.label': 'Affichage de l\'interface de l\'extension',
     'options.uiLanguage.auto': 'Automatique (selon le navigateur)',
-    'options.uiLanguage.hint': 'Contrôle la langue de l\'interface : icône de la barre d\'outils, page de paramètres, notifications de progression. Indépendant de la « langue cible » ci-dessous, sans effet l\'un sur l\'autre',
+    'options.uiLanguage.hint': 'Contrôle la langue de l\'interface : icône de la barre d\'outils, page de paramètres, notifications de progression. Indépendant de la « langue cible » dans le popup de la barre d\'outils, sans effet l\'un sur l\'autre',
 
-    'options.target.heading': 'Langue cible',
-    'options.target.label': 'Traduire en',
-    'options.target.hint.html': 'Tous les modes de traduction (page web, PDF, sous-titres YouTube) partagent cette langue cible. Après changement, les nouvelles traductions utilisent la nouvelle langue ; le cache existant est conservé. Pour retraduire, cliquez sur l\'icône de la barre d\'outils puis sur « Effacer le cache »',
+    'popup.label.targetLanguage': 'Traduire en',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',
@@ -5489,11 +5475,9 @@
     'options.uiLanguage.heading': 'Oberflächensprache',
     'options.uiLanguage.label': 'Anzeige der Erweiterungs-UI',
     'options.uiLanguage.auto': 'Automatisch (Browsereinstellung folgen)',
-    'options.uiLanguage.hint': 'Steuert die Sprache der Erweiterungs-UI: Symbol in der Symbolleiste, Einstellungsseite, Übersetzungsfortschritts-Benachrichtigungen usw. Unabhängig von der „Übersetzungs-Zielsprache" unten, beeinflussen sich nicht gegenseitig',
+    'options.uiLanguage.hint': 'Steuert die Sprache der Erweiterungs-UI: Symbol in der Symbolleiste, Einstellungsseite, Übersetzungsfortschritts-Benachrichtigungen usw. Unabhängig von der „Übersetzungs-Zielsprache" im Symbolleisten-Popup, beeinflussen sich nicht gegenseitig',
 
-    'options.target.heading': 'Übersetzungs-Zielsprache',
-    'options.target.label': 'Übersetzen nach',
-    'options.target.hint.html': 'Alle Übersetzungsmodi (Webseite, PDF, YouTube-Untertitel) verwenden diese Zielsprache. Nach Änderung verwenden neue Übersetzungen die neue Sprache; der bestehende Cache bleibt erhalten. Zum erneuten Übersetzen klicke auf das Symbol in der Symbolleiste und dann auf „Cache leeren"',
+    'popup.label.targetLanguage': 'Übersetzen nach',
 
     // ── options API Key ─────────────────────────────────
     'options.apiKey.heading': 'Gemini API Key',

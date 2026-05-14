@@ -7,6 +7,30 @@
 
 ## v1.9.x
 
+**v1.9.16** — 翻譯目標語言選擇從 Options 搬到工具列圖示彈出視窗（popup）+ `release.sh` 一次 build 同時產 Chrome zip 與 macOS Safari `.pkg`。
+
+**對使用者可見改動**:
+- 點工具列圖示出現的彈出視窗多了「翻譯成」選單，直接切目標語言不用再進設定頁；Options 內原本「翻譯目標語言」section 移除
+- 切了立刻生效，下次翻譯就是新語言；舊翻譯快取仍保留（沒清），要重新翻譯舊頁面點工具列圖示再點「清除快取」
+- 介面語言（`uiLanguage`）與翻譯目標（`targetLanguage`）維持解綁：popup 切目標語言不會改 UI 字串，UI 字串切換仍在 Options「介面語言」section
+
+**架構整理**:
+- `popup.html` / `popup.js` 新增 `#targetLanguage` `<select>` + change handler（直寫 `storage.sync.targetLanguage`,non-集合值 fallback `DEFAULT_SETTINGS.targetLanguage`)
+- `options.js` 移除 `#targetLanguage` DOM 操作，改 module-level `_currentTargetLang` cache 配 `storage.onChanged` listener:popup 寫 target → options 內 prompt textarea hint / 語言偵測 label / 禁用詞表預設三條 refresher 即時 reapply,options 開著時不用 reload
+- i18n key:`options.target.label` → `popup.label.targetLanguage`(8 語 rename);`options.target.heading` / `options.target.hint.html` 刪除；`options.uiLanguage.hint` 8 語都把「下方」改成「工具列圖示中的」（指向 popup picker)
+
+**Release 流程**:
+- `tools/release.sh` 改寫：`git commit / tag / push` 前先跑 `./tools/safari-build.sh`，一次 build 同時產出 Chrome / Firefox（走 GitHub Actions zip）與 macOS Safari `.pkg`（本機 xcodebuild archive，上 Mac App Store 用）
+- pbxproj `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` 同步進 commit，確保 manifest.json 與 Xcode build settings 永遠同 commit、不 drift
+- Safari build 失敗（沒 Xcode / 沒簽章）會在 git commit 前 abort，不留半 release 狀態；緊急只發 Chrome 走 `SKIP_SAFARI=1 ./tools/release.sh "..."`
+- 結束 echo 同時印兩條 artifact 路徑 + Transporter 上傳指令
+
+**Regression**:
+- 新 `test/regression/popup-target-language-picker.spec.js`(3 case:picker 載入反映 storage / change 寫 storage / options 不再有 `#targetLanguage`）含 SANITY 紀錄
+- 更新 `i18n-forbidden-target-aware.spec.js`(2 case)+ `i18n-ui-language-pref.spec.js`(1 case）改用「直接寫 storage」模擬 popup 行為（picker 不再在 options)
+
+---
+
 **v1.9.15** — SC 文章偵測雙向修正+「P 內含廣告卡片」結構性偵測修補。eet-china.com 等中國技術新聞站常見「SC 文章內文穿插廣告卡片」結構之前會被偵測誤殺,導致段落留在原文不翻;本版兩條 root cause 一起修。
 
 **對使用者可見改動**:

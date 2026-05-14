@@ -65,6 +65,7 @@ button.secondary:hover { background: #f0f4ff; }
   border-radius: 6px;
   font-size: 12px;
   background: #fff;
+  max-width: 60%;
 }
 
 .status {

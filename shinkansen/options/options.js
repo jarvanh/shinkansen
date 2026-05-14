@@ -59,6 +59,12 @@ function applyTierToInputs(tier, model) {
 
 const $ = (id) => document.getElementById(id);
 
+// 翻譯目標語言已從 options 搬到 popup(v1.9.16),options 不再有 #targetLanguage
+// picker,但 options 內多處仍需「當前 target」決定 prompt textarea / 語言偵測 label /
+// 禁用詞表預設。改成 module-level cache:load() 從 storage 讀進來,storage.onChanged
+// listener 監聽 popup 寫入後同步更新並 reapply refresher。
+let _currentTargetLang = DEFAULT_SETTINGS.targetLanguage;
+
 async function load() {
   const saved = await browser.storage.sync.get(null);
   // v0.62 起：apiKey 改存 browser.storage.local，不跟 Google 帳號同步
@@ -71,12 +77,11 @@ async function load() {
     apiKey: localApiKey,
   };
   $('apiKey').value = s.apiKey;
-  // P1 (v1.8.59): 翻譯目標語言 picker。saved 不在合法集合 → 用 DEFAULT_SETTINGS.targetLanguage(會走 detect 推導)
-  if ($('targetLanguage')) {
-    const tl = (typeof s.targetLanguage === 'string' && TARGET_LANGUAGES.includes(s.targetLanguage))
-      ? s.targetLanguage : DEFAULTS.targetLanguage;
-    $('targetLanguage').value = tl;
-  }
+  // v1.9.16:翻譯目標語言 picker 已搬到 popup,options 內不再有 #targetLanguage element。
+  // 仍需要「當前 target」決定 prompt textarea / 語言偵測 label / 禁用詞表預設,
+  // 改成讀進 module-level _currentTargetLang(saved 不在合法集合 → DEFAULT_SETTINGS.targetLanguage)。
+  _currentTargetLang = (typeof s.targetLanguage === 'string' && TARGET_LANGUAGES.includes(s.targetLanguage))
+    ? s.targetLanguage : DEFAULTS.targetLanguage;
   // v1.6.15: 全域 #model dropdown 已移除，不再從 storage 載入到 UI。
   // settings.geminiConfig.model 仍保留 storage 結構（避免 migration）但 UI 不顯示。
   $('serviceTier').value = s.geminiConfig.serviceTier;
@@ -560,12 +565,13 @@ function _renderToastOpacityLabel(value) {
 
 // v1.8.61:語言偵測 toggle 的 label / hint 是「跳過{lang}網頁」這類動態字串。
 // {lang} 從 lang.${TARGET} dict 動態注入(共 8 個 target 對應的 native name)。
-// 三處呼叫:init i18n block + subscribeUiLanguageChange callback + targetLanguage picker change。
+// v1.9.16:呼叫點從「targetLanguage picker change」改為 storage.onChanged listener,
+// 因為 picker 搬到 popup;當前 target 從 module-level _currentTargetLang 讀。
 function _renderLangDetectLabels() {
   const labelEl = document.getElementById('skipTargetPageLabel');
   const hintEl = document.getElementById('skipTargetPageHint');
   if (!labelEl && !hintEl) return;
-  const tl = $('targetLanguage')?.value || 'zh-TW';
+  const tl = _currentTargetLang;
   const lang = _t(`lang.${tl}`);
   if (labelEl) labelEl.textContent = _t('options.langDetect.skipInTarget', { lang });
   if (hintEl)  hintEl.textContent  = _t('options.langDetect.skipInTargetHint', { lang });
@@ -793,11 +799,10 @@ async function _saveImpl() {
   // v1.6.16: 同樣讀回 settings.pricing（後備路徑單價 UI 也移除了）。
   const existing = await browser.storage.sync.get(['geminiConfig', 'pricing']);
   const existingModel = existing.geminiConfig?.model || DEFAULTS.geminiConfig.model;
-  // P1: targetLanguage 從 picker 讀,不在合法集合走 DEFAULTS(避免損壞值寫進 storage)
-  const targetLanguageValue = TARGET_LANGUAGES.includes($('targetLanguage')?.value)
-    ? $('targetLanguage').value : DEFAULTS.targetLanguage;
+  // v1.9.16:targetLanguage 已搬到 popup,由 popup 的 change handler 直接寫 storage,
+  // options「儲存設定」不寫此欄位避免回灌 stale 值(使用者在 options 開著時於 popup 改 target,
+  // 然後在 options 按儲存設定 — 不該把 _currentTargetLang module 變數寫回)。
   const settings = {
-    targetLanguage: targetLanguageValue,
     geminiConfig: {
       model: existingModel,
       serviceTier: $('serviceTier').value,
@@ -1062,7 +1067,7 @@ function _syncPromptTextareaToTarget(textareaId, hintId, getEffectiveFn) {
   const textarea = $(textareaId);
   const hint = $(hintId);
   if (!textarea) return;
-  const tl = $('targetLanguage')?.value || 'zh-TW';
+  const tl = _currentTargetLang;
   const cur = textarea.value || '';
   // 所有 target 各自的 effective default 對 cur 跑 isPromptUnchangedFromDefault(走 storage.js
   // normalize 邏輯,容忍歷史小幅修字,例如 v1.8.59 的「中國大陸」→「中國」)。
@@ -1087,29 +1092,22 @@ function updateAllPromptTargetHints() {
   _syncPromptTextareaToTarget('cp-systemPrompt', 'cp-systemPrompt-target-hint', getEffectiveSystemPrompt);
 }
 
-// 切 target picker 時觸發兩件事:
-//   1. 立刻寫 storage(targetLanguage 是總 switch,影響所有翻譯路徑,期望切了立刻生效;
-//      不該等使用者按「儲存設定」── 不然他切完關 options 直接翻譯,storage 仍是舊值,
-//      背景翻譯路徑讀錯 target,翻成原來那個語言)
-//   2. 同步 4 個 prompt textarea / 警示 hint
-$('targetLanguage')?.addEventListener('change', async () => {
-  const v = $('targetLanguage').value;
-  const tl = TARGET_LANGUAGES.includes(v) ? v : DEFAULTS.targetLanguage;
-  try {
-    await browser.storage.sync.set({ targetLanguage: tl });
-  } catch (err) {
-    console.error('[shinkansen] targetLanguage set failed', err);
-  }
+// v1.9.16:翻譯目標語言 picker 搬到 popup,options 改用 storage.onChanged 監聽。
+// popup 寫 targetLanguage → 這裡同步更新 _currentTargetLang + 三條 refresher
+// (prompt textarea hint / 語言偵測 label / 禁用詞表預設)。如此使用者在 options
+// 開著的同時於 popup 切 target,options 內畫面立刻反映新 target,不需 reload。
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !changes.targetLanguage) return;
+  const nv = changes.targetLanguage.newValue;
+  if (typeof nv !== 'string' || !TARGET_LANGUAGES.includes(nv)) return;
+  if (nv === _currentTargetLang) return;
+  _currentTargetLang = nv;
   updateAllPromptTargetHints();
-  // v1.8.61:target 改變,語言偵測 label / hint 內含 {lang} 也要更新
   _renderLangDetectLabels();
-  // P2 (v1.8.60):translation target 改變不再連動 UI dict(UI 由獨立 #uiLanguage
-  // picker 控制)。但若使用者選 'auto'(uiLanguage)而 navigator.language 跟新 target
-  // 同語系,UI dict 看起來會「跟著切」是巧合,非設計;真正的 UI 切換見 #uiLanguage handler。
   // 禁用詞清單依 target 重對:目前內容 == DEFAULT_FORBIDDEN_TERMS(視為未客製)
   // 切到非 zh-TW → 清空(en/zh-CN 不需要禁用中國用語);切到 zh-TW → 還原預設。
   // 已客製化(內容跟 DEFAULT 不同)不動,保留使用者手動編輯結果。
-  _syncForbiddenTermsToTarget(tl);
+  _syncForbiddenTermsToTarget(nv);
 });
 
 // P2 (v1.8.60):#uiLanguage picker change handler — 立刻寫 storage(UI 跟著切),
@@ -1168,8 +1166,8 @@ $('save-youtube').addEventListener('click', save);
 // Debug 分頁
 $('save-debug').addEventListener('click', save);
 $('yt-reset-prompt').addEventListener('click', () => {
-  // P1: 依當前 target picker 給對應 effective default(zh-TW 走原 DEFAULT_SUBTITLE,其他走 UNIVERSAL 注入後)
-  const tl = $('targetLanguage')?.value || 'zh-TW';
+  // P1: 依當前 target 給對應 effective default(zh-TW 走原 DEFAULT_SUBTITLE,其他走 UNIVERSAL 注入後)
+  const tl = _currentTargetLang;
   $('ytSystemPrompt').value = getEffectiveSubtitleSystemPrompt(tl, '');
   markDirty(); // 值已變更，標記為未儲存
   // v1.8.61:reset 後 textarea 已等於 effective default,但「你已客製化」hint 還殘留
@@ -1180,7 +1178,7 @@ $('yt-reset-prompt').addEventListener('click', () => {
 // v1.5.8: 自訂模型「重置為預設 Prompt」按鈕——把 textarea 重設為 Gemini 同款 DEFAULT_SYSTEM_PROMPT
 // P1 (v1.8.59):依當前 target picker 給對應 effective default(zh-TW 走 DEFAULT,其他走 UNIVERSAL 注入後)
 $('cp-reset-prompt')?.addEventListener('click', () => {
-  const tl = $('targetLanguage')?.value || 'zh-TW';
+  const tl = _currentTargetLang;
   $('cp-systemPrompt').value = getEffectiveSystemPrompt(tl, '');
   markDirty();
   // v1.8.61:同 yt-reset-prompt,reset 後 hint 應自動消失
@@ -1201,9 +1199,9 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('topP').value            = D.geminiConfig.topP;
   $('topK').value            = D.geminiConfig.topK;
   $('maxOutputTokens').value = D.geminiConfig.maxOutputTokens;
-  // P1: 依當前 target picker 給對應 effective default(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
+  // P1: 依當前 target 給對應 effective default(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
   {
-    const tl = $('targetLanguage')?.value || 'zh-TW';
+    const tl = _currentTargetLang;
     $('systemInstruction').value = getEffectiveSystemPrompt(tl, '');
   }
   // 計價

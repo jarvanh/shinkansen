@@ -1,12 +1,32 @@
 #!/bin/bash
 # 用法: ./tools/release.sh "改了什麼"
-# 自動 commit、tag、push，GitHub Actions 會自動建 Release 並附 zip
+#       SKIP_SAFARI=1 ./tools/release.sh "改了什麼"   # 緊急只發 Chrome / Firefox
+#
+# 一次 build 同時產出兩條 release artifact:
+#   - Chrome / Firefox: commit + tag + push,GitHub Actions 自動建 Release zip
+#   - macOS Safari    : 本機跑 xcodebuild archive 產 shinkansen-macos-v<ver>.pkg(repo root)
+#                       Mac App Store 上架要手動用 Transporter 上傳該 .pkg
+#
+# Safari build 失敗(沒 Xcode / 沒簽章 / pbxproj 不存在)會在 git commit 前 abort,
+# 不留半 release 狀態。
 
 set -e
 cd "$(dirname "$0")/.."
 
 VERSION=$(grep '"version"' shinkansen/manifest.json | head -1 | sed 's/[^0-9.]//g')
 MSG="${1:-v${VERSION}}"
+
+# Safari build 必先過(syncs Resources + bumps pbxproj MARKETING_VERSION /
+# CURRENT_PROJECT_VERSION + 產 .pkg)。pbxproj 變更會由下面 git add -A 一起 commit,
+# 讓 manifest 版本跟 Xcode 版本永遠同 commit,杜絕兩邊 drift。
+# 真要只發 Chrome(例如 Xcode 暫時不能跑)走 SKIP_SAFARI=1。
+if [ "${SKIP_SAFARI:-0}" = "1" ]; then
+  echo "⚠️  SKIP_SAFARI=1 — 跳過 Safari build,只發 Chrome / Firefox。"
+  echo "    下次 Safari release 要手動跑 ./tools/safari-build.sh 補上同步。"
+else
+  echo "==> Safari build(同步 Resources / bump pbxproj / xcodebuild archive)..."
+  ./tools/safari-build.sh
+fi
 
 # v1.6.5: minor/major bump 時提醒檢查 RELEASE_HIGHLIGHTS 是否要更新
 # patch bump 不會觸發 welcome notice，跳過提醒
@@ -43,5 +63,9 @@ git tag "v${VERSION}"
 git push && git push --tags
 
 echo ""
-echo "v${VERSION} 已推送，Release 會在 1 分鐘內自動建立。"
-echo "https://github.com/jimmysu0309/shinkansen/releases"
+echo "v${VERSION} 已推送，GitHub Release 會在 1 分鐘內自動建立。"
+echo "  Chrome / Firefox: https://github.com/jimmysu0309/shinkansen/releases"
+if [ "${SKIP_SAFARI:-0}" != "1" ]; then
+  echo "  macOS Safari    : shinkansen-macos-v${VERSION}.pkg(用 Transporter 上傳 App Store Connect)"
+  echo "                    open -a Transporter shinkansen-macos-v${VERSION}.pkg"
+fi
