@@ -101,6 +101,23 @@
             out += '【*' + idx + '】';
             continue;
           }
+          // 與 LLM serializer 同 pattern:inline <button> 走 paired marker 保留 wrapper。
+          // BUTTON 在 HARD_EXCLUDE_TAGS 是給 walker 擋以 button 為主的 widget 用,
+          // 段落內 inline 用法必須先於 HARD_EXCLUDE 開洞(同 inline CODE 例外位置)。
+          // degrade 模式下走純文字路徑(跟下方 GT_INLINE_TAGS 在 degrade 下的行為一致)。
+          // reuseNode 機制同 LLM path 註解:保留 React fiber → click 能展開。
+          if (child.tagName === 'BUTTON' && SK.hasSubstantiveContent(child)) {
+            if (!degrade) {
+              const idx = slots.length;
+              slots.push({ reuseNode: true, node: child });
+              out += '【' + idx + '】';
+              walk(child.childNodes);
+              out += '【/' + idx + '】';
+            } else {
+              walk(child.childNodes);
+            }
+            continue;
+          }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
           if (child.tagName === 'BR') { out += '\u0001'; continue; }
           // Atomic 元素（footnote sup 等）→ 單一標記，不翻內容
@@ -205,6 +222,26 @@
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
             out += PH_OPEN + '*' + idx + PH_CLOSE;
+            continue;
+          }
+          // Inline <button>(段落內含 text 的 SPA「read more」/「show more」展開觸發
+          // 按鈕,Medium 留言、X / 論壇截斷 preview 等)走 paired placeholder 保留
+          // wrapper class 與 children 結構,內文走子節點遞迴翻譯。HARD_EXCLUDE_TAGS
+          // 含 BUTTON 是給 walker 擋以 button 為主的 widget 用,段落內 inline 用法
+          // 必須先於 HARD_EXCLUDE 開洞(同 inline CODE 例外模式)。
+          //
+          // reuseNode 標記:存原 button DOM node reference(不 cloneNode),deserialize
+          // 時 reuse 原 node + 清 children 重填譯文,讓 React 18 root-level event
+          // delegation 透過 button.__reactFiber$ 仍能找到 onClick handler — 點擊才能
+          // 觸發框架展開動作。cloneNode(false) 會創新 node,失去 fiber/props 私有 key,
+          // React 找不到 handler → click dead(實際使用者回報:Medium 留言「more」
+          // 按鈕視覺保留但點下沒展開)。
+          if (child.tagName === 'BUTTON' && SK.hasSubstantiveContent(child)) {
+            const idx = slots.length;
+            slots.push({ reuseNode: true, node: child });
+            out += PH_OPEN + idx + PH_CLOSE;
+            walk(child.childNodes);
+            out += PH_OPEN + '/' + idx + PH_CLOSE;
             continue;
           }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
@@ -411,7 +448,25 @@
         const idx = Number(m[1]);
         const inner = m[2];
         const slot = slots[idx];
-        if (slot && slot.nodeType === Node.ELEMENT_NODE) {
+        if (slot && slot.reuseNode && slot.node) {
+          // reuseNode 機制(目前用於 inline BUTTON):直接 reuse 原 DOM node,
+          // 不 cloneNode → 原 node 上的 React private key(__reactFiber$ / __reactProps$)
+          // 與 native listener 保留,React 18 root-level event delegation 仍能透過
+          // fiber lookup 找到 onClick → 點擊才能觸發框架展開動作。
+          //
+          // 副作用考量:slot.node 此時仍是原 DOM tree 的成員,frag.appendChild 會把它
+          // detach;後續 inject 階段 el.replaceChildren(frag) 會把它放回原 el(同 parent),
+          // 等同 detach + re-attach。React fiber 對「同 node detach/re-attach」是寬容的,
+          // event delegation 仍 work。LLM 重複輸出同 idx 的情況由 selectBestSlotOccurrences
+          // 提前 dedup,parseSegment 看到時每個 idx 至多一次,不會出現「同 node 同時放
+          // 兩處」的 DOM 例外。
+          const reuse = slot.node;
+          while (reuse.firstChild) reuse.removeChild(reuse.firstChild);
+          const innerFrag = parseSegment(inner, slots, matchedRef);
+          reuse.appendChild(innerFrag);
+          frag.appendChild(reuse);
+          matchedRef.count++;
+        } else if (slot && slot.nodeType === Node.ELEMENT_NODE) {
           const shell = slot.cloneNode(false);
           const innerFrag = parseSegment(inner, slots, matchedRef);
           shell.appendChild(innerFrag);

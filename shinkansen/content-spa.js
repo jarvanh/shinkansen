@@ -53,13 +53,17 @@
     try {
       const { domainRules } = await browser.storage.sync.get('domainRules');
       if (!domainRules?.whitelist?.length) return false;
-      const hostname = location.hostname;
-      return domainRules.whitelist.some(pattern => {
+      const hostname = location.hostname.toLowerCase();
+      // exact-match 兩邊都去掉開頭 `www.` 再比,讓 `culpium.com` 與 `www.culpium.com` 互通
+      // (要匹配所有子網域請用 `*.culpium.com`)。
+      const normHost = hostname.replace(/^www\./, '');
+      return domainRules.whitelist.some(raw => {
+        const pattern = String(raw).toLowerCase();
         if (pattern.startsWith('*.')) {
           const suffix = pattern.slice(1);
           return hostname === pattern.slice(2) || hostname.endsWith(suffix);
         }
-        return hostname === pattern;
+        return normHost === pattern.replace(/^www\./, '');
       });
     } catch (err) {
       SK.sendLog('warn', 'system', 'isDomainWhitelisted: failed to read storage', { error: err.message });
@@ -496,14 +500,35 @@
     // 在 1 秒內,每秒一次 Content Guard sweep 跟不上)。在 mutation callback 入口
     // 直接查 m.target 是否為 STATE.translatedHTML 的 key 且 innerHTML 已偏離,
     // 當下回寫譯文。比每秒 sweep 高頻且 inline。
-    restoreOnInnerMutation(mutations);
-
-    // detect-replacement:框架把整個被翻譯的 element detach 換上一個渲染原文的新 element。
-    // Content Guard 對這 case 失效——舊 el !isConnected 直接 continue,新 el 不在
-    // STATE.translatedHTML 也認不出。跨 mutation 累積 removed + added 對比文字(真實
-    // framework 常用 mutation A: remove only / mutation B: add only 的拆分模式),
-    // 找到配對就把譯文 reapply 到新 element 並把 STATE 的 key 從舊 el 轉到新 el。
-    reapplyOnDetachReattach(mutations);
+    //
+    // v1.9.17 F2: 改為 RAF defer 並加 user interaction blackout。Sync inline 改 DOM
+    // 會在 React commit phase 期間 fire(MutationObserver callback 在 microtask queue,
+    // 緊接著 React 同步 commit task),React 後續 reconcile 找不到原 child → throw
+    // NotFoundError → React Router fallback render 500 page(Medium 留言點「更多」
+    // 展開的真實 case)。RAF 在下次 paint 之前 fire,React commit 必已完。Blackout
+    // window 內(click 後 2s)完全跳過 sync restore,讓 framework 自己處理新內容,
+    // Shinkansen 等 armSpaObserverRescan debounce 1s + idle gate 完整 inject path。
+    const win = typeof window !== 'undefined' ? window : null;
+    const deferredRestore = () => {
+      const sinceInteraction = Date.now() - (SK._lastInteractionT || 0);
+      if (sinceInteraction < SK.USER_INTERACTION_BLACKOUT_MS) {
+        // Blackout 內:不 sync restore。Framework re-render 自己處理 DOM,
+        // 之後 armSpaObserverRescan 走 idle gate 安全 inject 新譯文。
+        return;
+      }
+      restoreOnInnerMutation(mutations);
+      // detect-replacement:框架把整個被翻譯的 element detach 換上一個渲染原文的新 element。
+      // Content Guard 對這 case 失效——舊 el !isConnected 直接 continue,新 el 不在
+      // STATE.translatedHTML 也認不出。跨 mutation 累積 removed + added 對比文字(真實
+      // framework 常用 mutation A: remove only / mutation B: add only 的拆分模式),
+      // 找到配對就把譯文 reapply 到新 element 並把 STATE 的 key 從舊 el 轉到新 el。
+      reapplyOnDetachReattach(mutations);
+    };
+    if (win && typeof win.requestAnimationFrame === 'function') {
+      win.requestAnimationFrame(deferredRestore);
+    } else {
+      deferredRestore();
+    }
 
     const hasNewContent = mutations.some(m =>
       m.type === 'childList' && m.addedNodes.length > 0 &&
@@ -542,6 +567,14 @@
   function triggerSpaObserverRescan() {
     if (spaObserverDebounceTimer) { clearTimeout(spaObserverDebounceTimer); spaObserverDebounceTimer = null; }
     if (spaObserverMaxWaitTimer) { clearTimeout(spaObserverMaxWaitTimer); spaObserverMaxWaitTimer = null; }
+    // v1.9.17: reset idle gate,讓本次 rescan 引發的 inject 重新等 framework idle。
+    // SPA rescan 是 framework re-render 觸發(典型:使用者點 React button 展開內容),
+    // 此時 React 還在 commit / reconciliation phase,sync inject 會撞 removeChild
+    // NotFoundError(Medium 留言「more」點下後變 500 page 的真實 case)。等 RIC idle
+    // = React commit 已完。本檔 line 540 SPA_OBSERVER_DEBOUNCE_MS 1 秒 debounce 不夠,
+    // 因 React streaming 多階段 commit 可能跨多個 microtask + fetch 延遲。
+    SK._idleGateReached = false;
+    SK._idleGatePromise = null;
     spaObserverRescan();
   }
   // 給 spec / debug 用

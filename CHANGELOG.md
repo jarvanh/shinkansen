@@ -7,6 +7,27 @@
 
 ## v1.9.x
 
+**v1.9.17** — 自動翻譯白名單 `www.` 前綴互通、Medium 留言「more」展開按鈕翻譯保留視覺與可點性、Medium / Substack 等 React 18 SPA 站開啟自動翻譯不再顯示「500 系統出狀況」。
+
+**對使用者可見改動**:
+- 「自動翻譯指定網站」名單輸入 `culpium.com` 也會匹配 `www.culpium.com`(對稱方向也成立),大小寫亦會 normalize 比對
+- Medium 留言區點「more」展開按鈕,翻譯後維持底線樣式 + 點下可正常展開全文(過去 button 整顆消失只留純文字「更多」)
+- Medium / Substack 等 React 18 SSR + streaming hydration 站,自動翻譯時不再顯示「很抱歉,我們系統這邊出了點狀況」(實際是 React Router 看到 reconciliation 衝突 fallback 出來的 client-side error page,不是 server 給的)
+  - 首次翻譯前固定等 1.5 秒讓 React 完成 hydration,reload 後可短暫看到原文再被替換為譯文
+  - 點互動按鈕觸發框架 re-render 的 2 秒內,翻譯守護不主動改 DOM,避開重新進入 race
+- **已知限制**(暫不修):在 Medium / Substack 等 React 18 站點,翻譯完*再點* reply / clap / 留言互動按鈕仍可能撞 React reconcile race 顯示 500 error page。reload page 即可恢復;或對該站切換為「雙語對照」顯示模式徹底避免。業界共識在 single mode 覆蓋翻譯下沒有 100% 解法,Shinkansen 已修到 reload / cache hit 路徑不再 500。
+
+**內部改動**:
+- `SK.isDomainWhitelisted` exact-match 兩邊 strip 開頭 `www.` 再比 + 大小寫 normalize
+- Inline `<button>` 加入 serialize walker 的 paired placeholder 例外(同 inline `<code>` pattern),HARD_EXCLUDE_TAGS 仍含 BUTTON 擋以 button 為主的 widget,只對段落內 inline 用法開洞
+- BUTTON slot 改用 `{ reuseNode: true, node: child }` 保留原 DOM node reference(不 cloneNode),deserialize 時清 children 重填譯文 — 原 node 保留 `__reactFiber$` / `__reactProps$` 私有 key,React 18 root-level event delegation 仍能 dispatch onClick
+- `SK.ensureFirstInjectIdle` 首次 inject 用固定 `setTimeout(1500ms)` 等 framework hydration(`requestIdleCallback` 對「React 完成 hydration」沒鑒別力,實測 20-50ms 就 fire 完全沒擋到 race)
+- 加 `SK.USER_INTERACTION_BLACKOUT_MS = 2000` + `mousedown/pointerdown/keydown` capture listener,`onSpaObserverMutations` 內 sync DOM modify(`restoreOnInnerMutation` + `reapplyOnDetachReattach`)改 `requestAnimationFrame` defer,blackout window 內完全跳過
+- `triggerSpaObserverRescan` 入口 reset `_idleGateReached / _idleGatePromise`,讓 SPA rescan 引發的 inject 重新走完整 wait
+- Spec 環境 `navigator.webdriver === true` 時 idle gate bypass,既有 streaming spec mock timing 不受 1500ms wait 影響
+
+**新增測試**:`whitelist-www-prefix` / `idle-gate-first-inject` / `user-interaction-blackout` jest-unit + `inject-inline-button-preserve` regression spec(3 條斷言含 React fiber identity preservation)。
+
 **v1.9.16** — 翻譯目標語言選擇從 Options 搬到工具列圖示彈出視窗（popup）+ `release.sh` 一次 build 同時產 Chrome zip 與 macOS Safari `.pkg`。
 
 **對使用者可見改動**:

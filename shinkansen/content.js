@@ -403,24 +403,35 @@
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
         // v1.8.39: dedup broadcast — 同一份譯文 broadcast 到所有 dup 原始位置，
         // 讓 60 段重複的 image alt 只翻 1 次但 inject 60 個 element。
-        let injectedThisBatch = 0;
-        translations.forEach((tr, j) => {
-          const sanitized = SK.sanitizeMarkers(tr);
-          const uniqueText = job.texts[j];
-          const allOrigIndices = origIndicesByText.get(uniqueText);
-          if (allOrigIndices && allOrigIndices.length > 0) {
-            for (const origIdx of allOrigIndices) {
-              SK.injectTranslation(units[origIdx], sanitized, slotsList[origIdx]);
+        // v1.9.17: 首次 inject 等 idle gate(機制同 streaming path,見 content-ns.js
+        // SK.ensureFirstInjectIdle 註解)。本路徑是 non-streaming retry / fallback,
+        // 整批一次性 inject,只需在進入 forEach 前 await 一次 gate。
+        const performBatchInject = () => {
+          let injectedThisBatch = 0;
+          translations.forEach((tr, j) => {
+            const sanitized = SK.sanitizeMarkers(tr);
+            const uniqueText = job.texts[j];
+            const allOrigIndices = origIndicesByText.get(uniqueText);
+            if (allOrigIndices && allOrigIndices.length > 0) {
+              for (const origIdx of allOrigIndices) {
+                SK.injectTranslation(units[origIdx], sanitized, slotsList[origIdx]);
+                injectedThisBatch++;
+              }
+            } else {
+              // 防呆 fallback:dedup map 沒命中（理論上不會發生）→ 退回單次 inject
+              SK.injectTranslation(job.units[j], sanitized, job.slots[j]);
               injectedThisBatch++;
             }
-          } else {
-            // 防呆 fallback:dedup map 沒命中（理論上不會發生）→ 退回單次 inject
-            SK.injectTranslation(job.units[j], sanitized, job.slots[j]);
-            injectedThisBatch++;
-          }
-        });
-        done += injectedThisBatch;
-        if (onProgress) onProgress(done, total, hadAnyMismatch);
+          });
+          done += injectedThisBatch;
+          if (onProgress) onProgress(done, total, hadAnyMismatch);
+        };
+        if (SK._idleGateReached) {
+          performBatchInject();
+        } else {
+          await SK.ensureFirstInjectIdle();
+          performBatchInject();
+        }
       } catch (err) {
         const elapsed = Date.now() - t0;
         SK.sendLog('error', 'translate', `batch ${batchIdx + 1}/${jobs.length} FAILED`, { elapsed, start: job.start, error: err.message });
@@ -480,26 +491,37 @@
           // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
           const tr = SK.sanitizeMarkers(message.payload.translation);
           if (typeof idx === 'number' && idx >= 0 && idx < job.texts.length && tr) {
-            try {
-              // v1.8.39: dedup broadcast(streaming 路徑）— 同 text 翻譯結果 broadcast 到所有 dup unit
-              const uniqueText = job.texts[idx];
-              const allOrigIndices = origIndicesByText.get(uniqueText);
-              if (allOrigIndices && allOrigIndices.length > 0) {
-                for (const origIdx of allOrigIndices) {
-                  SK.injectTranslation(units[origIdx], tr, slotsList[origIdx]);
+            // v1.9.17: 首次 inject 等 framework hydration idle(idle gate 機制見
+            // content-ns.js SK.ensureFirstInjectIdle 註解)。idle reach 後直接通過,
+            // 後續 segments 不再等。translate API call 與 hydration 並行跑,通常
+            // API 比 hydration 慢 → 等 API 回來時 gate 早已 reach,wall-time 不變。
+            const performInject = () => {
+              try {
+                // v1.8.39: dedup broadcast(streaming 路徑）— 同 text 翻譯結果 broadcast 到所有 dup unit
+                const uniqueText = job.texts[idx];
+                const allOrigIndices = origIndicesByText.get(uniqueText);
+                if (allOrigIndices && allOrigIndices.length > 0) {
+                  for (const origIdx of allOrigIndices) {
+                    SK.injectTranslation(units[origIdx], tr, slotsList[origIdx]);
+                    done += 1;
+                  }
+                } else {
+                  SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
                   done += 1;
                 }
-              } else {
-                SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
-                done += 1;
+                if (onProgress) onProgress(done, total, hadAnyMismatch);
+                if (firstSegmentInjectedT === null) {
+                  firstSegmentInjectedT = Date.now() - t0;
+                  SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream first segment injected`, { streamId, idx, t: firstSegmentInjectedT });
+                }
+              } catch (injectErr) {
+                SK.sendLog('warn', 'translate', 'streaming inject failed', { idx, error: injectErr.message });
               }
-              if (onProgress) onProgress(done, total, hadAnyMismatch);
-              if (firstSegmentInjectedT === null) {
-                firstSegmentInjectedT = Date.now() - t0;
-                SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream first segment injected`, { streamId, idx, t: firstSegmentInjectedT });
-              }
-            } catch (injectErr) {
-              SK.sendLog('warn', 'translate', 'streaming inject failed', { idx, error: injectErr.message });
+            };
+            if (SK._idleGateReached) {
+              performInject();
+            } else {
+              SK.ensureFirstInjectIdle().then(performInject);
             }
           }
         } else if (message.type === 'STREAMING_DONE') {
@@ -1258,6 +1280,11 @@
         totalChars += response.usage?.chars || 0;
         totalCacheHits += response.usage?.cacheHits || 0;
         const translations = response.result;
+        // v1.9.17: 首次 inject 等 idle gate(機制同 streaming path,見 content-ns.js
+        // SK.ensureFirstInjectIdle 註解)。
+        if (!SK._idleGateReached) {
+          await SK.ensureFirstInjectIdle();
+        }
         translations.forEach((tr, j) => {
           const unit = job.units[j];
           if (!tr) return;

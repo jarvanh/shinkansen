@@ -120,6 +120,63 @@ if (window.__shinkansen_loaded) {
     { slot: 3, engine: 'google', model: null, label: 'Google MT' },
   ];
 
+  // ─── v1.9.17: 首次 inject hydration wait gate ──────────
+  // SPA framework(Medium React 18 + streaming hydration / Substack / Notion 等)
+  // page reload 後 hydration 期間,Shinkansen auto-translate 早於 hydration 完成
+  // 就 inject DOM → 移走 React reconciliation 認為仍掛在 parent 的 child →
+  // React 內部 removeChild 找不到 child → throw NotFoundError → React Router
+  // error boundary fallback render「500 系統出狀況」error page。
+  //
+  // 修法:首次 inject 用固定 setTimeout 等待。
+  //
+  // 為什麼不用 requestIdleCallback:RIC 只看主執行緒 frame 之間的 microsecond 級
+  // idle window,跟 React 完成 hydration / commit 沒 sync。Medium hydration 跨多
+  // task 跑,每 task 間 RIC 立刻 fire,實質上 idle gate 20-50ms 就 reach,完全沒擋
+  // 到 inject 跟 React commit 的 race(2026-05-14 實測:使用者完全感覺不到 delay,
+  // 仍 500)。固定 setTimeout 是粗暴但確定的等法。
+  //
+  // 只 gate 「首次 inject」一次,後續 segment / batch / re-translate 全部直接通過,
+  // 對 wall-time 影響只在首次。手動 Alt+S 也走此 gate(_idleGateReached 預設 false),
+  // 但 user 主動觸發時 hydration 通常已完,1.5s 是冗餘 — 可接受成本。
+  SK.FIRST_INJECT_HYDRATION_WAIT_MS = 1500;
+  SK._idleGateReached = false;
+  SK._idleGatePromise = null;
+
+  // v1.9.17 F2: user interaction blackout window — click / 按鍵後 2 秒內 framework
+  // re-render 旺盛期,Shinkansen 任何 sync restore 都可能撞 React commit phase
+  // removeChild race。此 timestamp 由本檔 init 區 mousedown/pointerdown/keydown
+  // capture listener 維護;content-spa.js onSpaObserverMutations 內 sync DOM modify
+  // 對 blackout window 內 mutation 完全跳過(讓 framework 自己處理,Shinkansen 等
+  // armSpaObserverRescan debounce 1s 後 + idle gate 走完整 inject path)。
+  SK.USER_INTERACTION_BLACKOUT_MS = 2000;
+  SK._lastInteractionT = 0;
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    const markInteraction = () => { SK._lastInteractionT = Date.now(); };
+    // capture phase + passive: 確保最早 fire,不阻塞網頁 listener。
+    ['mousedown', 'pointerdown', 'keydown'].forEach((evt) => {
+      window.addEventListener(evt, markInteraction, { capture: true, passive: true });
+    });
+  }
+  SK.ensureFirstInjectIdle = function ensureFirstInjectIdle() {
+    if (SK._idleGateReached) return Promise.resolve();
+    if (SK._idleGatePromise) return SK._idleGatePromise;
+    // Playwright / WebDriver 自動化環境跳過 gate,避免 1500ms wait 拖累既有 spec 的 mock
+    // timing 期待。Production 環境 navigator.webdriver 為 false / undefined,正常走 gate。
+    if (typeof navigator !== 'undefined' && navigator.webdriver === true) {
+      SK._idleGateReached = true;
+      return Promise.resolve();
+    }
+    SK._idleGatePromise = new Promise((resolve) => {
+      const markDone = () => {
+        SK._idleGateReached = true;
+        SK._idleGatePromise = null;
+        resolve();
+      };
+      setTimeout(markDone, SK.FIRST_INJECT_HYDRATION_WAIT_MS);
+    });
+    return SK._idleGatePromise;
+  };
+
   // ─── v0.88: 統一 Log 系統 ─────────────────────────────
   SK.sendLog = function sendLog(level, category, message, data) {
     try {
@@ -545,6 +602,10 @@ if (window.__shinkansen_loaded) {
       // serializer 後面會跳過整顆，grey background 一併消失)。必須先於 HARD_EXCLUDE。
       if (n.tagName === 'CODE'
           && !(n.parentElement && n.parentElement.tagName === 'PRE')) return true;
+      // Inline <button>(段落內含 text 的 SPA read-more 觸發按鈕)同 inline CODE 模式:
+      // BUTTON 在 HARD_EXCLUDE_TAGS 擋 form / dialog widget,inline 用法必須開洞保留。
+      // 必須先於 HARD_EXCLUDE 檢查。
+      if (n.tagName === 'BUTTON' && SK.hasSubstantiveContent(n)) return true;
       if (SK.HARD_EXCLUDE_TAGS.has(n.tagName)) continue;
       if (SK.isAtomicPreserve(n)) return true;
       if (SK.isPreservableInline(n)) return true;
