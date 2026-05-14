@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Developer ID distribution；產出公證後的 .pkg 給 GitHub Releases 手動下載安裝 -->
+    <key>method</key>
+    <string>developer-id</string>
+
+    <!-- 同 MAS 用同一個 Apple Developer Team(同 Bundle ID app.shinkansen.macos) -->
+    <key>teamID</key>
+    <string>PR6NG3PH45</string>
+
+    <!-- Manual signing，明確 pin cert，避免 Xcode 走 auto -->
+    <key>signingStyle</key>
+    <string>manual</string>
+
+    <!-- App + Extension binary 用 Developer ID Application cert(非 MAS 的 3rd Party 系列) -->
+    <key>signingCertificate</key>
+    <string>Developer ID Application: Zhimin Su (PR6NG3PH45)</string>
+
+    <!-- 注意:Developer ID method 的 exportArchive 不會產 .pkg,只產 Developer ID
+         Application cert 簽過的 .app。要拿 Developer ID Installer 簽的 .pkg 給公開下載,
+         safari-build.sh 在 exportArchive 之後另跑 productbuild 把 .app 包進 .pkg。
+         此 key 在 Developer ID method 下被 xcodebuild 忽略,留著只當文件用。 -->
+    <key>installerSigningCertificate</key>
+    <string>Developer ID Installer: Zhimin Su (PR6NG3PH45)</string>
+
+    <!-- Developer ID 不需 provisioning profile(MAS 才需);省略整 dict 讓 xcodebuild
+         自動推導,避免「找不到 profile」誤報。Apple 官方範例此 method 也是省略此 key -->
+
+    <!-- 留 .pkg 在本機,接下來 notarize + staple -->
+    <key>destination</key>
+    <string>export</string>
+
+    <!-- App Store 才上傳 dSYM,Developer ID export 此 key 會被忽略 -->
+</dict>
+</plist>

@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
-# safari-build.sh — Build & archive macOS Safari Web Extension
+# safari-build.sh — Build & archive macOS Safari Web Extension(MAS 軌)
 #
 # 用途:
-#   把 shinkansen/ 內容同步進 safari-app/Shinkansen/Shinkansen Extension/Resources/,
-#   同步版本號到 project.pbxproj 的 MARKETING_VERSION / CURRENT_PROJECT_VERSION,
-#   跑 xcodebuild archive + exportArchive 產出 Mac App Store 上傳用的 .pkg。
+#   把 shinkansen/ 同步進 Resources/、bump pbxproj 版本、跑 xcodebuild archive,
+#   export 出 Mac App Store 上傳用的 .pkg。
 #
-# 用法:
-#   ./tools/safari-build.sh
+#   產出: shinkansen-macos-v<version>-mas.pkg(repo root)
+#   用法: open -a Transporter shinkansen-macos-v<version>-mas.pkg
+#
+# 雙軌:本 script 只跑 MAS 軌(快,每次 release.sh 跑這條)。
+#      Developer ID 公開下載 .pkg 走獨立的 tools/safari-build-devid.sh
+#      (含 notarize,Apple cloud 動輒 ~30-60 分鐘,不適合綁進 release flow)。
 #
 # 需求:
 #   - macOS + Xcode 15+
 #   - jq 1.6+
-#   - Apple Developer Program 啟用 + Mac Apps signing certificate 已裝在 Keychain
-#   - safari-app/Shinkansen/Shinkansen.xcodeproj 已存在(若無,先跑 safari-bootstrap.sh)
-#   - tools/safari-export-options.plist 內 teamID 已填入
-#
-# 輸出:
-#   shinkansen-macos-v<version>.pkg(放 repo root)
+#   - 3rd Party Mac Developer Application/Installer cert 已裝 Keychain
+#   - tools/safari-export-options.plist 內 teamID 已填
+#   - safari-app/Shinkansen/Shinkansen.xcodeproj 已存在(無則先跑 safari-bootstrap.sh)
 #
 # Source drift forcing function:
-#   結束前跑 `diff -r --brief shinkansen/ safari-app/Shinkansen/Shinkansen\ Extension/Resources/`,
-#   non-empty 視為 source drift,中止 release。
+#   結束前跑 diff -r --brief shinkansen/ Resources/,non-empty 視為 drift,中止。
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -58,17 +57,15 @@ if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
   echo "ERROR: 無法從 manifest 讀 version。" >&2
   exit 1
 fi
-echo "Building macOS Safari Extension for version: $VERSION"
+echo "Building macOS Safari Extension for version: $VERSION (MAS 軌)"
 
 # 1. 同步 shinkansen/ → Resources/(--delete 移除已不存在舊檔)
 echo "==> Sync extension Resources..."
 mkdir -p "$EXTENSION_RESOURCES"
 rsync -a --delete shinkansen/ "$EXTENSION_RESOURCES/"
 
-# 2. 版本號同步進 pbxproj(GENERATE_INFOPLIST_FILE=YES,Info.plist 由 Xcode 自動產,
-#    版本來源是 build settings 而非 Info.plist 本身)
-echo "==> Sync version to project.pbxproj (MARKETING_VERSION / CURRENT_PROJECT_VERSION)..."
-# macOS BSD sed 需要 -i ''
+# 2. 版本號同步進 pbxproj
+echo "==> Sync version to project.pbxproj..."
 sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${VERSION};/g" "$PBXPROJ"
 sed -i '' -E "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${VERSION};/g" "$PBXPROJ"
 
@@ -88,17 +85,17 @@ xcodebuild -project "$PROJECT_FILE" \
   -archivePath build/Shinkansen.xcarchive \
   archive
 
-# 5. exportArchive 產 .pkg
-echo "==> xcodebuild exportArchive..."
+# 5. exportArchive MAS → -mas.pkg
+echo "==> Export MAS .pkg..."
 xcodebuild -exportArchive \
   -archivePath build/Shinkansen.xcarchive \
-  -exportPath build/safari-export \
+  -exportPath build/safari-export-mas \
   -exportOptionsPlist "$EXPORT_OPTS"
 
-# 6. .pkg 搬到 root + 帶版本號
-mv build/safari-export/Shinkansen.pkg "shinkansen-macos-v${VERSION}.pkg"
+MAS_PKG="shinkansen-macos-v${VERSION}-mas.pkg"
+mv build/safari-export-mas/Shinkansen.pkg "$MAS_PKG"
 
-# 7. Source drift forcing function
+# 6. Source drift forcing function
 echo "==> Source drift check..."
 DRIFT=$(diff -r --brief shinkansen/ "$EXTENSION_RESOURCES/" 2>&1 || true)
 if [ -n "$DRIFT" ]; then
@@ -108,7 +105,10 @@ if [ -n "$DRIFT" ]; then
 fi
 
 echo ""
-echo "Done: shinkansen-macos-v${VERSION}.pkg"
+echo "Done: $MAS_PKG"
 echo ""
-echo "Next: 用 Transporter 上傳到 App Store Connect:"
-echo "  open -a Transporter shinkansen-macos-v${VERSION}.pkg"
+echo "MAS 上架:"
+echo "  open -a Transporter $MAS_PKG"
+echo ""
+echo "要發 Developer ID 公開下載版(notarize 等 Apple cloud ~30-60 分鐘):"
+echo "  ./tools/safari-build-devid.sh"
