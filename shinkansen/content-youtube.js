@@ -1561,7 +1561,7 @@
   //   思路一致:首批 payload 隨 lead 縮放,確保緊急時最快回填。
   //
   // windowSegs < 5 條 → 不切,整批一發(over-engineering 沒意義,API 也不會慢多少)
-  function _splitAsrSubBatches(windowSegs, videoNowMs, windowStartMs) {
+  function _splitAsrSubBatches(windowSegs, videoNowMs, windowStartMs, playbackRate) {
     if (windowSegs.length <= 5) return [windowSegs];
 
     const GAP_MS = 500;          // 自然停頓判斷門檻
@@ -1569,6 +1569,11 @@
     // Lead-time-aware:緊急情況下 skip 已過去的 segments,從 videoNowMs 之後第一條開始
     const leadMs = (typeof windowStartMs === 'number' && typeof videoNowMs === 'number')
       ? windowStartMs - videoNowMs : Infinity;
+    // v1.9.19: wallLeadMs = 影片 lead / 播放速度,真實 wall-clock buffer。
+    //          2x 速時 lead=10s 影片 = 5s wall buffer,API 還是吃 wall time,所以
+    //          batch size 邊界判斷必須走 wall,否則高速 + 中等 lead 會選太大的批挨延遲。
+    const rate = (typeof playbackRate === 'number' && playbackRate > 0) ? playbackRate : 1;
+    const wallLeadMs = leadMs / rate;
     const sub0Start = leadMs <= 0 ? videoNowMs : windowSegs[0].startMs;
     const segs = leadMs <= 0
       ? windowSegs.filter(s => s.startMs >= sub0Start)
@@ -1576,10 +1581,11 @@
     if (segs.length <= 5) return [segs];
     const n = segs.length;
 
-    // 依 leadMs 決定子批 0 跨度上限:緊急 4s、即將 6s、從容 8s
-    const sub0Max = leadMs <= 0     ? 4000
-                  : leadMs < 5000   ? 6000
-                                    : 8000;
+    // 依 wallLeadMs 決定子批 0 跨度上限(影片時間單位):緊急 4s、即將 6s、從容 8s
+    // sub0Max 是「子批 0 涵蓋幾秒影片」(影片時間),boundary 判斷走 wall time
+    const sub0Max = leadMs <= 0       ? 4000
+                  : wallLeadMs < 5000 ? 6000
+                                      : 8000;
     const sub0Min = Math.min(2000, sub0Max - 1000);
 
     function findCutIdx(fromIdx, minSpanMs, maxSpanMs) {
@@ -1705,8 +1711,10 @@
     // 1. gap-aware + lead-time aware split:把 windowSegs 切成 1-3 個子批。
     //    緊急時(video 已過 windowStart)子批 0 從當前播放位置開始 + skip 已過去 segments
     const videoNowMs = YT.videoEl ? Math.floor(YT.videoEl.currentTime * 1000) : windowStartMs;
-    const subBatches = _splitAsrSubBatches(windowSegs, videoNowMs, windowStartMs);
-    YT.lastLeadMs = windowStartMs - videoNowMs;          // debug 面板用
+    // v1.9.19: 把 playbackRate 傳進去讓 sub0Max boundary 判斷走 wall time
+    const playbackRate = YT.videoEl?.playbackRate || 1;
+    const subBatches = _splitAsrSubBatches(windowSegs, videoNowMs, windowStartMs, playbackRate);
+    YT.lastLeadMs = (windowStartMs - videoNowMs) / playbackRate;  // debug 面板用,記 wall-time
     YT.firstBatchSize = subBatches[0]?.length ?? 0;       // debug 面板用
     SK.sendLog('info', 'youtube', 'asr window start', {
       windowStartMs, windowEndMs, videoNowMs,
@@ -1790,15 +1798,21 @@
       _cue: { startMs: s.startMs, endMs: s.endMs, sourceText: s.text },
     }));
 
-    const BATCH = 8;
+    // v1.9.19: BATCH 8 → 12(token 攤提 ~26%,elapsed median 幾乎不變),
+    //          batch 0 ramp 上限拉到 16(lead 充裕時更省 token),boundary 改走 wall time
+    //          (除以 playbackRate),否則 2x 速 + 中等 lead 會誤選大批挨延遲。
+    const BATCH = 12;
     const videoNowMs = YT.videoEl ? YT.videoEl.currentTime * 1000 : windowStartMs;
     const leadMs = windowStartMs - videoNowMs;
-    const firstBatchSize = leadMs <= 0    ? 1
-                         : leadMs < 5000  ? 2
-                         : leadMs < 10000 ? 4
-                         : BATCH;
+    const playbackRate = YT.videoEl?.playbackRate || 1;
+    const wallLeadMs = leadMs / playbackRate;
+    const firstBatchSize = leadMs <= 0        ? 1
+                         : wallLeadMs < 5000   ? 2
+                         : wallLeadMs < 10000  ? 4
+                         : wallLeadMs < 15000  ? 12
+                         : 16;
     YT.firstBatchSize = firstBatchSize;
-    YT.lastLeadMs = leadMs;
+    YT.lastLeadMs = wallLeadMs;
 
     const batches = [];
     if (units.length > 0) {
@@ -1940,6 +1954,10 @@
     return true;
   }
 
+  // v1.9.19: 暴露給 regression spec(youtube-batch-size-12.spec.js)直接驅動指定視窗,
+  //          不必繞 translateYouTubeSubtitles 才能測 leadMs > 0 的批次大小分流。
+  SK.translateWindowFrom = (windowStartMs) => translateWindowFrom(windowStartMs);
+
   async function translateWindowFrom(windowStartMs) {
     const YT = SK.YT;
     if (YT.translatingWindows.has(windowStartMs)) return;  // v1.2.54: per-window 防重入
@@ -2037,28 +2055,43 @@
       //   8 條/批 × 0.6 條/秒 ≈ 13 秒的字幕 → 30 秒視窗有 2–3 批，串流注入生效。
       // 另一效果：每批 input tokens 減半，API 處理時間從 ~17s 降至 ~7s，
       // adapt look 自然收斂到更小值，buffer overrun 次數減少。
-      const BATCH = 8;
+      // v1.9.19: BATCH 8 → 12。直接 Gemini benchmark 量到 size=8/12/16 的 median elapsed
+      //   分別 2.7s / 2.5s / 4.0s,input token / 段在 size=8 是 194 t,size=12 降到 143 t
+      //   (~26% 攤提),size=16 降到 117 t(再 18%)。12 是 elapsed 持平處的甜蜜點:
+      //   token 攤提 ~26% 但 elapsed 不變,純贏;再往上 16 elapsed 跳 60%,留給 batch 0
+      //   adaptive ramp(lead 充裕時)。
+      const BATCH = 12;
       const preserve = true; // v1.2.38 起固定開啟，已移除設定頁 toggle
       const units = buildTranslationUnits(windowSegs, preserve);
       try {
         // 1. 切好每批的 units（批次索引 = 時間順序，batch 0 最早出現）
         // v1.2.50: 自適應首批大小（adaptive first batch size）
-        // 以「視窗起點距影片當前位置的 lead time」決定 batch 0 的條數：
+        // v1.9.19: ramp 上限拉到 16(lead 充裕時),boundary 改走 wall time
+        //          (除以 playbackRate)——2x 速時 lead=10s 影片 = 5s wall,batch 邊界判斷
+        //          走 wall 才不會選太大的批。緊急條件(leadMs ≤ 0)仍走 video time(相對位置)。
+        // 以「視窗起點距影片當前位置的 wall lead time」決定 batch 0 的條數：
         //   lead ≤ 0（影片已超過視窗起點，緊急）→ 1 條：最小 payload，最快回傳
-        //   lead < 5s → 2 條；lead < 10s → 4 條；lead ≥ 10s → 8 條（正常）
+        //   wallLead < 5s → 2 條；< 10s → 4 條；< 15s → 12 條；≥ 15s → 16 條
         // 首批條數愈少，input/output tokens 愈少，API 回傳愈快，
         // 第一條字幕出現的延遲從 ~10s（batch=8）有望降至 ~5s（batch=1）。
-        // 其餘批次仍用 BATCH=8 並行送出，不影響後續字幕速度。
+        // 其餘批次用 BATCH=12 並行送出。
         const videoNowMs = YT.videoEl ? YT.videoEl.currentTime * 1000 : 0;
         const leadMs = windowStartMs - videoNowMs;
-        const firstBatchSize = leadMs <= 0    ? 1
-                             : leadMs < 5000  ? 2
-                             : leadMs < 10000 ? 4
-                             : BATCH;
+        const playbackRate = YT.videoEl?.playbackRate || 1;
+        const wallLeadMs = leadMs / playbackRate;
+        const firstBatchSize = leadMs <= 0        ? 1
+                             : wallLeadMs < 5000   ? 2
+                             : wallLeadMs < 10000  ? 4
+                             : wallLeadMs < 15000  ? 12
+                             : 16;
         YT.firstBatchSize = firstBatchSize;
-        YT.lastLeadMs     = leadMs;
+        YT.lastLeadMs     = wallLeadMs;
         SK.sendLog('info', 'youtube', 'adaptive batch0', {
-          leadMs: Math.round(leadMs), firstBatchSize, totalUnits: units.length,
+          leadMs: Math.round(leadMs),
+          wallLeadMs: Math.round(wallLeadMs),
+          playbackRate,
+          firstBatchSize,
+          totalUnits: units.length,
         });
         const batches = [];
         if (units.length > 0) {

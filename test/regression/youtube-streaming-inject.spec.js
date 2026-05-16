@@ -6,21 +6,21 @@
 // 快的批次會被慢的批次綁住，captionMap 要等最慢的那批才會有任何內容。
 //
 // 結構通則 / 測法：
-//   - 17 rawSegments → 切成 3 批 [1, 8, 8]（firstBatchSize = 1）
+//   - 17 rawSegments → 切成 3 批 [1, 12, 4]（v1.9.19 BATCH=12）（firstBatchSize = 1）
 //   - Mock sendMessage 以「批次內容長度」決定延遲：
 //       batch 0（1 texts）→ 10ms
-//       batch 1（8 texts）→ 50ms
-//       batch 2（8 texts）→ 500ms
+//       batch 1（12 texts）→ 50ms（v1.9.19 BATCH=12）
+//       batch 2（4 texts）→ 500ms
 //   - 呼叫 translateYouTubeSubtitles() 不等它 resolve，wait 200ms 後檢查
 //     captionMap 狀態：
 //       batch 0（10ms 完成）→ 1 條 entries
-//       batch 1（~60ms 完成）→ 8 條 entries
+//       batch 1（~60ms 完成）→ 12 條 entries
 //       batch 2（~510ms 完成）→ 尚未完成
-//     → 200ms 時 captionMap.size 應為 1 + 8 = 9
+//     → 200ms 時 captionMap.size 應為 1 + 12 = 13
 //
 // 串流注入失效時（例如改回 `const results = await Promise.all(...); for (r of results) inject(r)`）：
 //   - 200ms 時 Promise.all 還在等 batch 2（500ms），沒有任何 inject 發生過（batch 0 sequential 除外）
-//   - captionMap 只有 batch 0 的 1 條，size = 1 < 9 → 測試 fail
+//   - captionMap 只有 batch 0 的 1 條，size = 1 < 13 → 測試 fail
 //
 // SANITY CHECK 已完成（2026-04-16，Claude Code 端）：
 //   把 `_runBatch` 裡 .then 的 inject 改成只回傳 res，並在 Promise.all 之後
@@ -52,8 +52,8 @@ test('youtube-streaming-inject: 各批 .then 應立刻寫入 captionMap（不等
         const texts = (msg.payload && msg.payload.texts) || [];
         const seq = window.__batchCallSeq++;
         // batch 0（seq=0, texts=1）→ 10ms
-        // batch 1（seq=1, texts=8）→ 50ms
-        // batch 2（seq=2, texts=8）→ 500ms
+        // batch 1（seq=1, texts=12）→ 50ms（v1.9.19 BATCH=12）
+        // batch 2（seq=2, texts=4）→ 500ms
         const delay = seq === 0 ? 10 : seq === 1 ? 50 : 500;
         await new Promise(r => setTimeout(r, delay));
         return {
@@ -95,12 +95,12 @@ test('youtube-streaming-inject: 各批 .then 應立刻寫入 captionMap（不等
     batchCalls: window.__batchCallSeq,
   })`);
 
-  // batch 0 = 1 entries, batch 1 = 8 entries → 串流下應 = 9
+  // batch 0 = 1 entries, batch 1 = 12 entries → 串流下應 = 13（v1.9.19 BATCH=12）
   // 若非串流（inject 被集中在 Promise.all 之後）→ 只有 batch 0 = 1
   expect(
     mid.captionMapSize,
-    `200ms 時 captionMap 應含 batch 0 + batch 1 的 9 條 entries（實際：${mid.captionMapSize}；若 < 9 代表 batch 1 的 inject 被 batch 2 拖住）`,
-  ).toBeGreaterThanOrEqual(9);
+    `200ms 時 captionMap 應含 batch 0 + batch 1 的 13 條 entries（實際：${mid.captionMapSize}；若 < 13 代表 batch 1 的 inject 被 batch 2 拖住）`,
+  ).toBeGreaterThanOrEqual(13);
 
   // 等 batch 2 結束，確認 final state
   await page.waitForTimeout(500);

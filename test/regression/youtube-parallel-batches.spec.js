@@ -9,7 +9,7 @@
 //
 // 結構通則：
 //   - windowStartMs = 0、video.currentTime = 0 → leadMs = 0 → firstBatchSize = 1
-//   - 17 rawSegments 切成 3 批：[1, 8, 8] units
+//   - 17 rawSegments 切成 3 批：[1, 12, 4]（v1.9.19 BATCH=12） units
 //   - batch 0 由 await 先跑（v1.2.56 暖 cache），然後 batch 1 / batch 2 並行
 //
 // 若 v1.2.41 失效（Promise.all 被改回 for-await 或 sequential），
@@ -60,7 +60,7 @@ test('youtube-parallel-batches: batch 1+ 應並行送出（非循序 await）', 
     };
   `);
 
-  // 塞 17 條 rawSegments（都在 window 0 內：0–30000ms）→ 切成 [1, 8, 8]
+  // 塞 17 條 rawSegments（都在 window 0 內：0–30000ms）→ 切成 [1, 12, 4]（v1.9.19 BATCH=12）
   await evaluate(`
     const segs = [];
     for (let i = 0; i < 17; i++) {
@@ -85,7 +85,7 @@ test('youtube-parallel-batches: batch 1+ 應並行送出（非循序 await）', 
     batches: window.__callTimes.length,
   })`);
 
-  expect(result.batches, '應送出 3 筆 TRANSLATE_SUBTITLE_BATCH（batches [1, 8, 8]）').toBe(3);
+  expect(result.batches, '應送出 3 筆 TRANSLATE_SUBTITLE_BATCH（batches [1, 12, 4]（v1.9.19 BATCH=12））').toBe(3);
 
   const [t0, t1, t2] = result.callTimes;
   const gap12 = t2 - t1;
