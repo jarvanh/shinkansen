@@ -7,8 +7,8 @@
 #   - macOS Safari MAS    : shinkansen-macos-v<ver>-mas.pkg(Transporter 上傳 App Store Connect)
 #
 # Developer ID 公開下載 .pkg 拆成獨立流程:
-#   ./tools/safari-build-devid.sh         # notarize 等 Apple cloud ~30-60 分鐘
-#   gh release upload v<ver> shinkansen-macos-v<ver>.pkg
+#   ./safari-app/safari-build-devid.sh    # notarize 等 Apple cloud ~30-60 分鐘
+#   gh release upload v<ver> safari-app/shinkansen-macos-v<ver>.pkg
 # 不綁進 release.sh — notarize 太慢不能每版跑,需要時手工觸發,當作獨立 deliverable。
 #
 # Safari MAS build 失敗(沒 Xcode / 沒簽章 / pbxproj 不存在)會在 git commit 前 abort,
@@ -26,10 +26,10 @@ MSG="${1:-v${VERSION}}"
 # 真要只發 Chrome(例如 Xcode 暫時不能跑)走 SKIP_SAFARI=1。
 if [ "${SKIP_SAFARI:-0}" = "1" ]; then
   echo "⚠️  SKIP_SAFARI=1 — 跳過 Safari build,只發 Chrome / Firefox。"
-  echo "    下次 Safari release 要手動跑 ./tools/safari-build.sh 補上同步。"
+  echo "    下次 Safari release 要手動跑 ./safari-app/safari-build.sh 補上同步。"
 else
   echo "==> Safari build(同步 Resources / bump pbxproj / xcodebuild archive)..."
-  ./tools/safari-build.sh
+  ./safari-app/safari-build.sh
 fi
 
 # v1.6.5: minor/major bump 時提醒檢查 RELEASE_HIGHLIGHTS 是否要更新
@@ -70,9 +70,9 @@ echo ""
 echo "v${VERSION} 已推送，GitHub Release 會在 1 分鐘內自動建立。"
 echo "  Chrome / Firefox     : https://github.com/jimmysu0309/shinkansen/releases"
 if [ "${SKIP_SAFARI:-0}" != "1" ]; then
-  echo "  macOS Safari (MAS)   : shinkansen-macos-v${VERSION}-mas.pkg"
-  echo "                         open -a Transporter shinkansen-macos-v${VERSION}-mas.pkg"
+  echo "  macOS Safari (MAS)   : safari-app/shinkansen-macos-v${VERSION}-mas.pkg"
+  echo "                         open -a Transporter safari-app/shinkansen-macos-v${VERSION}-mas.pkg"
 fi
 echo ""
-echo "(要發 Developer ID 公開下載 .pkg → 手工跑 ./tools/safari-build-devid.sh,"
+echo "(要發 Developer ID 公開下載 .pkg → 手工跑 ./safari-app/safari-build-devid.sh,"
 echo " notarize 等 Apple cloud ~30-60 分鐘,完成後 gh release upload v${VERSION} ...)"

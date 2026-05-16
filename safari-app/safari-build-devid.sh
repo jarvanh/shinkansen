@@ -5,8 +5,8 @@
 #   產 Developer ID 簽名 + Apple 公證 + stapled 的 .pkg,給 GitHub Releases
 #   公開下載手動安裝用(雙擊 Gatekeeper 認帳)。
 #
-#   產出: shinkansen-macos-v<version>.pkg(repo root)
-#   發布: gh release upload v<version> shinkansen-macos-v<version>.pkg
+#   產出: safari-app/shinkansen-macos-v<version>.pkg
+#   發布: gh release upload v<version> safari-app/shinkansen-macos-v<version>.pkg
 #
 # 注意:
 #   - 跟 safari-build.sh(MAS 軌)拆開,不綁進 release.sh。
@@ -16,7 +16,7 @@
 #     不複用 safari-build.sh 產的 archive(版本對不上時自動規避踩坑)。
 #
 # 用法:
-#   ./tools/safari-build-devid.sh
+#   ./safari-app/safari-build-devid.sh
 #
 # 一次性前置(三步,缺則本 script 開頭 check 失敗會印 step-by-step):
 #   - Developer ID Application cert(Apple Developer Portal 申請 + Keychain 裝)
@@ -30,7 +30,8 @@ PROJECT_DIR="safari-app/Shinkansen"
 PROJECT_FILE="$PROJECT_DIR/Shinkansen.xcodeproj"
 PBXPROJ="$PROJECT_FILE/project.pbxproj"
 EXTENSION_RESOURCES="$PROJECT_DIR/Shinkansen Extension/Resources"
-EXPORT_OPTS_DEVID="tools/safari-export-options-developerid.plist"
+EXPORT_OPTS_DEVID="safari-app/safari-export-options-developerid.plist"
+BUILD_DIR="safari-app/build"
 NOTARY_PROFILE="shinkansen-notary"
 DEVID_INSTALLER_CERT="Developer ID Installer: Zhimin Su (PR6NG3PH45)"
 
@@ -39,7 +40,7 @@ if [ ! -f "shinkansen/manifest.json" ]; then
   exit 1
 fi
 if [ ! -d "$PROJECT_FILE" ]; then
-  echo "ERROR: $PROJECT_FILE 不存在;先跑 ./tools/safari-bootstrap.sh。" >&2
+  echo "ERROR: $PROJECT_FILE 不存在;先跑 ./safari-app/safari-bootstrap.sh。" >&2
   exit 1
 fi
 if [ ! -f "$EXPORT_OPTS_DEVID" ]; then
@@ -109,7 +110,8 @@ sed -i '' -E "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${VER
 
 # 2. clean + archive(本 script 獨立跑一次,不複用 safari-build.sh 的 archive)
 echo "==> xcodebuild clean..."
-rm -rf build
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
 xcodebuild -project "$PROJECT_FILE" \
   -scheme Shinkansen \
   -configuration Release \
@@ -119,24 +121,24 @@ echo "==> xcodebuild archive..."
 xcodebuild -project "$PROJECT_FILE" \
   -scheme Shinkansen \
   -configuration Release \
-  -archivePath build/Shinkansen.xcarchive \
+  -archivePath "$BUILD_DIR/Shinkansen.xcarchive" \
   archive
 
 # 3. exportArchive Developer ID → .app(注意:此 method 不產 .pkg,只產 .app)
 echo "==> Export Developer ID .app..."
 xcodebuild -exportArchive \
-  -archivePath build/Shinkansen.xcarchive \
-  -exportPath build/safari-export-developerid \
+  -archivePath "$BUILD_DIR/Shinkansen.xcarchive" \
+  -exportPath "$BUILD_DIR/safari-export-developerid" \
   -exportOptionsPlist "$EXPORT_OPTS_DEVID"
 
-DEVID_APP="build/safari-export-developerid/Shinkansen.app"
+DEVID_APP="$BUILD_DIR/safari-export-developerid/Shinkansen.app"
 if [ ! -d "$DEVID_APP" ]; then
   echo "ERROR: $DEVID_APP 不存在,Developer ID export 失敗。" >&2
   exit 1
 fi
 
 # 4. productbuild 把 .app 包進 installer .pkg + Developer ID Installer cert 簽
-DEVID_PKG="shinkansen-macos-v${VERSION}.pkg"
+DEVID_PKG="safari-app/shinkansen-macos-v${VERSION}.pkg"
 echo "==> productbuild Developer ID .pkg(install 到 /Applications,Installer cert 簽)..."
 productbuild \
   --component "$DEVID_APP" /Applications \

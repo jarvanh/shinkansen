@@ -3,13 +3,15 @@
 #
 # 用途:
 #   一次性 — 用 xcrun safari-web-extension-converter 從 shinkansen/ 產出
-#   Xcode project 進 safari-app/。Xcode 大版本升級或 default project 結構
-#   改變時可重跑(會覆蓋 safari-app/),平常開發 / release 不要跑。
+#   Xcode project 進 safari-app/Shinkansen/。Xcode 大版本升級或 default
+#   project 結構改變時可重跑(會覆蓋 safari-app/Shinkansen/),平常開發 /
+#   release 不要跑。
 #
 # 警告:
-#   會覆蓋 safari-app/(包含 ShinkansenApp.swift / ContentView.swift /
+#   會覆蓋 safari-app/Shinkansen/(包含 ShinkansenApp.swift / ContentView.swift /
 #   Localizable.xcstrings 等本機 host App 檔案)。重跑前手動備份這三檔,
-#   完成後再 patch 回去。
+#   完成後再 patch 回去。本 script 不動 safari-app/ 根目錄的 build script /
+#   plist(safari-build*.sh、safari-export-options*.plist)。
 #
 # 注意:
 #   converter 預設 host App Bundle ID 推導用 app-name reverse-DNS(會給
@@ -18,7 +20,7 @@
 #   `app.shinkansen.macos`(Debug + Release)。
 #
 # 用法:
-#   ./tools/safari-bootstrap.sh
+#   ./safari-app/safari-bootstrap.sh
 #
 # 需求:
 #   - macOS + Xcode 15+
@@ -36,13 +38,13 @@ if [ ! -f "shinkansen/manifest.json" ]; then
   exit 1
 fi
 
-if [ -d "safari-app" ]; then
-  echo "WARN: safari-app/ 已存在,會被覆蓋。"
+if [ -d "safari-app/Shinkansen" ]; then
+  echo "WARN: safari-app/Shinkansen/ 已存在,會被覆蓋。"
   echo "      請確認 host App 檔案(ShinkansenApp.swift / ContentView.swift /"
   echo "      Localizable.xcstrings 等)已備份。"
   echo ""
   read -p "      按 Enter 繼續,Ctrl+C 中止... " _ignore
-  rm -rf safari-app
+  rm -rf safari-app/Shinkansen
 fi
 
 echo "==> Running xcrun safari-web-extension-converter..."
@@ -69,4 +71,4 @@ echo "     - Project navigator 刪 AppDelegate.swift / ViewController.swift /"
 echo "       Base.lproj/Main.storyboard / Resources/{Main.html,Script.js,Style.css,Icon.png}"
 echo "     - Target Shinkansen → Build Settings → 移除 INFOPLIST_KEY_NSMainStoryboardFile"
 echo "     - Target Shinkansen → Signing & Capabilities → Team = PR6NG3PH45"
-echo "  4. 跑 ./tools/safari-build.sh 驗 archive + export 流程"
+echo "  4. 跑 ./safari-app/safari-build.sh 驗 archive + export 流程"
