@@ -375,7 +375,7 @@ async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
   const geminiOverrides = {
     // ASR 模式不沿用使用者自訂的 ytSubtitle.systemPrompt（那是逐條翻譯版本，規則不適用 ASR JSON 模式）
     // P1: 依 target 切 universal/zh-TW prompt(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
-    systemInstruction: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage),
+    systemInstruction: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage, payload?.sourceLanguage || 'en'),
     // ASR 合句需要一點推理，但翻譯仍應穩定；沿用 ytSubtitle.temperature
     temperature: yt.temperature ?? 0.1,
   };
@@ -671,7 +671,7 @@ const messageHandlers = {
       const yt = s.ytSubtitle || {};
       const overrides = {
         // P1: 自訂 Provider ASR 路徑同 Gemini ASR,依 target 切 universal/zh-TW prompt
-        systemPrompt: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage),
+        systemPrompt: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage, payload?.sourceLanguage || 'en'),
         temperature: yt.temperature ?? 0.1,
       };
       return handleTranslateCustom(payload, sender, '_oc_yt_asr', overrides, false, false);
@@ -686,7 +686,7 @@ const messageHandlers = {
       const s = await getSettings();
       const yt = s.ytSubtitle || {};
       const overrides = {
-        systemPrompt: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage),
+        systemPrompt: getEffectiveAsrSubtitleSystemPrompt(s.targetLanguage, payload?.sourceLanguage || 'en'),
         temperature: yt.temperature ?? 0.1,
       };
       return handleTranslateCustom(payload, sender, '_oc_drive_yt_asr', overrides, false, false);

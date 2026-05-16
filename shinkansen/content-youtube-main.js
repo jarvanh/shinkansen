@@ -68,12 +68,15 @@
   // ─── ytInitialPlayerResponse bridge(v1.9.9)───────────────
   // isolated world(content-youtube.js)5s「沒字幕」啟發式之前先 query 本 bridge,
   // 拿 captionTracks 權威訊號決定是否真的沒字幕(不靠 timeout 猜)。
-  // 只回傳 captionTracks 子集合(languageCode + kind),避免 serialize 整個 playerResponse。
+  // 只回傳 captionTracks 子集合避免 serialize 整個 playerResponse;additionally
+  // 多回 activeTrack（從 #movie_player.getOption 抓），給 caption track 自動選擇邏輯
+  // 判斷當前是不是 YT 自翻譯軌（activeTrack.translationLanguage 有值）。
 
   window.addEventListener('shinkansen-yt-query-player-response', () => {
     let captionTracks = null;
     let playerResponseAvailable = false;
     let videoId = null;
+    let activeTrack = null;
     try {
       const resp = window.ytInitialPlayerResponse;
       playerResponseAvailable = !!resp;
@@ -81,8 +84,11 @@
       const tracks = resp?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
       if (Array.isArray(tracks)) {
         captionTracks = tracks.map((t) => ({
-          languageCode: t?.languageCode || null,
-          kind:         t?.kind || null,
+          languageCode:   t?.languageCode || null,
+          kind:           t?.kind || '',
+          isTranslatable: !!t?.isTranslatable,
+          vssId:          t?.vssId || null,
+          name:           t?.name?.simpleText || t?.name?.runs?.[0]?.text || null,
         }));
       }
       // videoId 給 isolated world 跟 URL videoId 比對:SPA 導航後 ytInitialPlayerResponse
@@ -90,8 +96,50 @@
     } catch (_) {
       captionTracks = null;
     }
+    try {
+      const player = document.querySelector('#movie_player');
+      if (player?.getOption) {
+        const at = player.getOption('captions', 'track');
+        if (at && typeof at === 'object') {
+          activeTrack = {
+            languageCode:            at.languageCode || null,
+            kind:                    at.kind || '',
+            translationLanguageCode: at.translationLanguage?.languageCode || null,
+          };
+        }
+      }
+    } catch (_) {}
     window.dispatchEvent(new CustomEvent('shinkansen-yt-player-response', {
-      detail: { captionTracks, playerResponseAvailable, videoId },
+      detail: { captionTracks, playerResponseAvailable, videoId, activeTrack },
+    }));
+  });
+
+  // ─── caption track switch bridge ─────────────────────────
+  // isolated world 跑完 track chooser 後，若決定 'switch' 就丟此事件來
+  // 呼叫 #movie_player.setOption('captions', 'track', {languageCode, kind})，
+  // 切換掉 YT 自翻譯軌 / 切到指定 manual or ASR 軌。
+  // 結果以 shinkansen-yt-set-caption-track-result 回送（ok / error）。
+
+  window.addEventListener('shinkansen-yt-set-caption-track', (e) => {
+    const { languageCode, kind } = e?.detail || {};
+    let ok = false;
+    let error = null;
+    try {
+      const player = document.querySelector('#movie_player');
+      if (player?.setOption && languageCode) {
+        player.setOption('captions', 'track', {
+          languageCode,
+          kind: kind || '',
+        });
+        ok = true;
+      } else {
+        error = 'no-player-or-langcode';
+      }
+    } catch (err) {
+      error = err?.message || String(err);
+    }
+    window.dispatchEvent(new CustomEvent('shinkansen-yt-set-caption-track-result', {
+      detail: { ok, error },
     }));
   });
 

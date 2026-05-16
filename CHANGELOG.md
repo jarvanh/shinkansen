@@ -7,6 +7,32 @@
 
 ## v1.9.x
 
+**v1.9.18** — YouTube 字幕自動避開帳號 auto-translate 偏好（自動切到原始 ASR 軌）+ ASR prompt 動態識別來源語言（英 / 日 / 韓 / 法 / 德 / 西 / 葡 等 20 語）+ 單句字幕長度限兩行修正過長。
+
+**對使用者可見改動**:
+- 看任何 YouTube 影片時：若你的 YouTube 帳號設了「字幕自動翻譯成中文（簡體）」偏好，影片載入時 Shinkansen 會自動把字幕軌切回原始口說語版本（英文 ASR / 日文 ASR / 法文 manual 等），讓翻譯品質不再被 YT 已翻譯一輪後再翻譯的雙重翻譯損耗污染
+- 同步修正非英文影片（日文 / 韓文 / 法文 / 德文 等）的 ASR 翻譯：以前 prompt 寫死「將英文 ASR 翻成中文」，遇到日文影片時 Gemini 會輸出英文亂翻；現在 prompt 會帶到「將日文 ASR 翻成中文」之類動態識別
+- ASR 字幕單句譯文限兩行（中文約 35 字），不再出現一次塞 4 行擠爆畫面的情況
+- 若影片本身已有繁中字幕（zh-TW / zh-Hant / zh-HK），Shinkansen 自動不啟動翻譯，直接讓 YouTube 顯示原生字幕
+
+**建議手動清快取**：此版改動 ASR prompt 結構（加 `{sourceLanguage}` 動態欄位）+ default 行為。舊版（v1.9.17 以前）以英文 prompt 翻非英文 ASR 產生的快取結果不會自動失效。**點工具列圖示 → 清除快取**即可重新翻譯。
+
+**已知限制**:
+- 偏好「YouTube 自家自翻譯品質」高於 Gemini 的使用者：目前沒有 UI toggle 關閉「自動切回原始 ASR」行為。若需停用 Shinkansen 全部 YT 翻譯，從工具列圖示彈出視窗關閉「自動翻譯 YouTube 字幕」即可（既有 control）
+- 影片完全沒 ASR 軌（罕見：創作者只上手動字幕沒讓 YT 跑 ASR）時，無法可靠決定原始語，留 YT 既有行為
+
+**內部改動**:
+- 新增 `_chooseBestCaptionTrack(tracks, activeTrack, targetLanguage)` pure function（`content-youtube.js`），三優先序：P1 target lang native skip → P2 原始語 manual → P3 原始語 ASR；P2/P3 透過 `#movie_player.setOption('captions', 'track', ...)` 切軌
+- `content-youtube-main.js` bridge 擴：`shinkansen-yt-query-player-response` 多回 `activeTrack`（含 `translationLanguage` 偵測 YT 自翻譯指紋）；新增 `shinkansen-yt-set-caption-track` bridge 跑 setOption
+- `DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT` / `UNIVERSAL_ASR_SUBTITLE_SYSTEM_PROMPT` 加 `{sourceLanguage}` placeholder；`SOURCE_LANG_LABELS_ZH` / `_EN` 兩份 label map 涵蓋 20 種常見口說語（en / ja / ko / fr / de / es / pt / it / ru / nl / pl / tr / ar / th / vi / id / hi / zh-Hans / zh-Hant / zh-HK），未涵蓋的 lang fallback 到 languageCode 字串
+- `getEffectiveAsrSubtitleSystemPrompt(target, sourceLang='en')` 動態注入 source label，sourceLang 由 content script 從 `YT.captionLang`（`/api/timedtext` URL `lang` 參數，chooser 切軌後即原始口說語）取
+- 三個 background ASR handler（Gemini / Custom YT / Custom Drive）從 `payload.sourceLanguage` 讀
+- `ytSubtitle.preferOriginalTrack: true` storage default（無 UI toggle，hardcode ON，跟 popup 既有「自動翻譯 YouTube 字幕」toggle 語意層次不同）
+- ASR prompt task #1 加「單句譯文不可超過兩行字幕（中文約 35 個全形字），接近上限即使語意尚未結束也要拆下一句」cap
+- Safari build pipeline 全部搬進 `safari-app/`（commit 967e0e7）：`tools/safari-*` → `safari-app/safari-*`；build artifacts 與 `.pkg` 輸出落點同步搬
+
+**新增測試**:`yt-caption-track-chooser.test.cjs`（jest-unit，18 條 spec：P1 三變體繁中 / P2 manual 優先 / P3 ASR fallback / 多語 source dynamic / already-on-target noop / 沒 ASR 軌 noop / 空 tracks / 動態 target lang）。SANITY 已驗（P1 / already-on-target 分支拔掉皆 fail，還原 pass）。
+
 **v1.9.17** — 自動翻譯白名單 `www.` 前綴互通、Medium 留言「more」展開按鈕翻譯保留視覺與可點性、Medium / Substack 等 React 18 SPA 站開啟自動翻譯不再顯示「500 系統出狀況」。
 
 **對使用者可見改動**:

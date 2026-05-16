@@ -113,14 +113,34 @@ test.describe('P1: 其他 4 個 getEffective*Prompt 行為一致', () => {
     expect(cn).not.toContain('{targetLanguage}');
   });
 
-  test('ASR:target=zh-TW 走 DEFAULT_ASR(無 user override 入口)', () => {
-    expect(getEffectiveAsrSubtitleSystemPrompt('zh-TW')).toBe(DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT);
+  test('ASR:target=zh-TW 走 DEFAULT_ASR(無 user override 入口),sourceLanguage 預設 en 替換成「英文」', () => {
+    // v1.9.18 起 ASR prompt 加 {sourceLanguage} placeholder;預設 source='en' 走「英文」label。
+    const tw = getEffectiveAsrSubtitleSystemPrompt('zh-TW');
+    expect(tw).not.toContain('{sourceLanguage}');
+    expect(tw).toContain('專業的英文 ASR');
+    expect(tw).toContain('英文 YouTube 自動字幕');
+  });
+
+  test('ASR:target=zh-TW + sourceLanguage=ja → 注入「日文」,prompt 無「{sourceLanguage}」/「英文」殘留', () => {
+    const ja = getEffectiveAsrSubtitleSystemPrompt('zh-TW', 'ja');
+    expect(ja).not.toContain('{sourceLanguage}');
+    expect(ja).toContain('專業的日文 ASR');
+    expect(ja).toContain('日文 YouTube 自動字幕');
+    // Critical rules 不能寫死「保留英文」(舊版會讓 Gemini 看到「保留英文」+ 日文 input 拒譯)
+    expect(ja).not.toContain('保留英文');
   });
 
   test('ASR:target=en 走 UNIVERSAL_ASR 注入 English', () => {
     const en = getEffectiveAsrSubtitleSystemPrompt('en');
     expect(en).toContain('English');
     expect(en).not.toContain('{targetLanguage}');
+    expect(en).not.toContain('{sourceLanguage}');
+  });
+
+  test('ASR:target=en + sourceLanguage=ja → universal prompt 注入「Japanese」', () => {
+    const en = getEffectiveAsrSubtitleSystemPrompt('en', 'ja');
+    expect(en).toContain('translating Japanese ASR');
+    expect(en).not.toContain('{sourceLanguage}');
   });
 });
 

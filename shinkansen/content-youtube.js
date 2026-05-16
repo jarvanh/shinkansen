@@ -815,6 +815,152 @@
   // 暴露給 spec 端用(只對自家 spec 開放,不影響 production behaviour)
   SK._heuristicMergeAsr = _heuristicMergeAsr;
 
+  // ─── Caption track 自動選擇（目標語原生 → en manual → en ASR) ─────────
+  //
+  // 目的：YouTube 帳號 auto-translate caption 偏好被套用到所有影片時，Shinkansen 拿到的
+  //       不是原始 ASR，而是 YT 已自翻譯後的字幕文字。靠 `/api/timedtext` URL `lang` 參數
+  //       也認不出來（URL `lang=en` + `tlang=zh-Hans`,Shinkansen 認 en 但 body 是 zh-Hans）。
+  //
+  // 三優先序（taken from caption track metadata, not text content):
+  //   1) target lang 原生 track（任 kind,zh-TW target → zh-TW / zh-Hant / zh-HK)
+  //      → action='skip'，不啟動翻譯，讓 YouTube 自己顯示原生字幕
+  //   2) 影片原始語 manual track（kind=''，creator-uploaded）→ action='switch'
+  //   3) 影片原始語 ASR track（kind='asr'）→ action='switch'
+  //   都沒命中 / activeTrack 已對得上目標 → action='noop'，留 YT 既有行為
+  //
+  // 影片原始語從 captionTracks 中找出唯一 kind='asr' 的 track 的 languageCode 動態決定
+  // （YouTube 一支影片只會自動產生一條 ASR，語言對應原始口說語）。沒 ASR 軌（罕見：
+  // 創作者只上手動字幕沒讓 YT 跑 ASR）→ 無法可靠決定 sourceLang → noop。
+  //
+  // Pure function：單純看 tracks + activeTrack + targetLanguage，不 mutate STATE、不 dispatch。
+  // 副作用由 _runCaptionTrackChooser 包裹 + activate flow 決定。
+  // 回傳的 sourceLanguage 給 caller 傳遞給 background ASR prompt {sourceLanguage} placeholder 用。
+  const _TARGET_NATIVE_LANGS = {
+    'zh-TW': ['zh-TW', 'zh-Hant', 'zh-HK'],
+    'zh-CN': ['zh-CN', 'zh-Hans'],
+    'en':    ['en', 'en-US', 'en-GB'],
+    'ja':    ['ja', 'ja-JP'],
+    'ko':    ['ko', 'ko-KR'],
+    'es':    ['es', 'es-ES', 'es-MX'],
+    'fr':    ['fr', 'fr-FR', 'fr-CA'],
+    'de':    ['de', 'de-DE'],
+  };
+
+  function _resolveTargetNativeLangs(targetLanguage) {
+    return _TARGET_NATIVE_LANGS[targetLanguage] || [targetLanguage];
+  }
+
+  // tracks: [{ languageCode, kind: '' | 'asr', isTranslatable?, vssId?, name? }]
+  // activeTrack: { languageCode, kind, translationLanguageCode } | null
+  // targetLanguage: 'zh-TW' / 'zh-CN' / 'en' / ...
+  // 回傳： { action: 'skip' | 'switch' | 'noop', track?: <選中的 track>, reason }
+  function _chooseBestCaptionTrack(tracks, activeTrack, targetLanguage) {
+    if (!Array.isArray(tracks) || tracks.length === 0) {
+      return { action: 'noop', reason: 'no-tracks' };
+    }
+    const targetLangs = _resolveTargetNativeLangs(targetLanguage);
+
+    // P1: target lang 原生 track（任 kind)
+    const p1 = tracks.find(t => targetLangs.includes(t.languageCode));
+    if (p1) {
+      return { action: 'skip', track: p1, reason: 'p1-target-lang-native' };
+    }
+
+    // 從唯一 ASR track 動態推導影片原始語（一支影片 YT 只會產一條 ASR）
+    const asrTrack = tracks.find(t => t.kind === 'asr');
+    if (!asrTrack) {
+      // 沒 ASR 軌 → 無法可靠決定 sourceLang（rare：創作者只上手動字幕）→ noop
+      return { action: 'noop', reason: 'no-source-asr-track' };
+    }
+    const sourceLang = asrTrack.languageCode;
+
+    // P2: 原始語 manual track（creator-uploaded，品質高過 ASR）
+    const p2 = tracks.find(t => t.languageCode === sourceLang && (!t.kind || t.kind === ''));
+    const desired = p2 || asrTrack;
+
+    // 當前 active track 已是目標 track 且沒被自翻譯 → 不必再切
+    const alreadyOnTarget = activeTrack
+      && activeTrack.languageCode === desired.languageCode
+      && (activeTrack.kind || '') === (desired.kind || '')
+      && !activeTrack.translationLanguageCode;
+    if (alreadyOnTarget) {
+      return { action: 'noop', track: desired, sourceLanguage: sourceLang, reason: 'already-on-target' };
+    }
+
+    return {
+      action: 'switch',
+      track: desired,
+      sourceLanguage: sourceLang,
+      reason: p2 ? 'p2-source-manual' : 'p3-source-asr',
+    };
+  }
+
+  SK._chooseBestCaptionTrack = _chooseBestCaptionTrack;
+
+  // 包裹 pure function 的 side-effectful wrapper:dispatch 兩條 bridge event,
+  // 處理 retry / timeout，在 'switch' 命中時實際呼叫 setOption。
+  // 回傳：'skip' / 'switch' / 'noop'（由 caller 決定接續行為）。
+  async function _runCaptionTrackChooser(targetLanguage) {
+    // Step 1:query player response bridge 拿 tracks + activeTrack
+    const detail = await new Promise((resolve) => {
+      const handler = (e) => {
+        window.removeEventListener('shinkansen-yt-player-response', handler);
+        resolve(e?.detail || null);
+      };
+      window.addEventListener('shinkansen-yt-player-response', handler);
+      window.dispatchEvent(new CustomEvent('shinkansen-yt-query-player-response'));
+      setTimeout(() => {
+        window.removeEventListener('shinkansen-yt-player-response', handler);
+        resolve(null);
+      }, 1500);
+    });
+    if (!detail || !detail.playerResponseAvailable) {
+      SK.sendLog('debug', 'youtube', 'chooser: bridge query failed / no player response', {});
+      return 'noop';
+    }
+    const currentVideoId = getVideoIdFromUrl();
+    if (detail.videoId && currentVideoId && detail.videoId !== currentVideoId) {
+      SK.sendLog('debug', 'youtube', 'chooser: videoId mismatch (stale)', { bridge: detail.videoId, url: currentVideoId });
+      return 'noop';
+    }
+
+    // Step 2：跑 pure function
+    const decision = _chooseBestCaptionTrack(detail.captionTracks, detail.activeTrack, targetLanguage);
+    SK.sendLog('info', 'youtube', 'caption track chooser', {
+      action:         decision.action,
+      reason:         decision.reason,
+      pickedLang:     decision.track?.languageCode,
+      pickedKind:     decision.track?.kind,
+      activeLang:     detail.activeTrack?.languageCode,
+      activeKind:     detail.activeTrack?.kind,
+      activeTransLang:detail.activeTrack?.translationLanguageCode,
+      targetLanguage,
+      trackCount:     detail.captionTracks?.length || 0,
+    });
+
+    // Step 3:'switch' 命中 → dispatch setOption bridge + 等回應
+    if (decision.action === 'switch') {
+      await new Promise((resolve) => {
+        const handler = (e) => {
+          window.removeEventListener('shinkansen-yt-set-caption-track-result', handler);
+          resolve(e?.detail || null);
+        };
+        window.addEventListener('shinkansen-yt-set-caption-track-result', handler);
+        window.dispatchEvent(new CustomEvent('shinkansen-yt-set-caption-track', {
+          detail: { languageCode: decision.track.languageCode, kind: decision.track.kind || '' },
+        }));
+        setTimeout(() => {
+          window.removeEventListener('shinkansen-yt-set-caption-track-result', handler);
+          resolve(null);
+        }, 1000);
+      });
+    }
+
+    return decision.action;
+  }
+
+  SK._runCaptionTrackChooser = _runCaptionTrackChooser;
+
   // ─── ASR overlay 字幕容器(G 路徑) ─────────────────────────
   //
   // 為什麼:ASR 字幕在 YouTube 原生 DOM 是「rolling captions」,每秒 append 1-3 個
@@ -1498,7 +1644,13 @@
     const _asrMsgType = SK.getSubtitleBatchType(SK.YT.config?.engine, true);
     const res = await SK.safeSendMessage({
       type: _asrMsgType,
-      payload: { texts: [inputJson], glossary: null },
+      payload: {
+        texts: [inputJson],
+        glossary: null,
+        // background ASR prompt 注入 {sourceLanguage} 用;captionLang 從 /api/timedtext URL
+        // `lang` 參數抓(v1.8.40 起)。chooser 切到原始 ASR 後此值 = 影片口說語(en/ja/ko/...)。
+        sourceLanguage: SK.YT.captionLang || 'en',
+      },
     });
     const elapsed = Date.now() - _t0Window;
     if (batchApiMsRef) batchApiMsRef[batchIdx] = elapsed;
@@ -2800,6 +2952,26 @@
     // observer 提前啟動：captionMap 尚空時 cache miss → 字幕保持原文
     // 待 shinkansen-yt-captions 填入 rawSegments 後，translateWindowFrom 寫入 captionMap，字幕瞬間替換
     startCaptionObserver();
+
+    // ─── Caption track 自動選擇（P1 native skip / P2-3 switch to original) ───
+    // 解 YT 帳號 auto-translate 偏好套用到全部影片時 Shinkansen 拿到的不是原始 ASR
+    // 而是 YT 已翻譯後 zh-Hans 字幕的問題（_chooseBestCaptionTrack 註解詳述）。
+    if (config.preferOriginalTrack !== false) {
+      const { targetLanguage = 'zh-TW' } = await browser.storage.sync.get('targetLanguage');
+      const action = await _runCaptionTrackChooser(targetLanguage);
+      // YT.active 仍為 true,activate 邏輯已開始 → 用 stopYouTubeTranslation 把監聽 / observer 清乾淨
+      if (action === 'skip') {
+        SK.sendLog('info', 'youtube', 'activation skipped (P1 target-lang-native track exists)');
+        stopYouTubeTranslation();
+        return;
+      }
+      if (action === 'switch') {
+        // 清掉 YT 自翻譯軌可能已塞進來的舊 rawSegments / captionMap,
+        // setOption 後新 track 的 /api/timedtext 會回新 caption,handler 在 line 539 wholesale 覆蓋
+        YT.rawSegments = [];
+        YT.captionMap = new Map();
+      }
+    }
 
     if (YT.rawSegments.length > 0) {
       // 已有快取（interceptor 在 activate 之前就攔截到了）→ 直接開始翻譯
