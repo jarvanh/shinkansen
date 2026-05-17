@@ -1,8 +1,10 @@
-// Regression: v1.8.0 streaming first_chunk 1.5s timeout → fallback 走 non-streaming
+// Regression: v1.8.0 streaming first_chunk timeout → fallback 走 non-streaming
+//
+// v1.9.21: timeout 從 1.5s 改 3s(留 200% margin 給 Pro 模型 / 偶發網路慢 case)。
 //
 // 鎖兩件事:
 //   1. TRANSLATE_BATCH_STREAM 回 started:true 但 SW 從沒推 STREAMING_FIRST_CHUNK,
-//      content.js 應在 1.5 秒後送 STREAMING_ABORT(中斷 SW 端 streaming)
+//      content.js 應在 3 秒後送 STREAMING_ABORT(中斷 SW 端 streaming)
 //   2. timeout 後 fallback 走 v1.7.x 路徑:序列 batch 0(TRANSLATE_BATCH 25 texts)
 //      + 並行 batch 1+(TRANSLATE_BATCH 10 texts)
 //
@@ -13,9 +15,9 @@
 //
 // 預期(timeline):
 //   - 0ms: TRANSLATE_BATCH_STREAM 送出
-//   - 1500ms: first_chunk timeout → STREAMING_ABORT 送出 + fallback 進入序列路徑
-//   - ~1500ms: TRANSLATE_BATCH(25 texts, batch 0)送出
-//   - ~1550ms: batch 0 resolve → TRANSLATE_BATCH(10 texts, batch 1)送出
+//   - 3000ms: first_chunk timeout → STREAMING_ABORT 送出 + fallback 進入序列路徑
+//   - ~3000ms: TRANSLATE_BATCH(25 texts, batch 0)送出
+//   - ~3050ms: batch 0 resolve → TRANSLATE_BATCH(10 texts, batch 1)送出
 //
 // SANITY CHECK 紀錄(已驗證,2026-04-28):
 //   把 content.js 的 firstChunkOrTimeout race 內 setTimeout 從 FIRST_CHUNK_TIMEOUT_MS 改成
@@ -27,7 +29,7 @@ import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
 const FIXTURE = 'translate-priority-sort';
 
-test('streaming-batch-0-first-chunk-timeout: 1.5s 沒 first_chunk → STREAMING_ABORT + fallback 走 non-streaming', async ({
+test('streaming-batch-0-first-chunk-timeout: 3s 沒 first_chunk → STREAMING_ABORT + fallback 走 non-streaming', async ({
   context,
   localServer,
 }) => {
@@ -62,7 +64,7 @@ test('streaming-batch-0-first-chunk-timeout: 1.5s 沒 first_chunk → STREAMING_
     chrome.runtime.sendMessage = async function(msg) {
       if (msg && msg.type === 'TRANSLATE_BATCH_STREAM') {
         window.__streamCount += 1;
-        // 故意完全不 fire 任何 STREAMING_* 訊息 → 觸發 1.5s timeout 路徑
+        // 故意完全不 fire 任何 STREAMING_* 訊息 → 觸發 3s timeout 路徑
         return { ok: true, started: true };
       }
       if (msg && msg.type === 'STREAMING_ABORT') {
@@ -105,19 +107,19 @@ test('streaming-batch-0-first-chunk-timeout: 1.5s 沒 first_chunk → STREAMING_
     })()
   `);
 
-  // 1s 內:streaming 還在等 first_chunk,batch 0 fallback 還沒進場
-  await page.waitForTimeout(1000);
+  // 2s 內:streaming 還在等 first_chunk(timeout 3s),batch 0 fallback 還沒進場
+  await page.waitForTimeout(2000);
   const before = await evaluate(`({
     streamCount: window.__streamCount,
     batchCount: window.__batchPayloadSizes.length,
     abortCount: window.__abortCount,
   })`);
   expect(before.streamCount, 'batch 0 走 STREAM 1 次').toBe(1);
-  expect(before.batchCount, 'timeout 前(1s),batch 0 fallback 還不該送').toBe(0);
+  expect(before.batchCount, 'timeout 前(2s),batch 0 fallback 還不該送').toBe(0);
   expect(before.abortCount, 'timeout 前 STREAMING_ABORT 還不該送').toBe(0);
 
-  // 等到 1.8s:跨過 1.5s timeout + batch 0/1 dispatch + resolve(50ms each)+ 餘裕
-  await page.waitForTimeout(1000);
+  // 再等 1.5s(總 3.5s):跨過 3s timeout + batch 0/1 dispatch + resolve(50ms each)+ 餘裕
+  await page.waitForTimeout(1500);
 
   const after = await evaluate(`({
     abortCount: window.__abortCount,
@@ -126,7 +128,7 @@ test('streaming-batch-0-first-chunk-timeout: 1.5s 沒 first_chunk → STREAMING_
     doneResolved: window.__doneResolved,
   })`);
 
-  expect(after.abortCount, '1.5s timeout 後應送 STREAMING_ABORT').toBe(1);
+  expect(after.abortCount, '3s timeout 後應送 STREAMING_ABORT').toBe(1);
   expect(
     after.payloadSizes.length,
     `fallback 應送 batch 0(25)+ batch 1(10)共 2 筆,實際 ${JSON.stringify(after.payloadSizes)}`,
@@ -134,12 +136,12 @@ test('streaming-batch-0-first-chunk-timeout: 1.5s 沒 first_chunk → STREAMING_
   expect(after.payloadSizes.includes(25), 'fallback batch 0 25 texts').toBe(true);
   expect(after.payloadSizes.includes(10), 'fallback batch 1 10 texts').toBe(true);
 
-  // batch 0 fallback 應在 timeout 後送(> 1500ms,< 1700ms)
+  // batch 0 fallback 應在 timeout 後送(> 2950ms)
   const batch0Time = after.callTimes[after.payloadSizes.indexOf(25)];
   expect(
     batch0Time,
-    `batch 0 fallback 應在 1.5s timeout 後送(預期 > 1450ms,實際 ${batch0Time?.toFixed?.(1)}ms)`,
-  ).toBeGreaterThan(1450);
+    `batch 0 fallback 應在 3s timeout 後送(預期 > 2950ms,實際 ${batch0Time?.toFixed?.(1)}ms)`,
+  ).toBeGreaterThan(2950);
 
   expect(after.doneResolved, 'translateUnits Promise 應解開').toBe(true);
 

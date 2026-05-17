@@ -8,12 +8,14 @@
 #   產出: safari-app/shinkansen-macos-v<version>.pkg
 #   發布: gh release upload v<version> safari-app/shinkansen-macos-v<version>.pkg
 #
+# 一般情況下不必手動跑 — `./tools/release.sh` 內已一律呼叫本 script,自動 build +
+# notarize + 上傳到 GitHub Release。本 script 保留獨立可呼叫,給「release.sh 中段
+# 出錯後手動補 Developer ID .pkg」這類情境用。
+#
 # 注意:
-#   - 跟 safari-build.sh(MAS 軌)拆開,不綁進 release.sh。
-#   - notarize 等 Apple cloud 動輒 ~30-60 分鐘(有時更久),不能每版都跑;
-#     建議只在重大版本 / 對外推廣前手工觸發一次,當作獨立 deliverable。
-#   - 本 script 完整跑一次 archive + export + productbuild + notarize,
-#     不複用 safari-build.sh 產的 archive(版本對不上時自動規避踩坑)。
+#   - 跟 safari-build.sh(MAS 軌)拆開兩個 script。release.sh 會依序呼叫兩支,
+#     兩 script 各自 archive(版本對不上時自動規避踩坑,代價是重 build 一次)。
+#   - notarize 等 Apple cloud 時間不固定(實測過 27 秒;Apple 文件聲稱可達 30-60 分鐘)。
 #
 # 用法:
 #   ./safari-app/safari-build-devid.sh

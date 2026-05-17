@@ -145,6 +145,10 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
   return { translations: result, chars: totalChars };
 }
 
+// Google Translate 非官方端點 fetch timeout。15s 對齊 Gemini / OpenAI 主翻譯路徑;
+// Google MT 典型回應 < 1s,設這值純粹是防 hang 的兜底。
+const FETCH_TIMEOUT_MS = 15_000;
+
 /**
  * 對 Google Translate 非官方端點發出單一 GET 請求，回傳用 SEP 分割的字串陣列。
  */
@@ -154,7 +158,19 @@ async function _fetchTranslate(text, tl) {
     `?client=gtx&sl=auto&tl=${encodeURIComponent(tl)}&dt=t&q=` +
     encodeURIComponent(text);
 
-  const resp = await fetch(url);
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let resp;
+  try {
+    resp = await fetch(url, { signal: controller.signal });
+  } catch (err) {
+    clearTimeout(abortTimer);
+    if (err.name === 'AbortError') {
+      throw new Error(`Google Translate 逾時(${FETCH_TIMEOUT_MS}ms)`);
+    }
+    throw err;
+  }
+  clearTimeout(abortTimer);
   if (!resp.ok) throw new Error(`Google Translate HTTP ${resp.status}`);
 
   const data = await resp.json();

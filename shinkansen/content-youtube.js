@@ -2165,9 +2165,10 @@
 
         // v1.8.9: Streaming batch 0(只人工字幕、只 Gemini engine)
         // 收 STREAMING_SEGMENT 立刻寫 captionMap + replaceSegmentEl,首字延遲從整批 resolve 砍成 SSE 首段
-        // FIRST_CHUNK_TIMEOUT_MS=1500 跟文章翻譯路徑一致。Google MT / OpenAI-compat 維持原非 streaming。
+        // v1.9.21: FIRST_CHUNK_TIMEOUT_MS 1500 → 3000 跟文章翻譯路徑一致(留 200% margin,
+        // 避免偶發網路慢 / Pro 模型 TTFT 1-3s 誤判 fallback)。Google MT / OpenAI-compat 維持原非 streaming。
         const _streamSubtitleEnabled = !config.engine || config.engine === 'gemini';
-        const FIRST_CHUNK_TIMEOUT_MS = 1500;
+        const FIRST_CHUNK_TIMEOUT_MS = 3000;
 
         const _runBatch0Streaming = (batchUnits) => {
           const streamId = `yt_stream_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;

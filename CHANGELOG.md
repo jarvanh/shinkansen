@@ -7,6 +7,26 @@
 
 ## v1.9.x
 
+**v1.9.21** — 翻譯路徑全套加 fetch 層 timeout：Gemini / OpenAI 相容 / Google Translate / 術語表 / streaming 一律 15s 上限。streaming first-chunk fallback 從 1.5s 改 3s（避免 Pro 模型 / 偶發網路慢誤判）。release pipeline 一律 build Developer ID 版 Safari 並自動上傳 GitHub Release。
+
+**對使用者可見改動**：
+- 翻譯卡死（Gemini / OpenAI / Google MT 不回應）不再無限等待：15s 後自動 abort 並走重試，最壞 ~76s 後丟「網路錯誤：逾時（15000ms）」，使用者不必再手動按 ×
+- 串流首段 fallback 改成 3 秒（原 1.5 秒）：Pro 模型 / 偶發網路慢 / API 高峰時較少誤判走 non-streaming，省下被中斷的 streaming token
+- macOS Safari Developer ID 版（GitHub release `shinkansen-macos-v<ver>.pkg`）現在每版自動 build + notarize + 上傳，不必等手動觸發
+
+**內部改動**：
+- `lib/gemini.js` `fetchWithRetry` + `translateBatchStream` + `extractGlossary` 一律 15s（原 fetchWithRetry 無 timeout / streaming 無 / extractGlossary 55s）
+- `lib/openai-compat.js` `fetchWithRetry` + `extractGlossary` 一律 15s（原無 / 55s）
+- `lib/google-translate.js` `_fetchTranslate` 一律 15s（原純 `fetch(url)` 無 timeout 無 retry）
+- streaming first-chunk timeout `1500ms → 3000ms`（`content.js` + `content-youtube.js`）
+- 串流路徑用 internal AbortController + forward 外部 signal，header timeout 跟 user cancel 兩條 abort path 共存
+- 術語表 fetch timeout 預設從 55s 降到 15s，跟主翻譯對齊；`glossary.fetchTimeoutMs` 仍可 override
+- 新增 3 條 unit spec（`gemini-fetch-timeout` / `openai-compat-fetch-timeout` / `google-translate-fetch-timeout`）鎖死 15s 常數 + AbortController 結構，SANITY 驗過（拔 `signal: ...` → 對應 case fail / 還原 → pass）
+- 兩條 streaming first-chunk regression spec 配合 timing 更新（`streaming-batch-0-first-chunk-timeout` + `youtube-non-asr-streaming` case 4）
+- `tools/release.sh` 一律呼叫 `safari-build.sh`（MAS） + `safari-build-devid.sh`（Developer ID notarize），push tag 後輪詢 GitHub Release 出現再 `gh release upload --clobber`；`SKIP_SAFARI=1` 仍可跳過
+
+**自動清快取**：不清，沒動翻譯路徑核心邏輯 / prompt / cache key / hashing，純 abort path 補強。
+
 **v1.9.20** — YouTube 修 bug：按 CC 按鈕關閉字幕後，「翻譯中⋯」狀態文字仍持續顯示在原字幕區。
 
 **對使用者可見改動**：

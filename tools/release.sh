@@ -2,17 +2,18 @@
 # 用法: ./tools/release.sh "改了什麼"
 #       SKIP_SAFARI=1 ./tools/release.sh "改了什麼"   # 緊急只發 Chrome / Firefox
 #
-# 一次 build 產出兩條快速 release artifact:
-#   - Chrome / Firefox    : commit + tag + push,GitHub Actions 自動建 Release zip
-#   - macOS Safari MAS    : shinkansen-macos-v<ver>-mas.pkg(Transporter 上傳 App Store Connect)
+# 一次 build 產出三條 release artifact:
+#   - Chrome / Firefox       : commit + tag + push,GitHub Actions 自動建 Release zip
+#   - macOS Safari Developer ID : shinkansen-macos-v<ver>.pkg(notarize + stapled,
+#                              自動上傳到 GitHub Release 給使用者公開下載手動安裝)
+#   - macOS Safari MAS       : shinkansen-macos-v<ver>-mas.pkg(Transporter 上傳 App Store Connect,
+#                              需手動 deliver)
 #
-# Developer ID 公開下載 .pkg 拆成獨立流程:
-#   ./safari-app/safari-build-devid.sh    # notarize 等 Apple cloud ~30-60 分鐘
-#   gh release upload v<ver> safari-app/shinkansen-macos-v<ver>.pkg
-# 不綁進 release.sh — notarize 太慢不能每版跑,需要時手工觸發,當作獨立 deliverable。
+# Safari build 失敗(沒 Xcode / 沒簽章 / pbxproj 不存在 / notarize cloud reject)會在
+# git commit 前 abort,不留半 release 狀態。
 #
-# Safari MAS build 失敗(沒 Xcode / 沒簽章 / pbxproj 不存在)會在 git commit 前 abort,
-# 不留半 release 狀態。
+# Developer ID notarize 等 Apple cloud 時間不固定(實測過 27 秒;Apple 文件聲稱可達
+# 30-60 分鐘)。怕等就 SKIP_SAFARI=1 走純 Chrome / Firefox 路。
 
 set -e
 cd "$(dirname "$0")/.."
@@ -26,10 +27,13 @@ MSG="${1:-v${VERSION}}"
 # 真要只發 Chrome(例如 Xcode 暫時不能跑)走 SKIP_SAFARI=1。
 if [ "${SKIP_SAFARI:-0}" = "1" ]; then
   echo "⚠️  SKIP_SAFARI=1 — 跳過 Safari build,只發 Chrome / Firefox。"
-  echo "    下次 Safari release 要手動跑 ./safari-app/safari-build.sh 補上同步。"
+  echo "    下次 Safari release 要手動跑 ./safari-app/safari-build.sh + safari-build-devid.sh 補上同步。"
 else
-  echo "==> Safari build(同步 Resources / bump pbxproj / xcodebuild archive)..."
+  echo "==> Safari MAS build(同步 Resources / bump pbxproj / xcodebuild archive)..."
   ./safari-app/safari-build.sh
+  echo ""
+  echo "==> Safari Developer ID build(獨立 archive + notarize,等 Apple cloud)..."
+  ./safari-app/safari-build-devid.sh
 fi
 
 # v1.6.5: minor/major bump 時提醒檢查 RELEASE_HIGHLIGHTS 是否要更新
@@ -66,13 +70,37 @@ fi
 git tag "v${VERSION}"
 git push && git push --tags
 
+# Developer ID .pkg 上傳到 GitHub Release(GitHub Actions ~1 分鐘內建出 release,
+# 這邊 poll 等到 release 存在再 upload)。SKIP_SAFARI 時沒 .pkg,跳過。
+if [ "${SKIP_SAFARI:-0}" != "1" ]; then
+  DEVID_PKG="safari-app/shinkansen-macos-v${VERSION}.pkg"
+  if [ ! -f "$DEVID_PKG" ]; then
+    echo "⚠️  $DEVID_PKG 不存在,跳過 GitHub Release upload(safari-build-devid.sh 應產此檔)。"
+  else
+    echo ""
+    echo "==> 等 GitHub Release v${VERSION} 由 Actions 建出(最多輪詢 3 分鐘)..."
+    UPLOADED=0
+    for i in $(seq 1 18); do
+      if gh release view "v${VERSION}" >/dev/null 2>&1; then
+        echo "    Release 已建立,開始上傳 $DEVID_PKG ..."
+        gh release upload "v${VERSION}" "$DEVID_PKG" --clobber
+        UPLOADED=1
+        break
+      fi
+      sleep 10
+    done
+    if [ "$UPLOADED" != "1" ]; then
+      echo "⚠️  GitHub Release v${VERSION} 3 分鐘內沒出現,手動補上:"
+      echo "    gh release upload v${VERSION} $DEVID_PKG"
+    fi
+  fi
+fi
+
 echo ""
-echo "v${VERSION} 已推送，GitHub Release 會在 1 分鐘內自動建立。"
+echo "v${VERSION} 已推送,GitHub Release 已建立。"
 echo "  Chrome / Firefox     : https://github.com/jimmysu0309/shinkansen/releases"
 if [ "${SKIP_SAFARI:-0}" != "1" ]; then
+  echo "  macOS Safari (DevID) : 已自動上傳到 v${VERSION} release(notarize + stapled)"
   echo "  macOS Safari (MAS)   : safari-app/shinkansen-macos-v${VERSION}-mas.pkg"
   echo "                         open -a Transporter safari-app/shinkansen-macos-v${VERSION}-mas.pkg"
 fi
-echo ""
-echo "(要發 Developer ID 公開下載 .pkg → 手工跑 ./safari-app/safari-build-devid.sh,"
-echo " notarize 等 Apple cloud ~30-60 分鐘,完成後 gh release upload v${VERSION} ...)"

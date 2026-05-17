@@ -443,8 +443,11 @@
     // first_chunk / segment / done / error / aborted 訊息。回傳兩個 promise 讓主流程協調：
     //   firstChunkPromise：第一個 SSE chunk 抵達時 resolve（主流程在此時同步 dispatch batch 1+)
     //   donePromise:streaming 完整結束（成功/失敗/abort）時 resolve/reject
-    // 1.5 秒沒收到 first_chunk 視為 streaming 失敗，呼叫端 fallback 走 non-streaming runBatch。
-    const FIRST_CHUNK_TIMEOUT_MS = 1500;
+    // v1.9.21: timeout 從 1.5s → 3s。原 1.5s 來自 reports/streaming-probe Flash first_chunk
+    // 實測 936-991ms + 50% margin,但偶發網路 / API 高峰 / Pro 模型 TTFT 1-3s 容易誤判
+    // fallback(浪費已產生 token + 多等 ~1.5s)。3s 留 200% margin,真正卡死的 case 也只
+    // 多等 1.5s 才 fallback 接住,trade-off 划算。
+    const FIRST_CHUNK_TIMEOUT_MS = 3000;
     const runBatch0Streaming = (job) => {
       const streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       const t0 = Date.now();

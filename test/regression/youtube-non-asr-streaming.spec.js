@@ -5,7 +5,7 @@
 //   2. STREAMING_SEGMENT 抵達時立刻寫 captionMap(逐條注入,不等整批 done)
 //   3. STREAMING_FIRST_CHUNK 抵達後 batch 1+ 同步並行 dispatch
 //   4. mid-failure(STREAMING_ERROR after first_chunk)→ batch 0 整批 retry via TRANSLATE_SUBTITLE_BATCH
-//   5. first_chunk 1.5s timeout → STREAMING_ABORT + fallback 走 non-streaming
+//   5. first_chunk 3s timeout → STREAMING_ABORT + fallback 走 non-streaming(v1.9.21,原 1.5s)
 //
 // SANITY CHECK 紀錄(已驗證,2026-04-28):
 //   把 _streamSubtitleEnabled 改成 false → batch 0 走 TRANSLATE_SUBTITLE_BATCH 而非 STREAM,
@@ -265,7 +265,7 @@ test('youtube-non-asr-streaming (case 3): mid-failure → batch 0 整批 retry v
   await page.close();
 });
 
-test('youtube-non-asr-streaming (case 4): first_chunk 1.5s timeout → STREAMING_ABORT + fallback', async ({
+test('youtube-non-asr-streaming (case 4): first_chunk 3s timeout → STREAMING_ABORT + fallback', async ({
   context,
   localServer,
 }) => {
@@ -277,7 +277,8 @@ test('youtube-non-asr-streaming (case 4): first_chunk 1.5s timeout → STREAMING
   await evaluate(`window.__SK.isYouTubePage = () => true`);
   await evaluate(setupListenerCollector);
 
-  // 用 events log 抓「stream sent → abort sent」的相對時間,驗證 abort 在 ~1500ms 後才送(不早不晚)
+  // v1.9.21: timeout 從 1.5s 改 3s。用 events log 抓「stream sent → abort sent」相對時間,
+  // 驗證 abort 在 ~3000ms 後才送(不早不晚)
   await evaluate(`
     window.__streamSentT = null;
     window.__abortSentT = null;
@@ -285,7 +286,7 @@ test('youtube-non-asr-streaming (case 4): first_chunk 1.5s timeout → STREAMING
       if (msg && msg.type === 'TRANSLATE_SUBTITLE_BATCH_STREAM') {
         window.__streamCount += 1;
         window.__streamSentT = performance.now();
-        // 完全不 fire 任何 STREAMING_* → 觸發 1.5s timeout
+        // 完全不 fire 任何 STREAMING_* → 觸發 3s timeout
         return { ok: true, started: true };
       }
       if (msg && msg.type === 'STREAMING_ABORT') {
@@ -308,8 +309,8 @@ test('youtube-non-asr-streaming (case 4): first_chunk 1.5s timeout → STREAMING
   await evaluate(fakeRawSegments(9));
   await evaluate(`window.__SK.translateYouTubeSubtitles();`);
 
-  // 等 2.2s:涵蓋 1.5s timeout + fallback batch 0/1 的 50ms each + Playwright evaluate 餘裕
-  await page.waitForTimeout(2200);
+  // 等 3.7s:涵蓋 3s timeout + fallback batch 0/1 的 50ms each + Playwright evaluate 餘裕
+  await page.waitForTimeout(3700);
 
   const result = await evaluate(`({
     streamCount: window.__streamCount,
@@ -323,16 +324,16 @@ test('youtube-non-asr-streaming (case 4): first_chunk 1.5s timeout → STREAMING
   expect(result.abortCount, 'STREAMING_ABORT 應送 1 次').toBe(1);
   expect(result.streamSentT, 'streamSentT 應 truthy').toBeTruthy();
   expect(result.abortSentT, 'abortSentT 應 truthy').toBeTruthy();
-  // abort 應該在 stream 送出後 1400-1700ms 之間(timeout=1500ms,容忍 ±200ms 抖動)
+  // abort 應該在 stream 送出後 2900-3300ms 之間(timeout=3000ms,容忍 ±300ms 抖動)
   const delta = result.abortSentT - result.streamSentT;
   expect(
     delta,
-    `STREAMING_ABORT 應在 stream 送出後 ~1500ms 觸發(實際 ${delta.toFixed(0)}ms)`,
-  ).toBeGreaterThan(1400);
+    `STREAMING_ABORT 應在 stream 送出後 ~3000ms 觸發(實際 ${delta.toFixed(0)}ms)`,
+  ).toBeGreaterThan(2900);
   expect(
     delta,
-    `STREAMING_ABORT 不該太晚(實際 ${delta.toFixed(0)}ms,預期 < 1700ms)`,
-  ).toBeLessThan(1700);
+    `STREAMING_ABORT 不該太晚(實際 ${delta.toFixed(0)}ms,預期 < 3300ms)`,
+  ).toBeLessThan(3300);
   expect(result.payloadSizes.includes(1), `fallback batch 0(1 text)應被送`).toBe(true);
   expect(result.payloadSizes.includes(8), `fallback batch 1(8 text)應被送`).toBe(true);
 
