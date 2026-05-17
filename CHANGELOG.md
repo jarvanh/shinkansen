@@ -7,6 +7,17 @@
 
 ## v1.9.x
 
+**v1.9.20** — YouTube 修 bug：按 CC 按鈕關閉字幕後，「翻譯中⋯」狀態文字仍持續顯示在原字幕區。
+
+**對使用者可見改動**：
+- 在 YouTube 看影片時，按 CC 按鈕關閉字幕，「翻譯中⋯」浮層會立即消失（過去只有原生英文字幕會被隱藏，我們自己的狀態文字繼續掛著）。CC 重新打開後翻譯流程照常恢復，狀態文字也會在下一輪翻譯時重新出現
+
+**內部改動**：
+- `content-youtube.js` `_observeCcButton` 在 CC `aria-pressed: true → false` 時補呼叫 `hideCaptionStatus()`（原本只清 ASR overlay + 加 `shinkansen-cc-paused` CSS class，沒清 `#__sk-yt-caption-status` 浮層 div + 250ms 位置追蹤 timer）
+- `test/regression/youtube-cc-pause.spec.js` 加 case 6 鎖死「CC 關 → 浮層 div 消失」斷言。SANITY 已驗（拔修法 → case 6 fail / 還原 → pass）
+
+**自動清快取**：不清，沒動翻譯路徑核心邏輯 / prompt / cache key / hashing，純 UI 狀態清理。
+
 **v1.9.19** — YouTube 字幕批次大小 8 → 12（token 攤提省 ~26%，延遲不變）+ batch 0 adaptive ramp 上限拉到 16（lead 充裕時更省 token）+ leadMs 改走 wall time（除以 playbackRate，修 2x / 3x 速時誤選大批挨延遲）。
 
 **對使用者可見改動**:

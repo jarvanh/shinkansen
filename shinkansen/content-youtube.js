@@ -2524,6 +2524,9 @@
       if (nextPaused) {
         // 主動清掉 ASR overlay 殘留(_updateOverlay 在 ccPaused 時也會清,這裡是即時保險)
         if (YT.isAsr) _setOverlayContent('');
+        // 「翻譯中…」status 在 CC 關閉後不該繼續顯示(CC 關 = 使用者明確要求隱藏字幕,
+        // 此時 status indicator 殘留會違反「關 CC = 看不到任何字幕相關 UI」的預期)。
+        hideCaptionStatus();
         SK.sendLog('info', 'youtube', 'cc paused (api hold)');
         return;
       }

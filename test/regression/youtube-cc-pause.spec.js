@@ -21,6 +21,10 @@
 //   - 暫時把 _observeCcButton 內 `YT.translatedUpToMs = newWindowStart;` 註解掉
 //     → case 3 仍 pass(translateWindowFrom 還是會送 batch),但 case 3 的
 //     translatedUpToMs 對齊斷言 fail → 還原 pass
+//
+// SANITY CHECK 已完成(2026-05-17,case 6):
+//   - 暫時把 _observeCcButton nextPaused 分支內 `hideCaptionStatus()` 拔掉
+//     → case 6 fail(#__sk-yt-caption-status 仍存在)→ 還原 pass
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -250,6 +254,40 @@ test('youtube-cc-pause case 5: CC 關 → player root 加 shinkansen-cc-paused c
     document.querySelector('.html5-video-player').classList.contains('shinkansen-cc-paused')
   `);
   expect(afterOn, 'CC 重開 → player root 應移除 shinkansen-cc-paused class').toBe(false);
+
+  await page.close();
+});
+
+test('youtube-cc-pause case 6: CC 關 → 主動清掉「翻譯中…」status div(避免關 CC 後浮層殘留)', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('video', { timeout: 10_000 });
+
+  const evaluate = await commonSetup(page);
+
+  // translateYouTubeSubtitles 在 rawSegments 已填 + 啟動時會呼叫 showCaptionStatus('翻譯中…')
+  // (content-youtube.js 約 line 3015),把 #__sk-yt-caption-status div 塞進 ytp-caption-window-container
+  await evaluate(`window.__SK.translateYouTubeSubtitles()`);
+  await page.waitForTimeout(300);
+
+  const beforeOff = await evaluate(`
+    !!document.querySelector('#__sk-yt-caption-status')
+  `);
+  expect(beforeOff, 'baseline:啟動翻譯後應有「翻譯中…」status div').toBe(true);
+
+  // CC 切到關 → _ccButtonObserver 應觸發 hideCaptionStatus
+  await evaluate(`
+    document.querySelector('.ytp-subtitles-button').setAttribute('aria-pressed', 'false');
+  `);
+  await page.waitForTimeout(150);
+
+  const afterOff = await evaluate(`
+    !!document.querySelector('#__sk-yt-caption-status')
+  `);
+  expect(afterOff, 'CC 關 → 「翻譯中…」status div 應被移除').toBe(false);
 
   await page.close();
 });
