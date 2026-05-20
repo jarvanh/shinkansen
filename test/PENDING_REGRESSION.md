@@ -17,38 +17,17 @@
 
 ## 條目
 
-### B3: macOS Safari update-check 半鍵更新 + MAS distribution gate
+(目前沒有 pending 條目)
 
-兩部分綁一起,因為都跟 `safari-web-extension://` 通路的 update-check 行為相關。
-
-~~**Part 1:popup banner Safari 分支改直連 .pkg 下載 URL(路徑 A 半鍵更新)**~~ — ✅ **SANITY 驗收完成(2026-05-18)**
-
-~~- **改動**:`popup/popup.js` update banner click handler 加 Safari 分支——`browser.runtime.getURL('')` startsWith `safari-web-extension://` 時 URL 從「release tag page」改為「直連 GitHub Release .pkg 下載 URL」(`releases/download/v${version}/shinkansen-macos-v${version}.pkg`)。Chrome / Firefox 維持原本三層 fallback 開 release page。~~
-~~- **動機**:macOS Safari 使用者沒有 CWS 自動更新,看到 banner 後原流程是「點 banner → 開 release page → 找 pkg asset → 下載」四步,改成「點 banner → 觸發瀏覽器下載 → 雙擊 pkg 重裝」省兩步。~~
-~~- **SANITY 驗收結果(2026-05-18 macOS Safari 26 真機 + v1.9.25 Developer ID `.pkg`)**:構造 `updateAvailable: {version: '1.10.0'}` 假 storage → popup banner 顯示「📦 有新版可下載 v1.10.0」✅ / 點 banner 新分頁 URL = `https://github.com/jimmysu0309/shinkansen/releases/download/v1.10.0/shinkansen-macos-v1.10.0.pkg`(直連 .pkg,非 release tag page)✅ / options 頁 reload 後也顯示 banner ✅ / 翻譯英文文章 toast 帶 update notice ✅。四項全綠,path A 邏輯在真機跑對。~~
-
-**Part 2:MAS build 編譯期 strip update-check 全套路徑**
-
-- **改動**:新增 `lib/distribution.js`(ES module,給 popup / options / background)+ `lib/distribution-cs.js`(content script,給 content-ns.js 內 `maybeBuildUpdateNotice`)兩檔,皆 export `IS_MAS_BUILD = false`。`safari-app/safari-build.sh` MAS 軌(步驟 1.5)rsync 後將 build 目錄內兩檔 override 成 `true`,drift check(步驟 6)排除這兩檔。Developer ID 軌(`safari-build-devid.sh`)不 override,保持 `false`。
-- **動機**:Apple Review Guideline 2.3.10 不准 app 內引導使用者到 App Store 外下載 app;且 MAS 與 Developer ID 用同 Bundle ID(app.shinkansen.macos),使用者點 banner 下載 .pkg 會覆蓋 MAS 安裝讓 MAS 自動更新失效。MAS 上架前必須先 strip。
-- **守衛位置**:四處(defense in depth):`update-check.js` `checkForUpdate()` 早退 / `popup.js` banner display 不顯示 / `options.js` `disableUpdateNotice` 視同 true / `content-ns.js` `maybeBuildUpdateNotice` 回 null。
-- **manifest 改動**:content_scripts.js array 加 `lib/distribution-cs.js`(必在 content-ns.js 之後,content.js 之前)。
-
-**為什麼進 PENDING(共用理由)**
-
-- 跟 B1/B2 同因 — Playwright fixture extension runtime URL 鎖 `chrome-extension://`,無法 mock 成 `safari-web-extension://` 驗 Safari 分支;另 `tabs.create` 接到的 URL 是否觸發瀏覽器下載對話框是 Safari 系統層級行為,不是 extension 能測的範圍。
-- MAS distribution flag 的 build-time override 機制要在真的跑 `safari-build.sh` 後才能驗,且要對比 build 出來的 `.pkg` 內 `lib/distribution.js` 值 = `true`、Developer ID 軌的對應檔 = `false`,屬 build pipeline 驗收非單元測試範圍。
-
-**SANITY 驗收計畫**
-
-1. macOS Safari Developer ID `.pkg` 真機(IS_MAS_BUILD=false):安裝 pkg → 構造 storage `updateAvailable: {version: 'X.Y.Z+1', releaseUrl: '...'}` → popup 顯示 banner + 點下去新 tab 開的 URL 是 `.pkg` 直連且觸發瀏覽器下載 → options 也顯示 banner → 翻譯任意頁面 toast 也帶 update notice。
-2. 跑 `./safari-app/safari-build.sh` 後檢查 build 目錄 `Shinkansen Extension/Resources/lib/distribution.js` + `distribution-cs.js` 內容都是 `true`,且 drift check 沒因 distribution 兩檔 fail。
-3. MAS `.pkg` 真機(IS_MAS_BUILD=true,先用 unpacked + 手改 distribution.js 模擬,因 MAS 尚未上架):同上構造 storage → popup / options / 翻譯 toast 三處都不顯示 banner。
-4. Developer ID 軌跑 `safari-build-devid.sh` 後檢查 build 目錄兩 distribution 檔仍是 `false`(沒被前一輪 MAS build 殘留污染)。
-
-**未來 iOS 守衛**
-
-iOS Safari 同樣是 `safari-web-extension://` scheme 但不能裝 pkg。`project_ios_scope_decisions.md` 記載 iOS 動工等 macOS MAS 過審後啟動,屆時 popup.js Safari 分支需加 `chrome.runtime.getPlatformInfo().os === 'mac'` 守衛,且 iOS build pipeline 也應該走類似 `IS_MAS_BUILD=true` 路徑(iOS 全部走 App Store 上架)。
+<!-- v1.10.0 清空紀錄(2026-05-20):
+  - B3 整條移除(使用者要求移除 MAS 上架待辦,2026-05-20)。Part 1(popup banner
+    Safari 分支改直連 .pkg 下載 URL)SANITY 驗收已 2026-05-18 完成。Part 2(MAS
+    build 編譯期 strip update-check 全套路徑)隨 MAS 上架追蹤一起移除——
+    `lib/distribution.js` + `lib/distribution-cs.js` 兩檔仍保留在 codebase
+    (`IS_MAS_BUILD = false`),safari-build.sh MAS 軌 override 機制保留;未來若
+    重啟 MAS 上架追蹤,SANITY 驗收計畫紀錄見 git history `test/PENDING_REGRESSION.md`
+    v1.10.0 之前版本。
+-->
 
 <!-- v1.9.28 清空紀錄(2026-05-20):
   - B4: Finding 3 X 串尾「I love your works ❤」stall **完全解了**(v1.9.27.x diagnostic
