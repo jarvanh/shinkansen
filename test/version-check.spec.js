@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { test, expect } from './fixtures/extension.js';
 import { getShinkansenEvaluator } from './regression/helpers/run-inject.js';
 
-const EXPECTED_VERSION = '1.10.0';
+const EXPECTED_VERSION = '1.10.1';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,8 +31,22 @@ function readRepoFile(rel) {
   return fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
 }
 
+// Dev tail manifest mode:CLAUDE.md §1.6 — dev 期間 manifest version 帶第 4 段
+// (例 1.10.0.1)讓 reload 後 Chrome service worker 印的版本一眼識別「載入了
+// working tree」,免去人工問「跑的是商店版還是 working tree」。bump release 時
+// manifest 還原為三段(1.10.0 → 1.10.1)再跑 full suite。
+//
+// dev tail 識別到時,本檔整批 test skip(forcing function 在 bump 時還是有效,
+// dev 期間不阻擋 spec 跑)。
+const manifestJson = JSON.parse(readRepoFile('shinkansen/manifest.json'));
+const manifestVersion = manifestJson.version;
+const isDevTail = manifestVersion.split('.').length >= 4;
+const devTailSkipMsg = `dev tail manifest 模式 (${manifestVersion}):version-check 整批 skip。` +
+  `bump release 時 manifest 還原成三段,本檔才會跑 forcing function。`;
+
 // ── 1. window.__shinkansen.version (透過 extension SW + content script) ──
 test('manifest version drift check (runtime API)', async ({ context, localServer }) => {
+  test.skip(isDevTail, devTailSkipMsg);
   const page = await context.newPage();
   await page.goto(`${localServer.baseUrl}/br-paragraph.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('div#target', { timeout: 10_000 });
@@ -50,6 +64,7 @@ test('manifest version drift check (runtime API)', async ({ context, localServer
 
 // ── 2. SPEC.md 兩處版本標記 ──
 test('SPEC.md 同步檢查 (標頭 + 已實作標題)', async () => {
+  test.skip(isDevTail, devTailSkipMsg);
   const spec = readRepoFile('SPEC.md');
   expect(
     spec,
@@ -65,6 +80,7 @@ test('SPEC.md 同步檢查 (標頭 + 已實作標題)', async () => {
 
 // ── 3. CHANGELOG.md 頂部 vX.Y.Z 條目 ──
 test('CHANGELOG.md 同步檢查 (頂部新版本條目)', async () => {
+  test.skip(isDevTail, devTailSkipMsg);
   const changelog = readRepoFile('CHANGELOG.md');
   // 必須有 **vX.Y.Z** — 條目（行首為 `**v`，後接版本號）
   const pattern = new RegExp(`^\\*\\*v${EXPECTED_VERSION.replace(/\./g, '\\.')}\\*\\*`, 'm');
@@ -77,6 +93,7 @@ test('CHANGELOG.md 同步檢查 (頂部新版本條目)', async () => {
 
 // ── 4. README.md「目前版本」段 ──
 test('README.md 同步檢查 (目前版本段)', async () => {
+  test.skip(isDevTail, devTailSkipMsg);
   const readme = readRepoFile('README.md');
   expect(
     readme,
@@ -87,6 +104,7 @@ test('README.md 同步檢查 (目前版本段)', async () => {
 
 // ── 5. docs/index.html GitHub 下載按鈕（URL path + filename + 副標 v）──
 test('docs/index.html 同步檢查 (GitHub 下載按鈕三處版本號)', async () => {
+  test.skip(isDevTail, devTailSkipMsg);
   const html = readRepoFile('docs/index.html');
   // GitHub releases URL path 與 zip filename 都帶版本號
   const urlFragment = `releases/download/v${EXPECTED_VERSION}/shinkansen-v${EXPECTED_VERSION}.zip`;

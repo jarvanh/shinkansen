@@ -752,6 +752,74 @@
               seen.add(el);
               fragmentExtracted.add(el);
               if (stats) stats.spanWithBr = (stats.spanWithBr || 0) + 1;
+            } else if (
+              // Case F (v1.10.1):block-displayed container(DIV / SECTION 等 CONTAINER_TAGS
+              // 或 computed display:block)含 ≥ 3 inline-style 直接子 + ≥ 1「wrapper SPAN」
+              // (SPAN 自身含 element child)結構。
+              //
+              // 典型場景:X / Twitter 主推文,結構為
+              //   <div data-testid="tweetText" dir="auto" lang="zh">
+              //     <span>第一句</span><div style="display:inline-flex"><a>@mention</a></div>
+              //     <span><span>段1</span><span class="r-b88u0q">段2</span><span>段3</span>…</span>
+              //   </div>
+              // tweetText DIV(non-BLOCK_TAGS_SET,走 non-block 分支)既有 Case A-E 全部
+              // miss(無 hasDirectText、無 hasBrChild、SPAN 不在 CONTAINER_TAGS),
+              // FILTER_SKIP 後 leaf-content-span 補抓:SPAN[2] 內 r-b88u0q 短文 SPAN
+              // (< 20 字)會被 20 字 short guard 擋,翻不到。整顆 tweetText 也可能因
+              // outer block 影響被當 unit 走 framework-managed nodeValue mutate path,
+              // A3 對齊 segment fallback catch-all 把整段譯文塞 ss[0]、其餘設 "" → 主推文
+              // 95% 內文留簡中(2026-05-22 X 真實 case probe 確認)。
+              //
+              // 修法:這種結構顯然是 multi-segment prose 容器,直接 push 所有 descendant
+              // leaf SPAN(no element child + text >= 2 字)各成 element unit。每個 leaf
+              // 是單 text-node,後續 mutate path Case 2(textNodes.length === 1)對齊穩定。
+              // 同時 add el to fragmentExtracted 避免 walker 後續對 descendant 重覆抓 fragment。
+              //
+              // 結構通則(§8):描述 DOM 特徵「block-displayed 容器 + 子全 inline-style +
+              // 含 wrapper SPAN」,不綁 X / Twitter / data-testid 字面。Threads / Mastodon /
+              // Reddit 等 React social SPA 同類 multi-segment 渲染都套用。
+              //
+              // 守門:el 自身 display 是 block / flex / grid / list-item(避免 inline-style
+              // wrapper SPAN 自己誤觸發,Case D/E 已處理 inline 情境)+ 直接子 ≥ 3 +
+              // 子全 inline + wrapperSpanCount >= 1。reply 單 SPAN 結構(直接子=1)不觸發,
+              // 維持既有 mutate path。Wikipedia P 含 A/EM/STRONG 但無 wrapper SPAN
+              // (wrapperSpanCount=0)不觸發。
+              !seen.has(el) &&
+              !fragmentExtracted.has(el) &&
+              (() => {
+                const win = el.ownerDocument?.defaultView;
+                const selfCs = win?.getComputedStyle?.(el);
+                const selfDsp = selfCs?.display;
+                if (selfDsp !== 'block' && selfDsp !== 'flex' && selfDsp !== 'grid'
+                    && selfDsp !== 'list-item') return false;
+                const directChildren = Array.from(el.children);
+                if (directChildren.length < 3) return false;
+                let wrapperSpanCount = 0;
+                for (const c of directChildren) {
+                  const dcs = win?.getComputedStyle?.(c);
+                  const dsp = dcs?.display;
+                  if (dsp !== 'inline' && dsp !== 'inline-block' && dsp !== 'inline-flex') {
+                    return false;
+                  }
+                  if (c.tagName === 'SPAN' && c.children.length > 0) wrapperSpanCount++;
+                }
+                return wrapperSpanCount >= 1;
+              })()
+            ) {
+              if (stats) stats.multiSegmentInlineBlock = (stats.multiSegmentInlineBlock || 0) + 1;
+              widgetRejectedBlocks.add(el);
+              fragmentExtracted.add(el);
+              const leaves = el.querySelectorAll('span:not(:has(*))');
+              for (const leaf of leaves) {
+                if (seen.has(leaf)) continue;
+                if (leaf.hasAttribute('data-shinkansen-translated')) continue;
+                const text = (leaf.textContent || '').trim();
+                if (text.length < 2) continue;
+                if (!SK.isVisible(leaf)) continue;
+                if (!isCandidateText(leaf)) continue;
+                results.push({ kind: 'element', el: leaf });
+                seen.add(leaf);
+              }
             }
           }
           return NodeFilter.FILTER_SKIP;
@@ -886,10 +954,84 @@
     scopeRoot.querySelectorAll(SK.INCLUDE_BY_SELECTOR).forEach(el => {
       if (seen.has(el)) return;
       if (el.hasAttribute('data-shinkansen-translated')) return;
+      // v1.10.1: 已被 Case F(walker 非-block 分支)處理過的 multi-segment block 容器
+      // 不再整顆當 unit — Case F 已把 descendant leaf SPAN 各拆成獨立 unit。
+      // 對應 X 主推文 [data-testid="tweetText"] 場景:Case F 觸發後 tweetText DIV 不該
+      // 再被 INCLUDE_BY_SELECTOR 補抓拉回成 outer unit(否則整顆送 LLM 又走 mutate
+      // catch-all bug,既有 leaf unit 跟 outer unit 兩條 path drift)。
+      if (fragmentExtracted.has(el)) return;
       if (isInsideExcludedContainer(el, excludedMemo)) return;
       if (isInteractiveWidgetContainer(el)) return;
       if (!SK.isVisible(el)) return;
       if (!isCandidateText(el)) return;
+
+      // v1.10.1: INCLUDE_BY_SELECTOR scope 內「全 leaf SPAN 直接子」拆 leaf。
+      //
+      // 典型場景:X / Twitter quoted tweet,結構為
+      //   <div data-testid="tweetText" lang="en">   ← display: flow-root
+      //     <span>One fun thing about owning a home in San Francisco...</span>
+      //     <span>https://default.sfplanning.org/...</span>
+      //   </div>
+      //
+      // 不像主推文有 mention DIV + wrapper SPAN(走 walker Case F 拆 leaf),
+      // quoted tweet 只有 2 個 leaf SPAN 各 1 text node,Case F 條件
+      // (directChildren >= 3 + wrapperSpanCount >= 1) 都不符。
+      //
+      // Bug:整顆被 INCLUDE_BY_SELECTOR 抓進 results 當單一 element unit,
+      // inject 階段 X 是 framework-managed → 走 v1.9.27 fallback。A1
+      // tryInjectNodeValueMutate 對 2 個 visible text node 配對失敗
+      // (source seq != target seq) → A2 fallback injectDual append sibling
+      // SHINKANSEN-TRANSLATION wrapper。結果:原英文留在 tweetText 內 + 中文
+      // wrapper 出現在 tweetText 的同層 sibling DIV(2026-05-22 真實 X
+      // emissionite/status/2056826455032828131 probe 確認),違反 §15 single
+      // mode 譯文必須注入回原 element。
+      //
+      // 修法:命中 INCLUDE_BY_SELECTOR 的 element 若結構是「block-displayed
+      // (含 flow-root) + 直接子 >= 2 + 全 leaf SPAN with text >= 2 字」,
+      // 拆 leaf 各成 element unit + mark fragmentExtracted。每個 leaf 是
+      // single text node → A1 nodeValue mutate 成功 → single 視覺。
+      //
+      // 結構通則(§8):描述 DOM 特徵「全 leaf SPAN 直接子的 block 容器」,
+      // 不綁站點。但條件限縮在 INCLUDE_BY_SELECTOR scope 內(site-curated
+      // selector list),爆炸半徑只到該 list 收錄的少數容器,不影響一般網頁 P / DIV。
+      //
+      // 不放寬到 walker Case F 的理由:Case F 通則放寬會誤抓 typography
+      // 框架 SPAN-wrapped 單詞高亮 / syntax highlight 等場景(這些通常不在
+      // INCLUDE_BY_SELECTOR scope 內,所以方案 2 避開了)。
+      //
+      // 對主推文(已被 walker Case F 處理過)無影響:line 962 的
+      // fragmentExtracted.has(el) early return 已先擋掉。
+      if (!fragmentExtracted.has(el)) {
+        const win = el.ownerDocument?.defaultView;
+        const selfCs = win?.getComputedStyle?.(el);
+        const selfDsp = selfCs?.display;
+        const isBlockDisplay = selfDsp === 'block' || selfDsp === 'flow-root' ||
+                               selfDsp === 'flex' || selfDsp === 'grid' ||
+                               selfDsp === 'list-item';
+        if (isBlockDisplay) {
+          const directChildren = Array.from(el.children);
+          const allLeafSpan = directChildren.length >= 2 && directChildren.every(c =>
+            c.tagName === 'SPAN' &&
+            c.children.length === 0 &&
+            (c.textContent || '').trim().length >= 2
+          );
+          if (allLeafSpan) {
+            if (stats) stats.includeSelectorLeafSplit = (stats.includeSelectorLeafSplit || 0) + 1;
+            fragmentExtracted.add(el);
+            widgetRejectedBlocks.add(el);
+            for (const leaf of directChildren) {
+              if (seen.has(leaf)) continue;
+              if (leaf.hasAttribute('data-shinkansen-translated')) continue;
+              if (!SK.isVisible(leaf)) continue;
+              if (!isCandidateText(leaf)) continue;
+              results.push({ kind: 'element', el: leaf });
+              seen.add(leaf);
+            }
+            return;
+          }
+        }
+      }
+
       if (stats) stats.includedBySelector = (stats.includedBySelector || 0) + 1;
       results.push({ kind: 'element', el });
     });
