@@ -234,10 +234,43 @@
     };
   };
 
+  // mousedown capture: framework 的 click handler 跑之前先把 nodeValue mutate
+  // 的 text node 還原為英文原文。React reconciliation 用 fiber 跟 DOM diff 決定要
+  // 更新什麼；nodeValue mutate 把 DOM text 改成中文,fiber 仍記「截斷英文」→
+  // reconcile 算出錯誤的 diff → 展開後中間段落消失。在 mousedown(早於 click)
+  // 還原,React 看到正確 DOM,reconcile 結果正確。還原後 SPA rescan 會重新翻譯。
+  let _preClickListenerAdded = false;
+  function addPreClickRestore() {
+    if (_preClickListenerAdded) return;
+    if (typeof window === 'undefined') return;
+    _preClickListenerAdded = true;
+    window.addEventListener('mousedown', (e) => {
+      if (!STATE.nodeValueMutateBackup || STATE.nodeValueMutateBackup.size === 0) return;
+      const target = e.target;
+      if (!target || target.nodeType !== Node.ELEMENT_NODE) return;
+      const nvEl = target.closest?.('[data-shinkansen-nodevalue-mutated]');
+      if (!nvEl) return;
+      const backup = STATE.nodeValueMutateBackup.get(nvEl);
+      if (!backup) return;
+      for (const entry of backup) {
+        if (entry?.node?.isConnected && typeof entry.originalValue === 'string') {
+          entry.node.nodeValue = entry.originalValue;
+        }
+      }
+      nvEl.removeAttribute('data-shinkansen-nodevalue-mutated');
+      nvEl.removeAttribute('data-shinkansen-translated');
+      STATE.nodeValueMutateBackup.delete(nvEl);
+      STATE.originalText.delete(nvEl);
+      STATE.originalHTML?.delete?.(nvEl);
+      SK.sendLog?.('info', 'spa', 'pre-click restore: nodeValue mutate backup restored for click target');
+    }, { capture: true, passive: true });
+  }
+
   SK.startSpaObserver = function startSpaObserver() {
     if (spaObserver) return;
     spaObserverRescanCount = 0;
     spaObserverSeenTexts.clear();
+    addPreClickRestore();
     spaObserver = new MutationObserver(onSpaObserverMutations);
     // v1.9.27: 加 characterData 監聽,讓 framework 用 textNode.replaceData() partial
     // update text node 的場景(X 推文點「顯示更多」→ React 改 tweetText 子 text node
@@ -861,19 +894,32 @@
         }
       }
 
+      // Path (D): attribute stripped — framework re-render 時把
+      // data-shinkansen-nodevalue-mutated attribute 拔掉(React reconciliation
+      // 不認識 custom attribute 會清除),但 DOM element ref 不變、
+      // STATE.nodeValueMutateBackup 仍有記錄。典型場景:X 推文點「顯示更多」
+      // React re-render 保留同一 element + 加 children + strip attributes。
+      // Path A/B/C 都可能不觸發(CJK 翻譯比英文短,length ratio 不到 1.5x;
+      // backup text node 仍持 translatedValue),attribute 消失是明確訊號。
+      if (!trigger && !el.hasAttribute('data-shinkansen-nodevalue-mutated')) {
+        trigger = 'attr-stripped';
+      }
+
       if (!trigger) continue;
 
-      // 還原所有 backup text node 為原文,確保 collectParagraphs 收到乾淨的
-      // source text。三條 path 都需要:
-      //   Path A(full-reset):framework 已還原,寫入同值無副作用
-      //   Path B(partial-reset):framework 只改部分 node,其餘仍持翻譯值
-      //   Path C(expanded-content):framework 只加新子元素,舊 node 全持翻譯值
+      // 還原 backup text node 為原文,確保 collectParagraphs 收到乾淨的 source text。
+      // Selective restore:只還原仍持 translatedValue 的 node。如果 framework
+      // 已把 text node 改成展開後完整原文(nodeValue !== translatedValue),不覆蓋
+      // ——否則截斷版覆蓋完整版,中間段落消失(X 推文「顯示更多」真實案例)。
       const _backup = STATE.nodeValueMutateBackup.get(el);
       if (_backup) {
         for (const entry of _backup) {
-          if (entry?.node?.isConnected && typeof entry.originalValue === 'string') {
-            entry.node.nodeValue = entry.originalValue;
+          if (!entry?.node?.isConnected || typeof entry.originalValue !== 'string') continue;
+          if (typeof entry.translatedValue === 'string' &&
+              entry.node.nodeValue !== entry.translatedValue) {
+            continue;
           }
+          entry.node.nodeValue = entry.originalValue;
         }
       }
 

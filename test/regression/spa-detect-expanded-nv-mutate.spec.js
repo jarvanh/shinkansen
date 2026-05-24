@@ -341,3 +341,158 @@ test('Layer A4 partial-reset 守門:所有 backup node nodeValue 仍 === transla
   expect(String(r.fired), '所有 node 仍 === translatedValue,不該 unmark').toBe('false');
   expect(r.attr_still, 'attribute 應維持').toBe(true);
 });
+
+// v1.10.2 Path D(attr-stripped):X 推文點「顯示更多」,React re-render 保留
+// 同一個 element ref 但 strip custom attributes + 改 text node 為完整原文 +
+// append 新 child nodes。Path D 偵測 attribute 消失即觸發 unmark。
+// 關鍵:React 已把 text node 改成完整英文(不再 === translatedValue),
+// Path D 不可 restore(否則截斷版覆蓋完整版,中間段落消失)。
+test('Layer A4 Path D attr-stripped:framework 改 text + strip attr → unmark,不覆蓋 React 設的完整原文', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/inject-nodevalue-mutate-a3.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target', { timeout: 10_000 });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const result = await evaluate(`
+    (() => {
+      const el = document.createElement('div');
+      el.setAttribute('data-testid', 'tweetText');
+      el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
+      el.setAttribute('data-shinkansen-translated', '1');
+      const span1 = document.createElement('span');
+      const truncatedOrig = '"Can 1Password see what\\'s in my vault?" No. That\\'s how we built 1Password. Your data is encrypted on your device.';
+      const fullExpanded = truncatedOrig + ' Zero-knowledge architecture has been part of 1Password since day one. The stakes are higher now.';
+      const text1 = document.createTextNode(truncatedOrig);
+      span1.appendChild(text1);
+      el.appendChild(span1);
+      document.body.appendChild(el);
+
+      const SK = window.__SK;
+      SK.STATE.translated = true;
+      SK._testNvMutateStubSetup(el, truncatedOrig, [
+        { node: text1, originalValue: truncatedOrig, translatedValue: '「1Password 看得到我保險箱裡的內容嗎？」沒辦法。您的資料在裝置上就已經加密。' },
+      ]);
+      text1.nodeValue = '「1Password 看得到我保險箱裡的內容嗎？」沒辦法。您的資料在裝置上就已經加密。';
+
+      // 模擬 React re-render:
+      // 1. 改 text node 為完整英文(展開後的全文)
+      text1.nodeValue = fullExpanded;
+      // 2. strip attributes
+      el.removeAttribute('data-shinkansen-nodevalue-mutated');
+      el.removeAttribute('data-shinkansen-translated');
+      // 3. append 新 children(link + hashtags)
+      const hashSpan = document.createElement('span');
+      hashSpan.textContent = '#Security #ZeroKnowledge #Privacy';
+      el.appendChild(hashSpan);
+
+      const mockMutations = [{ target: el, type: 'childList', addedNodes: [hashSpan], removedNodes: [] }];
+      const fired = SK._detectAndUnmarkExpandedNodeValueMutate(mockMutations);
+      return {
+        fired,
+        attr_nvm: el.hasAttribute('data-shinkansen-nodevalue-mutated'),
+        attr_tr: el.hasAttribute('data-shinkansen-translated'),
+        backup_has: SK.STATE.nodeValueMutateBackup.has(el),
+        text1_value: text1.nodeValue,
+        text1_preserved_full: text1.nodeValue === fullExpanded,
+      };
+    })()
+  `);
+  const r = typeof result === 'string' ? JSON.parse(result) : result;
+  expect(String(r.fired), 'Path D 應 fire').toBe('true');
+  expect(r.attr_nvm, 'nodevalue-mutated 應移除').toBe(false);
+  expect(r.attr_tr, 'translated 應移除').toBe(false);
+  expect(r.backup_has, 'backup 該 el 應 clear').toBe(false);
+  expect(r.text1_preserved_full, 'text1 應保留 React 設的完整原文,不被截斷版覆蓋').toBe(true);
+
+  await page.close();
+});
+
+// Path D text node 仍持 translatedValue(React 沒改 text):應 restore 為 originalValue
+test('Layer A4 Path D attr-stripped + text 仍持翻譯值 → selective restore 為 originalValue', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/inject-nodevalue-mutate-a3.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target', { timeout: 10_000 });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const result = await evaluate(`
+    (() => {
+      const el = document.createElement('div');
+      el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
+      el.setAttribute('data-shinkansen-translated', '1');
+      const span1 = document.createElement('span');
+      const origText = 'Original English text';
+      const text1 = document.createTextNode(origText);
+      span1.appendChild(text1);
+      el.appendChild(span1);
+      document.body.appendChild(el);
+
+      const SK = window.__SK;
+      SK.STATE.translated = true;
+      const translatedVal = '中文翻譯';
+      SK._testNvMutateStubSetup(el, origText, [
+        { node: text1, originalValue: origText, translatedValue: translatedVal },
+      ]);
+      // text node 仍持 translatedValue(React 只 strip attr,沒改 text)
+      text1.nodeValue = translatedVal;
+      el.removeAttribute('data-shinkansen-nodevalue-mutated');
+      el.removeAttribute('data-shinkansen-translated');
+
+      const mockMutations = [{ target: text1, type: 'characterData' }];
+      const fired = SK._detectAndUnmarkExpandedNodeValueMutate(mockMutations);
+      return {
+        fired,
+        backup_has: SK.STATE.nodeValueMutateBackup.has(el),
+        text1_value: text1.nodeValue,
+      };
+    })()
+  `);
+  const r = typeof result === 'string' ? JSON.parse(result) : result;
+  expect(String(r.fired), 'Path D 應 fire').toBe('true');
+  expect(r.backup_has, 'backup 應 clear').toBe(false);
+  expect(r.text1_value, 'text 仍持翻譯值時應 restore 為原文').toBe('Original English text');
+});
+
+test('Layer A4 Path D 守門:attribute 仍在 → 不觸發 attr-stripped', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/inject-nodevalue-mutate-a3.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target', { timeout: 10_000 });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const result = await evaluate(`
+    (() => {
+      const el = document.createElement('div');
+      el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
+      el.setAttribute('data-shinkansen-translated', '1');
+      const span1 = document.createElement('span');
+      const text1 = document.createTextNode('中文譯文保持不變');
+      span1.appendChild(text1);
+      el.appendChild(span1);
+      document.body.appendChild(el);
+
+      const SK = window.__SK;
+      SK.STATE.translated = true;
+      SK._testNvMutateStubSetup(el, 'English original text stays', [
+        { node: text1, originalValue: 'English original text stays', translatedValue: '中文譯文保持不變' },
+      ]);
+
+      // attribute 仍在,不動
+      const mockMutations = [{ target: text1, type: 'characterData' }];
+      return {
+        fired: SK._detectAndUnmarkExpandedNodeValueMutate(mockMutations),
+        attr_still: el.hasAttribute('data-shinkansen-nodevalue-mutated'),
+      };
+    })()
+  `);
+  const r = typeof result === 'string' ? JSON.parse(result) : result;
+  expect(String(r.fired), 'attribute 仍在不該觸發').toBe('false');
+  expect(r.attr_still, 'attribute 應維持').toBe(true);
+});
