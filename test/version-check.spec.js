@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { test, expect } from './fixtures/extension.js';
 import { getShinkansenEvaluator } from './regression/helpers/run-inject.js';
 
-const EXPECTED_VERSION = '1.10.1';
+const EXPECTED_VERSION = '1.10.2';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -102,18 +102,11 @@ test('README.md 同步檢查 (目前版本段)', async () => {
   ).toContain(`v${EXPECTED_VERSION} — 完整功能清單`);
 });
 
-// ── 5. docs/index.html GitHub 下載按鈕（URL path + filename + 副標 v）──
-test('docs/index.html 同步檢查 (GitHub 下載按鈕三處版本號)', async () => {
+// ── 5. docs/index.html GitHub 下載按鈕副標版本號 ──
+// URL 指 releases 目錄不含版本號(CLAUDE.md §1),只驗按鈕副標。
+test('docs/index.html 同步檢查 (GitHub 下載按鈕副標版本號)', async () => {
   test.skip(isDevTail, devTailSkipMsg);
   const html = readRepoFile('docs/index.html');
-  // GitHub releases URL path 與 zip filename 都帶版本號
-  const urlFragment = `releases/download/v${EXPECTED_VERSION}/shinkansen-v${EXPECTED_VERSION}.zip`;
-  expect(
-    html,
-    `[DRIFT] docs/index.html 缺 GitHub 下載 URL「${urlFragment}」。\n` +
-    `提醒:bump 時必須同步更新 docs/index.html hero btn-row 內 GitHub 下載按鈕的 path 與 filename 兩處版本號。`,
-  ).toContain(urlFragment);
-  // 按鈕副標
   const subtitleFragment = `>v${EXPECTED_VERSION} · beta<`;
   expect(
     html,

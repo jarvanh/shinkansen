@@ -132,6 +132,157 @@ test('Case F: X 主推文 multi-span 結構應觸發 + 各 leaf SPAN 獨立成 u
   await page.close();
 });
 
+test('Case F 擴充:mention-only-div(無 wrapper SPAN,僅 inline-flex DIV)應觸發 + leaf SPAN 被收', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target-mention-only-div', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const result = await evaluate(`
+    (() => {
+      const root = document.querySelector('#target-mention-only-div');
+      const stats = {};
+      const units = window.__SK.collectParagraphs(root, stats);
+      const tweetText = root.querySelector('[data-testid="tweetText"]');
+
+      const unitTexts = units.map(u => {
+        if (u.kind === 'fragment') {
+          let t = '';
+          let n = u.startNode;
+          while (n) {
+            t += n.textContent || '';
+            if (n === u.endNode) break;
+            n = n.nextSibling;
+          }
+          return { kind: 'fragment', text: t.slice(0, 60) };
+        }
+        return { kind: 'element', text: (u.el.textContent || '').slice(0, 60), tag: u.el.tagName };
+      });
+
+      const hasVoice = units.some(u => u.kind === 'element' &&
+        (u.el.textContent || '').includes('Let your voice'));
+      const hasFeatures = units.some(u => u.kind === 'element' &&
+        (u.el.textContent || '').includes('New conversational'));
+      const hasTail = units.some(u => u.kind === 'element' &&
+        (u.el.textContent || '').includes('and Keep so you can'));
+
+      const tweetTextAsUnit = units.find(u => u.kind === 'element' && u.el === tweetText);
+      const allAreSpan = units.every(u => u.kind === 'element' && u.el.tagName === 'SPAN');
+
+      return {
+        unitCount: units.length,
+        unitTexts,
+        multiSegmentInlineBlock: stats.multiSegmentInlineBlock || 0,
+        hasVoice,
+        hasFeatures,
+        hasTail,
+        tweetTextAsUnitFound: !!tweetTextAsUnit,
+        allAreSpan,
+        stats,
+      };
+    })()
+  `);
+
+  // Case F 觸發(inline-flex DIV 有 children → wrapperChildCount >= 1)
+  expect(
+    result.multiSegmentInlineBlock,
+    `Case F 應觸發(inline-flex DIV wrapper),實際 ${result.multiSegmentInlineBlock}\nstats=${JSON.stringify(result.stats)}`,
+  ).toBeGreaterThanOrEqual(1);
+
+  // leaf SPAN "Let your voice..." 被收
+  expect(
+    result.hasVoice,
+    `leaf SPAN「Let your voice」應被收\nunits=${JSON.stringify(result.unitTexts)}`,
+  ).toBe(true);
+
+  // leaf SPAN "New conversational features..." 被收
+  expect(
+    result.hasFeatures,
+    `leaf SPAN「New conversational」應被收\nunits=${JSON.stringify(result.unitTexts)}`,
+  ).toBe(true);
+
+  // leaf SPAN "and Keep so you can..." 被收
+  expect(
+    result.hasTail,
+    `leaf SPAN「and Keep so you can」應被收\nunits=${JSON.stringify(result.unitTexts)}`,
+  ).toBe(true);
+
+  // tweetText DIV 不當 unit
+  expect(
+    result.tweetTextAsUnitFound,
+    `tweetText DIV 自己不應出現在 units\nunits=${JSON.stringify(result.unitTexts)}`,
+  ).toBe(false);
+
+  // 所有 unit 都是 SPAN(leaf SPAN 拆分)
+  expect(
+    result.allAreSpan,
+    `所有 unit 都應是 leaf SPAN,實際 units=${JSON.stringify(result.unitTexts)}`,
+  ).toBe(true);
+
+  await page.close();
+});
+
+test('Case F + URL anchor 排除:長 URL anchor 不該被 leaf-content-anchor 獨立收', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target-mention-with-url', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const result = await evaluate(`
+    (() => {
+      const root = document.querySelector('#target-mention-with-url');
+      const stats = {};
+      const units = window.__SK.collectParagraphs(root, stats);
+
+      const unitTexts = units.map(u => ({
+        kind: u.kind,
+        tag: u.el?.tagName || 'fragment',
+        text: (u.el?.textContent || '').slice(0, 60)
+      }));
+
+      const hasAnchorUnit = units.some(u =>
+        u.kind === 'element' && u.el.tagName === 'A');
+
+      const allAreSpan = units.every(u =>
+        u.kind === 'element' && u.el.tagName === 'SPAN');
+
+      return {
+        unitCount: units.length,
+        unitTexts,
+        multiSegmentInlineBlock: stats.multiSegmentInlineBlock || 0,
+        hasAnchorUnit,
+        allAreSpan,
+        leafContentAnchor: stats.leafContentAnchor || 0,
+      };
+    })()
+  `);
+
+  // Case F 不應觸發:A 是語意 inline(PRESERVE_INLINE_TAGS),不算結構 wrapper。
+  // SPAN + A + SPAN 結構走 INCLUDE_BY_SELECTOR 當整個 element unit 更合理
+  // (保留 URL 作為翻譯 slot,而非拆成獨立 leaf 丟失 link context)。
+  expect(
+    result.multiSegmentInlineBlock,
+    `Case F 不應觸發(A 是語意 inline 不算 wrapper),實際 ${result.multiSegmentInlineBlock}`,
+  ).toBe(0);
+
+  // tweetText DIV 被 INCLUDE_BY_SELECTOR 收為一個 unit
+  const hasDivUnit = result.unitTexts.some(u => u.tag === 'DIV');
+  expect(
+    hasDivUnit,
+    `tweetText DIV 應被收為 unit\nunits=${JSON.stringify(result.unitTexts)}`,
+  ).toBe(true);
+
+  await page.close();
+});
+
 test('Case F 負向對照:reply 單一 SPAN 結構(子 < 3)不應觸發', async ({
   context,
   localServer,

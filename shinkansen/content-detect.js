@@ -754,14 +754,17 @@
               if (stats) stats.spanWithBr = (stats.spanWithBr || 0) + 1;
             } else if (
               // Case F (v1.10.1):block-displayed container(DIV / SECTION 等 CONTAINER_TAGS
-              // 或 computed display:block)含 ≥ 3 inline-style 直接子 + ≥ 1「wrapper SPAN」
-              // (SPAN 自身含 element child)結構。
+              // 或 computed display:block)含 ≥ 3 inline-style 直接子 + ≥ 1 wrapper element
+              // (自身含 element child)結構。
               //
               // 典型場景:X / Twitter 主推文,結構為
               //   <div data-testid="tweetText" dir="auto" lang="zh">
               //     <span>第一句</span><div style="display:inline-flex"><a>@mention</a></div>
               //     <span><span>段1</span><span class="r-b88u0q">段2</span><span>段3</span>…</span>
               //   </div>
+              // wrapper 元素可能是 SPAN(含 hashtag / inner prose SPAN)或
+              // DIV(inline-flex,X 的 @mention 渲染用 DIV 包 SPAN>A)。
+              //
               // tweetText DIV(non-BLOCK_TAGS_SET,走 non-block 分支)既有 Case A-E 全部
               // miss(無 hasDirectText、無 hasBrChild、SPAN 不在 CONTAINER_TAGS),
               // FILTER_SKIP 後 leaf-content-span 補抓:SPAN[2] 內 r-b88u0q 短文 SPAN
@@ -776,14 +779,14 @@
               // 同時 add el to fragmentExtracted 避免 walker 後續對 descendant 重覆抓 fragment。
               //
               // 結構通則(§8):描述 DOM 特徵「block-displayed 容器 + 子全 inline-style +
-              // 含 wrapper SPAN」,不綁 X / Twitter / data-testid 字面。Threads / Mastodon /
-              // Reddit 等 React social SPA 同類 multi-segment 渲染都套用。
+              // 含 wrapper element(有 element child)」,不綁 tag name / 站點。
               //
               // 守門:el 自身 display 是 block / flex / grid / list-item(避免 inline-style
-              // wrapper SPAN 自己誤觸發,Case D/E 已處理 inline 情境)+ 直接子 ≥ 3 +
-              // 子全 inline + wrapperSpanCount >= 1。reply 單 SPAN 結構(直接子=1)不觸發,
-              // 維持既有 mutate path。Wikipedia P 含 A/EM/STRONG 但無 wrapper SPAN
-              // (wrapperSpanCount=0)不觸發。
+              // wrapper 自己誤觸發,Case D/E 已處理 inline 情境)+ 直接子 ≥ 3 +
+              // 子全 inline + wrapperChildCount >= 1。reply 單 SPAN 結構(直接子=1)不觸發,
+              // 維持既有 mutate path。Wikipedia P 含 A/EM/STRONG 但無 wrapper element
+              // (wrapperChildCount=0)不觸發(A/EM/STRONG 是 leaf inline,children.length=0
+              // 因為只含 text node)。
               !seen.has(el) &&
               !fragmentExtracted.has(el) &&
               (() => {
@@ -794,16 +797,18 @@
                     && selfDsp !== 'list-item') return false;
                 const directChildren = Array.from(el.children);
                 if (directChildren.length < 3) return false;
-                let wrapperSpanCount = 0;
+                let wrapperChildCount = 0;
                 for (const c of directChildren) {
                   const dcs = win?.getComputedStyle?.(c);
                   const dsp = dcs?.display;
                   if (dsp !== 'inline' && dsp !== 'inline-block' && dsp !== 'inline-flex') {
                     return false;
                   }
-                  if (c.tagName === 'SPAN' && c.children.length > 0) wrapperSpanCount++;
+                  // 排除語意 inline(A / STRONG / EM 等):這些自然含子元素
+                  // (如 <a><span>text</span></a>)但不是結構 wrapper
+                  if (c.children.length > 0 && !SK.PRESERVE_INLINE_TAGS.has(c.tagName)) wrapperChildCount++;
                 }
-                return wrapperSpanCount >= 1;
+                return wrapperChildCount >= 1;
               })()
             ) {
               if (stats) stats.multiSegmentInlineBlock = (stats.multiSegmentInlineBlock || 0) + 1;
@@ -819,6 +824,13 @@
                 if (!isCandidateText(leaf)) continue;
                 results.push({ kind: 'element', el: leaf });
                 seen.add(leaf);
+              }
+              // Case F 容器內的 <a> 加進 seen,防 leaf-content-anchor 補抓重複收。
+              // Case F 已把 prose leaf SPAN 各拆 unit,容器內的 <a> 是連結結構
+              // (URL / @mention / #hashtag),不該獨立翻譯——它們作為 leaf SPAN
+              // 鄰居已在正確位置,重複收會多出 dual wrapper 純噪音。
+              for (const a of el.querySelectorAll('a')) {
+                seen.add(a);
               }
             }
           }

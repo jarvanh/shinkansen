@@ -784,6 +784,7 @@
     if (!STATE.originalText) return false;
 
     const candidates = new Set();
+    // 方法 1:從 mutation target 往上找 backup 元素(framework 在 element 自身或子樹改動)
     for (const m of mutations) {
       let t = m.target;
       if (!t) continue;
@@ -791,6 +792,21 @@
       while (t && t.nodeType === Node.ELEMENT_NODE) {
         if (STATE.nodeValueMutateBackup.has(t)) { candidates.add(t); break; }
         t = t.parentElement;
+      }
+    }
+    // 方法 2:mutation target 找不到時(framework 替換上層 wrapper,mutation target
+    // 在 backup 元素的祖先而非自身/後代),全量掃描 backup 元素的 textContent
+    // 是否顯著變長。典型案例:X 點「顯示更多」替換 article 級 wrapper,mutation
+    // target 是 article 的 parent,走不到 backup 裡的 tweetText。
+    if (candidates.size === 0) {
+      for (const [el] of STATE.nodeValueMutateBackup) {
+        if (!el.isConnected) continue;
+        const origText = STATE.originalText.get(el);
+        if (!origText) continue;
+        const curLen = (el.textContent || '').trim().length;
+        if (curLen > origText.length * 1.5) {
+          candidates.add(el);
+        }
       }
     }
     if (candidates.size === 0) return false;
@@ -803,7 +819,7 @@
 
       let trigger = null;
 
-      // Path (A): full reset
+      // Path (A): full reset — framework 把整段 reset 回完整原文
       const currentText = (el.textContent || '').trim();
       if (currentText.length > origText.length * 1.5 && currentText.startsWith(origText)) {
         trigger = 'full-reset';
@@ -825,7 +841,41 @@
         }
       }
 
+      // Path (C): textContent 顯著變長 + 至少一個 backup text node 仍保持
+      // translatedValue — framework 展開內容時只 append 新子元素,不 reset 已翻譯
+      // 的舊 text node。Path A 失敗(currentText 以翻譯語言開頭),Path B 失敗(舊
+      // text node 仍持 translatedValue)。「仍持 translatedValue」同時是 Path C 的
+      // 必要守門:區分「展開新內容」(舊翻譯保留 + 新原文加入)vs「完全替換成不同
+      // 文字」(舊翻譯不在了)。
+      if (!trigger && currentText.length > origText.length * 1.5) {
+        const backup = STATE.nodeValueMutateBackup.get(el);
+        if (backup && backup.length > 0) {
+          const hasRetainedTranslation = backup.some(entry =>
+            entry?.node?.isConnected &&
+            typeof entry.translatedValue === 'string' &&
+            entry.node.nodeValue === entry.translatedValue
+          );
+          if (hasRetainedTranslation) {
+            trigger = 'expanded-content';
+          }
+        }
+      }
+
       if (!trigger) continue;
+
+      // 還原所有 backup text node 為原文,確保 collectParagraphs 收到乾淨的
+      // source text。三條 path 都需要:
+      //   Path A(full-reset):framework 已還原,寫入同值無副作用
+      //   Path B(partial-reset):framework 只改部分 node,其餘仍持翻譯值
+      //   Path C(expanded-content):framework 只加新子元素,舊 node 全持翻譯值
+      const _backup = STATE.nodeValueMutateBackup.get(el);
+      if (_backup) {
+        for (const entry of _backup) {
+          if (entry?.node?.isConnected && typeof entry.originalValue === 'string') {
+            entry.node.nodeValue = entry.originalValue;
+          }
+        }
+      }
 
       // unmark + clear STATE,讓 collectParagraphs / Layer A3 inject 重跑
       el.removeAttribute('data-shinkansen-nodevalue-mutated');
