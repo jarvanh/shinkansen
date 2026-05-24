@@ -359,6 +359,26 @@
     // 導致字面 \n 殘留可見 DOM 字元。在此入口統一處理，覆蓋所有後續路徑。
     if (translation.includes('\\n')) translation = translation.replace(/\\n/g, '\n');
 
+    // Sibling element 邊界空格:React site(X / Threads)DOM 元素間沒有
+    // whitespace text node,各 unit 獨立翻譯後文字直接黏 URL/mention。
+    // 在注入前對 translation 尾/首補空格,讓 text node 跟相鄰 element 有間距。
+    if (unit.el && unit.el.nodeType === 1 && typeof translation === 'string'
+        && STATE.translatedMode !== 'dual') {
+      var _cs = unit.el.ownerDocument?.defaultView?.getComputedStyle?.(unit.el);
+      if (_cs && _cs.display.startsWith('inline')) {
+        if (!/\s$/.test(translation)) {
+          var _next = unit.el.nextSibling;
+          while (_next && _next.nodeType === 3 && !_next.nodeValue?.trim()) _next = _next.nextSibling;
+          if (_next && _next.nodeType === 1) translation += ' ';
+        }
+        if (!/^\s/.test(translation)) {
+          var _prev = unit.el.previousSibling;
+          while (_prev && _prev.nodeType === 3 && !_prev.nodeValue?.trim()) _prev = _prev.previousSibling;
+          if (_prev && _prev.nodeType === 1) translation = ' ' + translation;
+        }
+      }
+    }
+
     // §5 單一資料源:祖先已走 nvMutate(整棵子樹 text node 全 mutate 過)時,
     // 本 unit 重複 inject 會覆蓋已成功 mutate 的子 DOM。典型場景:
     //   1. translatePage auto:tweetText(React fiber 在)走 framework branch
@@ -1454,7 +1474,29 @@
 
     // Case 3: multi source text nodes — 譯文按 \n+ 切 chunks,N == chunks 1:1 配對
     const chunks = translation.split(/\n+/).map(s => s).filter(s => s.length > 0);
-    if (chunks.length !== textNodes.length) return false; // N != M → fallback
+    if (chunks.length !== textNodes.length) {
+      // Case 3b: chunks < textNodes — React site 把同段落文字拆多個 inline SPAN
+      // (X tweetText / Threads / Reddit),inline 分隔不產 \n,翻譯結果自然
+      // 比 source text node 少 chunk。策略:整段譯文塞第一個 text node,其餘清空。
+      if (chunks.length > 0 && chunks.length < textNodes.length) {
+        if (!STATE.nodeValueMutateBackup) STATE.nodeValueMutateBackup = new Map();
+        if (!STATE.nodeValueMutateBackup.has(el)) {
+          STATE.nodeValueMutateBackup.set(el,
+            textNodes.map((node, i) => ({
+              node,
+              originalValue: node.nodeValue,
+              translatedValue: i === 0 ? translation : '',
+            }))
+          );
+        }
+        textNodes[0].nodeValue = translation;
+        for (let i = 1; i < textNodes.length; i++) {
+          textNodes[i].nodeValue = '';
+        }
+        return true;
+      }
+      return false;
+    }
 
     // 都 OK,做 backup + mutate
     if (!STATE.nodeValueMutateBackup.has(el)) {

@@ -1364,9 +1364,17 @@
           if (!tr) return;
           const slots = job.slots[j];
           // 【N】/【/N】/【*N】 換回 ⟦N⟧/⟦/N⟧/⟦*N⟧，走現有 deserializeWithPlaceholders
-          const restored = slots?.length
+          let restored = slots?.length
             ? SK.restoreGoogleTranslateMarkers(tr)
             : tr;
+          // CJK↔slot 空格補齊:Google MT 翻成 CJK 時常吃掉 marker 前後空格,
+          // 導致譯文跟 URL/mention 視覺黏在一起(「傳聞如下https://…透過@user」)。
+          // 只對 opening ⟦N⟧ / ⟦*N⟧ 前(CJK→slot 邊界)和
+          // closing ⟦/N⟧ / atomic ⟦*N⟧ 後(slot→CJK 邊界)補空格;
+          // 不動 ⟦N⟧ 後(slot 內容起始)與 ⟦/N⟧ 前(slot 內容結尾)。
+          if (slots?.length && SK.ensureCJKSlotSpacing) {
+            restored = SK.ensureCJKSlotSpacing(restored);
+          }
           SK.injectTranslation(unit, restored, slots || []);
         });
         done += job.texts.length;

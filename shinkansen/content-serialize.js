@@ -233,6 +233,15 @@
       .replace(/【\/(\d+)】/g, PH_OPEN + '/$1' + PH_CLOSE);
   };
 
+  // CJK↔placeholder 空格補齊:Google MT 翻成 CJK 時常吃掉 marker 前後空格。
+  // 只對 opening ⟦N⟧ / atomic ⟦*N⟧ 前和 closing ⟦/N⟧ / atomic ⟦*N⟧ 後補空格;
+  // 不動 ⟦N⟧ 後(slot 內容起始)與 ⟦/N⟧ 前(slot 內容結尾)。
+  SK.ensureCJKSlotSpacing = function ensureCJKSlotSpacing(s) {
+    return s
+      .replace(/([一-鿿㐀-䶿])(⟦\*?\d+⟧)/g, '$1 $2')
+      .replace(/(⟦[/*]\d+⟧)([一-鿿㐀-䶿])/g, '$1 $2');
+  };
+
   SK.serializeFragmentWithPlaceholders = function serializeFragmentWithPlaceholders(unit) {
     const nodes = [];
     let cur = unit.startNode;
