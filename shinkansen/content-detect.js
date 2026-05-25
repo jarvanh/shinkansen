@@ -723,10 +723,11 @@
               //   "There is actually <a>some evidence</a> to support..."
               // Case A 因 !containsBlock 失敗，Case B 因 !hasBR 失敗 → 整段被跳過。
               // directTextLength >= 20 確保非 nav 短連結（nav 的文字在 <a> 內，直接文字長度趨近 0）
+              // 外語頁放寬至 2 字——短 label + inline 元素的 mixed-content（Amazon「ポイント: 11pt (1%)」等）
               SK.CONTAINER_TAGS.has(el.tagName) &&
               !seen.has(el) &&
               hasDirectText &&
-              directTextLength(el) >= 20 &&
+              directTextLength(el) >= (_foreignPage ? 2 : 20) &&
               isCandidateText(el)
             ) {
               const frags = extractInlineFragments(el);
@@ -1058,16 +1059,18 @@
       if (!SK.isVisible(btn)) return;
       if (isInsideExcludedContainer(btn, excludedMemo)) return;
       // widget 祖先檢查:按鈕在 widget 容器內不偵測（Twitter Follow 等）
-      { let _cur = btn.parentElement;
-        let _inWidget = false;
+      // 外語頁放行——按鈕文字是使用者需要理解的 UI 元素
+      if (!_foreignPage) {
+        let _cur = btn.parentElement;
         while (_cur && _cur !== document.body) {
-          if (widgetRejectedBlocks.has(_cur)) { _inWidget = true; break; }
+          if (widgetRejectedBlocks.has(_cur)) return;
           _cur = _cur.parentElement;
         }
-        if (_inWidget) return;
       }
       if (!isCandidateText(btn)) return;
-      const leaves = btn.querySelectorAll('span:not(:has(*))');
+      // near-leaf:直接子全是 SPAN 的 SPAN（含純 leaf）。覆蓋「label + badge」結構
+      // 如 Amazon review tag BUTTON > SPAN["コスパ" + child SPAN"（135）"]
+      const leaves = btn.querySelectorAll('span:not(:has(> :not(span)))');
       let added = false;
       for (const leaf of leaves) {
         if (seen.has(leaf)) continue;
@@ -1076,6 +1079,7 @@
         if (!SK.isVisible(leaf)) continue;
         results.push({ kind: 'element', el: leaf });
         seen.add(leaf);
+        leaf.querySelectorAll('span').forEach(s => seen.add(s));
         added = true;
         if (stats) stats.longTextButtonLeaf = (stats.longTextButtonLeaf || 0) + 1;
       }
@@ -1196,8 +1200,13 @@
       if (seen.has(a)) return;
       if (a.hasAttribute('data-shinkansen-translated')) return;
       if (hasBlockAncestor(a)) return;
-      if (SK.containsBlockDescendant(a)
-          || !!a.querySelector(SK.CONTAINER_TAG_SELECTOR)) return;
+      if (SK.containsBlockDescendant(a)) return;
+      if (a.querySelector(SK.CONTAINER_TAG_SELECTOR)) {
+        // 外語頁短文字 anchor 允許含 CONTAINER child（icon + text 的 <a><div>text</div></a> 結構）
+        if (!_foreignPage) return;
+        const _ct = (a.textContent || '').trim();
+        if (_ct.length >= 20 || _ct.length < 2) return;
+      }
       if (isInsideExcludedContainer(a, excludedMemo)) return;
       if (isInteractiveWidgetContainer(a)) return;
       if (!SK.isVisible(a)) return;
@@ -1213,7 +1222,20 @@
             _cur = _cur.parentElement;
           }
         }
-        if (_inWidget) return;
+        if (_inWidget) {
+          if (!_foreignPage) return;
+          // 外語頁:自身是 widget trigger（role="button" + 非真實 href）仍 skip
+          const _aRole = a.getAttribute('role');
+          const _aHref = a.getAttribute('href');
+          if (_aRole === 'button' && (!_aHref || _aHref === '#' || _aHref.startsWith('javascript:'))) return;
+          // widget 已被 Case F 拆為 leaf SPAN 的（fragmentExtracted），mention anchor 不重複收
+          { let _cur2 = a.parentElement;
+            while (_cur2 && _cur2 !== document.body) {
+              if (widgetRejectedBlocks.has(_cur2) && fragmentExtracted.has(_cur2)) return;
+              _cur2 = _cur2.parentElement;
+            }
+          }
+        }
       }
       if (stats) stats.leafContentAnchor = (stats.leafContentAnchor || 0) + 1;
       results.push({ kind: 'element', el: a });
@@ -1248,14 +1270,17 @@
       // prominence),不靠 class 黑白名單(對應硬規則 §6 / §8)。
       if (txt.length < 20) {
         if (_foreignPage && txt.length >= 2) {
-          let _inWidget = false;
-          { let _cur = d.parentElement;
-            while (_cur && _cur !== document.body) {
-              if (widgetRejectedBlocks.has(_cur)) { _inWidget = true; break; }
-              _cur = _cur.parentElement;
+          // 外語頁:widget 容器內的 leaf 依容器大小決定——小型 widget（profile card /
+          // Follow button 等可見文字 < 50 字）仍 skip；大型 widget（review block 等
+          // 含實質內容）放行
+          let _cur = d.parentElement;
+          while (_cur && _cur !== document.body) {
+            if (widgetRejectedBlocks.has(_cur)) {
+              if ((_cur.innerText || '').trim().length < 50) return;
+              break;
             }
+            _cur = _cur.parentElement;
           }
-          if (_inWidget) return;
         } else {
           const cs = getComputedStyle(d);
           const fs = parseFloat(cs.fontSize) || 0;
