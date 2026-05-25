@@ -354,6 +354,8 @@ async function load() {
   if (I18N) {
     const dictLang = I18N.getUiLanguage($('uiLanguage')?.value || s.uiLanguage || 'auto');
     I18N.applyI18n(document, dictLang);
+    { const _vEl = $('options-version');
+      if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
     // refreshSlotDropdownLabels 在 load() 較早處(line ~273)已跑過一次,但當時
     // $('uiLanguage').value 還沒從 storage 同步進去,_t() 會用 HTML 預設 'auto'
     // → 跑到 en dict。現在 picker value 已 sync,重做一次拿到正確 dict。
@@ -368,6 +370,8 @@ async function load() {
     updateYtPromptCostHint();
     I18N.subscribeUiLanguageChange((newUi /* , newPref */) => {
       I18N.applyI18n(document, newUi);
+      { const _vEl = $('options-version');
+        if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
       // 動態 dropdown(refreshSlotDropdownLabels)用 _t() 取 prefix,UI 語系切換要重組
       refreshSlotDropdownLabels();
       // v1.8.61:#currency-rate-display 不掛 data-i18n,applyI18n 不會碰它,

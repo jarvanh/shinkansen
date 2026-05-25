@@ -496,6 +496,18 @@
         return;
       }
       if (/[A-Za-zÀ-ÿ\u0400-\u04FF\u3400-\u9fff0-9]/.test(text)) {
+        let _elCount = 0, _wrapperEl = null;
+        { let _n = runStart;
+          while (_n) {
+            if (_n.nodeType === 1) { _elCount++; _wrapperEl = _n; }
+            if (_n === runEnd) break;
+            _n = _n.nextSibling;
+          }
+        }
+        if (_elCount === 1 && _wrapperEl && _wrapperEl.children.length > 0 && trimmed.length >= 100) {
+          runStart = null; runEnd = null;
+          return;
+        }
         fragments.push({
           kind: 'fragment',
           el,
@@ -528,6 +540,17 @@
     const results = [];
     const seen = new Set();
     const fragmentExtracted = new Set();
+    const _foreignPage = (() => {
+      const hl = (document.documentElement.lang || '').toLowerCase();
+      if (!hl) return false;
+      const t = SK.STATE?.targetLanguage || 'zh-TW';
+      if (t === 'zh-TW' && /^zh-(hant|tw|hk|mo)$/i.test(hl)) return false;
+      if (t === 'zh-CN' && (hl === 'zh' || /^zh-(hans|cn|sg)$/i.test(hl))) return false;
+      if (t !== 'zh-TW' && t !== 'zh-CN') {
+        if (hl.startsWith(t.split('-')[0].toLowerCase())) return false;
+      }
+      return true;
+    })();
     // v1.6.9: per-call memo for isInsideExcludedContainer。整個 collectParagraphs
     // 期間 DOM 不變，同一祖先鏈只算一次。
     const excludedMemo = new Map();
@@ -543,6 +566,7 @@
     // memo 安全:widgetRejectedBlocks 在 walker 跑完才被讀(補抓 path 都在 walker
     // 之後),walker 期間不會用到 hasBlockAncestor。
     const widgetRejectedBlocks = new Set();
+    const structurallySkippedBlocks = new Set();
     function hasBlockAncestor(el) {
       if (blockAncestorMemo.has(el)) return blockAncestorMemo.get(el);
       const chain = [];
@@ -554,13 +578,14 @@
           break;
         }
         chain.push(cur);
-        if (SK.BLOCK_TAGS_SET.has(cur.tagName) && !widgetRejectedBlocks.has(cur)) {
+        if (SK.BLOCK_TAGS_SET.has(cur.tagName) &&
+            !widgetRejectedBlocks.has(cur) &&
+            !structurallySkippedBlocks.has(cur)) {
           result = true;
           break;
         }
         cur = cur.parentElement;
       }
-      // 把整條 chain memoize 為相同結果
       for (const node of chain) blockAncestorMemo.set(node, result);
       blockAncestorMemo.set(el, result);
       return result;
@@ -650,12 +675,16 @@
             }
             if (hasDirectText && SK.containsBlockDescendant(el)) {
               // Case A (v1.4.7)：有 block 子孫 → 抽 inline fragment
-              fragmentExtracted.add(el);
               const frags = extractInlineFragments(el);
-              for (const f of frags) {
-                results.push(f);
-                seen.add(f.startNode);
-                if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
+              if (frags.length > 0) {
+                fragmentExtracted.add(el);
+                for (const f of frags) {
+                  results.push(f);
+                  seen.add(f.startNode);
+                  let _n = f.startNode;
+                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
+                }
               }
             } else if (
               // Case B (v1.4.9)：純文字 + BR、無 block 子孫 → 整體當 element 單元
@@ -684,12 +713,16 @@
               directTextLength(el) >= 20 &&
               isCandidateText(el)
             ) {
-              fragmentExtracted.add(el);
               const frags = extractInlineFragments(el);
-              for (const f of frags) {
-                results.push(f);
-                seen.add(f.startNode);
-                if (stats) stats.inlineMixedFragment = (stats.inlineMixedFragment || 0) + 1;
+              if (frags.length > 0) {
+                fragmentExtracted.add(el);
+                for (const f of frags) {
+                  results.push(f);
+                  seen.add(f.startNode);
+                  let _n = f.startNode;
+                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  if (stats) stats.inlineMixedFragment = (stats.inlineMixedFragment || 0) + 1;
+                }
               }
             } else if (
               // Case D:inline-style 容器（SPAN）直接含 text + 至少一個非 BR element 子。
@@ -717,12 +750,16 @@
                 (directTextLength(el) >= 5 && (el.textContent || '').trim().length >= 20)) &&
               isCandidateText(el)
             ) {
-              fragmentExtracted.add(el);
               const frags = extractInlineFragments(el);
-              for (const f of frags) {
-                results.push(f);
-                seen.add(f.startNode);
-                if (stats) stats.inlineMixedSpan = (stats.inlineMixedSpan || 0) + 1;
+              if (frags.length > 0) {
+                fragmentExtracted.add(el);
+                for (const f of frags) {
+                  results.push(f);
+                  seen.add(f.startNode);
+                  let _n = f.startNode;
+                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  if (stats) stats.inlineMixedSpan = (stats.inlineMixedSpan || 0) + 1;
+                }
               }
             } else if (
               // Case E (v1.9.14):inline-style 容器 SPAN 直接含 text + BR(無非 BR element 子)。
@@ -744,8 +781,11 @@
               !hasDirectNonBrElement(el) &&
               // v1.9.31: 與 Case D 對稱放寬,讓 BR 分段的短直接文字 SPAN(含 mention
               // 或 inline link 後展開的 br 多段)在總長 >= 20 字時通過。
-              (directTextLength(el) >= 20 ||
-                (directTextLength(el) >= 5 && (el.textContent || '').trim().length >= 20)) &&
+              (() => {
+                const _t = _foreignPage ? 2 : 20;
+                return directTextLength(el) >= _t ||
+                  (directTextLength(el) >= 2 && (el.textContent || '').trim().length >= _t);
+              })() &&
               isCandidateText(el)
             ) {
               results.push({ kind: 'element', el });
@@ -825,12 +865,12 @@
                 results.push({ kind: 'element', el: leaf });
                 seen.add(leaf);
               }
-              // Case F 容器內的 <a> 加進 seen,防 leaf-content-anchor 補抓重複收。
-              // Case F 已把 prose leaf SPAN 各拆 unit,容器內的 <a> 是連結結構
-              // (URL / @mention / #hashtag),不該獨立翻譯——它們作為 leaf SPAN
-              // 鄰居已在正確位置,重複收會多出 dual wrapper 純噪音。
+              // Case F 容器內的 <a>:若 A 內含已偵測 leaf SPAN 則加 seen(防重複收),
+              // 否則不加——讓 leaf-content-anchor 路徑獨立偵測(A 本身有文字但沒
+              // 被 Case F leaf SPAN 覆蓋的場景,如 Amazon format-strip A 只含 I icon)。
               for (const a of el.querySelectorAll('a')) {
-                seen.add(a);
+                const _hasDetectedLeaf = [...a.querySelectorAll('span:not(:has(*))')].some(s => seen.has(s));
+                if (_hasDetectedLeaf) seen.add(a);
               }
             }
           }
@@ -896,6 +936,7 @@
             }
             if (capturedLinks > 0) {
               fragmentExtracted.add(el);
+              if (SK.BLOCK_TAGS_SET.has(el.tagName)) structurallySkippedBlocks.add(el);
               if (stats) stats.skipBlockWithContainer = (stats.skipBlockWithContainer || 0) + 1;
               return NodeFilter.FILTER_SKIP;
             }
@@ -928,28 +969,47 @@
         if (
           !/^H[1-6]$/.test(el.tagName) &&
           el.querySelector('img, picture, video') &&
-          Array.from(el.children).some(c => SK.CONTAINER_TAGS.has(c.tagName)) &&
+          (Array.from(el.children).some(c => SK.CONTAINER_TAGS.has(c.tagName))
+           || !!el.querySelector(SK.CONTAINER_TAG_SELECTOR)) &&
           directTextLength(el) < 20
         ) {
           if (stats) stats.mediaCardSkip = (stats.mediaCardSkip || 0) + 1;
+          if (SK.BLOCK_TAGS_SET.has(el.tagName)) structurallySkippedBlocks.add(el);
           return NodeFilter.FILTER_SKIP;
         }
         if (SK.containsBlockDescendant(el)) {
           if (stats) stats.hasBlockDescendant = (stats.hasBlockDescendant || 0) + 1;
           if (!fragmentExtracted.has(el)) {
-            fragmentExtracted.add(el);
             const frags = extractInlineFragments(el);
-            for (const f of frags) {
-              results.push(f);
-              seen.add(f.startNode);
-              if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
+            if (frags.length > 0) {
+              fragmentExtracted.add(el);
+              for (const f of frags) {
+                results.push(f);
+                seen.add(f.startNode);
+                let _n = f.startNode;
+                while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                if (stats) stats.fragmentUnit = (stats.fragmentUnit || 0) + 1;
+              }
             }
           }
+          if (SK.BLOCK_TAGS_SET.has(el.tagName)) structurallySkippedBlocks.add(el);
           return NodeFilter.FILTER_SKIP;
         }
         if (!isCandidateText(el)) {
           if (stats) stats.notCandidateText = (stats.notCandidateText || 0) + 1;
           return NodeFilter.FILTER_REJECT;
+        }
+        // Block 元素有複雜內部結構（> 3 element 子孫）但極短可見文字（< 20 字）:
+        // FILTER_SKIP 避免 clean-slate 注入破壞 flex/grid 排版。
+        // 典型 case: Amazon 星星評分 histogram row（LI > SPAN > A[display:flex] >
+        // {label DIV, progress bar DIV, percentage DIV}），注入譯文後 progress bar 消失。
+        // H1-H6 不受限——短標題仍需翻譯。
+        if (!/^H[1-6]$/.test(el.tagName) && el.querySelectorAll('*').length > 3) {
+          const _visText = (el.innerText || '').trim();
+          if (_visText.length < 20) {
+            if (stats) stats.shortBlockComplexSkip = (stats.shortBlockComplexSkip || 0) + 1;
+            return NodeFilter.FILTER_REJECT;
+          }
         }
         if (stats) stats.acceptedByWalker = (stats.acceptedByWalker || 0) + 1;
         return NodeFilter.FILTER_ACCEPT;
@@ -1053,14 +1113,25 @@
       if (seen.has(a)) return;
       if (a.hasAttribute('data-shinkansen-translated')) return;
       if (hasBlockAncestor(a)) return;
-      if (SK.containsBlockDescendant(a)) return;
+      if (SK.containsBlockDescendant(a)
+          || !!a.querySelector(SK.CONTAINER_TAG_SELECTOR)) return;
       if (isInsideExcludedContainer(a, excludedMemo)) return;
       if (isInteractiveWidgetContainer(a)) return;
       if (!SK.isVisible(a)) return;
       if (!isCandidateText(a)) return;
       // v1.6.9: textContent 取代 innerText（避免 layout reflow）
       const txt = (a.textContent || '').trim();
-      if (txt.length < 20) return;
+      if (txt.length < 20) {
+        if (!_foreignPage || txt.length < 2) return;
+        let _inWidget = false;
+        { let _cur = a.parentElement;
+          while (_cur && _cur !== document.body) {
+            if (widgetRejectedBlocks.has(_cur)) { _inWidget = true; break; }
+            _cur = _cur.parentElement;
+          }
+        }
+        if (_inWidget) return;
+      }
       if (stats) stats.leafContentAnchor = (stats.leafContentAnchor || 0) + 1;
       results.push({ kind: 'element', el: a });
       seen.add(a);
@@ -1093,12 +1164,23 @@
       // inline span 短字如 author / time / counter)。結構性通則(visual
       // prominence),不靠 class 黑白名單(對應硬規則 §6 / §8)。
       if (txt.length < 20) {
-        const cs = getComputedStyle(d);
-        const fs = parseFloat(cs.fontSize) || 0;
-        const disp = cs.display;
-        const isBlockDisplay = disp === 'block' || disp === 'flex' ||
-                               disp === 'grid' || disp === 'list-item';
-        if (!(isBlockDisplay && fs >= 24)) return;
+        if (_foreignPage && txt.length >= 2) {
+          let _inWidget = false;
+          { let _cur = d.parentElement;
+            while (_cur && _cur !== document.body) {
+              if (widgetRejectedBlocks.has(_cur)) { _inWidget = true; break; }
+              _cur = _cur.parentElement;
+            }
+          }
+          if (_inWidget) return;
+        } else {
+          const cs = getComputedStyle(d);
+          const fs = parseFloat(cs.fontSize) || 0;
+          const disp = cs.display;
+          const isBlockDisplay = disp === 'block' || disp === 'flex' ||
+                                 disp === 'grid' || disp === 'list-item';
+          if (!(isBlockDisplay && fs >= 24)) return;
+        }
       }
       if (stats) stats.leafContentDiv = (stats.leafContentDiv || 0) + 1;
       results.push({ kind: 'element', el: d });

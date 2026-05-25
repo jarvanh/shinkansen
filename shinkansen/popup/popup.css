@@ -22,7 +22,8 @@ header {
 
 header h1 { font-size: 16px; margin: 0; display: flex; align-items: center; gap: 8px; }
 header h1 .page-title-icon { width: 32px; height: 32px; flex-shrink: 0; }
-.version { font-size: 11px; color: #86868b; }
+.version { font-size: 11px; color: #86868b; text-decoration: none; }
+.version:hover { text-decoration: underline; }
 
 main { padding: 14px 16px; }
 

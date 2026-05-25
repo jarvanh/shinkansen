@@ -250,6 +250,7 @@ if (window.__shinkansen_loaded) {
   // 與 inline element（A/SPAN/B/I/...）區分。BBCode Case B 的 DIV 偵測用此白名單，
   // 避免誤抓 inline 元素內的短文字。
   SK.CONTAINER_TAGS = new Set(['DIV', 'SECTION', 'ARTICLE', 'MAIN', 'ASIDE']);
+  SK.CONTAINER_TAG_SELECTOR = Array.from(SK.CONTAINER_TAGS).join(',');
 
   // 直接排除（純技術性元素 + 我們自己注入的譯文 wrapper）
   // v1.5.2: SHINKANSEN-TRANSLATION 加入 HARD_EXCLUDE。
