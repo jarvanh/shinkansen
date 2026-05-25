@@ -95,9 +95,14 @@
       // Debug Bridge:暴露 storage.sync 設定供除錯讀取
       // (Chrome for Claude / 主世界 javascript_tool 拿不到 chrome.storage,需 isolated 端橋接)
       const keys = (e.detail && e.detail.keys) || null;  // null = 全部 key
-      browser.storage.sync.get(keys)
-        .then((data) => respond({ ok: true, sync: data }))
-        .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+      const _storage = (typeof browser !== 'undefined' && browser.storage) || (typeof chrome !== 'undefined' && chrome.storage);
+      if (!_storage || !_storage.sync) {
+        respond({ ok: false, error: 'storage.sync unavailable in this context' });
+      } else {
+        _storage.sync.get(keys)
+          .then((data) => respond({ ok: true, sync: data }))
+          .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+      }
     } else if (action === 'YT_TRANSLATE') {
       // Debug Bridge:觸發 YouTube 字幕翻譯(等同 Alt+S 在 YT 頁的行為)
       if (!SK.isYouTubePage?.()) {

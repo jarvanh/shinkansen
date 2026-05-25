@@ -153,6 +153,9 @@
     return SK.isAlreadyInTarget(text, 'zh-TW');
   };
 
+  const _CJK_RE = /[一-鿿㐀-䶿぀-ゟ゠-ヿ가-힯]/;
+  function _buttonThreshold(text) { return _CJK_RE.test(text) ? 3 : 8; }
+
   // 讀 element 自身或最近 ancestor 的 lang attribute,return lowercase or null。
   // 用於 isCandidateText 對社群網站(Twitter / Reddit / Threads / Mastodon / Discord web)的
   // lang attribute 信號優先於純文字 detect — short text(< 30 cjk)時 SIMP 集合命中率
@@ -567,6 +570,7 @@
     // 之後),walker 期間不會用到 hasBlockAncestor。
     const widgetRejectedBlocks = new Set();
     const structurallySkippedBlocks = new Set();
+    const shortBlockRejectedBlocks = new Set();
     function hasBlockAncestor(el) {
       if (blockAncestorMemo.has(el)) return blockAncestorMemo.get(el);
       const chain = [];
@@ -599,6 +603,18 @@
     function processScope(scopeRoot) {
     const walker = document.createTreeWalker(scopeRoot, NodeFilter.SHOW_ELEMENT, {
       acceptNode(el) {
+        // BUTTON 放行:CJK >= 3 字 / non-CJK >= 8 字視為有意義的文字內容,
+        // SKIP 讓 walker 進子節點,由後段補抓 leaf。
+        // 極短 BUTTON（「送信」2 字 / "OK" 2 字）仍走 HARD_EXCLUDE REJECT。
+        if (el.tagName === 'BUTTON') {
+          const _bt = (el.textContent || '').trim();
+          if (_bt.length >= _buttonThreshold(_bt)) {
+            if (stats) stats.longTextButton = (stats.longTextButton || 0) + 1;
+            return NodeFilter.FILTER_SKIP;
+          }
+          if (stats) stats.hardExcludeTag = (stats.hardExcludeTag || 0) + 1;
+          return NodeFilter.FILTER_REJECT;
+        }
         if (SK.HARD_EXCLUDE_TAGS.has(el.tagName)) {
           if (stats) stats.hardExcludeTag = (stats.hardExcludeTag || 0) + 1;
           return NodeFilter.FILTER_REJECT;
@@ -995,6 +1011,14 @@
           if (SK.BLOCK_TAGS_SET.has(el.tagName)) structurallySkippedBlocks.add(el);
           return NodeFilter.FILTER_SKIP;
         }
+        // NOSCRIPT fallback 膨脹 textContent:P > [IMG, NOSCRIPT] 結構中
+        // NOSCRIPT 的 <img> tag 被 textContent 當文字讀入(163+ 字),
+        // 導致 isCandidateText 誤判通過 → Gemini 收到 HTML 原始碼 → 幻覺。
+        // 用 innerText 看真實可見文字;只在有 NOSCRIPT 時才觸發(避免全路徑 reflow)。
+        if (el.querySelector('noscript') && (el.innerText || '').trim().length < 2) {
+          if (stats) stats.noscriptInflated = (stats.noscriptInflated || 0) + 1;
+          return NodeFilter.FILTER_REJECT;
+        }
         if (!isCandidateText(el)) {
           if (stats) stats.notCandidateText = (stats.notCandidateText || 0) + 1;
           return NodeFilter.FILTER_REJECT;
@@ -1008,6 +1032,7 @@
           const _visText = (el.innerText || '').trim();
           if (_visText.length < 20) {
             if (stats) stats.shortBlockComplexSkip = (stats.shortBlockComplexSkip || 0) + 1;
+            if (SK.BLOCK_TAGS_SET.has(el.tagName)) shortBlockRejectedBlocks.add(el);
             return NodeFilter.FILTER_REJECT;
           }
         }
@@ -1019,6 +1044,64 @@
     while ((node = walker.nextNode())) {
       results.push({ kind: 'element', el: node });
       seen.add(node);
+    }
+
+    // BUTTON 內部 leaf 補抓:acceptNode 以 FILTER_SKIP 放行的 BUTTON,
+    // 子 SPAN 在 walker 非-block 路徑不被收。
+    // 找 BUTTON 內最深的 leaf SPAN 當 unit,保留按鈕結構(icon / SVG 不受影響)。
+    // 門檻:CJK >= 3 字 / non-CJK >= 8 字。
+    scopeRoot.querySelectorAll('button').forEach(btn => {
+      if (seen.has(btn)) return;
+      const text = (btn.textContent || '').trim();
+      if (text.length < _buttonThreshold(text)) return;
+      if (btn.hasAttribute('data-shinkansen-translated')) return;
+      if (!SK.isVisible(btn)) return;
+      if (isInsideExcludedContainer(btn, excludedMemo)) return;
+      // widget 祖先檢查:按鈕在 widget 容器內不偵測（Twitter Follow 等）
+      { let _cur = btn.parentElement;
+        let _inWidget = false;
+        while (_cur && _cur !== document.body) {
+          if (widgetRejectedBlocks.has(_cur)) { _inWidget = true; break; }
+          _cur = _cur.parentElement;
+        }
+        if (_inWidget) return;
+      }
+      if (!isCandidateText(btn)) return;
+      const leaves = btn.querySelectorAll('span:not(:has(*))');
+      let added = false;
+      for (const leaf of leaves) {
+        if (seen.has(leaf)) continue;
+        const lt = (leaf.textContent || '').trim();
+        if (lt.length < 2) continue;
+        if (!SK.isVisible(leaf)) continue;
+        results.push({ kind: 'element', el: leaf });
+        seen.add(leaf);
+        added = true;
+        if (stats) stats.longTextButtonLeaf = (stats.longTextButtonLeaf || 0) + 1;
+      }
+      if (!added) {
+        results.push({ kind: 'element', el: btn });
+        seen.add(btn);
+        if (stats) stats.longTextButtonDirect = (stats.longTextButtonDirect || 0) + 1;
+      }
+    });
+
+    // shortBlockRejected 內部 leaf 補抓:shortBlockComplexSkip REJECT 的 block
+    // 自己不當 unit（避免 clean-slate 破壞排版），但裡面有意義的 leaf 文字仍可翻
+    //（Amazon 比較表格 "カートに入れる" / "購入オプション" / "報告する" 等）。
+    // 門檻:CJK >= 4 字 / non-CJK >= 8 字（CJK 4 排除 histogram "星5つ" 3 字）。
+    for (const block of shortBlockRejectedBlocks) {
+      block.querySelectorAll('span:not(:has(*)), a:not(:has(*))').forEach(leaf => {
+        if (seen.has(leaf)) return;
+        const txt = (leaf.textContent || '').trim();
+        const _sbThreshold = _CJK_RE.test(txt) ? 4 : 8;
+        if (txt.length < _sbThreshold) return;
+        if (!SK.isVisible(leaf)) return;
+        if (!isCandidateText(leaf)) return;
+        results.push({ kind: 'element', el: leaf });
+        seen.add(leaf);
+        if (stats) stats.shortBlockLeaf = (stats.shortBlockLeaf || 0) + 1;
+      });
     }
 
     // 補抓 selector 指定的特殊元素
