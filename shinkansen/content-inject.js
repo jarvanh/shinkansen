@@ -187,7 +187,11 @@
     const hasEmptyPlaceholderChild = Array.from(target.children).some(c =>
       c.children.length > 0 && (c.textContent || '').trim().length === 0);
     const containsMediaOrPlaceholder = SK.containsMedia(target) || hasEmptyPlaceholderChild;
-    if (containsMediaOrPlaceholder && textBearingChildCount <= 1
+    // 注入內容自身已含 IMG（Google MT atomic IMG slot deserialization 產生的 clone）
+    // 時跳過 (B)：(B) 會保留 target 原始 IMG，加上 fragment 裡的 clone = 圖片重複。
+    // fragment 已包含完整內容（含 IMG clone），走 (A) clean-slate 即可。
+    const contentHasImg = !isString && content.querySelector && content.querySelector('img');
+    if (containsMediaOrPlaceholder && !contentHasImg && textBearingChildCount <= 1
         && (isHeading || !hasContainerChild || hasEmptyPlaceholderChild)) {
       // (B) media-preserving path
       if (!isString) {
@@ -1350,6 +1354,8 @@
     if (srcSegs.length === tgtSegs.length && srcSegs.length > 1) {
       const segMutations = [];
       let segOk = true;
+      // 追蹤最近一個有內容的 text segment mutation（用於吸收 CJK 語序重排溢出文字）
+      let lastProseMutationIdx = -1;
       for (let i = 0; i < srcSegs.length; i++) {
         const ss = srcSegs[i];
         const ts = tgtSegs[i];
@@ -1361,9 +1367,20 @@
           if (innerOk) for (const m of inner) segMutations.push(m);
           continue;
         }
-        // text segment(可空)
+        // text segment（可空）
         if (ss.length === 0 && ts.length === 0) continue;
-        if (ss.length === 0 && ts.length > 0) { segOk = false; break; }
+        if (ss.length === 0 && ts.length > 0) {
+          // CJK 語序重排：翻譯在 inline element 前後產生了 source 沒有的文字。
+          // 典型場景：英文 "meet buddy @user"（mention 在句尾）翻成
+          // 中文 "見到好友 @user 真是太棒了"（mention 後面多出 text）。
+          // 把溢出文字吸收進最近一個有內容的 text segment mutation。
+          if (lastProseMutationIdx >= 0) {
+            const overflow = ts.map(t => (t.node.nodeValue || '')).join('');
+            segMutations[lastProseMutationIdx].newValue += overflow;
+            continue;
+          }
+          segOk = false; break;
+        }
         // v1.9.31:Google MT 把短 metadata 連接詞(" by " / " - " / " via " /
         // " at "等)跟前段主文一起翻譯,deserialize 後該 text segment 在 tgt 消失。
         // src 端的 text 失去對應 tgt → mutate 為 "" 接受視覺上失去該連接詞(中文翻譯
@@ -1389,8 +1406,9 @@
               newValue: preserveWsTextMutate(ss[j].node.nodeValue || '', ts[j].node.nodeValue || ''),
             });
           }
+          lastProseMutationIdx = segMutations.length - 1;
         } else {
-          // src N vs tgt M(N != M)— Google MT 對含 \n / IMG emoji / 多段 prose 的
+          // src N vs tgt M（N != M）— Google MT 對含 \n / IMG emoji / 多段 prose 的
           // 推文翻譯後 text 切分跟 src 不對等(IMG 透明不送 API、\n 拆 BR 後 skip
           // 不同數量)。catch-all:把 tgt 全部 text join 塞給 ss[0],ss[1..N] mutate
           // 為 ""。視覺結果:src 端集中 nodeValue 在 ss[0],含完整中文 + 分段。
@@ -1409,6 +1427,7 @@
           for (let j = 1; j < ss.length; j++) {
             segMutations.push({ node: ss[j].node, newValue: '' });
           }
+          lastProseMutationIdx = segMutations.length - ss.length;
         }
       }
       if (segOk) {

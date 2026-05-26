@@ -226,11 +226,21 @@
 
   // 將 Google MT 回傳的【N】/【/N】/【*N】換回⟦N⟧/⟦/N⟧/⟦*N⟧，
   // 交給現有 deserializeWithPlaceholders 處理。
+  // Google MT 有時會把 CJK 括號【】正規化成 ASCII 括號 []。
+  // 只在偵測到 [/N] 或 [*N]（自然文字不會出現的 pattern）時才啟動
+  // ASCII fallback，避免把 footnote [0] / [1] 之類誤判為 marker。
   SK.restoreGoogleTranslateMarkers = function restoreGoogleTranslateMarkers(s) {
-    return s
+    var result = s
       .replace(/【\*(\d+)】/g, PH_OPEN + '*$1' + PH_CLOSE)
       .replace(/【(\d+)】/g,   PH_OPEN + '$1'  + PH_CLOSE)
       .replace(/【\/(\d+)】/g, PH_OPEN + '/$1' + PH_CLOSE);
+    if (/\[\/\d+\]|\[\*\d+\]/.test(result)) {
+      result = result
+        .replace(/\[\*(\d+)\]/g, PH_OPEN + '*$1' + PH_CLOSE)
+        .replace(/\[(\d+)\]/g,   PH_OPEN + '$1'  + PH_CLOSE)
+        .replace(/\[\/(\d+)\]/g, PH_OPEN + '/$1' + PH_CLOSE);
+    }
+    return result;
   };
 
   // CJK↔placeholder 空格補齊:Google MT 翻成 CJK 時常吃掉 marker 前後空格。
