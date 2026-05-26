@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.9** —— **YouTube 字幕三項修正**。(1) 翻譯未啟動時不干擾原生字幕（fix #51）：`shinkansen-yt-captions` listener 在 `YT.active=false` 時不再執行 `_applyBilingualMode` / `_setAsrHidingMode`，解決關閉 YouTube 翻譯功能後仍導致原生字幕消失的 bug。(2) API 錯誤回饋：API key 無效 / 未設定 / rate limit 等翻譯失敗時，字幕區顯示錯誤 toast（同一 session 只顯示一次）並清除「翻譯中…」狀態。(3) Badge 時機提前：toolbar icon badge 從「翻譯完成後」改為「翻譯啟動時」立即顯示，讓使用者在任何情境下都能即時知道翻譯正在被觸發。
+
 **v1.10.8** —— **Google MT 注入品質修復**。三項 Google MT 翻譯引擎的注入問題修正：(1) CJK 語序重排 trailing overflow：英文 "meet buddy @user" 翻成中文 "見到好友 @user 真是太棒了"，mention 後面多出的文字原本讓 segment fallback 失敗 → framework-managed 段落 fallback dual sibling wrapper；現在吸收進前一個 text segment mutation，維持 single mode。(2) ASCII bracket fallback：Google MT 有時把 CJK 括號 `【N】` 正規化成 ASCII `[N]`，marker 漏進可見 DOM（Amazon.co.jp 57 處殘留）；偵測到 `[/N]` 或 `[*N]` 時啟動 ASCII fallback，純 footnote `[0]` 不誤判。(3) atomic IMG slot 圖片重複：Google MT 把 IMG 做成 atomic slot，deserialization 後 fragment 含 IMG clone，但 `injectIntoTarget` media-preserving path 也保留原始 IMG → 兩張；注入 fragment 含 IMG 時跳過 media-preserving，走 clean-slate。**測試**：新增 3 檔 8 條 regression spec + SANITY 全驗。
 
 **v1.10.7** —— **外語頁偵測放寬**。外語頁面（html lang 與翻譯目標語言不同）的偵測管線全面放寬，讓按鈕、短文字 anchor、mixed-content label 等過去被 widget / 結構性檢查擋掉的 UI 元素也能被翻譯。(1) leaf div/span 補抓：widget 容器內大型區塊（≥ 50 字可見文字）的 leaf 元素放行。(2) leaf anchor 補抓：widget 容器內一般 anchor 放行（自身為 widget trigger 或 Case F 已拆分的容器仍 skip）。(3) anchor 補抓：含 CONTAINER child 的短文字 anchor 放行（`<a><div>icon+text</div></a>` 結構）。(4) walker Case C：mixed-content CONTAINER 的 directTextLength 門檻從 20 降到 2（「ポイント: 11pt (1%)」等短 label + inline 元素結構）。(5) button leaf 補抓：widget 容器內的按鈕放行（Amazon Rufus 建議問題 pill 等）。(6) button leaf selector：`span:not(:has(*))` → `span:not(:has(> :not(span)))` + descendant dedup，覆蓋「label + badge」結構（Amazon review tag「コスパ（135）」等）。非外語頁行為完全不變。

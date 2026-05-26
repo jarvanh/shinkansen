@@ -849,6 +849,7 @@
 
     STATE.translating = true;
     STATE.abortController = new AbortController();
+    SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
     const translateStartTime = Date.now();
     const abortSignal = STATE.abortController.signal;
 
@@ -1082,7 +1083,6 @@
       };
       STATE.stickyTranslate = true;
       STATE.stickySlot = options.slot ?? null;  // v1.4.12: 記錄 preset slot 供 SPA 續翻 + 跨 tab 繼承
-      SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
       // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
       if (options.slot != null) {
         SK.safeSendMessage({ type: 'STICKY_SET', payload: { slot: options.slot } }).catch(() => {});
@@ -1504,6 +1504,7 @@
 
     STATE.translating = true;
     STATE.abortController = new AbortController();
+    SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
     const translateStartTime = Date.now();
     const abortSignal = STATE.abortController.signal;
 
@@ -1578,7 +1579,6 @@
       STATE.translationContext = { provider: 'google' };
       STATE.stickyTranslate = true;
       STATE.stickySlot = gtOptions.slot ?? null;  // v1.4.12
-      SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
       // v1.4.11 跨 tab sticky（v1.4.12 改存 preset slot）：opener 鏈中新開的 tab 繼承同 slot
       if (gtOptions.slot != null) {
         SK.safeSendMessage({ type: 'STICKY_SET', payload: { slot: gtOptions.slot } }).catch(() => {});

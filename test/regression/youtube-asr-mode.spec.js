@@ -426,6 +426,10 @@ test('youtube-asr-mode: G 路徑 — ASR 啟動後 player root 加 class + overl
       return { ok: true };
     };
 
+    // 先啟動翻譯(YT.active=true),再 dispatch 字幕;
+    // fix #51:翻譯未啟動時 XHR 字幕進來不應觸發 hiding mode
+    window.__SK.YT.active = true;
+
     // dispatch ASR caption(URL kind=asr)→ rawSegments 填入 + isAsr=true → 觸發 G 路徑 setup
     const json3 = JSON.stringify({
       events: [{ tStartMs: 1000, segs: [{ utf8: 'first line' }] }],
@@ -436,7 +440,7 @@ test('youtube-asr-mode: G 路徑 — ASR 啟動後 player root 加 class + overl
   `);
   await page.waitForTimeout(150);
 
-  // 驗證 1:player root 應加 ASR class
+  // 驗證 1:player root 應加 ASR class(翻譯已啟動)
   // 驗證 2:overlay element 應存在於 player root 內(含 shadowRoot)
   // 驗證 3:全域 style 應注入到 head
   const asrSetup = await evaluate(`(() => {
@@ -1172,9 +1176,10 @@ test('youtube-asr-mode: chrome 顯示時 overlay 上移避開進度條(:not(.ytp
   const { evaluate } = await getShinkansenEvaluator(page);
   await evaluate(`window.__SK.isYouTubePage = () => true`);
 
-  // dispatch ASR caption 觸發 _setAsrHidingMode + _ensureOverlay
+  // fix #51:翻譯啟動後 dispatch ASR caption 才觸發 _setAsrHidingMode + _ensureOverlay
   await evaluate(`
     chrome.runtime.sendMessage = async function() { return { ok: true }; };
+    window.__SK.YT.active = true;
     const json3 = JSON.stringify({
       events: [{ tStartMs: 1000, segs: [{ utf8: 'hello' }] }],
     });

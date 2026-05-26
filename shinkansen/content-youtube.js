@@ -265,6 +265,7 @@
     lastLeadMs:               0,   // v1.2.50: 最近一次視窗起點距影片位置的 ms（負數=緊急）
     _firstCacheHitLogged:     false, // v1.2.51: 本 session 是否已記錄第一次 cache hit
     _autoCcToggled:           false, // v1.6.20 A 路徑:本 session 是否已自動開過 CC(避免重複)
+    _errorNotified:           false, // 本 session 是否已顯示過翻譯錯誤(避免每個視窗重複彈)
     // v1.6.20 G 路徑:ASR 字幕 overlay 用顯示單位 [{ startMs, endMs, sourceText, targetText }]。
     //   onVideoTimeUpdate 根據 video.currentTime 找出當前該顯示的 cue 寫入 overlay。
     //   整句進整句出,不依賴 YouTube 原生 caption-segment(避免 ASR 一字一字跳)。
@@ -392,14 +393,10 @@
     }
     // v1.8.40: 換影片/換字幕來源時 reset skip-log 旗標,避免跨影片不再 log skip 原因
     YT._skipLoggedForLang = false;
-    // G 路徑:ASR 字幕一進來就 enable hiding mode + 預建 overlay 容器,
+    // G 路徑:翻譯啟動時才 enable hiding mode + 預建 overlay 容器,
     //         避免使用者啟動翻譯瞬間還看到原生英文字幕跳動。
-    // commit 5c:bilingualMode=true → 不隱藏原生 CC(中英對照);false=純中文(既有行為)
-    // v1.8.42:non-ASR 路徑雙語也要 _applyBilingualMode(內部會建 overlay 並掛 attr),
-    //         讓中文走獨立 overlay 顯示在原生英文 CC 上方,而非塞進 segment innerHTML
-    //         (舊路徑 2 行英文時譯文會擠掉第二行)。ASR 路徑不論雙語純中文都需要
-    //         _ensureOverlay(純中文模式 native CC 被藏,中文由 overlay 取代)。
-    {
+    //         翻譯未啟動(YT.active=false)時不碰原生字幕。
+    if (YT.active) {
       const cfg = YT.config || await getYtConfig();
       if (YT.isAsr) _ensureOverlay();
       _applyBilingualMode(cfg.bilingualMode === true);
@@ -1632,6 +1629,7 @@
       YT.lastApiMs = _batchApiMs[0]; // 第一批 = 最快字幕回填
     } catch (err) {
       SK.sendLog('error', 'youtube', 'asr sub-batch 0 failed', { error: err.message });
+      _notifyTranslationError(err.message);
     }
     if (!YT.active) {
       YT.batchApiMs = _batchApiMs;
@@ -1772,6 +1770,7 @@
         YT.lastApiMs = _batchApiMs[0];
       } catch (err) {
         SK.sendLog('error', 'youtube', 'asr heuristic batch 0 failed', { error: err.message });
+        _notifyTranslationError(err.message);
       }
       if (!YT.active) { YT.batchApiMs = _batchApiMs; return; }
       if (batches.length > 1) {
@@ -1852,6 +1851,14 @@
     if (_shouldSkipBecauseAlreadyTraditionalChinese()) return false;
     if (_hasVisibleChineseCaption()) return false;
     return true;
+  }
+
+  function _notifyTranslationError(errorMessage) {
+    const YT = SK.YT;
+    if (YT._errorNotified) return;
+    YT._errorNotified = true;
+    hideCaptionStatus();
+    SK.showToast('error', SK.t('toast.translateFailed', { error: errorMessage }), { autoHideMs: 8000 });
   }
 
   // v1.9.19: 暴露給 regression spec(youtube-batch-size-12.spec.js)直接驅動指定視窗,
@@ -2197,6 +2204,7 @@
                   YT.lastApiMs = _batchApiMs[0];
                 } catch (err) {
                   SK.sendLog('error', 'youtube', 'batch 0 fallback failed', { error: err.message });
+                  _notifyTranslationError(err.message);
                 }
               }
               const settled = await parallelP;
@@ -2227,6 +2235,7 @@
               YT.lastApiMs = _batchApiMs[0]; // batch 0 是第一個完成的，記錄其耗時
             } catch (err) {
               SK.sendLog('error', 'youtube', 'batch 0 failed', { error: err.message });
+              _notifyTranslationError(err.message);
             }
             if (!YT.active) {
               YT.batchApiMs = _batchApiMs;  // v1.6.19: abort 也要同步,debug 面板才能反映 batch 0 耗時
@@ -2251,6 +2260,7 @@
         YT.batchApiMs = _batchApiMs;
       } catch (err) {
         SK.sendLog('error', 'youtube', 'window translation failed', { error: err.message });
+        _notifyTranslationError(err.message);
       }
     }
 
@@ -2714,6 +2724,7 @@
       }
     } catch (err) {
       SK.sendLog('warn', 'youtube', 'on-the-fly flush error', { error: err.message });
+      _notifyTranslationError(err.message);
     }
 
     YT.flushing = false;
@@ -2908,6 +2919,7 @@
     YT.lastLeadMs                = 0;         // v1.2.50
     YT._firstCacheHitLogged      = false;     // v1.2.51
     YT._autoCcToggled            = false;     // v1.6.20 A 路徑:每次啟動翻譯重置 auto-CC 旗標
+    YT._errorNotified            = false;
     YT.ccPaused                  = false;     // attachVideoListener → _observeCcButton 會依 CC 實際狀態重設
     YT.displayCues               = [];        // G 路徑:啟動時清空 overlay cue,等本影片字幕回來
 
