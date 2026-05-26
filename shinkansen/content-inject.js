@@ -775,10 +775,18 @@
       // afterend 模式：wrapper 是 original 的下一個 element sibling
       candidate = original.nextElementSibling;
     } else {
-      // inline：afterend-block-ancestor（找不到 block-ancestor 時 fallback 到 original）
+      // inline：afterend-block-ancestor — wrapper chain 可能有多個,掃全部找 text match
       const blockAncestor = findBlockAncestor(original);
       const anchor = (blockAncestor && blockAncestor !== winDoc.body) ? blockAncestor : original;
-      candidate = anchor.nextElementSibling;
+      const expected = (SK.stripStrayPlaceholderMarkers
+        ? SK.stripStrayPlaceholderMarkers(translation)
+        : translation).trim();
+      let sib = anchor.nextElementSibling;
+      while (sib && sib.tagName === wrapperTagUpper) {
+        if (sib.textContent.trim() === expected) return sib;
+        sib = sib.nextElementSibling;
+      }
+      return null;
     }
     if (!candidate || candidate.tagName !== wrapperTagUpper) return null;
     const expected = (SK.stripStrayPlaceholderMarkers
@@ -935,6 +943,8 @@
       return;
     }
 
+    SK.snapshotOnce(original);
+
     const inner = buildDualInner(tag, original, translation, slots);
     const wrapper = original.ownerDocument.createElement(SK.TRANSLATION_WRAPPER_TAG);
     const mark = SK.currentMarkStyle && SK.VALID_MARK_STYLES.has(SK.currentMarkStyle)
@@ -1018,7 +1028,17 @@
       // Inline 段落：往上找最近 block 祖先
       const blockAncestor = findBlockAncestor(original);
       if (blockAncestor && blockAncestor !== original.ownerDocument.body) {
-        blockAncestor.insertAdjacentElement('afterend', wrapper);
+        // 同 block ancestor 多個 inline 依序注入時,每次都 afterend block ancestor
+        // 會讓新 wrapper 插在舊 wrapper 前面 → 視覺反序。走到 block ancestor 後面
+        // 已有的 wrapper 尾端再 append,維持 DOM 順序。
+        const wrapperTagUpper = SK.TRANSLATION_WRAPPER_TAG.toUpperCase();
+        let insertPoint = blockAncestor;
+        let sib = blockAncestor.nextElementSibling;
+        while (sib && sib.tagName === wrapperTagUpper) {
+          insertPoint = sib;
+          sib = sib.nextElementSibling;
+        }
+        insertPoint.insertAdjacentElement('afterend', wrapper);
         insertMode = 'afterend-block-ancestor';
       } else {
         // 找不到合理祖先，掛在 inline 自身後（次佳）

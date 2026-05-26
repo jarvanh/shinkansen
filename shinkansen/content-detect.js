@@ -1341,6 +1341,63 @@
     return results;
   };
 
+  // dual mode 前置:把共用同一 block ancestor 的 inline-display element unit 合併成
+  // 一個 element unit(用 block ancestor 當 el)。讓 LLM 拿到完整上下文翻譯,dual
+  // inject 只產一個 wrapper。single mode 不需要(framework-managed nodeValue mutate
+  // 路徑逐 SPAN 改 text node,視覺無碎片)。
+  SK.consolidateDualInlineUnits = function consolidateDualInlineUnits(units) {
+    if (!units || units.length === 0) return units;
+    const win = document.defaultView;
+    if (!win) return units;
+
+    // block ancestor → [index in units]
+    const groups = new Map();
+    const unitBlockAnc = new Array(units.length);
+    const unitElSet = new Set();
+    for (let i = 0; i < units.length; i++) {
+      if (units[i].el) unitElSet.add(units[i].el);
+    }
+
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i];
+      if (u.kind !== 'element' || !u.el || !u.el.isConnected) continue;
+      const cs = win.getComputedStyle(u.el);
+      const dsp = cs?.display || '';
+      if (!dsp.startsWith('inline')) continue;
+      const anc = SK.findBlockAncestor?.(u.el);
+      if (!anc || anc === document.body) continue;
+      // block ancestor 已經是另一個 unit → 交給 inject dedup,不合併
+      if (unitElSet.has(anc)) continue;
+      unitBlockAnc[i] = anc;
+      if (!groups.has(anc)) groups.set(anc, []);
+      groups.get(anc).push(i);
+    }
+
+    // 只合併有 >= 2 個 inline unit 的 group
+    const toRemove = new Set();
+    const replacements = []; // { insertAt, unit }
+    for (const [anc, indices] of groups) {
+      if (indices.length < 2) continue;
+      for (const idx of indices) toRemove.add(idx);
+      replacements.push({ insertAt: indices[0], unit: { kind: 'element', el: anc } });
+    }
+    if (toRemove.size === 0) return units;
+
+    const result = [];
+    for (let i = 0; i < units.length; i++) {
+      if (toRemove.has(i)) {
+        const rep = replacements.find(r => r.insertAt === i);
+        if (rep) result.push(rep.unit);
+        continue;
+      }
+      result.push(units[i]);
+    }
+    SK.sendLog?.('info', 'detect', 'consolidateDualInlineUnits', {
+      before: units.length, after: result.length, merged: toRemove.size,
+    });
+    return result;
+  };
+
   // v1.9.13: 找出 root subtree 內所有 open shadow root,遞迴進去再找(shadow 內可能還有
   // shadow)。closed shadow root 受 web spec 安全限制,從 JS 完全不可達,只能跳過。
   SK.findOpenShadowRoots = function findOpenShadowRoots(root) {

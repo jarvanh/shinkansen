@@ -188,7 +188,10 @@
       SK.sendLog('info', 'translate', 'partialMode: skip rescan');
       return;
     }
-    const newUnits = SK.collectParagraphs();
+    let newUnits = SK.collectParagraphs();
+    if (STATE.translatedMode === 'dual' && SK.consolidateDualInlineUnits) {
+      newUnits = SK.consolidateDualInlineUnits(newUnits);
+    }
     if (newUnits.length > 0) {
       try {
         const { done, failures } = await SK.translateUnitsByProvider(newUnits);
@@ -863,6 +866,13 @@
     }
     SK.sendLog('info', 'translate', 'milestone:collect_done', { t: Date.now() - entryTime, dt: Date.now() - t_collect_start, segments: units.length });
 
+    // dual mode:把共用同一 block ancestor 的 inline element unit 合併成一個
+    // element unit(用 block ancestor 當 el),讓 LLM 拿到完整上下文、inject 只
+    // 產一個 wrapper。single mode 逐 SPAN nodeValue mutate 不碎片,不需合併。
+    if (STATE.translatedMode === 'dual' && SK.consolidateDualInlineUnits) {
+      units = SK.consolidateDualInlineUnits(units);
+    }
+
     // v1.8.6: partialMode 啟用時跳過 prioritizeUnits，走純 DOM 順序。
     // 為什麼：partialMode 對使用者語意是「翻頁面 DOM 前 N 段」（視覺上連續中文，
     // 不夾雜），不是「prioritize 認為最重要的 N 段散落各處」。在 Ghost / Substack
@@ -1509,6 +1519,9 @@
     const abortSignal = STATE.abortController.signal;
 
     let units = SK.collectParagraphs();
+    if (STATE.translatedMode === 'dual' && SK.consolidateDualInlineUnits) {
+      units = SK.consolidateDualInlineUnits(units);
+    }
     if (units.length === 0) {
       SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
       STATE.translating = false;

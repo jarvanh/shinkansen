@@ -616,7 +616,14 @@
       } else if (insertMode === 'afterend-block-ancestor') {
         const blockAncestor = SK.findBlockAncestor?.(el);
         if (blockAncestor && blockAncestor !== el.ownerDocument.body) {
-          blockAncestor.insertAdjacentElement('afterend', wrapper);
+          const wrapperTagUpper = SK.TRANSLATION_WRAPPER_TAG.toUpperCase();
+          let insertPoint = blockAncestor;
+          let sib = blockAncestor.nextElementSibling;
+          while (sib && sib.tagName === wrapperTagUpper) {
+            insertPoint = sib;
+            sib = sib.nextElementSibling;
+          }
+          insertPoint.insertAdjacentElement('afterend', wrapper);
         } else {
           el.insertAdjacentElement('afterend', wrapper);
         }
@@ -1198,6 +1205,9 @@
     spaObserverRescanCount++;
 
     let newUnits = SK.collectParagraphs();
+    if (STATE.translatedMode === 'dual' && SK.consolidateDualInlineUnits) {
+      newUnits = SK.consolidateDualInlineUnits(newUnits);
+    }
     if (newUnits.length === 0) {
       SK.sendLog('info', 'spa', `SPA rescan #${spaObserverRescanCount}: collectParagraphs returned 0 units (all already attribute-marked or filtered)`);
       return;
