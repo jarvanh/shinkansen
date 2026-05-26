@@ -157,6 +157,34 @@
           // 且 LLM Layer A3 fallback 路徑跟 Google MT 不同(LLM 有更寬鬆的 free text
           // 吸收邏輯),不需此改動。
           if (!degrade && child.tagName === 'A' && hasElementChild(child)) {
+            // block 元素（H1-H6 等）的唯一 child 是 <a> 時，A 是 block 的主要內容載體，
+            // 走 paired marker 讓 Google MT 翻譯內文。典型 case：Amazon 評論標題
+            // H5 > A > {I(星星 icon), SPAN(標題)} — 整段 atomic 會讓標題完全不翻。
+            // A 內部有 element child 的 inline tag（I/B/EM 等）走 atomic 保留 icon 結構,
+            // 其餘 text/SPAN 走 walk 讓 Google MT 翻。
+            const _p = child.parentElement;
+            if (_p && SK.BLOCK_TAGS_SET.has(_p.tagName) && _p.children.length === 1) {
+              const idx = slots.length;
+              slots.push(child.cloneNode(false));
+              out += '【' + idx + '】';
+              for (const ac of child.childNodes) {
+                if (ac.nodeType === Node.TEXT_NODE) {
+                  out += ac.nodeValue;
+                } else if (ac.nodeType === Node.ELEMENT_NODE) {
+                  if (SK.HARD_EXCLUDE_TAGS.has(ac.tagName)) continue;
+                  if (ac.tagName === 'BR') { out += ''; continue; }
+                  if (hasElementChild(ac) || !(ac.textContent || '').trim()) {
+                    const aidx = slots.length;
+                    slots.push({ atomic: true, node: ac.cloneNode(true) });
+                    out += '【*' + aidx + '】';
+                  } else {
+                    walk([ac]);
+                  }
+                }
+              }
+              out += '【/' + idx + '】';
+              continue;
+            }
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
             out += '【*' + idx + '】';

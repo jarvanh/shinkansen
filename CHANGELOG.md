@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.10** —— **Google MT 評論標題未翻譯修正**。(1) Google MT 序列化器的 v1.9.31 atomic anchor 規則（含 element child 的 `<a>` 整段不翻）誤殺 block element 唯一 child 的 `<a>`（Amazon 評論標題 H5 > A > {I 星星 icon, SPAN 標題}），標題完全不送 Google MT。收窄條件：block 元素唯一 child 的 `<a>` 走 paired marker，內部有 element child 的子元素（icon `<i>` 等）走 atomic 保留，leaf text/span 走 walk 翻譯，空 spacer span 走 atomic 保留 CSS 間距。(2) 防禦性 echo 偵測：注入後 textContent 沒變就不標 `data-shinkansen-translated`，避免 LLM 回音造成元素被永久標記「已翻」但文字沒變。(3) 快取 echo 過濾：`cache.setBatch` 不存跟原文一模一樣的「翻譯」，防止回音汙染快取。
+
 **v1.10.9** —— **YouTube 字幕三項修正**。(1) 翻譯未啟動時不干擾原生字幕（fix #51）：`shinkansen-yt-captions` listener 在 `YT.active=false` 時不再執行 `_applyBilingualMode` / `_setAsrHidingMode`，解決關閉 YouTube 翻譯功能後仍導致原生字幕消失的 bug。(2) API 錯誤回饋：API key 無效 / 未設定 / rate limit 等翻譯失敗時，字幕區顯示錯誤 toast（同一 session 只顯示一次）並清除「翻譯中…」狀態。(3) Badge 時機提前：toolbar icon badge 從「翻譯完成後」改為「翻譯啟動時」立即顯示，讓使用者在任何情境下都能即時知道翻譯正在被觸發。
 
 **v1.10.8** —— **Google MT 注入品質修復**。三項 Google MT 翻譯引擎的注入問題修正：(1) CJK 語序重排 trailing overflow：英文 "meet buddy @user" 翻成中文 "見到好友 @user 真是太棒了"，mention 後面多出的文字原本讓 segment fallback 失敗 → framework-managed 段落 fallback dual sibling wrapper；現在吸收進前一個 text segment mutation，維持 single mode。(2) ASCII bracket fallback：Google MT 有時把 CJK 括號 `【N】` 正規化成 ASCII `[N]`，marker 漏進可見 DOM（Amazon.co.jp 57 處殘留）；偵測到 `[/N]` 或 `[*N]` 時啟動 ASCII fallback，純 footnote `[0]` 不誤判。(3) atomic IMG slot 圖片重複：Google MT 把 IMG 做成 atomic slot，deserialization 後 fragment 含 IMG clone，但 `injectIntoTarget` media-preserving path 也保留原始 IMG → 兩張；注入 fragment 含 IMG 時跳過 media-preserving，走 clean-slate。**測試**：新增 3 檔 8 條 regression spec + SANITY 全驗。

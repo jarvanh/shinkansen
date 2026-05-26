@@ -355,6 +355,20 @@
     return frag;
   }
 
+  function _revertEcho(el) {
+    var origHTML = STATE.originalHTML.get(el);
+    if (origHTML != null) el.innerHTML = origHTML;
+    var origLang = STATE.originalLang.get(el);
+    if (origLang === null) el.removeAttribute('lang');
+    else if (origLang != null) el.setAttribute('lang', origLang);
+    el.removeAttribute('data-shinkansen-translated');
+    el.removeAttribute('data-shinkansen-nodevalue-mutated');
+    var origFont = STATE.originalFontFamily.get(el);
+    if (origFont != null) el.style.fontFamily = origFont;
+    SK.sendLog('warn', 'inject', 'echo detected: translation identical to source, not marking translated',
+      { text: (el.textContent || '').substring(0, 80) });
+  }
+
   SK.injectTranslation = function injectTranslation(unit, translation, slots) {
     if (!translation) return;
     // v1.4.8: 統一在注入入口規範化字面 \n（反斜線+n，兩字元）→ 真正換行符（U+000A）。
@@ -362,6 +376,9 @@
     // 但 fragment no-slots / element no-slots 路徑完全繞過 deserializeWithPlaceholders，
     // 導致字面 \n 殘留可見 DOM 字元。在此入口統一處理，覆蓋所有後續路徑。
     if (translation.includes('\\n')) translation = translation.replace(/\\n/g, '\n');
+
+    var _preText = (unit.kind !== 'fragment' && unit.el)
+      ? (unit.el.textContent || '').trim() : null;
 
     // Sibling element 邊界空格:React site(X / Threads)DOM 元素間沒有
     // whitespace text node,各 unit 獨立翻譯後文字直接黏 URL/mention。
@@ -460,9 +477,10 @@
       // 乾淨(無 wrapper sibling 噪音)。
       // 配對失敗(multi text node、含 placeholder、含 \n 多段)→ fallback dual visible。
       if (SK.tryInjectNodeValueMutate?.(unit.el, translation, slots)) {
+        if (_preText != null && (unit.el.textContent || '').trim() === _preText) {
+          _revertEcho(unit.el); return;
+        }
         unit.el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
-        // 同時設 single-mode attribute 讓 collectParagraphs / SPA observer 既有
-        // skip 邏輯仍 work(避免重複 inject)。restorePage 兩個 attribute 都清。
         unit.el.setAttribute('data-shinkansen-translated', '1');
         return;
       }
@@ -501,38 +519,22 @@
       const { frag, ok } = SK.deserializeWithPlaceholders(translation, slots);
       if (ok) {
         replaceNodeInPlace(el, frag);
-        el.setAttribute('data-shinkansen-translated', '1');
-        applyTargetLocaleStyling(el);
-        STATE.translatedHTML.set(el, el.innerHTML);
-        SK.refreshAncestorSavedHTML?.(el);
-        SK._guardObserveEl?.(el); // v1.8.20: 把新譯段註冊進 IO subset
-        SK._recordTranslatedByText?.(el, el.innerHTML);
-        return;
+      } else {
+        const cleaned = SK.stripStrayPlaceholderMarkers(translation);
+        const recovered = tryRecoverLinkSlots(el, cleaned, slots);
+        if (recovered) {
+          replaceNodeInPlace(el, recovered);
+        } else {
+          plainTextFallback(el, cleaned);
+        }
       }
-      const cleaned = SK.stripStrayPlaceholderMarkers(translation);
-      // v1.2.3: ok=false 時，嘗試從原始 DOM 找回 <a> 連結文字並重建連結結構
-      const recovered = tryRecoverLinkSlots(el, cleaned, slots);
-      if (recovered) {
-        replaceNodeInPlace(el, recovered);
-        el.setAttribute('data-shinkansen-translated', '1');
-        applyTargetLocaleStyling(el);
-        STATE.translatedHTML.set(el, el.innerHTML);
-        SK.refreshAncestorSavedHTML?.(el);
-        SK._guardObserveEl?.(el);
-        SK._recordTranslatedByText?.(el, el.innerHTML);
-        return;
-      }
-      plainTextFallback(el, cleaned);
-      el.setAttribute('data-shinkansen-translated', '1');
-      applyTargetLocaleStyling(el);
-      STATE.translatedHTML.set(el, el.innerHTML);
-      SK.refreshAncestorSavedHTML?.(el);
-      SK._guardObserveEl?.(el);
-      SK._recordTranslatedByText?.(el, el.innerHTML);
-      return;
+    } else {
+      replaceTextInPlace(el, translation);
     }
 
-    replaceTextInPlace(el, translation);
+    if (_preText != null && (el.textContent || '').trim() === _preText) {
+      _revertEcho(el); return;
+    }
     el.setAttribute('data-shinkansen-translated', '1');
     applyTargetLocaleStyling(el);
     STATE.translatedHTML.set(el, el.innerHTML);
