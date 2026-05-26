@@ -99,6 +99,21 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store and Firefox Add-ons. Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v1.10.11 <span class="release-date">Released 2026-05-26</span></h2>
+  <p class="release-meta">Compared with the previous store version v1.10.0</p>
+
+  <p class="lead">This release focuses on X (Twitter) tweet translation quality, Google Translate engine injection fixes, and improved detection coverage for Amazon and other foreign-language shopping sites.</p>
+
+  <ul>
+    <li><strong>Major X tweet translation quality improvements (single &amp; dual mode)</strong>: fixes 11 versions' worth of structural issues — complex tweets containing URLs, @mentions, #hashtags, emoji images, and multi-line paragraphs no longer suffer from missing middle paragraphs, text sticking together, or quoted tweets showing unwanted grey bilingual blocks. Clicking "Show more" to expand truncated tweets now automatically retranslates the expanded content. In dual (bilingual) mode, an entire tweet now produces a single, coherent translation block instead of 5-7 fragmented blocks in reverse order.</li>
+
+    <li><strong>Google Translate engine quality fixes</strong>: three Google MT-specific fixes — (1) review titles on Amazon and similar sites (link structure containing star icons + text) are no longer skipped; (2) CJK translation results no longer stick to adjacent URLs / @mentions (automatic spacing inserted); (3) emoji images no longer duplicated after translation.</li>
+
+    <li><strong>Improved detection coverage for Amazon and foreign-language shopping sites</strong>: (1) product recommendation carousel cards no longer lose ratings, badges, and prices after translation; (2) button text (e.g. "カートに入れる", "参考になった") is now translated; (3) short-text anchors, mixed-content labels, and comparison table buttons on foreign-language pages that were previously blocked by the detection pipeline are now broadly unblocked.</li>
+
+    <li><strong>Three YouTube subtitle fixes</strong>: (1) disabling YouTube translation no longer hides native subtitles (fix #51); (2) invalid API key or exhausted quota now shows an error message in the subtitle area instead of stalling on "Translating..."; (3) the toolbar icon translation badge now appears immediately when translation starts, rather than waiting until translation completes.</li>
+  </ul>
+
   <h2>v1.10.0 <span class="release-date">Released 2026-05-20</span></h2>
   <p class="release-meta">Compared with the previous store version v1.9.24</p>
 

@@ -99,6 +99,21 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store 與 Firefox Add-ons 使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v1.10.11 <span class="release-date">2026-05-26 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v1.10.0</p>
+
+  <p class="lead">這版集中修復 X（Twitter）推文翻譯品質、Google 翻譯引擎注入問題、以及 Amazon 等外語購物網站的偵測涵蓋率</p>
+
+  <ul>
+    <li><strong>X 推文翻譯品質大幅提升（單語 + 雙語）</strong>：修復 11 個版本累積的結構性問題——推文內含 URL 連結、@mention、#hashtag、emoji 圖片、換行段落的複雜推文，譯文不再出現中間段落消失、文字黏在一起、引用推文多出灰底框等問題。點「顯示更多」展開截斷推文後，展開部分也會自動重翻。雙語對照模式下，整則推文現在只產生一個完整的翻譯區塊（之前會碎成 5-7 個小區塊且順序反轉）</li>
+
+    <li><strong>Google 翻譯引擎品質修正</strong>：兩項 Google MT 專屬修正——(1) Amazon 等網站的評論標題（含星星 icon + 文字的連結結構）不再被跳過；(2) CJK 翻譯結果跟 URL / @mention 之間不再黏在一起（自動補空格）；(3) emoji 圖片不再翻譯後重複出現兩張</li>
+
+    <li><strong>Amazon 等外語購物網站翻譯涵蓋率提升</strong>：(1) 產品推薦 carousel 卡片翻譯後，星等、徽章、價格不再消失；(2) 按鈕文字（「カートに入れる」「参考になった」等）現在也會翻譯；(3) 外語頁面的短文字 anchor、mixed-content label、比較表格按鈕等過去被偵測管線擋掉的 UI 元素，這版全面放寬</li>
+
+    <li><strong>YouTube 字幕三項修正</strong>：(1) 關閉 YouTube 翻譯功能後，原生字幕不再被隱藏（fix #51）；(2) API key 無效或額度用完時，字幕區會顯示錯誤提示（之前只停在「翻譯中⋯」）；(3) 工具列圖示的翻譯 badge 改為啟動翻譯時立即顯示，不再等翻譯完成後才出現</li>
+  </ul>
+
   <h2>v1.10.0 <span class="release-date">2026-05-20 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.9.24</p>
 
