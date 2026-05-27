@@ -318,15 +318,10 @@ export async function setBatch(texts, translations, keySuffix = '') {
   const suffix = resolveKeySuffix(keySuffix);
   const hashes = await Promise.all(texts.map(hashText));
   const updates = {};
-  let echoSkipped = 0;
   for (let i = 0; i < texts.length; i++) {
     if (translations[i]) {
-      if (translations[i].trim() === texts[i].trim()) { echoSkipped++; continue; }
       updates[KEY_PREFIX + hashes[i] + suffix] = wrapValue(translations[i]);
     }
-  }
-  if (echoSkipped > 0) {
-    debugLog('warn', 'cache', `setBatch skipped ${echoSkipped} echo entries (translation === source)`);
   }
   if (Object.keys(updates).length) {
     await safeStorageSet(updates);

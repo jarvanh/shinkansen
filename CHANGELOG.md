@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.14** —— **修正重翻 cache miss**。v1.10.10 引入的 echo skip（`setBatch` 跳過 translation === source 的段）導致品牌名/專有名詞（如 Stratechery Plus、人名等）永遠不被 cache 存入，每次重翻都打 API。移除 echo skip，讓 echo 回應正常 cache
+
 **v1.10.13** —— **X 推文 nodeValue mutate 注入後 click 恢復英文 + scroll 漏翻修正**。(1) pre-click restore 後推文永遠停在英文：nodeValue mutate 元素不在 `STATE.translatedHTML`，Content Guard 完全看不到；且 React re-render 不一定產出足夠 mutations 觸發 SPA rescan。修法：pre-click restore 後清 seenTexts entry + 主動排程 500ms rescan。(2) X virtualization unmount/remount 新 element 漏翻：nodeValue mutate 路徑沒呼叫 `_recordTranslatedByText`，by-text reuse 無法接住 remount 元素。修法：nodeValue mutate 後也記錄 by-text 快取
 
 **v1.10.12** —— **自訂模型 API 逾時時間可調**。新增 `customProvider.fetchTimeoutSec` 設定（預設 15 秒，範圍 5–600 秒），本機 LLM（Ollama 等）冷啟動載入模型到 VRAM 時可自行調高，避免逾時失敗。設定位於「自訂模型」分頁 → 進階。順修「深層 merge」晶晶體→「深層合併」
