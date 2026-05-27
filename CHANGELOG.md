@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.13** —— **X 推文 nodeValue mutate 注入後 click 恢復英文 + scroll 漏翻修正**。(1) pre-click restore 後推文永遠停在英文：nodeValue mutate 元素不在 `STATE.translatedHTML`，Content Guard 完全看不到；且 React re-render 不一定產出足夠 mutations 觸發 SPA rescan。修法：pre-click restore 後清 seenTexts entry + 主動排程 500ms rescan。(2) X virtualization unmount/remount 新 element 漏翻：nodeValue mutate 路徑沒呼叫 `_recordTranslatedByText`，by-text reuse 無法接住 remount 元素。修法：nodeValue mutate 後也記錄 by-text 快取
+
 **v1.10.12** —— **自訂模型 API 逾時時間可調**。新增 `customProvider.fetchTimeoutSec` 設定（預設 15 秒，範圍 5–600 秒），本機 LLM（Ollama 等）冷啟動載入模型到 VRAM 時可自行調高，避免逾時失敗。設定位於「自訂模型」分頁 → 進階。順修「深層 merge」晶晶體→「深層合併」
 
 **v1.10.11** —— **雙語對照模式 X 推文修正**。(1) 「顯示更多」展開後譯文不更新：`injectDual` 缺少 `snapshotOnce` 呼叫導致 `STATE.originalText` 未設定,`detectAndUnmarkExpandedDual` 偵測不到展開,wrapper 不更新。(2) inline 元素 wrapper 反序：多個 inline 元素共用同一 block ancestor 時,每次 `afterend` 都插在 ancestor 緊鄰後方,新 wrapper 推擠舊 wrapper → 視覺完全反序;改為走到 wrapper chain 尾端再 append。(3) X tweetText 碎片翻譯：Case F 收集的 leaf SPAN 各自獨立翻譯 + 各自產 wrapper → 失去上下文 + 底色割裂;新增 `consolidateDualInlineUnits` 在 dual mode 下把共用 block ancestor 的 inline unit 合併成一個 element unit,LLM 拿到完整推文翻譯,只產一個 wrapper。

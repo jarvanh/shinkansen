@@ -262,7 +262,18 @@
       STATE.nodeValueMutateBackup.delete(nvEl);
       STATE.originalText.delete(nvEl);
       STATE.originalHTML?.delete?.(nvEl);
+      // 清 seenTexts entry（還原後 innerText 是英文原文）讓後續 rescan 能重翻
+      const _restoredText = (nvEl.innerText || '').trim();
+      if (_restoredText) spaObserverSeenTexts.delete(_restoredText);
       SK.sendLog?.('info', 'spa', 'pre-click restore: nodeValue mutate backup restored for click target');
+      // 主動排程 rescan：pre-click restore 清掉所有 STATE 後 nodeValue mutate
+      // 元素完全失去 Content Guard 保護（不在 STATE.translatedHTML），且 React
+      // 的 click re-render 不一定產出 childList mutations 觸發 hasNewContent。
+      // 500ms 讓 React commit phase 完成後再 rescan + re-translate。
+      setTimeout(() => {
+        if (!STATE.translated) return;
+        triggerSpaObserverRescan();
+      }, 500);
     }, { capture: true, passive: true });
   }
 

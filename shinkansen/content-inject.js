@@ -482,6 +482,10 @@
         }
         unit.el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
         unit.el.setAttribute('data-shinkansen-translated', '1');
+        // nodeValue mutate 後也記錄 by-text reuse 快取：X virtualization
+        // unmount/remount 全新 element 時 spaByTextReuse 用 innerHTML
+        // 還原譯文（新 element 還沒被 React 互動過,innerHTML 寫入安全）。
+        SK._recordTranslatedByText?.(unit.el, unit.el.innerHTML);
         return;
       }
 
