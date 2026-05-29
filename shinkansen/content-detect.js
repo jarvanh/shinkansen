@@ -499,15 +499,26 @@
         return;
       }
       if (/[A-Za-zÀ-ÿ\u0400-\u04FF\u3400-\u9fff0-9]/.test(text)) {
-        let _elCount = 0, _wrapperEl = null;
+        let _elCount = 0, _wrapperEl = null, _directTextLen = 0;
         { let _n = runStart;
           while (_n) {
             if (_n.nodeType === 1) { _elCount++; _wrapperEl = _n; }
+            else if (_n.nodeType === 3) { _directTextLen += (_n.textContent || '').trim().length; }
             if (_n === runEnd) break;
             _n = _n.nextSibling;
           }
         }
-        if (_elCount === 1 && _wrapperEl && _wrapperEl.children.length > 0 && trimmed.length >= 100) {
+        // run 是「單一巢狀 wrapper 元素 + 長文」時跳過——原意:文字其實在 wrapper 內的
+        // 巢狀結構(如商品卡 <a> 內含多層 DIV),該由 walker 遞迴處理而非當 inline fragment 抽。
+        // v1.10.15:補 _directTextLen < 20。原條件用「整個 run 字數」判斷,沒扣掉「文字其實
+        // 在直接 text node、wrapper 本身幾乎沒文字」的情況,誤殺「實質 prose 直接文字 + 一個
+        // inline 媒體 wrapper」結構——典型 YouTube 留言 <span>長文字<span><img emoji></span>
+        // 更多文字</span>:emoji wrapper 0 字、272 字全在直接 text node,卻被當「單一長巢狀
+        // 元素」整則丟棄不翻。加 _directTextLen < 20:只有直接文字微不足道(文字真的在 wrapper
+        // 巢狀結構內)才 skip;有實質直接 prose 時 wrapper 只是 inline 媒體 → 照常抽 fragment
+        // (保留 img)。product-card 那種「wrapper 內巢狀、無直接文字」directText≈0 仍被擋。
+        if (_elCount === 1 && _wrapperEl && _wrapperEl.children.length > 0 &&
+            trimmed.length >= 100 && _directTextLen < 20) {
           runStart = null; runEnd = null;
           return;
         }

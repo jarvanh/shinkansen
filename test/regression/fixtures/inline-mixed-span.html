@@ -68,5 +68,30 @@
   </span>
 </div>
 
+<!-- v1.10.15 target-emoji-mid:真實 YouTube 留言結構 —— 長直接文字中間夾一個 emoji
+     (span>img),run 內 _elCount===1(僅該 emoji wrapper)、總長 >= 100。
+     原 extractInlineFragments guard「_elCount===1 && wrapper.children>0 && trimmed>=100」
+     誤把整則當「單一長巢狀元素」丟棄不翻;直接文字其實 >> 20 字、emoji wrapper 0 字。 -->
+<div id="target-emoji-mid">
+  <yt-attributed-string id="content-text">
+    <span class="ytAttributedStringHost">My last deployment I used my own EoTec with a magnifier from a buddy and it held zero perfectly through the whole rotation<span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=" alt="fire"></span>gave me good use the entire time downrange without a single hiccup or zero shift at all.</span>
+  </yt-attributed-string>
+</div>
+
+<!-- v1.10.15 target-emoji-end:長直接文字尾端一個 emoji。同樣 _elCount===1、總長 >= 100。 -->
+<div id="target-emoji-end">
+  <yt-attributed-string id="content-text">
+    <span class="ytAttributedStringHost">Best advice here is to pick one that is durable and can survive some water and dust and a few hard knocks because at the end of the day reliability beats fancy features every single time out there<span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=" alt="ok"></span></span>
+  </yt-attributed-string>
+</div>
+
+<!-- v1.10.15 負向對照 target-single-wrapper-tiny-direct:guard 原意要擋的結構 ——
+     微量直接文字(< 20 字)+ 單一大巢狀 wrapper(文字都在 wrapper 內,>= 100 字)。
+     這個 run 不該被抽成一個 fragment(文字該由 walker 遞迴 / leaf 補抓處理),
+     修法加的 _directTextLen < 20 條件確保它仍被 skip。 -->
+<div id="target-single-wrapper-tiny-direct">
+  <span class="host">Reply: <span class="quote"><span class="leaf">This entire long passage of prose text lives completely inside the nested wrapper element and not in the direct text node of the host span at all whatsoever here</span></span></span>
+</div>
+
 </body>
 </html>

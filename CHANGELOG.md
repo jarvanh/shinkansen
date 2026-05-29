@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.15** —— **含 inline emoji／連結的留言漏翻修正 ＋ SPA rescan overflow 修正**。(1) 含 inline 媒體（emoji 圖、時間戳連結）的留言被偵測路徑整則跳過不翻：`extractInlineFragments` 的「單一巢狀 wrapper ＋ 長文」guard 用整段字數判斷，誤殺「實質 prose 直接文字 ＋ 一個 emoji wrapper」結構（典型 YouTube 留言）。修法補「直接文字 < 20 字才 skip」。(2) emoji 翻譯後消失：含 emoji 留言走 fragment clean-rebuild 注入，IMG 透明展開後從譯文流失。修法：fragment 序列化把 IMG 當 atomic slot 保留，deserialize 還原時前後補空格（避免 emoji 跟中文貼死）。(3) SPA observer rescan 一次收超過 50 段時，overflow 被先標 seen 再砍掉，30 秒內後續 rescan 補不回，造成留言區零星漏翻。修法：先 cap 再標 seen（只標本輪實際要翻的）＋ overflow 主動再排一輪 rescan。**建議手動清快取**（含 emoji 留言之前可能存過缺 emoji／缺空白的譯文）
+
 **v1.10.14** —— **修正重翻 cache miss**。v1.10.10 引入的 echo skip（`setBatch` 跳過 translation === source 的段）導致品牌名/專有名詞（如 Stratechery Plus、人名等）永遠不被 cache 存入，每次重翻都打 API。移除 echo skip，讓 echo 回應正常 cache
 
 **v1.10.13** —— **X 推文 nodeValue mutate 注入後 click 恢復英文 + scroll 漏翻修正**。(1) pre-click restore 後推文永遠停在英文：nodeValue mutate 元素不在 `STATE.translatedHTML`，Content Guard 完全看不到；且 React re-render 不一定產出足夠 mutations 觸發 SPA rescan。修法：pre-click restore 後清 seenTexts entry + 主動排程 500ms rescan。(2) X virtualization unmount/remount 新 element 漏翻：nodeValue mutate 路徑沒呼叫 `_recordTranslatedByText`，by-text reuse 無法接住 remount 元素。修法：nodeValue mutate 後也記錄 by-text 快取

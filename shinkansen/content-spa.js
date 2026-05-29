@@ -1198,6 +1198,22 @@
     return (unit.el?.innerText || '').trim();
   }
 
+  // v1.10.15:把「cap 到 MAX_UNITS + 標記 seen」抽成純函式,鎖住一條 invariant——
+  // 「被 cap 丟掉的 overflow unit 絕不可被標進 seenTexts」。
+  // 原 bug:rescan 先把「全部找到的 unit」標 seen,再 slice 到 MAX_UNITS。當一次
+  // collectParagraphs 抓到 > 50 個(典型:YouTube 留言批次 lazy-load,一次進來 64 則),
+  // 被 slice 丟掉的 14 則已經在 seenTexts 內 → 後續 rescan 被 isSeenTextRecent 擋住
+  // 30s TTL → 使用者停止捲動後那批永遠不翻,造成留言區交錯漏翻。
+  // 改成只把「本輪實際要翻的 ≤MAX_UNITS 個」標 seen;overflow 不標,下一輪 rescan
+  // 仍能重新收進來。
+  function capUnitsAndMarkSeen(units, now) {
+    const capped = units.length > SK.SPA_OBSERVER_MAX_UNITS;
+    const kept = capped ? units.slice(0, SK.SPA_OBSERVER_MAX_UNITS) : units;
+    kept.forEach(unit => spaObserverSeenTexts.set(unitText(unit), now));
+    return { kept, capped };
+  }
+  SK._capUnitsAndMarkSeen = capUnitsAndMarkSeen;
+
   async function spaObserverRescan() {
     spaObserverDebounceTimer = null;
     if (!STATE.translated) {
@@ -1247,13 +1263,19 @@
       SK.sendLog('info', 'spa', 'SPA observer rescan: all units already seen in this session, skipping');
       return;
     }
-    // 在翻譯前先記錄,防止注入自身觸發的 mutation 再次進入迴圈;TTL 內第二次出現會被擋住
+    // 在翻譯前先記錄,防止注入自身觸發的 mutation 再次進入迴圈;TTL 內第二次出現會被擋住。
+    // v1.10.15:cap 與標記 seen 順序修正——只把「本輪實際要翻的 ≤MAX_UNITS 個」標進
+    // seenTexts(見 capUnitsAndMarkSeen),overflow 不標,留給下一輪 rescan。
     const now = Date.now();
-    newUnits.forEach(unit => spaObserverSeenTexts.set(unitText(unit), now));
-
-    if (newUnits.length > SK.SPA_OBSERVER_MAX_UNITS) {
-      SK.sendLog('warn', 'spa', 'SPA observer rescan capped', { found: newUnits.length, cap: SK.SPA_OBSERVER_MAX_UNITS });
-      newUnits = newUnits.slice(0, SK.SPA_OBSERVER_MAX_UNITS);
+    const totalFound = newUnits.length;
+    const { kept, capped } = capUnitsAndMarkSeen(newUnits, now);
+    newUnits = kept;
+    if (capped) {
+      SK.sendLog('warn', 'spa', 'SPA observer rescan capped', { found: totalFound, cap: SK.SPA_OBSERVER_MAX_UNITS });
+      // overflow 沒標 seen,但下一輪 rescan 仍要靠 mutation 觸發;使用者已停止捲動時
+      // 無新 mutation → overflow 卡住不翻。主動再 arm 一次 rescan 把剩下的接住
+      // (本輪 50 則注入完成 + 下一輪 collectParagraphs 會重新抓到那些未標記的 element)。
+      armSpaObserverRescan();
     }
 
     SK.sendLog('info', 'spa', `SPA observer rescan #${spaObserverRescanCount}`, { newUnits: newUnits.length });

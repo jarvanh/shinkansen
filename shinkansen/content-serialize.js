@@ -291,6 +291,9 @@
     const parent = unit.startNode && unit.startNode.parentElement;
     return serializeNodeIterable(nodes, {
       preserveNewlines: shouldPreserveTextNewlines(parent),
+      // fragment 一律 clean-rebuild 注入,inline IMG(emoji)必須當 atomic slot 保留,
+      // 否則透明展開後 emoji 從 source 流消失、注入譯文不含 emoji(見上方 IMG 區塊註解)。
+      imgAsSlot: true,
     });
   };
 
@@ -298,6 +301,7 @@
     const slots = [];
     let out = '';
     const preserveNewlines = !!(opts && opts.preserveNewlines);
+    const imgAsSlot = !!(opts && opts.imgAsSlot);
     function walk(nodeList) {
       for (const child of nodeList) {
         if (child.nodeType === Node.TEXT_NODE) {
@@ -343,6 +347,24 @@
           if (child.tagName === 'PRE' && child.querySelector('code')) continue;
           if (child.tagName === 'BR') {
             out += '\u0001';
+            continue;
+          }
+          // v1.10.15:fragment 路徑 IMG 走 atomic deep clone(保留 inline emoji,如
+          // YouTube 留言的圖片 emoji)。IMG 沒 children,若不在此攔,走到下方
+          // isPreservableInline = false → else walk(child.childNodes) 等於從 source text 流
+          // 消失(emoji 整顆掉),fragment clean-rebuild 注入後譯文不含 emoji。atomic slot
+          // 讓 LLM 看到 ⟦*N⟧ 不翻、deserialize 還原 IMG 在原位置。
+          //
+          // 只在 fragment 路徑(imgAsSlot=true)開:element 路徑維持 IMG 透明,因為
+          // element 可能走 Layer A3 nodeValue-mutate 注入(content-inject.js gated by
+          // kind !== 'fragment'),該路徑保留原 DOM、只改 text node 值,原 IMG 自然存活,
+          // 且 v1.9.31 對齊邏輯靠「LLM 端 src/tgt 兩端 IMG 都不算 token」——element 路徑
+          // 若多出 IMG slot 會破壞對齊 fallback dual(見 inject-a3-llm-img-emoji spec)。
+          // fragment 一律 clean rebuild(injectFragmentTranslation),無此對齊顧慮。
+          if (imgAsSlot && child.tagName === 'IMG') {
+            const idx = slots.length;
+            slots.push({ atomic: true, node: child.cloneNode(true) });
+            out += PH_OPEN + '*' + idx + PH_CLOSE;
             continue;
           }
           if (SK.isAtomicPreserve(child)) {
@@ -541,6 +563,25 @@
     }
   }
 
+  // v1.10.15:inline emoji IMG 前後補空格。collapseCjkSpacesAroundPlaceholders 會把
+  // atomic marker(⟦*N⟧)兩側的 CJK 空格清掉——對腳註上標 / hr / inline code 這類
+  // atomic 是對的(緊貼 CJK 才自然),但 emoji 圖跟前後文字貼死會擠成一團。只對 IMG
+  // atomic 節點補:前面若非空白結尾補一格 + 後面固定補一格,讓 emoji 有呼吸空間。
+  // 不影響其他 atomic 類型(它們不是 IMG)、也不影響 element 路徑(emoji 走 A3
+  // nodeValue-mutate 保留原 DOM、不經此放置)。
+  function _appendInlineImg(frag, imgNode) {
+    const last = frag.lastChild;
+    if (last) {
+      let tail = last.nodeType === Node.TEXT_NODE ? (last.nodeValue || '') : (last.textContent || '');
+      if (tail && !/\s$/.test(tail)) {
+        if (last.nodeType === Node.TEXT_NODE) last.nodeValue = tail + ' ';
+        else { const t = _findTrailingTextNode(last); if (t) t.nodeValue = (t.nodeValue || '') + ' '; }
+      }
+    }
+    frag.appendChild(imgNode);
+    frag.appendChild(document.createTextNode(' '));
+  }
+
   function parseSegment(text, slots, matchedRef) {
     const frag = document.createDocumentFragment();
     if (!text) return frag;
@@ -577,8 +618,12 @@
         const slot = slots[idx];
         if (slot && slot.atomic && slot.node) {
           const cloned = slot.node.cloneNode(true);
-          _maybePadCjkLatinSpace(frag, cloned);
-          frag.appendChild(cloned);
+          if (cloned.nodeType === Node.ELEMENT_NODE && cloned.tagName === 'IMG') {
+            _appendInlineImg(frag, cloned);
+          } else {
+            _maybePadCjkLatinSpace(frag, cloned);
+            frag.appendChild(cloned);
+          }
           matchedRef.count++;
         }
       } else {
@@ -613,8 +658,12 @@
           matchedRef.count++;
         } else if (slot && slot.atomic && slot.node) {
           const cloned = slot.node.cloneNode(true);
-          _maybePadCjkLatinSpace(frag, cloned);
-          frag.appendChild(cloned);
+          if (cloned.nodeType === Node.ELEMENT_NODE && cloned.tagName === 'IMG') {
+            _appendInlineImg(frag, cloned);
+          } else {
+            _maybePadCjkLatinSpace(frag, cloned);
+            frag.appendChild(cloned);
+          }
           matchedRef.count++;
         } else {
           const innerFrag = parseSegment(inner, slots, matchedRef);
