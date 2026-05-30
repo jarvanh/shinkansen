@@ -65,20 +65,34 @@
     return response;
   };
 
-  // ─── ytInitialPlayerResponse bridge(v1.9.9)───────────────
+  // ─── player response bridge(v1.9.9)───────────────
   // isolated world(content-youtube.js)5s「沒字幕」啟發式之前先 query 本 bridge,
   // 拿 captionTracks 權威訊號決定是否真的沒字幕(不靠 timeout 猜)。
   // 只回傳 captionTracks 子集合避免 serialize 整個 playerResponse;additionally
   // 多回 activeTrack（從 #movie_player.getOption 抓），給 caption track 自動選擇邏輯
   // 判斷當前是不是 YT 自翻譯軌（activeTrack.translationLanguage 有值）。
+  //
+  // 資料源:優先 `#movie_player.getPlayerResponse()`(反映「當前正在播」的影片),
+  // 拿不到才 fallback 回 `window.ytInitialPlayerResponse`。
+  // Why:`ytInitialPlayerResponse` 只是「整頁初次載入那支影片」的快照,SPA 站內切片後
+  //     不更新 → videoId 一直 stale → isolated 端 videoId 比對失敗 → chooser noop 放棄切軌
+  //     → YT 黏性自翻譯沒被關掉 → 偶發「日→英→中」二手翻譯(實測 mSUxnf6rmUE:URL 跟
+  //     getPlayerResponse 都是 mSUxnf6rmUE,但 ytInitialPlayerResponse 停在前一支 SGt2lYaPP00)。
 
   window.addEventListener('shinkansen-yt-query-player-response', () => {
     let captionTracks = null;
     let playerResponseAvailable = false;
     let videoId = null;
     let activeTrack = null;
+    const player = document.querySelector('#movie_player');
     try {
-      const resp = window.ytInitialPlayerResponse;
+      let resp = null;
+      try {
+        // fresh:當前播放中的影片(SPA 切片後也正確)
+        if (player?.getPlayerResponse) resp = player.getPlayerResponse();
+      } catch (_) {}
+      // fallback:player 還沒準備好(document_start ~ player 初始化之間)→ 用初次載入快照
+      if (!resp) resp = window.ytInitialPlayerResponse;
       playerResponseAvailable = !!resp;
       videoId = resp?.videoDetails?.videoId || null;
       const tracks = resp?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
@@ -91,13 +105,12 @@
           name:           t?.name?.simpleText || t?.name?.runs?.[0]?.text || null,
         }));
       }
-      // videoId 給 isolated world 跟 URL videoId 比對:SPA 導航後 ytInitialPlayerResponse
-      // 不一定立即更新到新影片,videoId 對不上 = stale,isolated 端會 retry。
+      // videoId 給 isolated world 跟 URL videoId 比對:走 fallback 快照時仍可能 stale,
+      // videoId 對不上 = stale,isolated 端會 retry。
     } catch (_) {
       captionTracks = null;
     }
     try {
-      const player = document.querySelector('#movie_player');
       if (player?.getOption) {
         const at = player.getOption('captions', 'track');
         if (at && typeof at === 'object') {

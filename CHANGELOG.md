@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.16** —— **修 YouTube 影片偶發「二手翻譯」（日→英→中）**。症狀：日文（或其他外語）影片有時被 YouTube 先自動翻成英文、Shinkansen 再把英文翻成中文，譯文品質比直接日→中差。Root cause：負責偵測並切掉 YouTube 帳號「黏性自動翻譯」偏好、切回影片原始語 ASR 的 caption track 自動選擇器，其依賴的 `content-youtube-main.js` player response bridge 讀的是 `window.ytInitialPlayerResponse`——此全域只反映「整頁初次載入那支影片」的快照，SPA 站內切片（點下一支影片不重整頁）後不更新，videoId 一直停在前一支（cage 真機實測：URL 與 `#movie_player.getPlayerResponse()` 都已是當前影片，`ytInitialPlayerResponse` 仍停在前一支）。選擇器拿 stale videoId 跟網址比對失敗 → 判定 stale → noop 放棄切軌 → YouTube 自翻譯沒被關掉 → 二手翻譯。整頁重載後第一支影片資料 fresh 正常、站內切到的後續影片 stale 中招，故偶發。修法：bridge 改成優先讀 `#movie_player.getPlayerResponse()`（反映「當前正在播」的影片），拿不到才 fallback 回 `ytInitialPlayerResponse`；連帶修好同一條 bridge 的「no-captions 誤判」路徑。新增 regression `youtube-player-response-fresh.spec.js`（載入真實 bridge code、非 mock，2 case：fresh 優先 ／ player 未就緒時 fallback），SANITY 雙向驗。cage 真機驗證：污染 stale 全域後 bridge 仍回 fresh 當前影片。**不需清快取**：只改 caption 軌資料源，不動翻譯核心 ／ prompt ／ cache key。
+
 **v1.10.15** —— **含 inline emoji／連結的留言漏翻修正 ＋ SPA rescan overflow 修正**。(1) 含 inline 媒體（emoji 圖、時間戳連結）的留言被偵測路徑整則跳過不翻：`extractInlineFragments` 的「單一巢狀 wrapper ＋ 長文」guard 用整段字數判斷，誤殺「實質 prose 直接文字 ＋ 一個 emoji wrapper」結構（典型 YouTube 留言）。修法補「直接文字 < 20 字才 skip」。(2) emoji 翻譯後消失：含 emoji 留言走 fragment clean-rebuild 注入，IMG 透明展開後從譯文流失。修法：fragment 序列化把 IMG 當 atomic slot 保留，deserialize 還原時前後補空格（避免 emoji 跟中文貼死）。(3) SPA observer rescan 一次收超過 50 段時，overflow 被先標 seen 再砍掉，30 秒內後續 rescan 補不回，造成留言區零星漏翻。修法：先 cap 再標 seen（只標本輪實際要翻的）＋ overflow 主動再排一輪 rescan。**建議手動清快取**（含 emoji 留言之前可能存過缺 emoji／缺空白的譯文）
 
 **v1.10.14** —— **修正重翻 cache miss**。v1.10.10 引入的 echo skip（`setBatch` 跳過 translation === source 的段）導致品牌名/專有名詞（如 Stratechery Plus、人名等）永遠不被 cache 存入，每次重翻都打 API。移除 echo skip，讓 echo 回應正常 cache
