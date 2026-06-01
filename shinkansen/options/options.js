@@ -4,7 +4,7 @@
 import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
-import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename } from '../lib/format.js';
+import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD } from '../lib/distribution.js';
 
@@ -1482,7 +1482,7 @@ $('export-settings').addEventListener('click', async () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   // 檔名含時間到秒，避免同一天多次匯出檔名重複
-  const ts = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+  const ts = formatYmdHms(Date.now());
   a.href = url;
   a.download = `shinkansen-settings-${ts}.json`;
   a.click();
@@ -2931,7 +2931,7 @@ $('log-export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const ts = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+  const ts = formatYmdHms(Date.now());
   a.href = url;
   a.download = `shinkansen-log-${ts}.json`;
   a.click();

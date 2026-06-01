@@ -85,6 +85,22 @@ export function formatYmd(ts) {
 }
 
 /**
+ * 把 ms timestamp 格式化為 YYYYMMDD-HHMMSS（本地時區），供匯出檔名用
+ * （設定備份 shinkansen-settings-、Log 備份 shinkansen-log-）。到秒避免
+ * 同一天多次匯出檔名重複。
+ *
+ * issue #54：必須用本地時區（getFullYear/getHours... 系列），不可用
+ * `toISOString()`——那是 UTC，台灣（UTC+8）使用者看到的檔名時間會比實際
+ * 早 8 小時（例如本地早上 6 點匯出，檔名卻是前一天晚上 10 點）。
+ */
+export function formatYmdHms(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-` +
+         `${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/**
  * 組用量紀錄 CSV 匯出檔名（`shinkansen-usage-YYYYMMDD-YYYYMMDD.csv`)。
  *
  * 從 timestamp 構檔名，避開 v1.5.7 已移除的 `usage-from`/`usage-to` 元素 id —
