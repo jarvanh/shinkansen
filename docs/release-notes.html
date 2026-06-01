@@ -99,6 +99,25 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store 與 Firefox Add-ons 使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v1.10.17 <span class="release-date">2026-06-02 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v1.10.11</p>
+
+  <p class="lead">這版集中在 X（Twitter）推文與 YouTube 影片／留言的翻譯穩定性與品質，並修正重翻時重複消耗額度、自訂模型逾時、以及匯出檔名時間錯誤等問題</p>
+
+  <ul>
+    <li><strong>X 推文翻譯穩定性修正</strong>：點開推文後譯文不再恢復成英文；捲動時新載入的推文不再漏翻，虛擬捲動把推文移出畫面再移回時也能自動接住重翻</li>
+
+    <li><strong>YouTube 影片翻譯品質修正（消除「二手翻譯」）</strong>：日文等外語影片過去偶爾被 YouTube 先自動轉成英文、再被翻成中文，品質比直接翻差；這版改為直接讀「當前正在播放」影片的原始語字幕，連續切換影片也不會抓到上一支影片的資料</li>
+
+    <li><strong>YouTube 留言漏翻與 emoji 修正</strong>：含 emoji 圖、時間戳連結的留言不再被整則跳過；emoji 翻譯後會保留、不再消失或跟中文黏在一起；留言區一次載入大量留言時零星漏翻的問題也一併修正</li>
+
+    <li><strong>重翻不再重複消耗額度</strong>：品牌名、人名等「譯文與原文相同」的段落過去不會被快取，每次重翻同一頁都要重打 API；這版修正後會正常快取，重翻更省額度</li>
+
+    <li><strong>自訂模型 API 逾時時間可調</strong>：新增「自訂模型 → 進階」的逾時設定（預設 15 秒，可調 5–600 秒），本機 LLM（如 Ollama）首次載入模型較慢時可調高，避免逾時失敗</li>
+
+    <li><strong>匯出檔名時間修正</strong>：匯出設定與匯出 Log 的檔名時間過去用世界協調時間（UTC），台灣使用者看到的時間比實際早 8 小時；這版改用本地時區</li>
+  </ul>
+
   <h2>v1.10.11 <span class="release-date">2026-05-26 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.10.0</p>
 

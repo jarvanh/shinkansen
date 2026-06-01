@@ -99,6 +99,25 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store and Firefox Add-ons. Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v1.10.17 <span class="release-date">Released 2026-06-02</span></h2>
+  <p class="release-meta">Compared with the previous store version v1.10.11</p>
+
+  <p class="lead">This release focuses on X (Twitter) tweet and YouTube video / comment translation stability and quality, and fixes repeated quota usage on re-translation, custom-model timeouts, and incorrect export-filename timestamps.</p>
+
+  <ul>
+    <li><strong>X tweet translation stability fixes</strong>: tweets no longer revert to English after clicking to open them; newly loaded tweets while scrolling are no longer missed, and tweets that scroll out of view and back (virtualized scrolling) are reliably re-translated.</li>
+
+    <li><strong>YouTube video translation quality fix (eliminates "second-hand translation")</strong>: foreign-language videos (e.g. Japanese) were occasionally auto-translated by YouTube into English first and then into Chinese, giving worse quality; this release now reads the original-language subtitles of the currently playing video, and switching between videos no longer picks up data from the previous one.</li>
+
+    <li><strong>YouTube comment and emoji fixes</strong>: comments containing emoji images or timestamp links are no longer skipped entirely; emoji are preserved after translation and no longer disappear or stick to adjacent Chinese text; sporadic missed comments when a large batch loads at once are also fixed.</li>
+
+    <li><strong>Re-translation no longer wastes quota</strong>: paragraphs whose translation equals the source (brand names, personal names, etc.) were previously never cached, so re-translating the same page hit the API every time; this is fixed and they now cache normally.</li>
+
+    <li><strong>Configurable custom-model API timeout</strong>: a new timeout setting under "Custom model → Advanced" (default 15 seconds, adjustable 5–600 seconds) lets you raise the limit for local LLMs (e.g. Ollama) that are slow to load a model on first use, avoiding timeout failures.</li>
+
+    <li><strong>Export filename time fix</strong>: timestamps in exported settings and log filenames used UTC, so Taiwan users saw a time 8 hours earlier than actual; this release uses the local time zone.</li>
+  </ul>
+
   <h2>v1.10.11 <span class="release-date">Released 2026-05-26</span></h2>
   <p class="release-meta">Compared with the previous store version v1.10.0</p>
 
