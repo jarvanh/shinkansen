@@ -458,9 +458,14 @@ export const DEFAULT_SETTINGS = {
   geminiConfig: {
     model: 'gemini-3-flash-preview',       // v0.83: 預設模型升級至 Gemini 3 Flash
     serviceTier: 'DEFAULT',
-    temperature: 1.0,     // Gemini 3 Flash 原廠預設值
+    // v1.10.18:Gemini 3 官方強烈建議維持 temperature=1.0,設低於 1.0 可能引發
+    // 無限思考迴圈 / 推理退化(舊世代「降溫求穩定」思維對 Gemini 3 失效)。
+    temperature: 1.0,
+    // topP / topK 保留欄位供未來非 Gemini-3 模型 / 相容用,但 Gemini 3 模型在
+    // lib/gemini.js buildSamplingFields() 會略過不送(Gemini 3 不使用 top-k sampling,
+    // 官方亦建議勿設 topP/topK)。
     topP: 0.95,
-    topK: 40,             // Gemini 3 Flash 原廠預設值（Pro 系列為 64）
+    topK: 40,
     maxOutputTokens: 8192,
     systemInstruction: DEFAULT_SYSTEM_PROMPT,
   },
@@ -476,7 +481,10 @@ export const DEFAULT_SETTINGS = {
   glossary: {
     enabled: false,
     prompt: DEFAULT_GLOSSARY_PROMPT,
-    temperature: 0.1,                  // 術語表要穩定，不要有創意
+    // v1.10.18:從 0.1 改 1.0。glossary 跑在 Gemini 3 模型(預設 gemini-3.1-flash-lite),
+    // 官方明載 Gemini 3 設 temperature<1.0 可能引發迴圈 / 退化——對「結構化 JSON + 推理」
+    // 的術語抽取尤其危險,且迴圈會狂燒被計費的思考 token。維持 1.0 是 Gemini 3 正解。
+    temperature: 1.0,
     skipThreshold: 1,                  // ≤ 此批次數完全不建術語表
     // v1.7.3: 預設從 5 提高到 10 — 中等長度頁面（6-10 批）走 fire-and-forget 不阻塞，
     // 省下 EXTRACT_GLOSSARY 1.5-7.4 秒 blocking 等待；短頁本就跳過、長頁（>10 批）
@@ -501,10 +509,11 @@ export const DEFAULT_SETTINGS = {
   translateDoc: {
     systemPrompt: DEFAULT_DOC_SYSTEM_PROMPT,
     applyGlossary: false, // 預設術語表一致化(stage-result modal 內每次仍可 override)
-    // 獨立 temperature,跟主 geminiConfig.temperature 區隔。文件翻譯多為合約 / 技術文件,
-    // 預設 0.5 偏保守(穩定譯名、用詞不亂跑);散文 / 文章可調到 1.0+。改變後 cache key
-    // 也會跟著變(suffix 加 _t<temp>),立即生效。
-    temperature: 0.5,
+    // 獨立 temperature,跟主 geminiConfig.temperature 區隔。
+    // v1.10.18:從 0.5 改 1.0。文件翻譯也跑在 Gemini 3 模型,官方建議維持 1.0(設低於
+    // 1.0 可能引發迴圈 / 推理退化);舊註解「0.5 偏保守求穩定」是 Gemini 3 失效的舊思維。
+    // 改變後 cache key 跟著變(suffix _t<temp>),舊 0.5 快取不命中、新譯文走 1.0,不主動清。
+    temperature: 1.0,
     // v1.8.49: 是否套用使用者級「固定術語表」(settings.fixedGlossary.global) 到文件翻譯。
     // 跟主功能共用同一份術語表(術語表分頁編輯),這裡只是「文件翻譯路徑要不要套用」開關。
     // 預設 true(沿用 v1.8.48 之前的隱含行為——TRANSLATE_DOC_BATCH 走 handleTranslate

@@ -121,6 +121,9 @@ xcodebuild -exportArchive \
   -exportOptionsPlist "$EXPORT_OPTS"
 
 MAS_PKG="safari-app/shinkansen-macos-v${VERSION}-mas.pkg"
+# 刪除舊版 MAS .pkg(每次 bump 換版本號會留下舊檔累積)。新檔此刻仍在
+# $BUILD_DIR,先清空 safari-app/ 內所有 -mas.pkg 再 mv 進新版。
+rm -f safari-app/shinkansen-macos-v*-mas.pkg
 mv "$BUILD_DIR/safari-export-mas/Shinkansen.pkg" "$MAS_PKG"
 
 # 6. Source drift forcing function

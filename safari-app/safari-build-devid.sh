@@ -143,6 +143,9 @@ fi
 
 # 4. productbuild 把 .app 包進 installer .pkg + Developer ID Installer cert 簽
 DEVID_PKG="safari-app/shinkansen-macos-v${VERSION}.pkg"
+# 刪除舊版 Developer ID .pkg(每次 bump 換版本號會留下舊檔累積)。
+# 只清非 -mas 的版本檔,避免誤刪 MAS 軌的 -mas.pkg。
+find safari-app -maxdepth 1 -name 'shinkansen-macos-v*.pkg' ! -name '*-mas.pkg' -delete
 echo "==> productbuild Developer ID .pkg(install 到 /Applications,Installer cert 簽)..."
 productbuild \
   --component "$DEVID_APP" /Applications \

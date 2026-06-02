@@ -27,8 +27,13 @@ function sleep(ms) {
  *   - gemini-3-pro-preview / gemini-2.5-pro 強制 thinking-only,thinkingBudget=0
  *     會 400 "Budget 0 is invalid. This model only works in thinking mode"
  *   - gemini-3 Pro 不支援 thinkingLevel='minimal',最低支援 'low'
- *   - gemini-3 Flash / Flash Lite 用 thinkingLevel='minimal' = 舊 budget=0 的等效,
- *     thoughts=0 不額外計費
+ *   - gemini-3 Flash / Flash Lite 用 thinkingLevel='minimal'(合法範圍內最省)
+ *
+ * v1.10.18 更正:'minimal' **不保證 thoughts=0**。Google 官方明載
+ * 「`minimal` does not guarantee that thinking is off」——minimal 仍可能產生思考
+ * token,且照 output 單價計費。舊註解誤寫「thoughts=0 不額外計費」,是 v1.10.18
+ * 「漏算 thoughtsTokenCount → 費用低估 3 倍」bug 的認知根源。故 usage 解析一律
+ * 走 parseGeminiUsage() 把 thoughts 計入 output(見該函式)。
  *
  * 偵測策略:
  *   - 模型名含 "pro"(case-insensitive)→ 'low'(Pro 強制 thinking)
@@ -39,6 +44,52 @@ function sleep(ms) {
 export function pickThinkingConfig(model) {
   const isPro = /pro/i.test(String(model || ''));
   return { thinkingLevel: isPro ? 'low' : 'minimal' };
+}
+
+/**
+ * v1.10.18:統一解析 Gemini usageMetadata,三個呼叫點(translateChunk /
+ * translateBatchStream / extractGlossary)共用,避免「同一份計費事實」三套實作 drift。
+ *
+ * **計費 output = candidatesTokenCount(可見譯文)+ thoughtsTokenCount(思考過程)。**
+ * Gemini 3 是 reasoning 模型,兩者在 usageMetadata 是**獨立欄位**,Google 兩者都以
+ * output 單價計費。舊版只讀 candidatesTokenCount 漏算思考 token,而 output 單價是
+ * input 的 6 倍 → 整筆費用被低估到剩 1/2~1/3(實測使用者帳單 ≈ Shinkansen 紀錄的 3 倍)。
+ *
+ * 算術依據(2026-06 證據,因測試 key 過期未跑 live 對帳,改採文件 + 真實帳單 ground truth):
+ *   - Google 官方論壇 gemini-3-flash-preview 範例:candidates 與 thoughts 分開列
+ *   - simonw/llm-gemini #75:candidates=104 / thoughts=989 分開、未內含
+ *   - 官方 tokens 文件把 candidates / thoughts / total 列為獨立欄位
+ *   → 採「outputTokens = candidates + thoughts」。換新 key 後可用
+ *     tools/probe-thoughts-usage.js 跑 total == prompt + candidates + thoughts 再確認。
+ *
+ * 另回傳 thoughtsTokens 供 debugLog 診斷(不改 DB schema,outputTokens 已含其值)。
+ */
+export function parseGeminiUsage(meta) {
+  const m = meta || {};
+  const candidates = m.candidatesTokenCount || 0;
+  const thoughts = m.thoughtsTokenCount || 0;
+  return {
+    inputTokens: m.promptTokenCount || 0,
+    outputTokens: candidates + thoughts,
+    cachedTokens: m.cachedContentTokenCount || 0,
+    thoughtsTokens: thoughts,
+  };
+}
+
+/**
+ * v1.10.18:Gemini 3.x 的 generationConfig sampling 欄位。
+ * Gemini 3 **不使用 top-k sampling**(topK 非允許參數,送了被後端忽略),且官方建議
+ * Gemini 3 只靠 temperature=1.0、**不要設 topP/topK**(設了可能引發迴圈 / 退化)。
+ * 故 Gemini 3 模型一律不送 topP/topK;非 Gemini 3(理論上不該出現,§17 最低基準為
+ * Gemini 3 Flash Lite)才帶舊 topP/topK 參數,保留相容。
+ *
+ * @param {string} model 模型 ID
+ * @param {{topP:number, topK:number}} sampling 來自 geminiConfig 的 topP/topK
+ * @returns {object} 要 spread 進 generationConfig 的欄位(G3 為空物件)
+ */
+export function buildSamplingFields(model, { topP, topK } = {}) {
+  if (/gemini-3/i.test(String(model || ''))) return {};
+  return { topP, topK };
 }
 
 /**
@@ -169,7 +220,8 @@ export async function extractGlossary(compressedText, settings) {
   const model = (glossaryConfig?.model || '').trim() || geminiConfig.model;
 
   const glossaryPrompt = glossaryConfig?.prompt || '';
-  const glossaryTemperature = glossaryConfig?.temperature ?? 0.1;
+  // v1.10.18:fallback 從 0.1 改 1.0(對齊 storage 預設;Gemini 3 設低溫易迴圈 / 退化)。
+  const glossaryTemperature = glossaryConfig?.temperature ?? 1.0;
   const maxTerms = glossaryConfig?.maxTerms ?? 200;
   // fetch 層級的 timeout。v0.70 原為 55s(Structured Output 大輸入需 30-60s),v0.72
   // 拿掉 JSON mode 後該理由消失;v1.9.21 對齊主翻譯路徑 15s(術語表用 Flash Lite
@@ -185,11 +237,12 @@ export async function extractGlossary(compressedText, settings) {
     systemInstruction: { parts: [{ text: glossaryPrompt }] },
     generationConfig: {
       temperature: glossaryTemperature,
-      topP,
-      topK,
+      // v1.10.18:Gemini 3 不送 topP/topK(見 buildSamplingFields)。
+      ...buildSamplingFields(model, { topP, topK }),
       maxOutputTokens: glossaryMaxOutput,
-      // v1.6.12:Pro 系列改用 thinkingLevel='low'(無法完全關閉 thinking),Flash
-      // 系列用 'minimal'(thoughts=0,等同舊 budget=0)。詳見 pickThinkingConfig 註解。
+      // v1.6.12:Pro 系列用 thinkingLevel='low'(無法完全關閉 thinking),Flash 系列
+      // 用 'minimal'(合法最省)。注意 minimal 不保證 thoughts=0,計費仍含思考 token,
+      // 見 pickThinkingConfig / parseGeminiUsage 註解。
       thinkingConfig: pickThinkingConfig(model),
     },
     safetySettings: [
@@ -238,12 +291,8 @@ export async function extractGlossary(compressedText, settings) {
     return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `resp.json() failed: ${parseErr.message}` };
   }
   const ms = Date.now() - t0;
-  const meta = json?.usageMetadata || {};
-  const usage = {
-    inputTokens: meta.promptTokenCount || 0,
-    outputTokens: meta.candidatesTokenCount || 0,
-    cachedTokens: meta.cachedContentTokenCount || 0,
-  };
+  // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
+  const usage = parseGeminiUsage(json?.usageMetadata);
 
   if (!resp.ok) {
     const errMsg = json?.error?.message || `HTTP ${resp.status}`;
@@ -255,7 +304,7 @@ export async function extractGlossary(compressedText, settings) {
   const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const finishReason = json?.candidates?.[0]?.finishReason || 'unknown';
   await debugLog('info', 'glossary', 'glossary extraction response', {
-    elapsed: ms, usage: meta, rawChars: rawText.length, finishReason,
+    elapsed: ms, usage, rawChars: rawText.length, finishReason,
   });
 
   // v0.72: 不用 responseMimeType 後，模型可能在 JSON 前後附帶說明文字
@@ -402,8 +451,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     systemInstruction: { parts: [{ text: effectiveSystem }] },
     generationConfig: {
       temperature,
-      topP,
-      topK,
+      // v1.10.18:Gemini 3 不送 topP/topK(見 buildSamplingFields)。
+      ...buildSamplingFields(model, { topP, topK }),
       maxOutputTokens,
       // v1.6.12:依模型動態選 thinkingLevel('low' for Pro, 'minimal' for Flash)。
       // 詳見 pickThinkingConfig 註解;Pro 強制 thinking 不能用 budget=0。
@@ -502,19 +551,15 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     await debugLog('warn', 'api', 'gemini unusual finishReason', { finishReason, elapsed: ms, textLength: text.length });
   }
 
-  const meta = json?.usageMetadata || {};
-  const chunkUsage = {
-    inputTokens: meta.promptTokenCount || 0,
-    outputTokens: meta.candidatesTokenCount || 0,
-    // Gemini 2.5+ implicit context caching 命中的 token 數（輸入 tokens 的子集）。
-    // 未命中或舊模型時欄位不會出現，用 || 0 防呆。
-    cachedTokens: meta.cachedContentTokenCount || 0,
-  };
+  // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
+  // cachedTokens 為 Gemini 2.5+ implicit cache 命中的 input 子集,未命中欄位不出現 → 0。
+  const chunkUsage = parseGeminiUsage(json?.usageMetadata);
   await debugLog('info', 'api', 'gemini response', {
     elapsed: ms,
     segments: texts.length,
     inputTokens: chunkUsage.inputTokens,
     outputTokens: chunkUsage.outputTokens,
+    thoughtsTokens: chunkUsage.thoughtsTokens,
     cachedTokens: chunkUsage.cachedTokens,
     finishReason,
     // v1.5.7: LLM 回應的譯文前 300 字 — 與 'gemini request' 的 inputPreview 對照即可診斷
@@ -601,7 +646,10 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
     contents: [{ role: 'user', parts: [{ text: joined }] }],
     systemInstruction: { parts: [{ text: effectiveSystem }] },
     generationConfig: {
-      temperature, topP, topK, maxOutputTokens,
+      temperature,
+      // v1.10.18:Gemini 3 不送 topP/topK(見 buildSamplingFields)。
+      ...buildSamplingFields(model, { topP, topK }),
+      maxOutputTokens,
       thinkingConfig: pickThinkingConfig(model),
     },
     safetySettings: [
@@ -731,14 +779,11 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
           tryEmitSegments();
         }
 
-        // 每個 SSE event 都帶 usageMetadata,取最後一個就是整批最終 usage
+        // 每個 SSE event 都帶 usageMetadata,取最後一個就是整批最終 usage。
+        // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
         const meta = json?.usageMetadata;
         if (meta) {
-          lastUsage = {
-            inputTokens: meta.promptTokenCount || 0,
-            outputTokens: meta.candidatesTokenCount || 0,
-            cachedTokens: meta.cachedContentTokenCount || 0,
-          };
+          lastUsage = parseGeminiUsage(meta);
         }
       }
     }
@@ -767,6 +812,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
     elapsed, segments: texts.length, segmentsEmitted,
     inputTokens: lastUsage.inputTokens,
     outputTokens: lastUsage.outputTokens,
+    thoughtsTokens: lastUsage.thoughtsTokens,
     cachedTokens: lastUsage.cachedTokens,
     finishReason,
     outputPreview: allText.slice(0, 300),
