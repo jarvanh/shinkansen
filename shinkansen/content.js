@@ -103,6 +103,13 @@
           .then((data) => respond({ ok: true, sync: data }))
           .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
       }
+    } else if (action === 'GET_USAGE_STATS') {
+      // DEBUG(v1.10.18.x):用量統計查詢。usage-db 在背景(extension origin)的 IndexedDB,
+      // content script / cage 都讀不到,故中繼給 background 的 QUERY_USAGE_STATS。
+      // detail.from / detail.to 為 ms epoch 時間範圍(省略 = 全部)。回傳 stats 含
+      // totalInputTokens / totalOutputTokens / totalBilledInputTokens / totalBilledCostUSD
+      // / byModel——對帳 Google 帳單 + 看有沒有套 cache 折扣(input vs billedInput 差)用。
+      forwardToBackground('QUERY_USAGE_STATS', { from: e.detail?.from, to: e.detail?.to });
     } else if (action === 'YT_TRANSLATE') {
       // Debug Bridge:觸發 YouTube 字幕翻譯(等同 Alt+S 在 YT 頁的行為)
       if (!SK.isYouTubePage?.()) {

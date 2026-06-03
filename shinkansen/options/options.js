@@ -87,8 +87,6 @@ async function load() {
   // settings.geminiConfig.model 仍保留 storage 結構（避免 migration）但 UI 不顯示。
   $('serviceTier').value = s.geminiConfig.serviceTier;
   $('temperature').value = s.geminiConfig.temperature;
-  $('topP').value = s.geminiConfig.topP;
-  $('topK').value = s.geminiConfig.topK;
   $('maxOutputTokens').value = s.geminiConfig.maxOutputTokens;
   $('systemInstruction').value = s.geminiConfig.systemInstruction;
   // v1.6.16: 後備路徑單價 UI 已移除（對應 input element 不存在），不再從 settings 載入到 UI。
@@ -797,8 +795,11 @@ async function _saveImpl() {
       serviceTier: $('serviceTier').value,
       // v1.8.20: 改用 parseUserNum——空字串/非法字元走 default，避免 NaN 寫進 storage 後送 API 拒絕。
       temperature: parseUserNum($('temperature').value, DEFAULTS.geminiConfig.temperature),
-      topP: parseUserNum($('topP').value, DEFAULTS.geminiConfig.topP),
-      topK: parseUserNum($('topK').value, DEFAULTS.geminiConfig.topK),
+      // v1.10.19: topP/topK UI 已移除(Gemini 3 不使用 top-k sampling、官方建議勿設,
+      // buildSamplingFields 對 Gemini 3 一律略過)。沿用 v1.6.15/v1.6.16 pattern:從 storage
+      // 拉現存值寫回(保留欄位作非 Gemini-3 模型的 fallback,避免 migration)。
+      topP: existing.geminiConfig?.topP ?? DEFAULTS.geminiConfig.topP,
+      topK: existing.geminiConfig?.topK ?? DEFAULTS.geminiConfig.topK,
       maxOutputTokens: parseUserNum($('maxOutputTokens').value, DEFAULTS.geminiConfig.maxOutputTokens),
       systemInstruction: $('systemInstruction').value,
     },
@@ -1182,8 +1183,6 @@ $('gemini-reset-all')?.addEventListener('click', () => {
   $('serviceTier').value = D.geminiConfig.serviceTier;
   // LLM 參數
   $('temperature').value     = D.geminiConfig.temperature;
-  $('topP').value            = D.geminiConfig.topP;
-  $('topK').value            = D.geminiConfig.topK;
   $('maxOutputTokens').value = D.geminiConfig.maxOutputTokens;
   // P1: 依當前 target 給對應 effective default(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
   {

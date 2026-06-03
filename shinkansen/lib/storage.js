@@ -461,9 +461,10 @@ export const DEFAULT_SETTINGS = {
     // v1.10.18:Gemini 3 官方強烈建議維持 temperature=1.0,設低於 1.0 可能引發
     // 無限思考迴圈 / 推理退化(舊世代「降溫求穩定」思維對 Gemini 3 失效)。
     temperature: 1.0,
-    // topP / topK 保留欄位供未來非 Gemini-3 模型 / 相容用,但 Gemini 3 模型在
-    // lib/gemini.js buildSamplingFields() 會略過不送(Gemini 3 不使用 top-k sampling,
-    // 官方亦建議勿設 topP/topK)。
+    // topP / topK:v1.10.19 起 options UI 已移除(Gemini 3 不使用 top-k sampling、官方
+    // 建議勿設,lib/gemini.js buildSamplingFields() 對 Gemini 3 一律略過不送)。此處欄位
+    // 保留供「非 Gemini 3 模型」fallback 用(buildSamplingFields 非 G3 才帶),避免 migration;
+    // 使用者不再能編輯,options 儲存時從 storage 拉現存值寫回。
     topP: 0.95,
     topK: 40,
     maxOutputTokens: 8192,

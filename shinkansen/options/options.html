@@ -409,7 +409,7 @@
         <small class="muted" data-i18n="options.gemini.params.tempHint">控制回覆的隨機程度。數字越低翻譯越穩定一致，越高則越有創意但可能偏離原意，範圍 0–2，預設 1.0（Gemini 3 Flash 原廠預設值）</small>
       </label>
       <details class="advanced-details">
-        <summary data-i18n="options.gemini.params.advSummary">進階設定（Service Tier、Top P、Top K、Max Output Tokens）</summary>
+        <summary data-i18n="options.gemini.params.advSummary">進階設定（Service Tier、Max Output Tokens）</summary>
         <label>
           <span data-i18n="options.gemini.params.tierLabel">服務層級（Service Tier）— 影響費用與延遲</span>
           <select id="serviceTier">
@@ -419,16 +419,6 @@
             <option value="PRIORITY" data-i18n="options.gemini.params.tierPriority">Priority（優先，更貴）</option>
           </select>
           <small class="muted" data-i18n="options.gemini.params.tierHint">注意：Service Tier 僅較新模型支援（如 gemini-3-flash-preview），舊模型請用「預設」避免錯誤</small>
-        </label>
-        <label>
-          Top P
-          <input type="number" id="topP" step="0.05" min="0" max="1">
-          <small class="muted" data-i18n="options.gemini.params.topPHint">限制模型從機率最高的幾個候選詞中挑選。數字越低結果越集中，越高則用詞越多樣，範圍 0–1，預設 0.95</small>
-        </label>
-        <label>
-          Top K
-          <input type="number" id="topK" step="1" min="1" max="100">
-          <small class="muted" data-i18n="options.gemini.params.topKHint">限制每次選詞時最多考慮幾個候選詞。數字越小越精準，越大越多樣，範圍 1–100，預設 40（Gemini 3 Flash 原廠預設值，Pro 系列為 64）</small>
         </label>
         <label>
           Max Output Tokens
