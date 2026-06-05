@@ -1,0 +1,706 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		9E22C7222FD2A78E00CDA923 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E22C7212FD2A78E00CDA923 /* AppDelegate.swift */; };
+		9E22C7262FD2A78E00CDA923 /* Main.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7242FD2A78E00CDA923 /* Main.html */; };
+		9E22C7282FD2A78E00CDA923 /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7272FD2A78E00CDA923 /* Icon.png */; };
+		9E22C72A2FD2A78E00CDA923 /* Style.css in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7292FD2A78E00CDA923 /* Style.css */; };
+		9E22C72C2FD2A78E00CDA923 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E22C72B2FD2A78E00CDA923 /* SceneDelegate.swift */; };
+		9E22C72E2FD2A78E00CDA923 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E22C72D2FD2A78E00CDA923 /* ViewController.swift */; };
+		9E22C7312FD2A78E00CDA923 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C72F2FD2A78E00CDA923 /* LaunchScreen.storyboard */; };
+		9E22C7342FD2A78E00CDA923 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7322FD2A78E00CDA923 /* Main.storyboard */; };
+		9E22C73C2FD2A78F00CDA923 /* Shinkansen Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9E22C73B2FD2A78F00CDA923 /* Shinkansen Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9E22C7412FD2A78F00CDA923 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E22C7402FD2A78F00CDA923 /* SafariWebExtensionHandler.swift */; };
+		9E22C7432FD2A78F00CDA923 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7352FD2A78F00CDA923 /* Assets.xcassets */; };
+		9E22C7662FD2A78F00CDA923 /* options in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C74E2FD2A78F00CDA923 /* options */; };
+		9E22C7672FD2A78F00CDA923 /* popup in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C74F2FD2A78F00CDA923 /* popup */; };
+		9E22C7682FD2A78F00CDA923 /* content.css in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7502FD2A78F00CDA923 /* content.css */; };
+		9E22C7692FD2A78F00CDA923 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7512FD2A78F00CDA923 /* LICENSE */; };
+		9E22C76A2FD2A78F00CDA923 /* content-youtube-main.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7522FD2A78F00CDA923 /* content-youtube-main.js */; };
+		9E22C76B2FD2A78F00CDA923 /* privacy-policy.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7532FD2A78F00CDA923 /* privacy-policy.html */; };
+		9E22C76C2FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7542FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md */; };
+		9E22C76D2FD2A78F00CDA923 /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7552FD2A78F00CDA923 /* background.js */; };
+		9E22C76E2FD2A78F00CDA923 /* content-drive.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7562FD2A78F00CDA923 /* content-drive.js */; };
+		9E22C76F2FD2A78F00CDA923 /* content-fw-detect-main.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7572FD2A78F00CDA923 /* content-fw-detect-main.js */; };
+		9E22C7702FD2A78F00CDA923 /* content-drive-iframe.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7582FD2A78F00CDA923 /* content-drive-iframe.js */; };
+		9E22C7712FD2A78F00CDA923 /* content-toast.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7592FD2A78F00CDA923 /* content-toast.js */; };
+		9E22C7722FD2A78F00CDA923 /* content-spa.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75A2FD2A78F00CDA923 /* content-spa.js */; };
+		9E22C7732FD2A78F00CDA923 /* content-detect.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75B2FD2A78F00CDA923 /* content-detect.js */; };
+		9E22C7742FD2A78F00CDA923 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75C2FD2A78F00CDA923 /* icons */; };
+		9E22C7752FD2A78F00CDA923 /* content-youtube.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75D2FD2A78F00CDA923 /* content-youtube.js */; };
+		9E22C7762FD2A78F00CDA923 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75E2FD2A78F00CDA923 /* manifest.json */; };
+		9E22C7772FD2A78F00CDA923 /* lib in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C75F2FD2A78F00CDA923 /* lib */; };
+		9E22C7782FD2A78F00CDA923 /* content-ns.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7602FD2A78F00CDA923 /* content-ns.js */; };
+		9E22C7792FD2A78F00CDA923 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7612FD2A78F00CDA923 /* _locales */; };
+		9E22C77A2FD2A78F00CDA923 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7622FD2A78F00CDA923 /* content.js */; };
+		9E22C77B2FD2A78F00CDA923 /* privacy-policy.en.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */; };
+		9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7642FD2A78F00CDA923 /* content-serialize.js */; };
+		9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7652FD2A78F00CDA923 /* content-inject.js */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9E22C73D2FD2A78F00CDA923 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9E22C7162FD2A78E00CDA923 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9E22C73A2FD2A78F00CDA923;
+			remoteInfo = "Shinkansen Extension";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9E22C7492FD2A78F00CDA923 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9E22C73C2FD2A78F00CDA923 /* Shinkansen Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		9E22C71E2FD2A78E00CDA923 /* Shinkansen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shinkansen.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9E22C7212FD2A78E00CDA923 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		9E22C7252FD2A78E00CDA923 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = Base; path = Base.lproj/Main.html; sourceTree = "<group>"; };
+		9E22C7272FD2A78E00CDA923 /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		9E22C7292FD2A78E00CDA923 /* Style.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = Style.css; sourceTree = "<group>"; };
+		9E22C72B2FD2A78E00CDA923 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		9E22C72D2FD2A78E00CDA923 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		9E22C7302FD2A78E00CDA923 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		9E22C7332FD2A78E00CDA923 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		9E22C7352FD2A78F00CDA923 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9E22C7362FD2A78F00CDA923 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9E22C73B2FD2A78F00CDA923 /* Shinkansen Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Shinkansen Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9E22C7402FD2A78F00CDA923 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		9E22C7422FD2A78F00CDA923 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		9E22C74E2FD2A78F00CDA923 /* options */ = {isa = PBXFileReference; lastKnownFileType = folder; name = options; path = Resources/options; sourceTree = "<group>"; };
+		9E22C74F2FD2A78F00CDA923 /* popup */ = {isa = PBXFileReference; lastKnownFileType = folder; name = popup; path = Resources/popup; sourceTree = "<group>"; };
+		9E22C7502FD2A78F00CDA923 /* content.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = content.css; path = Resources/content.css; sourceTree = "<group>"; };
+		9E22C7512FD2A78F00CDA923 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = Resources/LICENSE; sourceTree = "<group>"; };
+		9E22C7522FD2A78F00CDA923 /* content-youtube-main.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-youtube-main.js"; path = "Resources/content-youtube-main.js"; sourceTree = "<group>"; };
+		9E22C7532FD2A78F00CDA923 /* privacy-policy.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.html"; path = "Resources/privacy-policy.html"; sourceTree = "<group>"; };
+		9E22C7542FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = "THIRD-PARTY-NOTICES.md"; path = "Resources/THIRD-PARTY-NOTICES.md"; sourceTree = "<group>"; };
+		9E22C7552FD2A78F00CDA923 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = Resources/background.js; sourceTree = "<group>"; };
+		9E22C7562FD2A78F00CDA923 /* content-drive.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-drive.js"; path = "Resources/content-drive.js"; sourceTree = "<group>"; };
+		9E22C7572FD2A78F00CDA923 /* content-fw-detect-main.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-fw-detect-main.js"; path = "Resources/content-fw-detect-main.js"; sourceTree = "<group>"; };
+		9E22C7582FD2A78F00CDA923 /* content-drive-iframe.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-drive-iframe.js"; path = "Resources/content-drive-iframe.js"; sourceTree = "<group>"; };
+		9E22C7592FD2A78F00CDA923 /* content-toast.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-toast.js"; path = "Resources/content-toast.js"; sourceTree = "<group>"; };
+		9E22C75A2FD2A78F00CDA923 /* content-spa.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-spa.js"; path = "Resources/content-spa.js"; sourceTree = "<group>"; };
+		9E22C75B2FD2A78F00CDA923 /* content-detect.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-detect.js"; path = "Resources/content-detect.js"; sourceTree = "<group>"; };
+		9E22C75C2FD2A78F00CDA923 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = Resources/icons; sourceTree = "<group>"; };
+		9E22C75D2FD2A78F00CDA923 /* content-youtube.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-youtube.js"; path = "Resources/content-youtube.js"; sourceTree = "<group>"; };
+		9E22C75E2FD2A78F00CDA923 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = Resources/manifest.json; sourceTree = "<group>"; };
+		9E22C75F2FD2A78F00CDA923 /* lib */ = {isa = PBXFileReference; lastKnownFileType = folder; name = lib; path = Resources/lib; sourceTree = "<group>"; };
+		9E22C7602FD2A78F00CDA923 /* content-ns.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-ns.js"; path = "Resources/content-ns.js"; sourceTree = "<group>"; };
+		9E22C7612FD2A78F00CDA923 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = Resources/_locales; sourceTree = "<group>"; };
+		9E22C7622FD2A78F00CDA923 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
+		9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.en.html"; path = "Resources/privacy-policy.en.html"; sourceTree = "<group>"; };
+		9E22C7642FD2A78F00CDA923 /* content-serialize.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-serialize.js"; path = "Resources/content-serialize.js"; sourceTree = "<group>"; };
+		9E22C7652FD2A78F00CDA923 /* content-inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-inject.js"; path = "Resources/content-inject.js"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9E22C71B2FD2A78E00CDA923 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E22C7382FD2A78F00CDA923 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9E22C7152FD2A78E00CDA923 = {
+			isa = PBXGroup;
+			children = (
+				9E22C7202FD2A78E00CDA923 /* Shinkansen */,
+				9E22C73F2FD2A78F00CDA923 /* Shinkansen Extension */,
+				9E22C71F2FD2A78E00CDA923 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9E22C71F2FD2A78E00CDA923 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9E22C71E2FD2A78E00CDA923 /* Shinkansen.app */,
+				9E22C73B2FD2A78F00CDA923 /* Shinkansen Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9E22C7202FD2A78E00CDA923 /* Shinkansen */ = {
+			isa = PBXGroup;
+			children = (
+				9E22C7212FD2A78E00CDA923 /* AppDelegate.swift */,
+				9E22C72B2FD2A78E00CDA923 /* SceneDelegate.swift */,
+				9E22C72D2FD2A78E00CDA923 /* ViewController.swift */,
+				9E22C72F2FD2A78E00CDA923 /* LaunchScreen.storyboard */,
+				9E22C7322FD2A78E00CDA923 /* Main.storyboard */,
+				9E22C7352FD2A78F00CDA923 /* Assets.xcassets */,
+				9E22C7362FD2A78F00CDA923 /* Info.plist */,
+				9E22C7232FD2A78E00CDA923 /* Resources */,
+			);
+			path = Shinkansen;
+			sourceTree = "<group>";
+		};
+		9E22C7232FD2A78E00CDA923 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				9E22C7242FD2A78E00CDA923 /* Main.html */,
+				9E22C7272FD2A78E00CDA923 /* Icon.png */,
+				9E22C7292FD2A78E00CDA923 /* Style.css */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		9E22C73F2FD2A78F00CDA923 /* Shinkansen Extension */ = {
+			isa = PBXGroup;
+			children = (
+				9E22C74D2FD2A78F00CDA923 /* Resources */,
+				9E22C7402FD2A78F00CDA923 /* SafariWebExtensionHandler.swift */,
+				9E22C7422FD2A78F00CDA923 /* Info.plist */,
+			);
+			path = "Shinkansen Extension";
+			sourceTree = "<group>";
+		};
+		9E22C74D2FD2A78F00CDA923 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				9E22C74E2FD2A78F00CDA923 /* options */,
+				9E22C74F2FD2A78F00CDA923 /* popup */,
+				9E22C7502FD2A78F00CDA923 /* content.css */,
+				9E22C7512FD2A78F00CDA923 /* LICENSE */,
+				9E22C7522FD2A78F00CDA923 /* content-youtube-main.js */,
+				9E22C7532FD2A78F00CDA923 /* privacy-policy.html */,
+				9E22C7542FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md */,
+				9E22C7552FD2A78F00CDA923 /* background.js */,
+				9E22C7562FD2A78F00CDA923 /* content-drive.js */,
+				9E22C7572FD2A78F00CDA923 /* content-fw-detect-main.js */,
+				9E22C7582FD2A78F00CDA923 /* content-drive-iframe.js */,
+				9E22C7592FD2A78F00CDA923 /* content-toast.js */,
+				9E22C75A2FD2A78F00CDA923 /* content-spa.js */,
+				9E22C75B2FD2A78F00CDA923 /* content-detect.js */,
+				9E22C75C2FD2A78F00CDA923 /* icons */,
+				9E22C75D2FD2A78F00CDA923 /* content-youtube.js */,
+				9E22C75E2FD2A78F00CDA923 /* manifest.json */,
+				9E22C75F2FD2A78F00CDA923 /* lib */,
+				9E22C7602FD2A78F00CDA923 /* content-ns.js */,
+				9E22C7612FD2A78F00CDA923 /* _locales */,
+				9E22C7622FD2A78F00CDA923 /* content.js */,
+				9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */,
+				9E22C7642FD2A78F00CDA923 /* content-serialize.js */,
+				9E22C7652FD2A78F00CDA923 /* content-inject.js */,
+			);
+			name = Resources;
+			path = "Shinkansen Extension";
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9E22C71D2FD2A78E00CDA923 /* Shinkansen */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9E22C74A2FD2A78F00CDA923 /* Build configuration list for PBXNativeTarget "Shinkansen" */;
+			buildPhases = (
+				9E22C71A2FD2A78E00CDA923 /* Sources */,
+				9E22C71B2FD2A78E00CDA923 /* Frameworks */,
+				9E22C71C2FD2A78E00CDA923 /* Resources */,
+				9E22C7492FD2A78F00CDA923 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9E22C73E2FD2A78F00CDA923 /* PBXTargetDependency */,
+			);
+			name = Shinkansen;
+			packageProductDependencies = (
+			);
+			productName = Shinkansen;
+			productReference = 9E22C71E2FD2A78E00CDA923 /* Shinkansen.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9E22C73A2FD2A78F00CDA923 /* Shinkansen Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9E22C7462FD2A78F00CDA923 /* Build configuration list for PBXNativeTarget "Shinkansen Extension" */;
+			buildPhases = (
+				9E22C7372FD2A78F00CDA923 /* Sources */,
+				9E22C7382FD2A78F00CDA923 /* Frameworks */,
+				9E22C7392FD2A78F00CDA923 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Shinkansen Extension";
+			packageProductDependencies = (
+			);
+			productName = "Shinkansen Extension";
+			productReference = 9E22C73B2FD2A78F00CDA923 /* Shinkansen Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9E22C7162FD2A78E00CDA923 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					9E22C71D2FD2A78E00CDA923 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					9E22C73A2FD2A78F00CDA923 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+				};
+			};
+			buildConfigurationList = 9E22C7192FD2A78E00CDA923 /* Build configuration list for PBXProject "Shinkansen" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9E22C7152FD2A78E00CDA923;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9E22C71F2FD2A78E00CDA923 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9E22C71D2FD2A78E00CDA923 /* Shinkansen */,
+				9E22C73A2FD2A78F00CDA923 /* Shinkansen Extension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9E22C71C2FD2A78E00CDA923 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E22C7282FD2A78E00CDA923 /* Icon.png in Resources */,
+				9E22C7342FD2A78E00CDA923 /* Main.storyboard in Resources */,
+				9E22C7312FD2A78E00CDA923 /* LaunchScreen.storyboard in Resources */,
+				9E22C7262FD2A78E00CDA923 /* Main.html in Resources */,
+				9E22C7432FD2A78F00CDA923 /* Assets.xcassets in Resources */,
+				9E22C72A2FD2A78E00CDA923 /* Style.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E22C7392FD2A78F00CDA923 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E22C7772FD2A78F00CDA923 /* lib in Resources */,
+				9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */,
+				9E22C7782FD2A78F00CDA923 /* content-ns.js in Resources */,
+				9E22C76D2FD2A78F00CDA923 /* background.js in Resources */,
+				9E22C7732FD2A78F00CDA923 /* content-detect.js in Resources */,
+				9E22C7752FD2A78F00CDA923 /* content-youtube.js in Resources */,
+				9E22C76F2FD2A78F00CDA923 /* content-fw-detect-main.js in Resources */,
+				9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */,
+				9E22C7742FD2A78F00CDA923 /* icons in Resources */,
+				9E22C76A2FD2A78F00CDA923 /* content-youtube-main.js in Resources */,
+				9E22C76B2FD2A78F00CDA923 /* privacy-policy.html in Resources */,
+				9E22C77B2FD2A78F00CDA923 /* privacy-policy.en.html in Resources */,
+				9E22C7682FD2A78F00CDA923 /* content.css in Resources */,
+				9E22C76C2FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md in Resources */,
+				9E22C7712FD2A78F00CDA923 /* content-toast.js in Resources */,
+				9E22C77A2FD2A78F00CDA923 /* content.js in Resources */,
+				9E22C76E2FD2A78F00CDA923 /* content-drive.js in Resources */,
+				9E22C7662FD2A78F00CDA923 /* options in Resources */,
+				9E22C7722FD2A78F00CDA923 /* content-spa.js in Resources */,
+				9E22C7762FD2A78F00CDA923 /* manifest.json in Resources */,
+				9E22C7692FD2A78F00CDA923 /* LICENSE in Resources */,
+				9E22C7702FD2A78F00CDA923 /* content-drive-iframe.js in Resources */,
+				9E22C7792FD2A78F00CDA923 /* _locales in Resources */,
+				9E22C7672FD2A78F00CDA923 /* popup in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9E22C71A2FD2A78E00CDA923 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E22C72E2FD2A78E00CDA923 /* ViewController.swift in Sources */,
+				9E22C7222FD2A78E00CDA923 /* AppDelegate.swift in Sources */,
+				9E22C72C2FD2A78E00CDA923 /* SceneDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9E22C7372FD2A78F00CDA923 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E22C7412FD2A78F00CDA923 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9E22C73E2FD2A78F00CDA923 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9E22C73A2FD2A78F00CDA923 /* Shinkansen Extension */;
+			targetProxy = 9E22C73D2FD2A78F00CDA923 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		9E22C7242FD2A78E00CDA923 /* Main.html */ = {
+			isa = PBXVariantGroup;
+			children = (
+				9E22C7252FD2A78E00CDA923 /* Base */,
+			);
+			name = Main.html;
+			sourceTree = "<group>";
+		};
+		9E22C72F2FD2A78E00CDA923 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				9E22C7302FD2A78E00CDA923 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		9E22C7322FD2A78E00CDA923 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				9E22C7332FD2A78E00CDA923 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		9E22C7442FD2A78F00CDA923 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		9E22C7452FD2A78F00CDA923 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9E22C7472FD2A78F00CDA923 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				CURRENT_PROJECT_VERSION = 1.10.20;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.10.20;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios.Extension;
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS Ext App Store";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9E22C7482FD2A78F00CDA923 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				CURRENT_PROJECT_VERSION = 1.10.20;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.10.20;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios.Extension;
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS Ext App Store";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9E22C74B2FD2A78F00CDA923 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				CURRENT_PROJECT_VERSION = 1.10.20;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shinkansen/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.10.20;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios;
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS App Store";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9E22C74C2FD2A78F00CDA923 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = PR6NG3PH45;
+				CURRENT_PROJECT_VERSION = 1.10.20;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shinkansen/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.10.20;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios;
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS App Store";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9E22C7192FD2A78E00CDA923 /* Build configuration list for PBXProject "Shinkansen" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E22C7442FD2A78F00CDA923 /* Debug */,
+				9E22C7452FD2A78F00CDA923 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9E22C7462FD2A78F00CDA923 /* Build configuration list for PBXNativeTarget "Shinkansen Extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E22C7472FD2A78F00CDA923 /* Debug */,
+				9E22C7482FD2A78F00CDA923 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9E22C74A2FD2A78F00CDA923 /* Build configuration list for PBXNativeTarget "Shinkansen" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E22C74B2FD2A78F00CDA923 /* Debug */,
+				9E22C74C2FD2A78F00CDA923 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9E22C7162FD2A78E00CDA923 /* Project object */;
+}

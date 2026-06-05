@@ -52,3 +52,5 @@ safari-app/**/build/
 safari-app/**/.DS_Store
 safari-app/**/xcuserdata/
 safari-app/Shinkansen/Shinkansen Extension/Resources/
+safari-app/Shinkansen-iOS/Shinkansen/Shinkansen Extension/Resources/
+safari-app/shinkansen-ios-*.ipa
