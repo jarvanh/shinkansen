@@ -457,6 +457,8 @@
         // SK.ensureFirstInjectIdle 註解)。本路徑是 non-streaming retry / fallback,
         // 整批一次性 inject,只需在進入 forEach 前 await 一次 gate。
         const performBatchInject = () => {
+          // v1.10.20: 取消已立即還原原文，晚到的批次回應不得再注入（會把譯文注回乾淨頁面）
+          if (signal?.aborted) return;
           let injectedThisBatch = 0;
           translations.forEach((tr, j) => {
             const sanitized = SK.sanitizeMarkers(tr);
@@ -531,11 +533,14 @@
       };
       if (signal) {
         if (signal.aborted) {
-          // 進入 streaming 之前就已 aborted，直接走 abort path
+          // 進入 streaming 之前就已 aborted，直接走 abort path。
+          // v1.10.20: 並且 early return 不 dispatch——原本沒 return 會照樣往下送
+          // TRANSLATE_BATCH_STREAM，SW 端白跑一整個 batch 0 的 LLM 請求
+          // （取消當下落在 pre-try await 區間時就會踩到，真實環境白花 token）。
           abortHandler();
-        } else {
-          signal.addEventListener('abort', abortHandler, { once: true });
+          return { firstChunkOrTimeout: Promise.resolve({ kind: 'failed' }), donePromise, streamId, cleanup: () => {} };
         }
+        signal.addEventListener('abort', abortHandler, { once: true });
       }
 
       const onMessage = (message) => {
@@ -557,6 +562,9 @@
             // 後續 segments 不再等。translate API call 與 hydration 並行跑,通常
             // API 比 hydration 慢 → 等 API 回來時 gate 早已 reach,wall-time 不變。
             const performInject = () => {
+              // v1.10.20: abort 後 listener 已移除，但 idle gate 排隊中的 .then(performInject)
+              // 仍可能在「取消已立即還原」之後才執行——注入前再檢查一次
+              if (signal?.aborted) return;
               try {
                 // v1.8.39: dedup broadcast(streaming 路徑）— 同 text 翻譯結果 broadcast 到所有 dup unit
                 const uniqueText = job.texts[idx];
@@ -791,16 +799,31 @@
     }
 
     if (STATE.translating) {
-      SK.sendLog('info', 'translate', 'aborting in-progress translation');
-      STATE.abortController?.abort();
-      SK.showToast('loading', SK.t('toast.cancelling'));
-      return;
+      // v1.10.20: controller 未 aborted 才是真正「翻譯中」→ 取消。
+      // 已 aborted = 上一輪取消還在等 in-flight 批次收尾（unwind 中），此時使用者
+      // 再按 = 想重新翻譯 → 放行往下開新一輪（identity-guarded releaseRunState
+      // 確保舊輪收尾不會清掉新一輪的 state，舊輪注入已被自己的 signal guard 擋住）。
+      // 否則快速反復按會卡死在「每按都跳已取消、永遠不能重翻」。
+      if (STATE.abortController && !STATE.abortController.signal.aborted) {
+        abortInProgressTranslation();
+        return;
+      }
     }
 
     if (!navigator.onLine) {
       SK.showToast('error', SK.t('toast.offline'), { autoHideMs: 5000 });
       return;
     }
+
+    // v1.10.20: run state（translating + abortController）必須在第一個 await 之前
+    // 同步設定——否則兩次快速按鍵會雙雙通過上方 translating 檢查，spawn 兩條並行
+    // 翻譯（zombie run：取消只 abort 最後寫入 STATE 的 controller，另一條殺不掉，
+    // 且多條 run 的 finally 互踩共用 state）。實測 probe：rapid toggle 下卡死。
+    STATE.translating = true;
+    const myAbortController = new AbortController();
+    STATE.abortController = myAbortController;
+    const abortSignal = myAbortController.signal;
+    SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
 
     // v1.7.x instrumentation: 用 entryTime 量化 translatePage 各階段相對時間
     const entryTime = Date.now();
@@ -857,18 +880,13 @@
       SK.currencyState = { currency, rate };
     }
 
-    STATE.translating = true;
-    STATE.abortController = new AbortController();
-    SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
     const translateStartTime = Date.now();
-    const abortSignal = STATE.abortController.signal;
 
     const t_collect_start = Date.now();
     let units = SK.collectParagraphs();
     if (units.length === 0) {
       SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
-      STATE.translating = false;
-      STATE.abortController = null;
+      releaseRunState(myAbortController);
       return;
     }
     SK.sendLog('info', 'translate', 'milestone:collect_done', { t: Date.now() - entryTime, dt: Date.now() - t_collect_start, segments: units.length });
@@ -1072,9 +1090,15 @@
       _progressClosed = true;
 
       if (abortSignal.aborted) {
-        SK.sendLog('info', 'translate', 'translation aborted', { done, total });
-        restoreOriginalHTMLAndReset();
-        SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        const restoredEarly = _earlyRestoredAborts.has(myAbortController);
+        SK.sendLog('info', 'translate', 'translation aborted', { done, total, restoredEarly });
+        // v1.10.20: 快速鍵取消已在按下當下立即還原 + 跳「已取消」toast
+        // (abortInProgressTranslation)，unwind 只收尾不重複。SPA 導航等其他
+        // abort 來源（沒走 helper）維持原本 unwind 時還原。
+        if (!restoredEarly) {
+          restoreOriginalHTMLAndReset();
+          SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        }
         return;
       }
 
@@ -1224,8 +1248,7 @@
       }
     } finally {
       _progressClosed = true;
-      STATE.translating = false;
-      STATE.abortController = null;
+      releaseRunState(myAbortController);
     }
   };
 
@@ -1257,6 +1280,44 @@
     STATE.originalLang?.clear?.();
     STATE.originalFontFamily?.clear?.();
     STATE.translated = false;
+    // v1.10.20: 翻譯開始時就會點亮 icon badge（SET_BADGE_TRANSLATED），
+    // abort 取消後頁面已還原為原文，badge 必須跟著清，否則紅點殘留
+    // （popup 顯示「就緒」但 icon 仍顯示翻譯中）。restorePage 路徑本就有清，
+    // 這條 abort 共用 helper 先前漏掉。
+    SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+  }
+
+  // v1.10.20: 快速鍵取消翻譯改為「按下當下立即還原原文」，不等 in-flight 批次 unwind。
+  // 原行為：取消分支只 abort() + 跳「取消中」toast，真正還原要等主流程
+  // `await translateUnits` 自己 unwind 回來（非 streaming 批次沒有網路層取消機制，
+  // 大批次 + 慢模型可能等數秒～十幾秒），與使用者「按了就該馬上恢復原文」的期待不符。
+  // 三個取消入口（translatePage / translatePageGoogle / handleTranslatePreset）共用本 helper。
+  // 配套：三條注入路徑（Gemini performBatchInject / Google forEach / streaming performInject）
+  // 注入前都檢查 signal.aborted，擋掉「還原後晚到的批次回應把譯文注回乾淨頁面」。
+  // _earlyRestoredAborts 讓主流程 unwind 後的 abort 分支知道「已還原 + 已跳 toast」不重複做。
+  // 用 per-controller WeakSet 而非 boolean flag：取消後使用者可立刻開新一輪
+  // （舊輪還在 unwind），boolean 會被錯的 run 消費；WeakSet 各輪認自己的 controller。
+  const _earlyRestoredAborts = new WeakSet();
+
+  function abortInProgressTranslation() {
+    SK.sendLog('info', 'translate', 'aborting in-progress translation (immediate restore)');
+    const ac = STATE.abortController;
+    if (ac) {
+      _earlyRestoredAborts.add(ac);
+      ac.abort();
+    }
+    restoreOriginalHTMLAndReset();
+    SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
+  }
+
+  // v1.10.20: run state 釋放走 identity guard——只有「STATE.abortController 還是
+  // 自己這輪的 controller」才能清 translating / abortController。取消後使用者立刻
+  // 開新一輪時，舊輪的 finally / 早退路徑不得踩掉新一輪的 state。
+  function releaseRunState(myAC) {
+    if (STATE.abortController === myAC) {
+      STATE.translating = false;
+      STATE.abortController = null;
+    }
   }
 
   // ─── restorePage ─────────────────────────────────────
@@ -1381,6 +1442,8 @@
         if (!SK._idleGateReached) {
           await SK.ensureFirstInjectIdle();
         }
+        // v1.10.20: 取消已立即還原原文，晚到的批次回應不得再注入（同 Gemini 路徑）
+        if (signal?.aborted) return;
         translations.forEach((tr, j) => {
           const unit = job.units[j];
           if (!tr) return;
@@ -1482,11 +1545,13 @@
       STATE.translated = false;
     }
 
-    // 若正在翻譯中（任何引擎）→ 中止
+    // 若正在翻譯中（任何引擎）→ 中止（立即還原原文，不等 in-flight 批次）
+    // v1.10.20: controller 已 aborted = 上一輪取消收尾中 → 放行開新一輪（同 Gemini 路徑）
     if (STATE.translating) {
-      STATE.abortController?.abort();
-      SK.showToast('loading', SK.t('toast.cancelling'));
-      return;
+      if (STATE.abortController && !STATE.abortController.signal.aborted) {
+        abortInProgressTranslation();
+        return;
+      }
     }
 
     // 若 Gemini 翻譯已完成 → 先還原，再用 Google 翻
@@ -1498,6 +1563,13 @@
       SK.showToast('error', SK.t('toast.offline'), { autoHideMs: 5000 });
       return;
     }
+
+    // v1.10.20: run state 在第一個 await 之前同步設定（同 Gemini 路徑，防雙重進入）
+    STATE.translating = true;
+    const myAbortController = new AbortController();
+    STATE.abortController = myAbortController;
+    const abortSignal = myAbortController.signal;
+    SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
 
     // 繁中偵測（與 Gemini 相同邏輯）
     let settings = {};
@@ -1519,11 +1591,7 @@
       if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
     }
 
-    STATE.translating = true;
-    STATE.abortController = new AbortController();
-    SK.safeSendMessage({ type: 'SET_BADGE_TRANSLATED' }).catch(() => {});
     const translateStartTime = Date.now();
-    const abortSignal = STATE.abortController.signal;
 
     let units = SK.collectParagraphs();
     if (STATE.translatedMode === 'dual' && SK.consolidateDualInlineUnits) {
@@ -1531,8 +1599,7 @@
     }
     if (units.length === 0) {
       SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
-      STATE.translating = false;
-      STATE.abortController = null;
+      releaseRunState(myAbortController);
       return;
     }
 
@@ -1580,8 +1647,11 @@
       _progressClosed = true;
 
       if (abortSignal.aborted) {
-        restoreOriginalHTMLAndReset();
-        SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        // v1.10.20: 同 Gemini 路徑——快速鍵取消已立即還原，unwind 不重複
+        if (!_earlyRestoredAborts.has(myAbortController)) {
+          restoreOriginalHTMLAndReset();
+          SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
+        }
         return;
       }
 
@@ -1636,8 +1706,7 @@
       }
     } finally {
       _progressClosed = true;
-      STATE.translating = false;
-      STATE.abortController = null;
+      releaseRunState(myAbortController);
     }
   };
 
@@ -1683,12 +1752,14 @@
       restorePage();
       return;
     }
-    // 翻譯中：abort
+    // 翻譯中：abort（立即還原原文，不等 in-flight 批次）
+    // v1.10.20: controller 已 aborted = 上一輪取消收尾中 → 放行往下開新一輪
+    // （translatePage / translatePageGoogle 入口會同步接管 run state）
     if (STATE.translating) {
-      SK.sendLog('info', 'translate', 'aborting in-progress translation (preset key)');
-      STATE.abortController?.abort();
-      SK.showToast('loading', SK.t('toast.cancelling'));
-      return;
+      if (STATE.abortController && !STATE.abortController.signal.aborted) {
+        abortInProgressTranslation();
+        return;
+      }
     }
     // 閒置：讀 preset 定義。若 storage 還沒寫入（例如從 v1.4.11 升級第一次按快捷鍵）
     // 就 fallback 到 SK.DEFAULT_PRESETS，避免「按鍵無反應」。

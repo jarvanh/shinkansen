@@ -68,7 +68,33 @@ if git tag -l "v${VERSION}" | grep -q .; then
   git push origin ":refs/tags/v${VERSION}" 2>/dev/null || true
 fi
 git tag "v${VERSION}"
-git push && git push --tags
+
+# v1.10.19 後修:push 必須真的成功才算數。
+# 舊寫法 `git push && git push --tags` 在 push 被 rejected 時,因 bash set -e 對
+# AND-OR list 非末項不觸發 errexit,腳本會「沒推上去卻繼續往下印『已推送』」(已踩坑:
+# sync-*-version.yml 每 6 小時自動 commit 推 remote,剛好搶在 release 前 → 本地 push 被
+# `! [rejected] (fetch first)` 擋,卻沒被發現)。改成:branch push 失敗 → 自動 fetch +
+# rebase(sync 只動 README / docs 版本標記,不碰 shinkansen/,幾乎不會衝突,故已 build 的
+# .pkg 仍有效)+ 重貼 tag(rebase 後 commit SHA 變)+ retry;rebase 衝突則 abort 中止。
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if ! git push origin "$BRANCH"; then
+  echo "⚠️  push 被拒(remote 有新 commit)。fetch + rebase 後重試..."
+  git fetch origin
+  if ! git rebase "origin/$BRANCH"; then
+    git rebase --abort
+    echo "❌ rebase 衝突,release 中止。本地已 commit + 建 tag v${VERSION} 但尚未 push;"
+    echo "   請手動 'git pull --rebase' reconcile(若 remote 帶進 shinkansen/ 變更需重跑 Safari build)後重 push。"
+    exit 1
+  fi
+  git tag -d "v${VERSION}"   # rebase 後 SHA 變,tag 重貼到新 HEAD
+  git tag "v${VERSION}"
+  git push origin "$BRANCH" || { echo "❌ rebase 後 push 仍失敗,release 中止。"; exit 1; }
+fi
+git push origin "v${VERSION}" || {
+  echo "❌ tag push 失敗(branch 已推但 tag 沒上 → release.yml 不會觸發 / 不會建 Release)。"
+  echo "   手動補:git push origin v${VERSION}"
+  exit 1
+}
 
 # Developer ID .pkg 上傳到 GitHub Release(GitHub Actions ~1 分鐘內建出 release,
 # 這邊 poll 等到 release 存在再 upload)。SKIP_SAFARI 時沒 .pkg,跳過。

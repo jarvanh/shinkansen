@@ -25,41 +25,41 @@ async function loadAndQuery(page, localServer, target, key, params) {
 
 test('toast: zh-TW target 走繁中 dict', async ({ context, localServer }) => {
   const page = await context.newPage();
-  expect(await loadAndQuery(page, localServer, 'zh-TW', 'toast.cancelling'))
-    .toBe('正在取消翻譯⋯');
+  expect(await loadAndQuery(page, localServer, 'zh-TW', 'toast.cancelled'))
+    .toBe('已取消翻譯');
   expect(await loadAndQuery(page, localServer, 'zh-TW', 'toast.noContent'))
     .toBe('找不到可翻譯的內容');
 });
 
 test('toast: zh-CN target 走簡中 dict(含 placeholder)', async ({ context, localServer }) => {
   const page = await context.newPage();
-  expect(await loadAndQuery(page, localServer, 'zh-CN', 'toast.cancelling'))
-    .toBe('正在取消翻译⋯');
+  expect(await loadAndQuery(page, localServer, 'zh-CN', 'toast.cancelled'))
+    .toBe('已取消翻译');
 });
 
 test('toast: en target 走英文 dict', async ({ context, localServer }) => {
   const page = await context.newPage();
-  expect(await loadAndQuery(page, localServer, 'en', 'toast.cancelling'))
-    .toBe('Cancelling translation…');
+  expect(await loadAndQuery(page, localServer, 'en', 'toast.cancelled'))
+    .toBe('Translation cancelled');
   expect(await loadAndQuery(page, localServer, 'en', 'toast.noContent'))
     .toBe('No translatable content found');
 });
 
 test('toast: ja target 走 ja dict(P3 / v1.8.62 起 8 語 dict 全到位)', async ({ context, localServer }) => {
   const page = await context.newPage();
-  expect(await loadAndQuery(page, localServer, 'ja', 'toast.cancelling'))
-    .toBe('翻訳をキャンセル中⋯');
+  expect(await loadAndQuery(page, localServer, 'ja', 'toast.cancelled'))
+    .toBe('翻訳をキャンセルしました');
 });
 
 test('toast: ko / es / fr / de target 各走對應 dict(P3 / v1.8.62)', async ({ context, localServer }) => {
   const page = await context.newPage();
-  // 抽樣 toast.cancelling 各語版本驗證
-  expect(await loadAndQuery(page, localServer, 'ko', 'toast.cancelling'))
-    .toBe('번역 취소 중⋯');
-  expect(await loadAndQuery(page, localServer, 'es', 'toast.cancelling'))
-    .toBe('Cancelando traducción⋯');
-  expect(await loadAndQuery(page, localServer, 'fr', 'toast.cancelling'))
-    .toBe('Annulation de la traduction⋯');
-  expect(await loadAndQuery(page, localServer, 'de', 'toast.cancelling'))
-    .toBe('Übersetzung wird abgebrochen⋯');
+  // 抽樣 toast.cancelled 各語版本驗證
+  expect(await loadAndQuery(page, localServer, 'ko', 'toast.cancelled'))
+    .toBe('번역이 취소됨');
+  expect(await loadAndQuery(page, localServer, 'es', 'toast.cancelled'))
+    .toBe('Traducción cancelada');
+  expect(await loadAndQuery(page, localServer, 'fr', 'toast.cancelled'))
+    .toBe('Traduction annulée');
+  expect(await loadAndQuery(page, localServer, 'de', 'toast.cancelled'))
+    .toBe('Übersetzung abgebrochen');
 });

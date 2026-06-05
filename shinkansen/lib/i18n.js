@@ -73,7 +73,6 @@
 
     // ── toast（content scripts）─────────────────────────────
     'toast.detectGoogleDocs': '偵測到 Google Docs，正在開啟可翻譯的閱讀版⋯',
-    'toast.cancelling': '正在取消翻譯⋯',
     'toast.offline': '目前處於離線狀態，無法翻譯。請確認網路連線後再試',
     'toast.noContent': '找不到可翻譯的內容',
     'toast.glossaryBuilding': '建立術語表⋯',
@@ -832,7 +831,6 @@
 
     // ── toast ─────────────────────────────────────────────
     'toast.detectGoogleDocs': '检测到 Google Docs，正在打开可翻译的阅读版⋯',
-    'toast.cancelling': '正在取消翻译⋯',
     'toast.offline': '目前处于离线状态，无法翻译。请确认网络连接后再试',
     'toast.noContent': '找不到可翻译的内容',
     'toast.glossaryBuilding': '建立术语表⋯',
@@ -1589,7 +1587,6 @@
 
     // ── toast ─────────────────────────────────────────────
     'toast.detectGoogleDocs': 'Google Docs detected, opening translatable reader view…',
-    'toast.cancelling': 'Cancelling translation…',
     'toast.offline': 'You are offline, cannot translate. Please check your network and retry',
     'toast.noContent': 'No translatable content found',
     'toast.glossaryBuilding': 'Building glossary…',
@@ -2346,7 +2343,6 @@
 
     // ── toast（content scripts）─────────────────────────────
     'toast.detectGoogleDocs': 'Google Docs を検出しました。翻訳可能なリーダー版を開いています⋯',
-    'toast.cancelling': '翻訳をキャンセル中⋯',
     'toast.offline': '現在オフラインのため翻訳できません。ネットワーク接続を確認してください',
     'toast.noContent': '翻訳可能なコンテンツが見つかりません',
     'toast.glossaryBuilding': '用語集を作成中⋯',
@@ -3103,7 +3099,6 @@
 
     // ── toast (content scripts) ─────────────────────────────
     'toast.detectGoogleDocs': 'Google Docs 감지됨, 번역 가능한 리더 버전 여는 중⋯',
-    'toast.cancelling': '번역 취소 중⋯',
     'toast.offline': '현재 오프라인 상태로 번역할 수 없습니다. 네트워크 연결을 확인하세요',
     'toast.noContent': '번역 가능한 콘텐츠를 찾을 수 없음',
     'toast.glossaryBuilding': '용어집 작성 중⋯',
@@ -3859,7 +3854,6 @@
 
     // ── toast (content scripts) ─────────────────────────────
     'toast.detectGoogleDocs': 'Google Docs detectado, abriendo versión de lector traducible⋯',
-    'toast.cancelling': 'Cancelando traducción⋯',
     'toast.offline': 'Sin conexión, no se puede traducir. Comprueba tu red e inténtalo de nuevo',
     'toast.noContent': 'No se encontró contenido traducible',
     'toast.glossaryBuilding': 'Generando glosario⋯',
@@ -4615,7 +4609,6 @@
 
     // ── toast (content scripts) ─────────────────────────────
     'toast.detectGoogleDocs': 'Google Docs détecté, ouverture de la version lecteur traduisible⋯',
-    'toast.cancelling': 'Annulation de la traduction⋯',
     'toast.offline': 'Hors ligne, traduction impossible. Vérifiez votre connexion réseau et réessayez',
     'toast.noContent': 'Aucun contenu traduisible trouvé',
     'toast.glossaryBuilding': 'Construction du glossaire⋯',
@@ -5371,7 +5364,6 @@
 
     // ── toast (content scripts) ─────────────────────────────
     'toast.detectGoogleDocs': 'Google Docs erkannt, übersetzbare Reader-Version wird geöffnet⋯',
-    'toast.cancelling': 'Übersetzung wird abgebrochen⋯',
     'toast.offline': 'Derzeit offline, Übersetzung nicht möglich. Bitte Netzwerkverbindung prüfen und erneut versuchen',
     'toast.noContent': 'Kein übersetzbarer Inhalt gefunden',
     'toast.glossaryBuilding': 'Glossar wird erstellt⋯',
