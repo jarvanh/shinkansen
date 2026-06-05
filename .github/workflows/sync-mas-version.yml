@@ -36,6 +36,10 @@ jobs:
           VERSION=$(printf '%s' "$JSON" | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(d['results'][0]['version'] if d.get('results') else '')")
 
+          # App Store Connect 的版本字串可能帶 v 前綴(例 v1.10.17),
+          # marker 內統一存純數字三段,顯示用的 v 由 HTML 模板提供
+          VERSION="${VERSION#v}"
+
           if [ -z "$VERSION" ]; then
             echo "::error ::Failed to extract MAS version from iTunes Lookup API response."
             exit 1
@@ -49,8 +53,10 @@ jobs:
           set -euo pipefail
 
           NEW="${{ steps.mas.outputs.version }}"
-          CUR=$(grep -oE '<!-- mas-version-start -->[0-9.]+<!-- mas-version-end -->' docs/index.html \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          # [^<]+ 容忍 marker 內殘留非數字字元(例曾被寫入 v 前綴),
+          # 內層再抽純三段版本號比對
+          CUR=$(grep -oE '<!-- mas-version-start -->[^<]+<!-- mas-version-end -->' docs/index.html \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
 
           if [ -z "$CUR" ]; then
             echo "::error ::Could not find <!-- mas-version-start -->...<!-- mas-version-end --> marker in docs/index.html"
@@ -63,7 +69,7 @@ jobs:
           fi
 
           echo "Updating MAS version: $CUR → $NEW"
-          sed -i -E "s|<!-- mas-version-start -->[0-9.]+<!-- mas-version-end -->|<!-- mas-version-start -->${NEW}<!-- mas-version-end -->|" docs/index.html
+          sed -i -E "s|<!-- mas-version-start -->[^<]+<!-- mas-version-end -->|<!-- mas-version-start -->${NEW}<!-- mas-version-end -->|" docs/index.html
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
