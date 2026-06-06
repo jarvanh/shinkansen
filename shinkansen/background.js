@@ -777,6 +777,18 @@ const messageHandlers = {
     async: true,
     handler: (_, sender) => clearTranslatedBadge(sender?.tab?.id),
   },
+  // iOS 四指 tap（content-touch.js）→ 轉發 TRANSLATE_PRESET slot 2（主要預設），
+  // 跟 commands onCommand 的 Alt+S（translate-preset-0 → slot 2）完全同一條派送
+  // 路徑——tabs.sendMessage 不帶 frameId = all frames broadcast，行為與快速鍵一致，
+  // 避免「手勢」「快速鍵」兩條 path 各自演化 drift
+  FOUR_FINGER_TAP: {
+    async: false,
+    handler: (_, sender) => {
+      const tabId = sender?.tab?.id;
+      if (tabId == null) return;
+      browser.tabs.sendMessage(tabId, { type: 'TRANSLATE_PRESET', payload: { slot: 2 } }).catch(() => {});
+    },
+  },
   // v1.4.11 跨 tab sticky 翻譯（v1.4.12 起 value = preset slot number）
   STICKY_QUERY: {
     async: true,

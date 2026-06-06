@@ -82,6 +82,11 @@
         已翻譯狀態下按任一快速鍵都會還原原文;翻譯中按任一快速鍵則取消翻譯。
         鍵位可至 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> 變更
       </p>
+      <!-- iOS / iPadOS 專屬說明（SPEC-PRIVATE §26）：預設隱藏，body.runtime-ios 才顯示 -->
+      <p class="muted ios-only" data-i18n-html="options.preset.introIos.html">
+        <strong>iOS／iPadOS</strong>：網頁上以四指輕點即可翻譯（等同主要預設），再次輕點還原原文或取消翻譯；
+        接上實體鍵盤時，上列快速鍵照常可用
+      </p>
       <!-- v1.8.44 Firefox 警告 -->
       <small id="shortcut-firefox-warn" class="muted firefox-https-warn" hidden data-i18n-html="options.preset.firefoxWarn.html">
         ⚠ <strong>Firefox 使用者注意</strong>:Firefox 的 <code>Alt+S</code> 會展開「歷史」選單、
@@ -93,7 +98,7 @@
         <div class="preset-card preset-card-primary" data-slot="2">
           <div class="preset-card-header">
             <strong data-i18n="options.preset.primary">主要預設</strong>
-            <span class="preset-key" id="preset-key-2" data-i18n="options.preset.unset">—</span>
+            <span class="preset-key" id="preset-key-2">—</span>
           </div>
           <label>
             <span data-i18n="options.preset.label">標籤</span>
@@ -120,7 +125,7 @@
         <div class="preset-card" data-slot="1">
           <div class="preset-card-header">
             <strong data-i18n="options.preset.slot2">預設 2</strong>
-            <span class="preset-key" id="preset-key-1" data-i18n="options.preset.unset">—</span>
+            <span class="preset-key" id="preset-key-1">—</span>
           </div>
           <label>
             <span data-i18n="options.preset.label">標籤</span>
@@ -147,7 +152,7 @@
         <div class="preset-card" data-slot="3">
           <div class="preset-card-header">
             <strong data-i18n="options.preset.slot3">預設 3</strong>
-            <span class="preset-key" id="preset-key-3" data-i18n="options.preset.unset">—</span>
+            <span class="preset-key" id="preset-key-3">—</span>
           </div>
           <label>
             <span data-i18n="options.preset.label">標籤</span>

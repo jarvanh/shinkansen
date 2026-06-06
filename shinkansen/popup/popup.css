@@ -101,6 +101,35 @@ footer > * {
   min-width: 0; /* 允許長 label 在欄內 wrap,不撐爆 grid */
 }
 
+/* iOS build（SPEC-PRIVATE §26）：translate-doc/ 已 build-time strip，
+   PDF 翻譯入口在 iOS 是死按鈕 → 隱藏。body.runtime-ios 由 popup.js 依
+   IS_IOS_BUILD（lib/distribution.js，iOS build script override 為 true）加上 */
+body.runtime-ios #translate-doc-btn {
+  display: none;
+}
+
+/* iOS popup 放大（sim 實測收斂結果，SPEC-PRIVATE §26.7）：
+   iPad popover 寬度「跟著頁面內容寬度走」（不是固定 390pt）——固定 280px 版面
+   + zoom 1.5 → 內容視覺寬 420pt，popover 自己拉寬到 420，版面與桌面完全一致
+   不換行、字級 1.5 倍。
+   iPhone sheet 寬度固定 = 螢幕寬（402pt），420 會橫向溢出 → media query 降到
+   1.435（= 402 / 280）剛好撐滿。media query 以 layout viewport 判：iPad popover
+   的 device-width = popover 自身（~280）、iPhone sheet = 402，350 為分界。
+   實測過的死路（不要再試）：
+   - width: 100% + zoom：layout viewport 被 zoom 反向壓窄（visual / zoom），
+     280pt popover 變 200px 版面，全部 wrap
+   - viewport width=280 fit-to-width：WebKit 觸發 font boosting，一樣 wrap */
+body.runtime-ios {
+  width: 280px;
+  min-width: 0;
+  zoom: 1.5;
+}
+@media (min-width: 350px) {
+  body.runtime-ios {
+    zoom: 1.435;
+  }
+}
+
 button.link {
   background: none;
   border: 0;

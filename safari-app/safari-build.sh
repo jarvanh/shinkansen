@@ -81,13 +81,16 @@ echo "==> Override distribution{,-cs}.js → IS_MAS_BUILD=true(strip update-chec
 cat > "$EXTENSION_RESOURCES/lib/distribution.js" <<'EOF'
 // distribution.js — MAS build override(由 safari-app/safari-build.sh 寫入,不要編輯)
 // 原檔見 shinkansen/lib/distribution.js,預設 false。
+// 注意：兩個 export 都必須寫出（popup / options import 兩者，少一個 import 直接炸）。
 export const IS_MAS_BUILD = true;
+export const IS_IOS_BUILD = false;
 EOF
 cat > "$EXTENSION_RESOURCES/lib/distribution-cs.js" <<'EOF'
 // distribution-cs.js — MAS build override(由 safari-app/safari-build.sh 寫入,不要編輯)
 // 原檔見 shinkansen/lib/distribution-cs.js,預設 false。值必跟 distribution.js 同步。
 if (window.__SK) {
   window.__SK.IS_MAS_BUILD = true;
+  window.__SK.IS_IOS_BUILD = false;
 }
 EOF
 

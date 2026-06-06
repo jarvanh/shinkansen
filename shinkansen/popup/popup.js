@@ -6,8 +6,13 @@ import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
 import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
 import { isWorthNotifying } from '../lib/update-check.js';
-import { IS_MAS_BUILD } from '../lib/distribution.js';
+import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 import { pickPopupSlot, presetsRequireGemini, TARGET_LANGUAGES, DEFAULT_SETTINGS } from '../lib/storage.js';
+
+// iOS build（SPEC-PRIVATE §26）：body.runtime-ios 讓 CSS 隱藏「翻譯文件」入口
+// （iOS build 已 strip translate-doc/，留著是死按鈕）。build flag 而非 UA 偵測，
+// 理由見 lib/distribution.js 註解。
+if (IS_IOS_BUILD) document.body.classList.add('runtime-ios');
 
 // P2 (v1.8.60):i18n. lib/i18n.js 在 popup.html 內以普通 <script> 早於本 module 載入,
 // 因此 window.__SK.i18n API 必然存在

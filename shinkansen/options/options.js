@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAU
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
-import { IS_MAS_BUILD } from '../lib/distribution.js';
+import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
 const DEFAULTS = DEFAULT_SETTINGS;
@@ -373,6 +373,8 @@ async function load() {
         if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
       // 動態 dropdown(refreshSlotDropdownLabels)用 _t() 取 prefix,UI 語系切換要重組
       refreshSlotDropdownLabels();
+      // preset-key badge 唯一寫入者(見 refreshPresetKeyBindings 註解)
+      refreshPresetKeyBindings();
       // v1.8.61:#currency-rate-display 不掛 data-i18n,applyI18n 不會碰它,
       // UI 語系切換要主動重 render 才會看到新語言的「目前匯率: ...」字串
       refreshExchangeRateDisplay();
@@ -742,6 +744,12 @@ function updateYtPromptCostHint() {
 // v1.4.13: 從 chrome.commands.getAll() 讀取實際綁定鍵位顯示在每張 card 右上角
 // v1.8.19: command id 主要預設（slot 2）從 translate-preset-2 改為 translate-preset-0
 //          （字典序保證 chrome://extensions/shortcuts 顯示順序「主要 → 預設 2 → 預設 3」)
+// 本函式是 #preset-key-* badge 的**唯一寫入者**：span 不可掛 data-i18n
+// （v1.8.60 i18n 化時掛了 'options.preset.unset' → applyI18n 重跑會把已寫好的
+// 「Alt+S」清回 '—' placeholder；load() 內 getAll 與 applyI18n 之間隔著 await，
+// 先後順序看 IPC 時序，Chrome 實機踩到 badge 全變 '—'）。
+// applyI18n 重跑的兩條 path（#uiLanguage change handler / subscribeUiLanguageChange）
+// 都要跟著補呼叫本函式，unset 時的「未設定」文案才會跟上新語言。
 async function refreshPresetKeyBindings() {
   const SLOT_TO_COMMAND_ID = { 1: 'translate-preset-1', 2: 'translate-preset-0', 3: 'translate-preset-3' };
   try {
@@ -1114,6 +1122,9 @@ $('uiLanguage')?.addEventListener('change', async () => {
     const dictLang = window.__SK.i18n.getUiLanguage(ul);
     window.__SK.i18n.applyI18n(document, dictLang);
     refreshSlotDropdownLabels();
+    // preset-key badge 唯一寫入者（見 refreshPresetKeyBindings 註解）：
+    // unset 時的「未設定」文案要跟上新語言
+    refreshPresetKeyBindings();
     // v1.8.61:#currency-rate-display 不掛 data-i18n,主動重 render 拿新語言匯率字串
     refreshExchangeRateDisplay();
     // v1.8.61:幣值 section 隨 UI 語言切換顯示 / 隱藏
@@ -1846,6 +1857,10 @@ let _shortcutsPlatform = 'safari'; // fallback:無法 deep-link 到內建設定 
 if (_extUrl.startsWith('chrome-extension://')) _shortcutsPlatform = 'chrome';
 else if (_extUrl.startsWith('moz-extension://')) _shortcutsPlatform = 'firefox';
 document.body.classList.add(`runtime-${_shortcutsPlatform}`);
+// iOS build（SPEC-PRIVATE §26）再疊一層 runtime-ios（與 runtime-safari 並存）：
+// 快速鍵 section 顯示四指 tap 說明（.ios-only）。build flag 而非 UA 偵測，
+// 理由見 lib/distribution.js 註解。
+if (IS_IOS_BUILD) document.body.classList.add('runtime-ios');
 
 // Event delegation:綁 document,anchor 被 data-i18n-html replace 重建後仍有效
 document.addEventListener('click', (e) => {

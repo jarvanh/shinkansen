@@ -39,6 +39,7 @@
 		9E22C7782FD2A78F00CDA923 /* content-ns.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7602FD2A78F00CDA923 /* content-ns.js */; };
 		9E22C7792FD2A78F00CDA923 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7612FD2A78F00CDA923 /* _locales */; };
 		9E22C77A2FD2A78F00CDA923 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7622FD2A78F00CDA923 /* content.js */; };
+		9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF112FD2A78F00CDA923 /* content-touch.js */; };
 		9E22C77B2FD2A78F00CDA923 /* privacy-policy.en.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */; };
 		9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7642FD2A78F00CDA923 /* content-serialize.js */; };
 		9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7652FD2A78F00CDA923 /* content-inject.js */; };
@@ -104,6 +105,7 @@
 		9E22C7602FD2A78F00CDA923 /* content-ns.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-ns.js"; path = "Resources/content-ns.js"; sourceTree = "<group>"; };
 		9E22C7612FD2A78F00CDA923 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = Resources/_locales; sourceTree = "<group>"; };
 		9E22C7622FD2A78F00CDA923 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
+		9EFFFF112FD2A78F00CDA923 /* content-touch.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-touch.js"; path = "Resources/content-touch.js"; sourceTree = "<group>"; };
 		9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.en.html"; path = "Resources/privacy-policy.en.html"; sourceTree = "<group>"; };
 		9E22C7642FD2A78F00CDA923 /* content-serialize.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-serialize.js"; path = "Resources/content-serialize.js"; sourceTree = "<group>"; };
 		9E22C7652FD2A78F00CDA923 /* content-inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-inject.js"; path = "Resources/content-inject.js"; sourceTree = "<group>"; };
@@ -204,6 +206,7 @@
 				9E22C7602FD2A78F00CDA923 /* content-ns.js */,
 				9E22C7612FD2A78F00CDA923 /* _locales */,
 				9E22C7622FD2A78F00CDA923 /* content.js */,
+				9EFFFF112FD2A78F00CDA923 /* content-touch.js */,
 				9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */,
 				9E22C7642FD2A78F00CDA923 /* content-serialize.js */,
 				9E22C7652FD2A78F00CDA923 /* content-inject.js */,
@@ -327,6 +330,7 @@
 				9E22C76C2FD2A78F00CDA923 /* THIRD-PARTY-NOTICES.md in Resources */,
 				9E22C7712FD2A78F00CDA923 /* content-toast.js in Resources */,
 				9E22C77A2FD2A78F00CDA923 /* content.js in Resources */,
+				9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */,
 				9E22C76E2FD2A78F00CDA923 /* content-drive.js in Resources */,
 				9E22C7662FD2A78F00CDA923 /* options in Resources */,
 				9E22C7722FD2A78F00CDA923 /* content-spa.js in Resources */,

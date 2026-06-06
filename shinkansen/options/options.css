@@ -307,6 +307,14 @@ a:hover { text-decoration: underline; }
 body.runtime-safari .open-shortcuts-link {
   display: none;
 }
+/* iOS build 專屬說明（SPEC-PRIVATE §26）：預設隱藏，只在 body.runtime-ios（由
+   options.js 依 IS_IOS_BUILD 加 class）顯示——例如快速鍵 section 的四指 tap 說明 */
+.ios-only {
+  display: none;
+}
+body.runtime-ios .ios-only {
+  display: block;
+}
 body.runtime-safari .usage-date-label input[type="date"] {
   /* v1.9.11 真機 computed style debug 後修(2026-05-12):
      Safari 26 macOS 對 `<input type="date">` 即使套 `-webkit-appearance: textfield`,

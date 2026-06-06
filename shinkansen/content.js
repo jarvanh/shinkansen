@@ -1837,6 +1837,16 @@
     // v1.4.21: popup 勾選狀態直接決定「應該啟或停」，不再走 toggle 翻面
     if (msg?.type === 'SET_SUBTITLE') {
       const enabled = !!msg.payload?.enabled;
+      // 行動版 YouTube（m.youtube.com）沒有字幕翻譯管線——timedtext 攔截
+      // （content-youtube-main.js）的 manifest match 只有 www.youtube.com，
+      // 行動版整條管線不存在（SPEC-PRIVATE §26.6）。這裡不啟動（避免
+      // YT.active=true 之後永遠等不到字幕的 zombie session），改 toast 提示
+      // 切換電腦版網站。hostname 判斷對應的是 manifest match 這個技術性
+      // 載入邊界，不是內容品味 selector 特判（CLAUDE.md §8 範疇外）
+      if (enabled && location.hostname === 'm.youtube.com') {
+        SK.showToast('error', SK.t('toast.mobileYtHint'), { autoHideMs: 8000 });
+        return;
+      }
       const active = !!(SK.YT && SK.YT.active);
       if (enabled && !active) {
         SK.translateYouTubeSubtitles?.().catch(err => {

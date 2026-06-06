@@ -68,17 +68,22 @@ rsync -a --delete "$STAGING/" "$EXTENSION_RESOURCES/"
 # 2.5 App Store build override:strip update-check banner 整套路徑
 #     (同 macOS MAS 軌,理由見 shinkansen/lib/distribution.js 註解;
 #      iOS 全平台都走 App Store,無 Developer ID 通路,必為 true)
-echo "==> Override distribution{,-cs}.js → IS_MAS_BUILD=true..."
+echo "==> Override distribution{,-cs}.js → IS_MAS_BUILD=true + IS_IOS_BUILD=true..."
 cat > "$EXTENSION_RESOURCES/lib/distribution.js" <<'EOF'
-// distribution.js — App Store build override(由 safari-app/safari-build-ios.sh 寫入,不要編輯)
+// distribution.js — iOS App Store build override（由 safari-app/safari-build-ios.sh 寫入，不要編輯）
 // 原檔見 shinkansen/lib/distribution.js,預設 false。
+// IS_IOS_BUILD=true：popup / options 加 body.runtime-ios（隱藏 PDF 翻譯入口、
+// 顯示 iOS 專屬說明）；content-touch.js 四指 tap 啟用。
+// 注意：兩個 export 都必須寫出（popup / options import 兩者，少一個 import 直接炸）。
 export const IS_MAS_BUILD = true;
+export const IS_IOS_BUILD = true;
 EOF
 cat > "$EXTENSION_RESOURCES/lib/distribution-cs.js" <<'EOF'
-// distribution-cs.js — App Store build override(由 safari-app/safari-build-ios.sh 寫入,不要編輯)
+// distribution-cs.js — iOS App Store build override（由 safari-app/safari-build-ios.sh 寫入，不要編輯）
 // 原檔見 shinkansen/lib/distribution-cs.js,預設 false。值必跟 distribution.js 同步。
 if (window.__SK) {
   window.__SK.IS_MAS_BUILD = true;
+  window.__SK.IS_IOS_BUILD = true;
 }
 EOF
 

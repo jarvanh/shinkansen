@@ -2,6 +2,11 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
+  <!-- iOS Safari popup sheet / popover 需要 viewport meta:沒有時 WebKit 用
+       ~980px 桌面虛擬 viewport,固定 280px 的 body 會縮在左邊。放大策略見
+       popup.css 的 body.runtime-ios(zoom)註解。桌面瀏覽器的 extension popup
+       一律忽略 viewport meta,加了無副作用 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Shinkansen</title>
   <link rel="stylesheet" href="popup.css">
 </head>

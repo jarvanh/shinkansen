@@ -86,6 +86,7 @@
     'toast.translateFailed': '翻譯失敗：{error}',
     'toast.restored': '已還原原文',
     'toast.subtitleRestored': '已還原原文字幕',
+    'toast.mobileYtHint': '行動版 YouTube 不支援字幕翻譯。請切換為電腦版網站（www.youtube.com）後再開啟字幕翻譯',
     'toast.subtitleNotAvailable': '本影片未提供 CC 字幕，無法翻譯字幕',
     'toast.modeChanged': '顯示模式已切換為「{desc}」，請按快速鍵重新翻譯以套用',
 
@@ -149,6 +150,7 @@
     // ── options 翻譯快速鍵 ───────────────────────────────
     'options.preset.heading': '翻譯快速鍵',
     'options.preset.intro.html': '三組可自訂的翻譯預設，對應三個快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。已翻譯狀態下按任一快速鍵都會還原原文；翻譯中按任一快速鍵則取消翻譯。鍵位可至 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> 變更',
+    'options.preset.introIos.html': '<strong>iOS／iPadOS</strong>：網頁上以四指輕點即可翻譯（等同主要預設），再次輕點還原原文或取消翻譯；接上實體鍵盤時，上列快速鍵照常可用',
     'options.preset.firefoxWarn.html': '⚠ <strong>Firefox 使用者注意</strong>:Firefox 的 <code>Alt+S</code> 會展開「歷史」選單、<code>Alt+D</code> 會切到地址列，<code>Alt+A</code> 也常被其他擴充功能（例如 Save Page WE）攔截。Chrome 沒這個衝突，但 Firefox 環境下三組預設快捷鍵可能無法觸發翻譯。請到 <code>about:addons</code> → 設定圖示（齒輪）→「管理擴充功能快捷鍵」改成不衝突的組合（例如 <code>Ctrl+Shift+S</code>）',
     'options.preset.primary': '主要預設',
     'options.preset.slot2': '預設 2',
@@ -160,7 +162,6 @@
     'options.preset.engineGoogle': 'Google Translate（免費機器翻譯）',
     'options.preset.engineCustom': '自訂模型',
     'options.preset.modelGemini': 'Gemini 模型',
-    'options.preset.unset': '—',
 
     // ── options 工具列按鈕對應 ───────────────────────────
     'options.popupBtn.heading': '工具列「翻譯本頁」按鈕',
@@ -844,6 +845,7 @@
     'toast.translateFailed': '翻译失败：{error}',
     'toast.restored': '已还原原文',
     'toast.subtitleRestored': '已还原原文字幕',
+    'toast.mobileYtHint': '移动版 YouTube 不支持字幕翻译。请切换为桌面版网站（www.youtube.com）后再开启字幕翻译',
     'toast.subtitleNotAvailable': '本视频未提供 CC 字幕，无法翻译字幕',
     'toast.modeChanged': '显示模式已切换为「{desc}」，请按快捷键重新翻译以应用',
 
@@ -907,6 +909,7 @@
     // ── options 翻译快捷键 ───────────────────────────────
     'options.preset.heading': '翻译快捷键',
     'options.preset.intro.html': '三组可自定义的翻译预设，对应三个快捷键。依网页内容选择不同引擎或模型（例如文学性强用最强模型、一般网页用最省钱）。已翻译状态下按任一快捷键都会还原原文；翻译中按任一快捷键则取消翻译。键位可至 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> 变更',
+    'options.preset.introIos.html': '<strong>iOS／iPadOS</strong>：网页上用四指轻点即可翻译（等同主要预设），再次轻点还原原文或取消翻译；连接实体键盘时，上列快捷键照常可用',
     'options.preset.firefoxWarn.html': '⚠ <strong>Firefox 用户注意</strong>：Firefox 的 <code>Alt+S</code> 会展开「历史」菜单、<code>Alt+D</code> 会切到地址栏，<code>Alt+A</code> 也常被其他扩展功能（例如 Save Page WE）拦截。Chrome 没这个冲突，但 Firefox 环境下三组预设快捷键可能无法触发翻译。请到 <code>about:addons</code> → 设置图标（齿轮）→「管理扩展功能快捷键」改成不冲突的组合（例如 <code>Ctrl+Shift+S</code>）',
     'options.preset.primary': '主要预设',
     'options.preset.slot2': '预设 2',
@@ -918,7 +921,6 @@
     'options.preset.engineGoogle': 'Google Translate（免费机器翻译）',
     'options.preset.engineCustom': '自定义模型',
     'options.preset.modelGemini': 'Gemini 模型',
-    'options.preset.unset': '—',
 
     // ── options 工具栏按钮对应 ───────────────────────────
     'options.popupBtn.heading': '工具栏「翻译本页」按钮',
@@ -1600,6 +1602,7 @@
     'toast.translateFailed': 'Translation failed: {error}',
     'toast.restored': 'Original restored',
     'toast.subtitleRestored': 'Original subtitles restored',
+    'toast.mobileYtHint': 'Subtitle translation is not available on mobile YouTube. Switch to the desktop site (www.youtube.com) and try again',
     'toast.subtitleNotAvailable': 'This video has no CC subtitles available',
     'toast.modeChanged': 'Display mode switched to "{desc}", press shortcut to re-translate to apply',
 
@@ -1663,6 +1666,7 @@
     // ── options translation shortcuts ─────────────────────
     'options.preset.heading': 'Translation shortcuts',
     'options.preset.intro.html': 'Three customizable translation presets, each with a shortcut. Choose different engines or models per page (e.g. strongest model for literary content, cheapest for general web). When translated, any shortcut restores original; while translating, any shortcut cancels. Change keys at <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a>',
+    'options.preset.introIos.html': '<strong>iOS / iPadOS</strong>: tap the page with four fingers to translate (same as the primary preset); tap again to restore the original or cancel. With a hardware keyboard attached, the shortcuts above work as usual',
     'options.preset.firefoxWarn.html': '⚠ <strong>Firefox users note</strong>: Firefox\'s <code>Alt+S</code> opens History menu, <code>Alt+D</code> jumps to address bar, and <code>Alt+A</code> is often intercepted by other extensions (e.g. Save Page WE). Chrome has no conflict, but Firefox preset shortcuts may not trigger translation. Go to <code>about:addons</code> → settings icon (gear) → "Manage Extension Shortcuts" and change to non-conflicting combos (e.g. <code>Ctrl+Shift+S</code>)',
     'options.preset.primary': 'Primary preset',
     'options.preset.slot2': 'Preset 2',
@@ -1674,7 +1678,6 @@
     'options.preset.engineGoogle': 'Google Translate (free machine translation)',
     'options.preset.engineCustom': 'Custom model',
     'options.preset.modelGemini': 'Gemini model',
-    'options.preset.unset': '—',
 
     // ── options toolbar button ───────────────────────────
     'options.popupBtn.heading': 'Toolbar "Translate page" button',
@@ -2356,6 +2359,7 @@
     'toast.translateFailed': '翻訳に失敗：{error}',
     'toast.restored': '原文を復元しました',
     'toast.subtitleRestored': '字幕の原文を復元しました',
+    'toast.mobileYtHint': 'モバイル版 YouTube では字幕翻訳を利用できません。デスクトップ版サイト（www.youtube.com）に切り替えてからお試しください',
     'toast.subtitleNotAvailable': 'この動画には CC 字幕が提供されていません',
     'toast.modeChanged': '表示モードを「{desc}」に変更しました。ショートカットで再翻訳して反映してください',
 
@@ -2419,6 +2423,7 @@
     // ── options 翻訳ショートカット ───────────────────────────
     'options.preset.heading': '翻訳ショートカット',
     'options.preset.intro.html': '3 組のカスタマイズ可能な翻訳プリセットがあり、それぞれショートカットに対応します。ページ内容に応じてエンジンやモデルを切り替えられます（文学的な内容は最強モデル、一般ページは最も安価など）。翻訳済みの状態で任意のショートカットを押すと原文に戻り、翻訳中ならキャンセルします。キー設定は <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> で変更できます',
+    'options.preset.introIos.html': '<strong>iOS／iPadOS</strong>：ページを 4 本指でタップすると翻訳できます（メインプリセットと同じ）。もう一度タップすると原文に戻る、または翻訳をキャンセルします。ハードウェアキーボード接続時は上記のショートカットもそのまま使えます',
     'options.preset.firefoxWarn.html': '⚠ <strong>Firefox ユーザーの方へ</strong>：Firefox では <code>Alt+S</code> が「履歴」メニューを開き、<code>Alt+D</code> はアドレスバーへ移動、<code>Alt+A</code> も他の拡張機能（Save Page WE など）に取られがちです。Chrome ではこの問題はありませんが、Firefox では 3 組のプリセットショートカットが動作しない場合があります。<code>about:addons</code> → 設定アイコン（歯車）→「拡張機能のショートカットを管理」で衝突しない組み合わせ（例：<code>Ctrl+Shift+S</code>）に変更してください',
     'options.preset.primary': 'メインプリセット',
     'options.preset.slot2': 'プリセット 2',
@@ -2430,7 +2435,6 @@
     'options.preset.engineGoogle': 'Google Translate（無料機械翻訳）',
     'options.preset.engineCustom': 'カスタムモデル',
     'options.preset.modelGemini': 'Gemini モデル',
-    'options.preset.unset': '—',
 
     // ── options ツールバーボタン対応 ───────────────────────
     'options.popupBtn.heading': 'ツールバー「このページを翻訳」ボタン',
@@ -3112,6 +3116,7 @@
     'toast.translateFailed': '번역 실패: {error}',
     'toast.restored': '원문 복원됨',
     'toast.subtitleRestored': '원문 자막 복원됨',
+    'toast.mobileYtHint': '모바일 YouTube에서는 자막 번역을 사용할 수 없습니다. 데스크톱 사이트(www.youtube.com)로 전환한 후 다시 시도하세요',
     'toast.subtitleNotAvailable': '이 영상에는 CC 자막이 제공되지 않습니다',
     'toast.modeChanged': '표시 모드가 "{desc}"(으)로 변경되었습니다. 단축키로 다시 번역하여 적용하세요',
 
@@ -3175,6 +3180,7 @@
     // ── options 번역 단축키 ───────────────────────────────
     'options.preset.heading': '번역 단축키',
     'options.preset.intro.html': '커스터마이즈 가능한 번역 프리셋 3개가 있으며, 각각 단축키에 대응합니다. 페이지 콘텐츠에 따라 다른 엔진이나 모델을 선택할 수 있습니다(예: 문학적인 내용은 가장 강한 모델, 일반 페이지는 가장 저렴한 모델). 번역된 상태에서 임의의 단축키를 누르면 원문으로 복원되고, 번역 중에는 번역이 취소됩니다. 키 설정은 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a>에서 변경할 수 있습니다',
+    'options.preset.introIos.html': '<strong>iOS / iPadOS</strong>: 네 손가락으로 페이지를 탭하면 번역됩니다(기본 프리셋과 동일). 다시 탭하면 원문 복원 또는 번역 취소됩니다. 하드웨어 키보드 연결 시 위 단축키도 그대로 사용할 수 있습니다',
     'options.preset.firefoxWarn.html': '⚠ <strong>Firefox 사용자 주의</strong>: Firefox에서 <code>Alt+S</code>는 "기록" 메뉴를 열고, <code>Alt+D</code>는 주소 표시줄로 이동하며, <code>Alt+A</code>도 다른 확장 프로그램(Save Page WE 등)에 자주 가로채입니다. Chrome에는 이 충돌이 없지만 Firefox 환경에서는 3개의 프리셋 단축키가 작동하지 않을 수 있습니다. <code>about:addons</code> → 설정 아이콘(톱니바퀴) → "확장 프로그램 단축키 관리"에서 충돌하지 않는 조합(<code>Ctrl+Shift+S</code> 등)으로 변경하세요',
     'options.preset.primary': '메인 프리셋',
     'options.preset.slot2': '프리셋 2',
@@ -3186,7 +3192,6 @@
     'options.preset.engineGoogle': 'Google Translate (무료 기계 번역)',
     'options.preset.engineCustom': '커스텀 모델',
     'options.preset.modelGemini': 'Gemini 모델',
-    'options.preset.unset': '—',
 
     // ── options 도구 모음 버튼 매핑 ───────────────────────
     'options.popupBtn.heading': '도구 모음 "이 페이지 번역" 버튼',
@@ -3867,6 +3872,7 @@
     'toast.translateFailed': 'Error de traducción: {error}',
     'toast.restored': 'Original restaurado',
     'toast.subtitleRestored': 'Subtítulos originales restaurados',
+    'toast.mobileYtHint': 'La traducción de subtítulos no está disponible en YouTube móvil. Cambia al sitio de escritorio (www.youtube.com) e inténtalo de nuevo',
     'toast.subtitleNotAvailable': 'Este vídeo no tiene subtítulos CC disponibles',
     'toast.modeChanged': 'Modo de visualización cambiado a "{desc}", pulsa el atajo para volver a traducir y aplicarlo',
 
@@ -3930,6 +3936,7 @@
     // ── options atajos de traducción ───────────────────────────
     'options.preset.heading': 'Atajos de traducción',
     'options.preset.intro.html': 'Tres preajustes de traducción personalizables, cada uno asociado a un atajo. Elige distintos motores o modelos según el contenido (por ejemplo, el modelo más potente para texto literario; el más barato para páginas comunes). Si la página ya está traducida, cualquier atajo restaura el original; durante la traducción, cualquier atajo la cancela. Las teclas se pueden cambiar en <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a>',
+    'options.preset.introIos.html': '<strong>iOS / iPadOS</strong>: toca la página con cuatro dedos para traducir (igual que el preajuste principal); toca de nuevo para restaurar el original o cancelar. Con un teclado físico conectado, los atajos anteriores funcionan con normalidad',
     'options.preset.firefoxWarn.html': '⚠ <strong>Aviso para usuarios de Firefox</strong>: en Firefox <code>Alt+S</code> abre el menú "Historial", <code>Alt+D</code> va a la barra de direcciones y <code>Alt+A</code> también suele ser interceptada por otras extensiones (como Save Page WE). Chrome no tiene este conflicto, pero en Firefox los tres atajos preajustados pueden no disparar la traducción. Ve a <code>about:addons</code> → icono de ajustes (engranaje) → "Administrar accesos directos de extensiones" y cámbialos a combinaciones sin conflicto (por ejemplo, <code>Ctrl+Shift+S</code>)',
     'options.preset.primary': 'Preajuste principal',
     'options.preset.slot2': 'Preajuste 2',
@@ -3941,7 +3948,6 @@
     'options.preset.engineGoogle': 'Google Translate (traducción automática gratuita)',
     'options.preset.engineCustom': 'Modelo personalizado',
     'options.preset.modelGemini': 'Modelo de Gemini',
-    'options.preset.unset': '—',
 
     // ── options correspondencia del botón de la barra ───────────────────────
     'options.popupBtn.heading': 'Botón "Traducir página" de la barra de herramientas',
@@ -4622,6 +4628,7 @@
     'toast.translateFailed': 'Échec de la traduction : {error}',
     'toast.restored': 'Original restauré',
     'toast.subtitleRestored': 'Sous-titres originaux restaurés',
+    'toast.mobileYtHint': 'La traduction des sous-titres n\'est pas disponible sur YouTube mobile. Passez au site de bureau (www.youtube.com) et réessayez',
     'toast.subtitleNotAvailable': 'Cette vidéo n\'a pas de sous-titres CC disponibles',
     'toast.modeChanged': 'Mode d\'affichage changé en « {desc} », appuyez sur le raccourci pour retraduire et appliquer',
 
@@ -4685,6 +4692,7 @@
     // ── options raccourcis de traduction ───────────────────────────
     'options.preset.heading': 'Raccourcis de traduction',
     'options.preset.intro.html': 'Trois préréglages de traduction personnalisables associés à trois raccourcis. Choisissez le moteur ou modèle selon le contenu (par exemple, modèle le plus puissant pour le littéraire, le plus économique pour le grand public). Une fois traduit, n\'importe quel raccourci restaure l\'original ; pendant la traduction, n\'importe quel raccourci l\'annule. Les touches se changent dans <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a>',
+    'options.preset.introIos.html': '<strong>iOS / iPadOS</strong> : touchez la page avec quatre doigts pour traduire (comme le préréglage principal) ; touchez à nouveau pour restaurer l\'original ou annuler. Avec un clavier physique connecté, les raccourcis ci-dessus fonctionnent normalement',
     'options.preset.firefoxWarn.html': '⚠ <strong>Avis aux utilisateurs Firefox</strong> : sur Firefox, <code>Alt+S</code> ouvre le menu « Historique », <code>Alt+D</code> va dans la barre d\'adresse et <code>Alt+A</code> est souvent intercepté par d\'autres extensions (comme Save Page WE). Chrome n\'a pas ce conflit, mais sur Firefox les trois raccourcis préréglés peuvent ne pas déclencher la traduction. Allez dans <code>about:addons</code> → icône paramètres (engrenage) → « Gérer les raccourcis d\'extension » et changez-les pour des combinaisons sans conflit (par exemple <code>Ctrl+Shift+S</code>)',
     'options.preset.primary': 'Préréglage principal',
     'options.preset.slot2': 'Préréglage 2',
@@ -4696,7 +4704,6 @@
     'options.preset.engineGoogle': 'Google Translate (traduction automatique gratuite)',
     'options.preset.engineCustom': 'Modèle personnalisé',
     'options.preset.modelGemini': 'Modèle Gemini',
-    'options.preset.unset': '—',
 
     // ── options correspondance bouton barre d\'outils ───────────────────────
     'options.popupBtn.heading': 'Bouton « Traduire la page » de la barre d\'outils',
@@ -5377,6 +5384,7 @@
     'toast.translateFailed': 'Übersetzung fehlgeschlagen: {error}',
     'toast.restored': 'Original wiederhergestellt',
     'toast.subtitleRestored': 'Original-Untertitel wiederhergestellt',
+    'toast.mobileYtHint': 'Untertitel-Übersetzung ist in der mobilen YouTube-Version nicht verfügbar. Wechsle zur Desktop-Website (www.youtube.com) und versuche es erneut',
     'toast.subtitleNotAvailable': 'Für dieses Video sind keine CC-Untertitel verfügbar',
     'toast.modeChanged': 'Anzeigemodus geändert zu „{desc}", drücke das Tastenkürzel zum erneuten Übersetzen',
 
@@ -5440,6 +5448,7 @@
     // ── options Übersetzungs-Tastenkürzel ───────────────────────────
     'options.preset.heading': 'Übersetzungs-Tastenkürzel',
     'options.preset.intro.html': 'Drei anpassbare Übersetzungs-Voreinstellungen entsprechend drei Tastenkürzeln. Wähle Engine oder Modell je nach Inhalt (z. B. das stärkste Modell für literarische Inhalte, das günstigste für allgemeine Seiten). Im übersetzten Zustand stellt jedes Tastenkürzel das Original wieder her; während der Übersetzung bricht jedes Tastenkürzel ab. Die Tasten können in <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> geändert werden',
+    'options.preset.introIos.html': '<strong>iOS / iPadOS</strong>: Tippe mit vier Fingern auf die Seite, um zu übersetzen (entspricht der Hauptvoreinstellung); erneutes Tippen stellt das Original wieder her oder bricht ab. Mit angeschlossener Hardware-Tastatur funktionieren die obigen Tastenkürzel wie gewohnt',
     'options.preset.firefoxWarn.html': '⚠ <strong>Hinweis für Firefox-Nutzer</strong>: In Firefox öffnet <code>Alt+S</code> das „Verlauf"-Menü, <code>Alt+D</code> wechselt zur Adressleiste, und <code>Alt+A</code> wird oft von anderen Erweiterungen abgefangen (z. B. Save Page WE). Chrome hat diesen Konflikt nicht, aber in Firefox können die drei voreingestellten Tastenkürzel die Übersetzung möglicherweise nicht auslösen. Gehe zu <code>about:addons</code> → Einstellungssymbol (Zahnrad) → „Erweiterungs-Tastenkürzel verwalten" und ändere sie zu konfliktfreien Kombinationen (z. B. <code>Strg+Shift+S</code>)',
     'options.preset.primary': 'Hauptvoreinstellung',
     'options.preset.slot2': 'Voreinstellung 2',
@@ -5451,7 +5460,6 @@
     'options.preset.engineGoogle': 'Google Translate (kostenlose Maschinenübersetzung)',
     'options.preset.engineCustom': 'Eigenes Modell',
     'options.preset.modelGemini': 'Gemini-Modell',
-    'options.preset.unset': '—',
 
     // ── options Symbolleisten-Button-Zuordnung ───────────────────────
     'options.popupBtn.heading': 'Symbolleisten-Button „Seite übersetzen"',
