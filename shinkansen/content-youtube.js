@@ -1371,22 +1371,37 @@
   SK._applyBilingualMode = _applyBilingualMode;
 
   // 讀 YouTube 原生字幕字體大小(已套用使用者字幕設定 + player size 自適應比例)。
-  // 多重 fallback:首選 caption-segment、退而 caption-window、最後用 video 高度 4.5%。
+  // 多重 fallback:首選 caption-segment、退而 caption-window、再退「上次讀到的有效值」、
+  // 最後才用 video 高度 4.5%。
+  //
+  // v1.10.26：人聲停止但影片繼續時 YouTube 把原生 .ytp-caption-segment / .caption-window
+  //   從 DOM 移除（無字幕空窗），但我們的 ASR overlay 因「中文閱讀時間補償」延長 endMs
+  //   還在顯示譯文。這段空窗期過去會掉到 video.offsetHeight × 0.045 啟發式——這個值約等於
+  //   YouTube 預設 100% 字幕大小，完全忽略使用者的字幕大小設定（例：設 50% 的人會看到字
+  //   突然跳成 ~100%＋）。結構性修法：原生字幕字體大小是「單一事實」，來源元素短暫消失時
+  //   保留上次讀到的有效值，不用無視使用者設定的影片高度啟發式重算（CLAUDE.md §8）。
+  let _lastGoodCaptionFontSize = 0;
   function _readNativeCaptionFontSize() {
     const seg = document.querySelector('.ytp-caption-segment');
     if (seg) {
       const fz = parseFloat(getComputedStyle(seg).fontSize);
-      if (Number.isFinite(fz) && fz > 0) return fz;
+      if (Number.isFinite(fz) && fz > 0) { _lastGoodCaptionFontSize = fz; return fz; }
     }
     const win = document.querySelector('.caption-window');
     if (win) {
       const fz = parseFloat(getComputedStyle(win).fontSize);
-      if (Number.isFinite(fz) && fz > 0) return fz;
+      if (Number.isFinite(fz) && fz > 0) { _lastGoodCaptionFontSize = fz; return fz; }
     }
+    // 空窗期:原生字幕元素暫時不在 DOM,沿用上次讀到的有效值(保住使用者字幕大小設定)
+    if (_lastGoodCaptionFontSize > 0) return _lastGoodCaptionFontSize;
+    // 從沒讀到過任何原生字幕(首次 fallback):才用 video 高度啟發式估一個
     const video = document.querySelector('video');
     if (video && video.offsetHeight) return Math.round(video.offsetHeight * 0.045);
     return 18;
   }
+  // 暴露給 spec 用(youtube-caption-fontsize-gap 路徑 A regression)
+  SK._readNativeCaptionFontSize = _readNativeCaptionFontSize;
+  SK._resetCaptionFontSizeCache = () => { _lastGoodCaptionFontSize = 0; };
 
   // 讀 YouTube 原生字幕的 font-family(YouTube 用 inline style 設定,預設 sans-serif,
   // 走系統字型 → macOS=PingFang TC、Windows=Microsoft JhengHei、Linux=Noto Sans CJK TC)。
