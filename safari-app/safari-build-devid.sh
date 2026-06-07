@@ -61,7 +61,22 @@ fi
 if ! security find-identity -v 2>/dev/null | grep -q "Developer ID Installer: Zhimin Su (PR6NG3PH45)"; then
   MISSING="${MISSING}I"
 fi
-if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" &>/dev/null; then
+# v1.10.23: notarytool 憑證雙軌——keychain profile 優先;不可用時 fallback ASC API key
+# (跟 MAS altool 上傳同一套 env 憑證:ASC_KEY_ID / ASC_ISSUER_ID +
+# ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8)。
+# Why:headless / 自動化 session 的 keychain 常鎖死(store-credentials 寫入報
+# 「User interaction is not allowed」),API key 走檔案不碰 keychain。
+NOTARY_AUTH_ARGS=()
+NOTARY_AUTH_DESC=""
+ASC_KEY_FILE="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID:-}.p8"
+if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" &>/dev/null; then
+  NOTARY_AUTH_ARGS=(--keychain-profile "$NOTARY_PROFILE")
+  NOTARY_AUTH_DESC="keychain profile '$NOTARY_PROFILE'"
+elif [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ] && [ -f "$ASC_KEY_FILE" ] \
+  && xcrun notarytool history --key "$ASC_KEY_FILE" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" &>/dev/null; then
+  NOTARY_AUTH_ARGS=(--key "$ASC_KEY_FILE" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID")
+  NOTARY_AUTH_DESC="ASC API key(env ASC_KEY_ID=${ASC_KEY_ID})"
+else
   MISSING="${MISSING}N"
 fi
 
@@ -70,7 +85,7 @@ if [ -n "$MISSING" ]; then
   echo "ERROR: 前置不全,以下項目缺失:" >&2
   [[ "$MISSING" == *A* ]] && echo "  ✗ Developer ID Application cert(Keychain)" >&2
   [[ "$MISSING" == *I* ]] && echo "  ✗ Developer ID Installer cert(Keychain)" >&2
-  [[ "$MISSING" == *N* ]] && echo "  ✗ notarytool keychain profile '$NOTARY_PROFILE'" >&2
+  [[ "$MISSING" == *N* ]] && echo "  ✗ notarytool 憑證(keychain profile '$NOTARY_PROFILE' 與 ASC API key env 均不可用)" >&2
   echo "" >&2
   echo "一次性設定:" >&2
   if [[ "$MISSING" == *A* ]] || [[ "$MISSING" == *I* ]]; then
@@ -92,7 +107,7 @@ if [ -n "$MISSING" ]; then
 fi
 echo "    ✓ Developer ID Application cert"
 echo "    ✓ Developer ID Installer cert"
-echo "    ✓ notarytool keychain profile '$NOTARY_PROFILE'"
+echo "    ✓ notarytool 憑證:$NOTARY_AUTH_DESC"
 
 VERSION=$(jq -r '.version' shinkansen/manifest.json)
 if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
@@ -156,7 +171,7 @@ productbuild \
 echo "==> Submit to Apple notarization service(等 Apple cloud)..."
 echo "    Start: $(date +%H:%M:%S)"
 xcrun notarytool submit "$DEVID_PKG" \
-  --keychain-profile "$NOTARY_PROFILE" \
+  "${NOTARY_AUTH_ARGS[@]}" \
   --wait
 echo "    End:   $(date +%H:%M:%S)"
 

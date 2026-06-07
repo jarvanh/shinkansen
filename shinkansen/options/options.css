@@ -544,6 +544,10 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
   min-width: 200px;
   text-align: center;
 }
+/* display: flex 會 override user-agent 的 [hidden] { display: none }，
+   導致 options.js 在 ≤1 頁時設 hidden 後「上一頁／下一頁」死按鈕照樣顯示
+   （同 v1.6.5 .update-banner-row[hidden] 的坑） */
+.usage-pagination[hidden] { display: none !important; }
 .usage-pagination button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -1195,3 +1199,62 @@ shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-de
 .advanced-details[open] > summary::before { transform: rotate(90deg); }
 .advanced-details > *:not(summary) { padding-left: 12px; padding-right: 12px; }
 .advanced-details > *:last-child { padding-bottom: 12px; }
+
+/* ═══ 窄版 RWD（iPhone / 窄視窗）═══════════════════════════════
+   options.html 加 viewport meta 後 iOS layout viewport = 螢幕寬（~390pt），
+   以下收掉在 720px 桌面版面下不會暴露的橫向溢出點。一般 RWD media query，
+   不掛 body.runtime-ios——桌面視窗縮窄同樣受益，維持單一 code path */
+@media (max-width: 480px) {
+  /* 手機上 margin 40px + padding 32px 吃掉太多橫向空間 */
+  .container {
+    margin: 0;
+    padding: 20px 16px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  /* tab 折行後一列塞得下更多顆 */
+  .tab-btn { padding: 10px 12px; }
+  /* RPM / TPM / RPD 三欄太擠 → 直疊 */
+  .triple { grid-template-columns: 1fr; }
+  .triple label { margin: 12px 0; }
+  /* 用量彙總四卡 → 2×2 */
+  .usage-summary { grid-template-columns: 1fr 1fr; }
+  /* per-model 計價列：固定欄 110+110+90 必溢出 → label 整列 + 三個數字欄一列 */
+  .model-pricing-row { grid-template-columns: 1fr 1fr 1fr; }
+  .model-pricing-label { grid-column: 1 / -1; }
+  /* 雙語對照 light / dark 預覽並排太窄 → 直疊 */
+  .dual-demo-pair { grid-template-columns: 1fr; }
+  /* 日週月按鈕＋搜尋框＋模型 select 同列塞不下 → 允許折行 */
+  .usage-search-row { flex-wrap: wrap; }
+  .usage-search-row input[type="text"] { flex: 1 1 140px; }
+  .usage-search-row select { width: auto; min-width: 0; flex: 1 1 auto; }
+  /* 術語表網域 select（min-width 180）＋ input ＋按鈕同列塞不下 → 折行 */
+  .glossary-domain-controls { flex-wrap: wrap; }
+  .glossary-domain-controls select { flex: 1 1 100%; min-width: 0; }
+  /* 備註欄 focus 浮起的 min-width 380px 超出螢幕 */
+  .ft-note:focus { min-width: 0; }
+  /* 明細分頁：page-info min-width 200px 把「上一頁／下一頁」擠到逐字直排 */
+  .usage-pagination { gap: 8px; }
+  .usage-pagination .usage-page-info { min-width: 0; flex: 1 1 auto; }
+  .usage-pagination button { white-space: nowrap; }
+  /* 多欄表格（用量明細 / Debug log）窄版擠不下 → 橫向捲動 */
+  .usage-table-wrapper,
+  .log-table-wrapper { overflow-x: auto; }
+}
+
+/* iPhone 限定：iOS Safari 對 font-size < 16px 的輸入框會在 focus 時自動放大
+   頁面（且不會自動縮回），設定頁到處是 13px input → 每點一個欄位就跳一次 zoom。
+   把表單控制項字級拉到 16px 關掉這個行為。掛 body.runtime-ios（iOS build 才有，
+   見 options.js）＋窄版 media query，桌面與 iPad 版面不受影響 */
+@media (max-width: 480px) {
+  body.runtime-ios input[type="text"],
+  body.runtime-ios input[type="password"],
+  body.runtime-ios input[type="number"],
+  body.runtime-ios input[type="date"],
+  body.runtime-ios select,
+  body.runtime-ios textarea {
+    font-size: 16px;
+  }
+  /* 字級拉到 16px 後固定 130px 放不下完整日期 */
+  body.runtime-ios .usage-date-label input[type="date"] { width: 150px; }
+}
