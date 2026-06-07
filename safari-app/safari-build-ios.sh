@@ -59,6 +59,12 @@ rsync -a --exclude 'translate-doc/' shinkansen/ "$STAGING/"
 jq '(.web_accessible_resources[]?.resources) |= map(select(. != "translate-doc/*"))' \
   "$STAGING/manifest.json" > "$STAGING/manifest.json.tmp"
 mv "$STAGING/manifest.json.tmp" "$STAGING/manifest.json"
+# 1.5 background → event page(scripts + persistent: false,保留 type: module)。
+#     iOS Safari 的 MV3 SW 被系統回收後不再喚醒(Apple Forums thread 758346),
+#     「用一段時間後四指 / popup 失效」根因;event page 卸載後可正常重生。
+#     詳見 safari-app/patch-manifest-background.sh(macOS / iOS build 共用)。
+#     在 staging 端 patch → 之後 rsync 進 Resources,drift check 自然一致。
+bash safari-app/patch-manifest-background.sh "$STAGING/manifest.json"
 
 # 2. 同步 staging → Resources/(--delete 移除已不存在舊檔)
 echo "==> Sync extension Resources..."
