@@ -275,12 +275,19 @@
     // 暫停期間使用者拖進度條造成虛假超前。
     ccPaused:                 false,
     _ccButtonObserver:        null,
+    // mweb(m.youtube.com)auto-CC 有界重試(擋「CC 操作落在廣告播放期間」時序,
+    // 詳見 _scheduleMwebCcRetry 註解)
+    _mwebCcRetryTimer:        null,
+    _mwebCcRetries:           0,
   };
 
   // ─── 工具 ──────────────────────────────────────────────────
 
   SK.isYouTubePage = function isYouTubePage() {
-    return location.hostname === 'www.youtube.com'
+    // m.youtube.com(行動版)v1.10.25 起支援:mweb 用同一套 html5 player 核心,
+    // /api/timedtext XHR 格式同桌面(fmt=json3),#movie_player API 齊全(已 probe 實證)。
+    // 差異點(CC 按鈕不存在 / SPA 事件名不同)在各依賴點以結構特徵 fallback 處理。
+    return (location.hostname === 'www.youtube.com' || location.hostname === 'm.youtube.com')
       && location.pathname.startsWith('/watch');
   };
 
@@ -432,10 +439,89 @@
   // v1.6.20 A 路徑:CC 關著時自動點開(使用者勾「自動翻譯字幕」即代表想看翻譯,
   //                直接幫他開 CC)。每 session 只自動開一次,使用者後續手動關 CC 我們不再補開。
 
+  // mweb(m.youtube.com)CC control bridge 呼叫:沒有 .ytp-subtitles-button 可點,
+  // 改走 MAIN world 的 #movie_player captions module API(content-youtube-main.js)。
+  // 回傳 { op, ok, ccOn, error };bridge 沒回(理論上不會)以 timeout 保底。
+  function _ccControlViaBridge(op, timeoutMs = 2000) {
+    return new Promise((resolve) => {
+      const handler = (e) => {
+        window.removeEventListener('shinkansen-yt-cc-control-result', handler);
+        clearTimeout(timer);
+        resolve(e?.detail || { op, ok: false, error: 'empty-detail' });
+      };
+      const timer = setTimeout(() => {
+        window.removeEventListener('shinkansen-yt-cc-control-result', handler);
+        resolve({ op, ok: false, error: 'bridge-timeout' });
+      }, timeoutMs);
+      window.addEventListener('shinkansen-yt-cc-control-result', handler);
+      window.dispatchEvent(new CustomEvent('shinkansen-yt-cc-control', { detail: { op } }));
+    });
+  }
+
+  // mweb auto-CC 有界重試:CC 操作可能落在廣告播放期間(SPA 切片 / 初載都可能先跑
+  // 廣告)——此時 enable 會吃 stale-player-response / no-caption-track、reload 作用在
+  // 廣告 player 上,廣告結束後沒人補開 CC → 管線靜默卡死(sim 實測:SPA 切片到帶
+  // 廣告影片,字幕永遠不出現)。解法:只要 active 且 rawSegments 還是 0,每 3s 清
+  // _autoCcToggled 再跑一次 forceSubtitleReload,上限 20 次(60s,蓋過常見廣告長度)。
+  // rawSegments 一進來(timedtext 攔到)重試自然停止;stop / SPA reset 清 timer。
+  const MWEB_CC_RETRY_MS = 3000;
+  const MWEB_CC_MAX_RETRIES = 20;
+
+  function _scheduleMwebCcRetry() {
+    const YT = SK.YT;
+    if (YT._mwebCcRetryTimer) return; // 已有排程,不重複
+    if ((YT._mwebCcRetries || 0) >= MWEB_CC_MAX_RETRIES) return;
+    YT._mwebCcRetryTimer = setTimeout(() => {
+      YT._mwebCcRetryTimer = null;
+      if (!YT.active || YT.rawSegments.length > 0) return; // 已停止 / 字幕已到 → 不再試
+      YT._mwebCcRetries = (YT._mwebCcRetries || 0) + 1;
+      YT._autoCcToggled = false; // 允許 enable 分支再跑(廣告期間那次不算數)
+      SK.sendLog('info', 'youtube', 'mweb CC retry', { attempt: YT._mwebCcRetries });
+      forceSubtitleReload();
+    }, MWEB_CC_RETRY_MS);
+  }
+
+  function _clearMwebCcRetry() {
+    const YT = SK.YT;
+    if (YT._mwebCcRetryTimer) {
+      clearTimeout(YT._mwebCcRetryTimer);
+      YT._mwebCcRetryTimer = null;
+    }
+    YT._mwebCcRetries = 0;
+  }
+
   async function forceSubtitleReload() {
     const btn = document.querySelector('.ytp-subtitles-button');
     if (!btn) {
-      SK.sendLog('warn', 'youtube', 'forceSubtitleReload: CC button not found');
+      // 結構特徵 fallback:CC 按鈕不存在(mweb 播放器 UI 沒有此按鈕)→ player API 路徑。
+      // 邏輯對齊下方按鈕路徑:CC 關 → 自動開啟;CC 開 → 強迫重發 XHR。
+      // 每個分支結束都排一次有界重試(見 _scheduleMwebCcRetry 註解,擋廣告時序)。
+      const status = await _ccControlViaBridge('status');
+      if (!status.ok) {
+        SK.sendLog('warn', 'youtube', 'forceSubtitleReload: no CC button + bridge status failed', {
+          error: status.error,
+        });
+        _scheduleMwebCcRetry();
+        return;
+      }
+      if (!status.ccOn) {
+        if (SK.YT._autoCcToggled) {
+          SK.sendLog('info', 'youtube', 'forceSubtitleReload(api): CC off + already auto-toggled, skip');
+          return;
+        }
+        SK.YT._autoCcToggled = true;
+        const res = await _ccControlViaBridge('enable');
+        SK.sendLog(res.ok ? 'info' : 'warn', 'youtube', 'forceSubtitleReload(api): auto-enable CC', {
+          ok: res.ok, error: res.error || null,
+        });
+        _scheduleMwebCcRetry();
+        return;
+      }
+      const res = await _ccControlViaBridge('reload');
+      SK.sendLog(res.ok ? 'info' : 'warn', 'youtube', 'forceSubtitleReload(api): reload captions module', {
+        ok: res.ok, error: res.error || null,
+      });
+      _scheduleMwebCcRetry();
       return;
     }
     const isOn = btn.getAttribute('aria-pressed') === 'true';
@@ -2846,6 +2932,7 @@
       YT._ccButtonObserver.disconnect();
       YT._ccButtonObserver = null;
     }
+    _clearMwebCcRetry(); // mweb auto-CC 重試排程一併停掉
     _setCcPausedHidingMode(false);
     _setAsrHidingMode(false);
     _removeOverlay();
@@ -2919,6 +3006,7 @@
     YT.lastLeadMs                = 0;         // v1.2.50
     YT._firstCacheHitLogged      = false;     // v1.2.51
     YT._autoCcToggled            = false;     // v1.6.20 A 路徑:每次啟動翻譯重置 auto-CC 旗標
+    _clearMwebCcRetry();                      // mweb auto-CC 重試計數 / 排程歸零(新影片重新計)
     YT._errorNotified            = false;
     YT.ccPaused                  = false;     // attachVideoListener → _observeCcButton 會依 CC 實際狀態重設
     YT.displayCues               = [];        // G 路徑:啟動時清空 overlay cue,等本影片字幕回來
@@ -3096,7 +3184,10 @@
 
   // ─── SPA 導航重置 ──────────────────────────────────────────
 
-  window.addEventListener('yt-navigate-finish', async () => {
+  // 桌面 www fire 'yt-navigate-finish';mweb(m.youtube.com)不 fire 它,改 fire
+  // 'state-navigateend'(probe 實證)。同一 handler 掛兩個事件名:各平台只會 fire
+  // 自己那個,且 handler 開頭的同 videoId guard 讓萬一重複 fire 也是 no-op。
+  async function _onYtSpaNavigate() {
     const YT = SK.YT;
     // v1.8.68: YouTube SPA 在 quality 切換 / ad break 結束 / player re-mount /
     // theatre-fullscreen 切換等情境會 fire 假性 yt-navigate-finish(同一影片頁、
@@ -3153,7 +3244,9 @@
     } catch (err) {
       SK.sendLog('warn', 'youtube', 'SPA nav autoTranslate check failed', { error: err.message });
     }
-  });
+  }
+  window.addEventListener('yt-navigate-finish', _onYtSpaNavigate);   // 桌面 www
+  window.addEventListener('state-navigateend', _onYtSpaNavigate);    // 行動版 mweb
 
   // commit 5c:bilingualMode 即時切換(toggle 不需要 reload 影片頁)
   // v1.8.42:non-ASR 也支援 toggle live,_applyBilingualMode 內會分流處理

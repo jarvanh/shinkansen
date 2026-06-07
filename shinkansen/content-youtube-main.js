@@ -127,6 +127,91 @@
     }));
   });
 
+  // ─── CC control bridge(mweb 用)──────────────────────────
+  // m.youtube.com 沒有 .ytp-subtitles-button,isolated world 的 forceSubtitleReload
+  // 無按鈕可點。改用 #movie_player 的 captions module API 控制 CC:
+  //   op: 'status' → 回報 CC 是否開啟(getOption('captions','track') 有 languageCode = 開)
+  //   op: 'enable' → loadModule('captions') + setOption 切到第一個可用軌
+  //                  (probe 實證:mweb 只 loadModule 不會發 timedtext XHR,必須 setOption
+  //                  指定軌才觸發;軌的最終選擇仍由 isolated 端 track chooser 透過
+  //                  shinkansen-yt-set-caption-track 修正,這裡只求「讓播放器發出 XHR」)
+  //   op: 'reload' → unloadModule + loadModule + setOption 回原軌,強迫重發 XHR
+  //                  (等同桌面「CC 關掉再開」)
+  // 結果以 shinkansen-yt-cc-control-result 回送 { op, ok, ccOn, error }。
+
+  window.addEventListener('shinkansen-yt-cc-control', (e) => {
+    const op = e?.detail?.op || 'status';
+    let ok = false;
+    let ccOn = false;
+    let error = null;
+    try {
+      const player = document.querySelector('#movie_player');
+      if (!player) throw new Error('no-movie-player');
+
+      const currentTrack = (() => {
+        try {
+          const t = player.getOption?.('captions', 'track');
+          return (t && typeof t === 'object' && t.languageCode) ? t : null;
+        } catch (_) { return null; }
+      })();
+      ccOn = !!currentTrack;
+
+      if (op === 'status') {
+        ok = true;
+      } else if (op === 'enable') {
+        player.loadModule?.('captions');
+        // 軌來源:tracklist(loadModule 後可能仍空)→ playerResponse captionTracks fallback
+        let track = null;
+        try {
+          const list = player.getOption?.('captions', 'tracklist');
+          if (Array.isArray(list) && list.length) track = list[0];
+        } catch (_) {}
+        if (!track) {
+          let resp = null;
+          try { if (player.getPlayerResponse) resp = player.getPlayerResponse(); } catch (_) {}
+          if (!resp) resp = window.ytInitialPlayerResponse;
+          // videoId guard:廣告播放中 / SPA 切片後 getPlayerResponse 可能回廣告或
+          // 前一支影片的 stale response,此時 setOption 會作用在錯的對象。對 URL ?v=
+          // 比對,不符就回錯誤讓 isolated 端稍後重試(同 query-player-response 的
+          // stale 防護思路)。
+          const urlVid = new URL(location.href).searchParams.get('v');
+          const respVid = resp?.videoDetails?.videoId || null;
+          if (urlVid && respVid && urlVid !== respVid) throw new Error('stale-player-response');
+          const tracks = resp?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+          if (Array.isArray(tracks) && tracks.length) track = tracks[0];
+        }
+        if (!track?.languageCode) throw new Error('no-caption-track');
+        player.setOption('captions', 'track', {
+          languageCode: track.languageCode,
+          kind: track.kind || '',
+        });
+        ccOn = true;
+        ok = true;
+      } else if (op === 'reload') {
+        if (!currentTrack) throw new Error('cc-not-on');
+        player.unloadModule?.('captions');
+        // unload → load 需隔一個 tick 讓播放器清掉字幕狀態,再切回原軌觸發新 XHR
+        setTimeout(() => {
+          try {
+            player.loadModule?.('captions');
+            player.setOption('captions', 'track', {
+              languageCode: currentTrack.languageCode,
+              kind: currentTrack.kind || '',
+            });
+          } catch (_) {}
+        }, 200);
+        ok = true;
+      } else {
+        throw new Error('unknown-op');
+      }
+    } catch (err) {
+      error = err?.message || String(err);
+    }
+    window.dispatchEvent(new CustomEvent('shinkansen-yt-cc-control-result', {
+      detail: { op, ok, ccOn, error },
+    }));
+  });
+
   // ─── caption track switch bridge ─────────────────────────
   // isolated world 跑完 track chooser 後，若決定 'switch' 就丟此事件來
   // 呼叫 #movie_player.setOption('captions', 'track', {languageCode, kind})，

@@ -87,7 +87,6 @@
     'toast.translateFailed': '翻譯失敗：{error}',
     'toast.restored': '已還原原文',
     'toast.subtitleRestored': '已還原原文字幕',
-    'toast.mobileYtHint': '行動版 YouTube 不支援字幕翻譯。請切換為電腦版網站（www.youtube.com）後再開啟字幕翻譯',
     'toast.subtitleNotAvailable': '本影片未提供 CC 字幕，無法翻譯字幕',
     'toast.modeChanged': '顯示模式已切換為「{desc}」，請按快速鍵重新翻譯以套用',
 
@@ -847,7 +846,6 @@
     'toast.translateFailed': '翻译失败：{error}',
     'toast.restored': '已还原原文',
     'toast.subtitleRestored': '已还原原文字幕',
-    'toast.mobileYtHint': '移动版 YouTube 不支持字幕翻译。请切换为桌面版网站（www.youtube.com）后再开启字幕翻译',
     'toast.subtitleNotAvailable': '本视频未提供 CC 字幕，无法翻译字幕',
     'toast.modeChanged': '显示模式已切换为「{desc}」，请按快捷键重新翻译以应用',
 
@@ -1605,7 +1603,6 @@
     'toast.translateFailed': 'Translation failed: {error}',
     'toast.restored': 'Original restored',
     'toast.subtitleRestored': 'Original subtitles restored',
-    'toast.mobileYtHint': 'Subtitle translation is not available on mobile YouTube. Switch to the desktop site (www.youtube.com) and try again',
     'toast.subtitleNotAvailable': 'This video has no CC subtitles available',
     'toast.modeChanged': 'Display mode switched to "{desc}", press shortcut to re-translate to apply',
 
@@ -2363,7 +2360,6 @@
     'toast.translateFailed': '翻訳に失敗：{error}',
     'toast.restored': '原文を復元しました',
     'toast.subtitleRestored': '字幕の原文を復元しました',
-    'toast.mobileYtHint': 'モバイル版 YouTube では字幕翻訳を利用できません。デスクトップ版サイト（www.youtube.com）に切り替えてからお試しください',
     'toast.subtitleNotAvailable': 'この動画には CC 字幕が提供されていません',
     'toast.modeChanged': '表示モードを「{desc}」に変更しました。ショートカットで再翻訳して反映してください',
 
@@ -3121,7 +3117,6 @@
     'toast.translateFailed': '번역 실패: {error}',
     'toast.restored': '원문 복원됨',
     'toast.subtitleRestored': '원문 자막 복원됨',
-    'toast.mobileYtHint': '모바일 YouTube에서는 자막 번역을 사용할 수 없습니다. 데스크톱 사이트(www.youtube.com)로 전환한 후 다시 시도하세요',
     'toast.subtitleNotAvailable': '이 영상에는 CC 자막이 제공되지 않습니다',
     'toast.modeChanged': '표시 모드가 "{desc}"(으)로 변경되었습니다. 단축키로 다시 번역하여 적용하세요',
 
@@ -3878,7 +3873,6 @@
     'toast.translateFailed': 'Error de traducción: {error}',
     'toast.restored': 'Original restaurado',
     'toast.subtitleRestored': 'Subtítulos originales restaurados',
-    'toast.mobileYtHint': 'La traducción de subtítulos no está disponible en YouTube móvil. Cambia al sitio de escritorio (www.youtube.com) e inténtalo de nuevo',
     'toast.subtitleNotAvailable': 'Este vídeo no tiene subtítulos CC disponibles',
     'toast.modeChanged': 'Modo de visualización cambiado a "{desc}", pulsa el atajo para volver a traducir y aplicarlo',
 
@@ -4635,7 +4629,6 @@
     'toast.translateFailed': 'Échec de la traduction : {error}',
     'toast.restored': 'Original restauré',
     'toast.subtitleRestored': 'Sous-titres originaux restaurés',
-    'toast.mobileYtHint': 'La traduction des sous-titres n\'est pas disponible sur YouTube mobile. Passez au site de bureau (www.youtube.com) et réessayez',
     'toast.subtitleNotAvailable': 'Cette vidéo n\'a pas de sous-titres CC disponibles',
     'toast.modeChanged': 'Mode d\'affichage changé en « {desc} », appuyez sur le raccourci pour retraduire et appliquer',
 
@@ -5392,7 +5385,6 @@
     'toast.translateFailed': 'Übersetzung fehlgeschlagen: {error}',
     'toast.restored': 'Original wiederhergestellt',
     'toast.subtitleRestored': 'Original-Untertitel wiederhergestellt',
-    'toast.mobileYtHint': 'Untertitel-Übersetzung ist in der mobilen YouTube-Version nicht verfügbar. Wechsle zur Desktop-Website (www.youtube.com) und versuche es erneut',
     'toast.subtitleNotAvailable': 'Für dieses Video sind keine CC-Untertitel verfügbar',
     'toast.modeChanged': 'Anzeigemodus geändert zu „{desc}", drücke das Tastenkürzel zum erneuten Übersetzen',
 

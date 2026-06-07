@@ -32,13 +32,15 @@ function readFile(rel) {
 }
 
 /**
- * 從 content-youtube.js 抽出 `yt-navigate-finish` listener 的 body。
- * 從 `addEventListener('yt-navigate-finish'` 開始找第一個 `{`(listener arrow
- * function body 起頭)— brace balance 計數抓到對應 `}` 為止。處理 string /
- * line comment / block comment 內的 `{}` 不算 brace。
+ * 從 content-youtube.js 抽出 SPA nav handler 的 body。
+ * v1.10.25 起 handler 從 inline arrow 改成具名函式 `_onYtSpaNavigate`,以便同掛
+ * `yt-navigate-finish`(桌面)+ `state-navigateend`(行動版 mweb)兩個事件名。
+ * 從 `function _onYtSpaNavigate` 開始找第一個 `{`(函式 body 起頭)— brace
+ * balance 計數抓到對應 `}` 為止。處理 string / line comment / block comment
+ * 內的 `{}` 不算 brace。
  */
 function extractListenerBody(src) {
-  const anchor = src.indexOf("addEventListener('yt-navigate-finish'");
+  const anchor = src.indexOf('function _onYtSpaNavigate');
   if (anchor === -1) return null;
   const bodyOpen = src.indexOf('{', anchor);
   if (bodyOpen === -1) return null;
@@ -73,9 +75,16 @@ test.describe('content-youtube.js: yt-navigate-finish listener 同 videoId guard
   const src = readFile('shinkansen/content-youtube.js');
   const body = extractListenerBody(src);
 
-  test('yt-navigate-finish listener 可被找到', () => {
+  test('_onYtSpaNavigate handler 可被找到', () => {
     expect(body).not.toBeNull();
     expect(body.length).toBeGreaterThan(200);
+  });
+
+  test('handler 同掛 yt-navigate-finish(桌面)+ state-navigateend(行動版 mweb)', () => {
+    // v1.10.25:mweb 站內切片 fire state-navigateend(桌面是 yt-navigate-finish),
+    // 同一具名 handler 掛兩個事件名 — 缺 state-navigateend 行動版 SPA 切片不會重置
+    expect(src).toMatch(/addEventListener\(\s*['"]yt-navigate-finish['"]\s*,\s*_onYtSpaNavigate\s*\)/);
+    expect(src).toMatch(/addEventListener\(\s*['"]state-navigateend['"]\s*,\s*_onYtSpaNavigate\s*\)/);
   });
 
   test('listener 開頭取當前 URL videoId(用於跟 YT.videoId 比對)', () => {
