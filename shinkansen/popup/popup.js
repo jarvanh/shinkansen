@@ -7,26 +7,33 @@ import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
 import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
 import { isWorthNotifying } from '../lib/update-check.js';
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
+import { isTouchScreenDevice } from '../lib/platform.js';
 import { pickPopupSlot, presetsRequireGemini, TARGET_LANGUAGES, DEFAULT_SETTINGS } from '../lib/storage.js';
 
-// iOS build（SPEC-PRIVATE §26）：body.runtime-ios 讓 CSS 隱藏「翻譯文件」入口
-// （iOS build 已 strip translate-doc/，留著是死按鈕）。build flag 而非 UA 偵測，
-// 理由見 lib/distribution.js 註解。
+// iOS build（SPEC-PRIVATE §26）。build 屬性 vs 平台屬性分離見 lib/platform.js：
+//   - body.runtime-ios（build 屬性，不論 host OS）：CSS 隱藏「翻譯文件」入口
+//     （iOS build 已 strip translate-doc/，留著是死按鈕）
+//   - body.runtime-ios-touch（平台屬性，只在真觸控裝置）：popup 撐滿放大。
+//     iOS build 可透過「iPhone 與 iPad App 在 Mac 上執行」裝在 macOS，此時要
+//     尊重 macOS popover 尺寸 → 不放大，只保留 runtime-ios 的死按鈕隱藏。
 if (IS_IOS_BUILD) {
   document.body.classList.add('runtime-ios');
-  // iPhone sheet 撐滿（SPEC-PRIVATE §26.7）：popup.css 寫死 zoom 1.435
-  // （= 402 / 280）只在 402pt 寬機型剛好撐滿，其他寬度機型（390 / 430 /
-  // 440pt 等）會右側留白 → 依實際 layout viewport 動態算 zoom = 寬 / 280。
-  // iPad popover（layout viewport ≈ 280，popover 寬度跟內容走）不適用動態算
-  // （280 / 280 = 1 會取消放大），維持 popup.css 的 zoom 1.5；350 分界同
-  // popup.css media query。CSS 的 1.435 留著當 JS 還沒跑到時的 fallback。
-  // module 初跑時 sheet 還沒定尺寸（innerWidth 不可靠），必掛 resize 重算
-  const applyIosZoom = () => {
-    const vw = window.innerWidth;
-    if (vw >= 350) document.body.style.zoom = String(vw / 280);
-  };
-  applyIosZoom();
-  window.addEventListener('resize', applyIosZoom);
+  if (isTouchScreenDevice()) {
+    document.body.classList.add('runtime-ios-touch');
+    // iPhone sheet 撐滿（SPEC-PRIVATE §26.7）：popup.css 寫死 zoom 1.435
+    // （= 402 / 280）只在 402pt 寬機型剛好撐滿，其他寬度機型（390 / 430 /
+    // 440pt 等）會右側留白 → 依實際 layout viewport 動態算 zoom = 寬 / 280。
+    // iPad popover（layout viewport ≈ 280，popover 寬度跟內容走）不適用動態算
+    // （280 / 280 = 1 會取消放大），維持 popup.css 的 zoom 1.5；350 分界同
+    // popup.css media query。CSS 的 1.435 留著當 JS 還沒跑到時的 fallback。
+    // module 初跑時 sheet 還沒定尺寸（innerWidth 不可靠），必掛 resize 重算
+    const applyIosZoom = () => {
+      const vw = window.innerWidth;
+      if (vw >= 350) document.body.style.zoom = String(vw / 280);
+    };
+    applyIosZoom();
+    window.addEventListener('resize', applyIosZoom);
+  }
 }
 
 // P2 (v1.8.60):i18n. lib/i18n.js 在 popup.html 內以普通 <script> 早於本 module 載入,
@@ -133,10 +140,12 @@ async function refreshShortcutHint() {
   // v1.8.19: 主要預設 command id 改為 translate-preset-0（字典序保證 chrome://extensions/shortcuts 顯示在最上）
   const el = $('shortcut-hint');
   if (!el) return;
-  // iOS build：觸控環境的主要觸發是四指輕點（= 主要預設完整 toggle，
+  // iOS build 真觸控裝置：主要觸發是四指輕點（= 主要預設完整 toggle，
   // content-touch.js），提示改顯示手勢而非鍵盤快速鍵（接實體鍵盤時
-  // Alt+S 照常可用，options 快速鍵 section 有完整說明）
-  if (IS_IOS_BUILD) {
+  // Alt+S 照常可用，options 快速鍵 section 有完整說明）。
+  // iOS build 跑在 Mac（無觸控）時不走這條 → fall through 顯示鍵盤快速鍵，
+  // 尊重 macOS 特性（見 lib/platform.js）。
+  if (IS_IOS_BUILD && isTouchScreenDevice()) {
     el.textContent = t('popup.shortcut.iosTouch');
     return;
   }

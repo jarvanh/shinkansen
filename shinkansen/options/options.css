@@ -322,12 +322,14 @@ body.runtime-firefox .intro-desktop {
 body.runtime-safari .intro-safari {
   display: block;
 }
-/* iOS build 專屬說明（SPEC-PRIVATE §26）：預設隱藏，只在 body.runtime-ios（由
-   options.js 依 IS_IOS_BUILD 加 class）顯示——例如快速鍵 section 的四指 tap 說明 */
+/* iOS build 四指 tap 專屬說明（SPEC-PRIVATE §26）：預設隱藏，只在
+   body.runtime-ios-touch（真觸控裝置，options.js 依 isTouchScreenDevice() 加）
+   顯示。平台屬性 → iOS build 跑在 macOS（無觸控）時不顯示，尊重 macOS 特性
+   （見 lib/platform.js）；intro-safari 的 ⌃ Control 說明照常顯示。 */
 .ios-only {
   display: none;
 }
-body.runtime-ios .ios-only {
+body.runtime-ios-touch .ios-only {
   display: block;
 }
 body.runtime-safari .usage-date-label input[type="date"] {

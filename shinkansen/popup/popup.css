@@ -106,12 +106,16 @@ footer > * {
 
 /* iOS build（SPEC-PRIVATE §26）：translate-doc/ 已 build-time strip，
    PDF 翻譯入口在 iOS 是死按鈕 → 隱藏。body.runtime-ios 由 popup.js 依
-   IS_IOS_BUILD（lib/distribution.js，iOS build script override 為 true）加上 */
+   IS_IOS_BUILD（lib/distribution.js，iOS build script override 為 true）加上。
+   build 屬性 → 不論 host OS（含 iOS build 跑在 Mac）都隱藏，掛 runtime-ios。 */
 body.runtime-ios #translate-doc-btn {
   display: none;
 }
 
-/* iOS popup 放大（sim 實測收斂結果，SPEC-PRIVATE §26.7）：
+/* iOS popup 放大（sim 實測收斂結果，SPEC-PRIVATE §26.7）。
+   平台屬性 → 只在真觸控裝置（body.runtime-ios-touch，popup.js 依
+   isTouchScreenDevice() 加）放大；iOS build 跑在 macOS（無觸控）時不放大，
+   尊重桌面 popover 尺寸（見 lib/platform.js）。
    iPad popover 寬度「跟著頁面內容寬度走」（不是固定 390pt）——固定 280px 版面
    + zoom 1.5 → 內容視覺寬 420pt，popover 自己拉寬到 420，版面與桌面完全一致
    不換行、字級 1.5 倍。
@@ -125,13 +129,13 @@ body.runtime-ios #translate-doc-btn {
    - width: 100% + zoom：layout viewport 被 zoom 反向壓窄（visual / zoom），
      280pt popover 變 200px 版面，全部 wrap
    - viewport width=280 fit-to-width：WebKit 觸發 font boosting，一樣 wrap */
-body.runtime-ios {
+body.runtime-ios-touch {
   width: 280px;
   min-width: 0;
   zoom: 1.5;
 }
 @media (min-width: 350px) {
-  body.runtime-ios {
+  body.runtime-ios-touch {
     zoom: 1.435;
   }
 }

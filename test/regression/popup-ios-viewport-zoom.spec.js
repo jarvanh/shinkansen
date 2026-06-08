@@ -36,13 +36,15 @@ test('popup.html 有 viewport meta（iOS sheet 縮左修正的根本）', async 
   expect(content).toContain('width=device-width');
 });
 
-test('body.runtime-ios 寬 viewport 套 zoom 1.435 fallback、窄 viewport 套 1.5,body 固定 280px', async ({ context, extensionId }) => {
+test('body.runtime-ios-touch 寬 viewport 套 zoom 1.435 fallback、窄 viewport 套 1.5,body 固定 280px', async ({ context, extensionId }) => {
   const page = await context.newPage();
 
-  // 寬 viewport（iPhone sheet 級，≥ 350）:media query 命中 → 1.435
+  // 寬 viewport（iPhone sheet 級，≥ 350）:media query 命中 → 1.435。
+  // 放大規則掛 runtime-ios-touch（真觸控裝置）；iOS build 跑在 Mac 只加 runtime-ios
+  // 不加 -touch → 不放大（見 lib/platform.js）
   await page.setViewportSize({ width: 440, height: 956 });
   await page.goto(`chrome-extension://${extensionId}/popup/popup.html`);
-  await page.evaluate(() => document.body.classList.add('runtime-ios'));
+  await page.evaluate(() => document.body.classList.add('runtime-ios-touch'));
   const wide = await page.evaluate(() => ({
     zoom: getComputedStyle(document.body).zoom,
     width: getComputedStyle(document.body).width,

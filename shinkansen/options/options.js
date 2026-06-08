@@ -7,6 +7,7 @@ import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
+import { isTouchScreenDevice } from '../lib/platform.js';
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
 const DEFAULTS = DEFAULT_SETTINGS;
@@ -1958,10 +1959,16 @@ let _shortcutsPlatform = 'safari'; // fallback:無法 deep-link 到內建設定 
 if (_extUrl.startsWith('chrome-extension://')) _shortcutsPlatform = 'chrome';
 else if (_extUrl.startsWith('moz-extension://')) _shortcutsPlatform = 'firefox';
 document.body.classList.add(`runtime-${_shortcutsPlatform}`);
-// iOS build（SPEC-PRIVATE §26）再疊一層 runtime-ios（與 runtime-safari 並存）：
-// 快速鍵 section 顯示四指 tap 說明（.ios-only）。build flag 而非 UA 偵測，
-// 理由見 lib/distribution.js 註解。
-if (IS_IOS_BUILD) document.body.classList.add('runtime-ios');
+// iOS build（SPEC-PRIVATE §26）再疊一層（與 runtime-safari 並存）。build 屬性 vs
+// 平台屬性分離見 lib/platform.js：
+//   - runtime-ios（build 屬性，不論 host OS）：PDF 入口隱藏等 build-strip 相關
+//   - runtime-ios-touch（平台屬性，只在真觸控裝置）：快速鍵 section 的四指 tap
+//     說明（.ios-only）。iOS build 跑在 macOS（無觸控）時不加 → 不顯示四指 tap
+//     說明，尊重 macOS 特性（intro-safari 的 ⌃ Control 說明照常顯示）。
+if (IS_IOS_BUILD) {
+  document.body.classList.add('runtime-ios');
+  if (isTouchScreenDevice()) document.body.classList.add('runtime-ios-touch');
+}
 
 // Event delegation:綁 document,anchor 被 data-i18n-html replace 重建後仍有效
 document.addEventListener('click', (e) => {
