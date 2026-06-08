@@ -250,6 +250,15 @@
   // 自然語言 inline 元素：出現在 <pre> 內表示是引用文字（Medium 留言等)，不是 code。
   const PROSE_INLINE_TAGS = new Set(['A', 'EM', 'STRONG', 'I', 'B', 'CITE', 'Q', 'MARK', 'SMALL', 'INS', 'DEL', 'U']);
 
+  // v1.10.28: inline 格式化元素「直接」當 prose 容器的補抓選擇器。
+  // <b>/<strong>/<i>/<em>/<u>/<font>/<mark>/<cite> 直接包整段文字(常以 <br> 分段),
+  // 掛在非-block 容器(DIV 等)下,而其唯一 block 祖先已被結構性跳過時,既非
+  // CONTAINER_TAGS(Case B/C)也非 SPAN(Case D/E)→ walker 非-block 分支全 miss、
+  // leaf 補抓只收 div/span:not(:has(*)) 與 a → 完全漏抓。詳見 collectParagraphs 末段補抓。
+  // 不含 A(由 leaf-content-anchor 處理)/ CODE / KBD / SAMP / VAR / SUB / SUP / TIME / ABBR
+  //(這些非 prose 段落容器)。
+  const INLINE_PROSE_WRAPPER_SELECTOR = 'b, strong, i, em, u, font, mark, cite';
+
   // 純識別符 cell 偵測：GitHub/GitLab/Bitbucket 檔案列表 filename 欄、版號、hash、
   // commit short id 之類字串翻譯後跟原文相同（`.github` → `.github`）或對中文讀者
   // 沒意義（`app` → `應用程式`，但 `app` 是檔名，翻了反而誤導)。wrapper 純粹是視覺
@@ -1204,6 +1213,44 @@
 
       if (stats) stats.includedBySelector = (stats.includedBySelector || 0) + 1;
       results.push({ kind: 'element', el });
+    });
+
+    // v1.10.28: inline 格式化元素 prose 補抓。
+    // <b>/<strong>/<i>/<em>/<u>/<font>/<mark>/<cite> 直接包整段 prose 文字(常以 <br>
+    // 分段),掛在非-block 容器下,而其唯一 block 祖先已被結構性跳過。這類元素既非
+    // CONTAINER_TAGS(Case B/C)也非 SPAN(Case D/E),walker 非-block 分支 Case A-F
+    // 全 miss;leaf 補抓只收 div/span:not(:has(*)) 與 a → 完全漏抓。
+    // 典型:vBulletin / phpBB / email-style HTML 主貼文 ──
+    //   <div class="post_message"><b>主文段1<br><br>主文段2…</b><div class="bbcodestyle">引用…</div></div>
+    // 引用區塊(block table)走正常 walker 路徑被收,但 <b> 主文整段不翻
+    //(2026-06-08 forum.miata.net 真實 case:單頁 25 篇中 5 篇命中此結構)。
+    //
+    // 守門(每條都是「該由別條既有 path 處理」的排除,不是站點特判):
+    //   - hasBlockAncestor:在「已被收集的 block prose」內(<p>…<b>強調</b>…</p>)→ 該
+    //     block unit 已涵蓋,不重複收。structurallySkipped / widgetRejected 的 block 不算
+    //     祖先(見 hasBlockAncestor),正好讓「孤兒 <b>」(block 祖先 TD 因 containsBlockDescendant
+    //     被跳)能被撈出 — 這就是 miata case 能命中、一般 <p> 內 <b> 不誤命中的關鍵。
+    //   - hasAncestorExtracted:父容器/inline 已抽 fragment(Case C/D/E)→ skip。
+    //   - containsBlockDescendant:含 block 子孫 → 由 walker / fragment 路徑處理。
+    //   - directTextLength >= 20(外語頁 >= 2):排除 <b>OK</b> 這類短強調。
+    // push element unit(非 fragment),讓 <br> 走既有 sentinel 序列化、譯文注入回原 <b>(§15)。
+    // 標記後代 seen,避免下方 leaf-content-anchor / leaf-content-div 重複收 <b> 內的 a/span。
+    scopeRoot.querySelectorAll(INLINE_PROSE_WRAPPER_SELECTOR).forEach(el => {
+      if (seen.has(el)) return;
+      if (el.hasAttribute('data-shinkansen-translated')) return;
+      if (hasBlockAncestor(el)) return;
+      if (hasAncestorExtracted(el, fragmentExtracted)) return;
+      if (SK.containsBlockDescendant(el)) return;
+      if (isInsideExcludedContainer(el, excludedMemo)) return;
+      if (isInteractiveWidgetContainer(el)) return;
+      if (!SK.isVisible(el)) return;
+      if (!isCandidateText(el)) return;
+      if (directTextLength(el) < (_foreignPage ? 2 : 20)) return;
+      results.push({ kind: 'element', el });
+      seen.add(el);
+      fragmentExtracted.add(el);
+      el.querySelectorAll('*').forEach(c => seen.add(c));
+      if (stats) stats.inlineProseWrapper = (stats.inlineProseWrapper || 0) + 1;
     });
 
     // v0.42: leaf content anchor 補抓
