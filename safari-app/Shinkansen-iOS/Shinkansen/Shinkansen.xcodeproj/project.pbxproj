@@ -529,7 +529,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.32;
+				CURRENT_PROJECT_VERSION = 1.10.33;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
@@ -540,7 +540,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.32;
+				MARKETING_VERSION = 1.10.33;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -564,7 +564,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.32;
+				CURRENT_PROJECT_VERSION = 1.10.33;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
@@ -575,7 +575,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.32;
+				MARKETING_VERSION = 1.10.33;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -601,7 +601,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.32;
+				CURRENT_PROJECT_VERSION = 1.10.33;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
@@ -615,7 +615,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10.32;
+				MARKETING_VERSION = 1.10.33;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -643,7 +643,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.32;
+				CURRENT_PROJECT_VERSION = 1.10.33;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
@@ -657,7 +657,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10.32;
+				MARKETING_VERSION = 1.10.33;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
