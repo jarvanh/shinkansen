@@ -111,6 +111,23 @@
     return out + keyLabel(s.code);
   }
 
+  // 把 browser.commands.getAll() 回的「瀏覽器層快速鍵字串」（如 "Alt+S" /
+  // "Ctrl+Shift+S"）在 Mac 上正規化成 Mac 修飾鍵符號（⌃⌥⇧⌘、去掉 +），與設定頁
+  // recorder 的 format() 顯示一致；非 Mac 原樣回（Alt 在 Windows / Linux 就是 Alt，
+  // 不該顯示成 ⌥ Option）。Safari（macOS）回的是 "Alt+S" → Mac 上要轉成 "⌥S"；
+  // Chrome macOS 多半已回 "⌥S"（無 Alt 字樣 → replace 不命中、保持不變）。
+  // 純字串轉換（非物件），給 popup 顯示 built-in command 快速鍵用。
+  function macifyCommandShortcut(str, isMac) {
+    if (!str || typeof str !== 'string') return str || '';
+    if (!isMac) return str;
+    return str
+      .replace(/\bCommand\b|\bCmd\b|\bMeta\b/gi, '⌘')
+      .replace(/\bControl\b|\bCtrl\b/gi, '⌃')
+      .replace(/\bOption\b|\bAlt\b/gi, '⌥')
+      .replace(/\bShift\b/gi, '⇧')
+      .replace(/\s*\+\s*/g, '');
+  }
+
   // 錄製驗證。回 { ok: boolean, reason?: string }。opts.requireCtrl=true（Safari）時必含 ⌃。
   // 規則（全是結構性通則，非站點 / 鍵位特判）：
   //   - 拒絕 ESC —— 保留給其他用途，且 recorder 用 ESC 取消錄製
@@ -169,6 +186,7 @@
     matches: matches,
     shortcutEquals: shortcutEquals,
     format: format,
+    macifyCommandShortcut: macifyCommandShortcut,
     validate: validate,
     sanitize: sanitize,
     sanitizeTable: sanitizeTable

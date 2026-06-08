@@ -1,3 +1,5 @@
+/* iOS host app 說明頁（內容對齊 macOS host app ContentView，見 safari-app/Shinkansen/ContentView.swift）。
+   ViewController 已開啟捲動，body 用 min-height 撐高、內容過長可捲。light / dark 跟系統。 */
 * {
     -webkit-user-select: none;
     -webkit-user-drag: none;
@@ -6,8 +8,21 @@
 
 :root {
     color-scheme: light dark;
+    --fg: #1d1d1f;
+    --fg-secondary: #6e6e73;
+    --accent: #0071e3;
+    --card-bg: #f5f5f7;
+    --divider: rgba(0, 0, 0, 0.08);
+}
 
-    --spacing: 20px;
+@media (prefers-color-scheme: dark) {
+    :root {
+        --fg: #f5f5f7;
+        --fg-secondary: #98989d;
+        --accent: #2997ff;
+        --card-bg: #1c1c1e;
+        --divider: rgba(255, 255, 255, 0.12);
+    }
 }
 
 html {
@@ -15,15 +30,119 @@ html {
 }
 
 body {
+    margin: 0;
+    min-height: 100%;
+    box-sizing: border-box;
+    padding: 56px 24px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
-
-    gap: var(--spacing);
-    margin: 0 calc(var(--spacing) * 2);
-    height: 100%;
-
-    font: -apple-system-short-body;
+    font-family: -apple-system, system-ui, sans-serif;
+    color: var(--fg);
     text-align: center;
+    -webkit-text-size-adjust: 100%;
+}
+
+/* 主直欄:icon → 標題 → 語言區塊,gap 控制大段落間距 */
+.card {
+    width: 100%;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.app-icon {
+    width: 96px;
+    height: 96px;
+    border-radius: 21px;
+    margin-bottom: 4px;
+}
+
+.title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+/* 語言區塊內各段(副標 / 說明 / 步驟 / 連結)用 flex gap 統一拉開,避免擠成一團。
+   標題→副標的間距由 .card gap(14px)決定;副標以下每段間距 24px。 */
+.lang {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+}
+
+/* display:flex 會蓋掉 UA 的 [hidden]{display:none}（author > UA），導致被 script
+   隱藏的語言區塊照樣顯示（兩語同時出現）。明確列 .lang[hidden] 才壓得住。 */
+.lang[hidden] {
+    display: none;
+}
+
+.subtitle {
+    margin: -6px 0 0;
+    font-size: 17px;
+    color: var(--fg-secondary);
+}
+
+.intro {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--fg);
+    max-width: 34em;
+}
+
+.steps {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 20px 22px;
+    background: var(--card-bg);
+    border-radius: 14px;
+    text-align: start;
+}
+
+.steps-title {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg-secondary);
+}
+
+.steps ol {
+    margin: 0;
+    padding-inline-start: 22px;
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+.steps li + li {
+    margin-top: 14px;
+}
+
+.links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px 18px;
+    margin: 0;
+    padding-top: 20px;
+    border-top: 1px solid var(--divider);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.links a {
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.links a:active {
+    opacity: 0.6;
 }

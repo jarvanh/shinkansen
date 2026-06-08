@@ -140,6 +140,25 @@ body.runtime-ios-touch {
   }
 }
 
+/* iPad 字體放大（SPEC-PRIVATE §26.10）：大 iPad（12.9"）跟 iPad mini 共用同一個
+   popover 尺寸（都 ~420pt），但大螢幕檢視距離較遠 → 字看起來偏小。zoom 是整體
+   縮放、改不了「字相對箱子」的比例,故另用 --sk-fz（popup.js 依螢幕短邊設：iPad
+   mini → 1 不變、12.9" → ~1.35）只放大可讀文字,popup 箱子尺寸（zoom）不動。
+   寬度受限的 mode 切換鈕（.mode-btn,140px 內塞兩顆）刻意不套,避免文字溢出。
+   --sk-fz 預設 1 → 桌面 / iPhone / iPad mini 維持原字級。 */
+body.runtime-ios-touch header h1 { font-size: calc(16px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .version { font-size: calc(11px * var(--sk-fz, 1)); }
+body.runtime-ios-touch button.primary { font-size: calc(14px * var(--sk-fz, 1)); }
+body.runtime-ios-touch button.secondary { font-size: calc(13px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .row { font-size: calc(13px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .row select { font-size: calc(12px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .display-mode-row { font-size: calc(13px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .status { font-size: calc(12px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .cache-row { font-size: calc(12px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .cache-info { font-size: calc(11px * var(--sk-fz, 1)); }
+body.runtime-ios-touch button.link { font-size: calc(12px * var(--sk-fz, 1)); }
+body.runtime-ios-touch button.link.small { font-size: calc(12px * var(--sk-fz, 1)); }
+
 button.link {
   background: none;
   border: 0;

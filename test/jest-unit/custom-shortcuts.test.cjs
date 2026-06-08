@@ -43,6 +43,22 @@ describe('shortcut-utils 純函式', () => {
     expect(SC.eventToShortcut(null)).toBeNull();
   });
 
+  // macifyCommandShortcut：browser.commands 字串在 Mac 顯示成 ⌥ Option（非 Alt）。
+  // popup 快速鍵提示用（Jimmy 回報 macOS popup 顯示 "Alt+S" 該是 "⌥S"）。
+  test('macifyCommandShortcut：Mac 轉 Mac 符號、非 Mac 原樣', () => {
+    // Mac：Alt → ⌥、去掉 +
+    expect(SC.macifyCommandShortcut('Alt+S', true)).toBe('⌥S');
+    expect(SC.macifyCommandShortcut('Command+S', true)).toBe('⌘S');
+    expect(SC.macifyCommandShortcut('Ctrl+Shift+S', true)).toBe('⌃⇧S');
+    // Mac：已是符號（Chrome macOS）→ 不變
+    expect(SC.macifyCommandShortcut('⌥S', true)).toBe('⌥S');
+    // 非 Mac（Windows / Linux）：Alt 就是 Alt，原樣
+    expect(SC.macifyCommandShortcut('Alt+S', false)).toBe('Alt+S');
+    // 空 / 非字串安全
+    expect(SC.macifyCommandShortcut('', true)).toBe('');
+    expect(SC.macifyCommandShortcut(undefined, true)).toBe('');
+  });
+
   test('matches：modifier 全欄位嚴格比對（⌥G 不命中 ⌥⇧G）', () => {
     const s = { code: 'KeyG', alt: true, shift: false, ctrl: false, meta: false };
     expect(SC.matches({ code: 'KeyG', altKey: true }, s)).toBe(true);

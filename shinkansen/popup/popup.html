@@ -127,6 +127,9 @@
   </footer>
 
   <script src="../lib/i18n.js"></script>
+  <!-- shortcut-utils.js（UMD，window.__SKShortcuts）：popup 用 macifyCommandShortcut
+       把 built-in 快速鍵字串在 Mac 上顯示成 ⌥S。普通 script 早於 popup.js module 載入。 -->
+  <script src="../lib/shortcut-utils.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

@@ -20,16 +20,24 @@ if (IS_IOS_BUILD) {
   document.body.classList.add('runtime-ios');
   if (isTouchScreenDevice()) {
     document.body.classList.add('runtime-ios-touch');
-    // iPhone sheet 撐滿（SPEC-PRIVATE §26.7）：popup.css 寫死 zoom 1.435
-    // （= 402 / 280）只在 402pt 寬機型剛好撐滿，其他寬度機型（390 / 430 /
-    // 440pt 等）會右側留白 → 依實際 layout viewport 動態算 zoom = 寬 / 280。
-    // iPad popover（layout viewport ≈ 280，popover 寬度跟內容走）不適用動態算
-    // （280 / 280 = 1 會取消放大），維持 popup.css 的 zoom 1.5；350 分界同
-    // popup.css media query。CSS 的 1.435 留著當 JS 還沒跑到時的 fallback。
-    // module 初跑時 sheet 還沒定尺寸（innerWidth 不可靠），必掛 resize 重算
+    // applyIosZoom 做兩件事（SPEC-PRIVATE §26.7 / §26.10）：
+    //   (1) 箱子尺寸（zoom）：popup 是固定 280px 版面 + zoom 撐起 popover / sheet。
+    //       zoom = innerWidth / 280 撐滿螢幕寬（iPhone sheet 390〜440pt；真機 probe
+    //       2026-06-08 實測 iPad popover innerWidth = 420 → 1.5，同 popup.css 基準）。
+    //       **popup 箱子尺寸維持原樣不放大**。
+    //   (2) 字體大小（--sk-fz）：大 iPad（12.9"）跟 iPad mini 共用同一個 popover 尺寸
+    //       （都 ~420pt），但大螢幕檢視距離較遠 → 字看起來偏小。zoom 是整體縮放、
+    //       改不了「字相對箱子」的比例，所以另用 --sk-fz 只放大可讀文字（popup.css
+    //       用 calc 套），箱子尺寸不動。依螢幕短邊校準：iPad mini（短邊 744）→ 1.0
+    //       維持原樣；12.9"（短邊 1024）→ ~1.35。iPhone（短邊 ≤ 440）算出 < 1 被
+    //       clamp 回 1.0 → 不變。用 screen.*（固定值、不隨 orientation 變）。
+    //   模組初跑時 sheet / popover 還沒定尺寸（innerWidth 不可靠），必掛 resize 重算。
     const applyIosZoom = () => {
       const vw = window.innerWidth;
       if (vw >= 350) document.body.style.zoom = String(vw / 280);
+      const screenMin = Math.min(screen.width || 744, screen.height || 744);
+      const fz = Math.min(1.4, Math.max(1.0, 1 + (screenMin - 744) / 800));
+      document.body.style.setProperty('--sk-fz', String(fz));
     };
     applyIosZoom();
     window.addEventListener('resize', applyIosZoom);
@@ -154,7 +162,13 @@ async function refreshShortcutHint() {
     const cmd = cmds.find((c) => c.name === 'translate-preset-0');
     const shortcut = cmd?.shortcut?.trim();
     if (shortcut) {
-      el.textContent = t('popup.shortcut.value', { shortcut });
+      // Mac 上把 "Alt+S" 顯示成 "⌥S"（Option 不是 Alt），與設定頁 recorder 一致；
+      // 非 Mac（Windows / Linux）保持 "Alt+S"。Safari 回 "Alt+S"，Chrome Mac 多已回
+      // "⌥S"（不變）。lib/shortcut-utils.js 的 macifyCommandShortcut 為單一來源。
+      const isMac = /Mac/i.test((typeof navigator !== 'undefined' && navigator.platform) || '');
+      const SC = (typeof window !== 'undefined' && window.__SKShortcuts) || null;
+      const display = SC ? SC.macifyCommandShortcut(shortcut, isMac) : shortcut;
+      el.textContent = t('popup.shortcut.value', { shortcut: display });
     } else {
       // 使用者可能在 chrome://extensions/shortcuts 清掉了快捷鍵
       el.textContent = t('popup.shortcut.unset');
