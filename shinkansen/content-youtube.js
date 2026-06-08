@@ -1581,7 +1581,21 @@
   function _buildIosFsTrackCues() {
     const YT = SK.YT;
     const isBilingual = YT.config?.bilingualMode === true;
-    const src = YT.displayCues;
+    // ASR 路徑把顯示單位寫進 displayCues(_upsertDisplayCue),非 ASR(原生 / 人工字幕)
+    // 路徑不寫 displayCues——譯文存在 captionMap(key=normText),平常注入回 .ytp-caption-segment
+    // DOM。所以 displayCues 為空時改用 rawSegments(時間軸)+ captionMap(譯文)組裝,
+    // 否則 iOS 原生全螢幕只剩 ASR 有字幕、原生字幕翻譯整個消失。
+    // 用「displayCues 是否有資料」分流而非 isAsr 旗標:資料導向,且讓既有 ASR cue 組裝測試不動。
+    if (YT.displayCues && YT.displayCues.length) {
+      return _buildIosFsCuesFromDisplayCues(isBilingual);
+    }
+    return _buildIosFsCuesFromRawSegments(isBilingual);
+  }
+  SK._buildIosFsTrackCues = _buildIosFsTrackCues;   // regression spec 用
+
+  // ASR(及任何已寫 displayCues 的路徑)：直接從顯示單位組 cue。
+  function _buildIosFsCuesFromDisplayCues(isBilingual) {
+    const src = SK.YT.displayCues;
     const out = [];
     for (let i = 0; i < src.length; i++) {
       const c = src[i];
@@ -1596,7 +1610,52 @@
     }
     return out;
   }
-  SK._buildIosFsTrackCues = _buildIosFsTrackCues;   // regression spec 用
+
+  // 非 ASR(原生 / 人工字幕)：rawSegments 帶時間軸,captionMap 帶譯文。先依 groupId 把多行
+  // 字幕合成顯示單位(跟 buildTranslationUnits preserve=true / captionMap 寫入慣例一致:
+  // 第一行 key 存合併譯文,其餘存空字串),再 join captionMap。
+  //   - endMs:rawSegments 不帶 dur,用下一個顯示單位的 startMs 當結尾;最後一句沿用
+  //     保守 4s(避免原生播放器同時疊兩句又不會瞬間消失)。
+  //   - 未翻到(captionMap 無 key)/ dedup 後續行(空字串)→ 跳過。
+  const _IOS_FS_LAST_CUE_MS = 4000;
+  function _buildIosFsCuesFromRawSegments(isBilingual) {
+    const YT = SK.YT;
+    const segs = YT.rawSegments;
+    const cap = YT.captionMap;
+    if (!segs || !segs.length || !cap || !cap.size) return [];
+    // 1) 合成顯示單位 [{ startMs, srcText, key }]
+    const units = [];
+    let i = 0;
+    while (i < segs.length) {
+      const seg = segs[i];
+      if (!seg) { i++; continue; }
+      if (seg.groupId != null) {
+        const group = [seg];
+        let j = i + 1;
+        while (j < segs.length && segs[j] && segs[j].groupId === seg.groupId) { group.push(segs[j]); j++; }
+        units.push({ startMs: group[0].startMs, srcText: group.map(s => s.text).join(' '), key: group[0].normText });
+        i = j;
+      } else {
+        units.push({ startMs: seg.startMs, srcText: seg.text, key: seg.normText });
+        i++;
+      }
+    }
+    // 2) join 譯文 + 算 endMs
+    const out = [];
+    for (let k = 0; k < units.length; k++) {
+      const u = units[k];
+      const trans = cap.get(u.key);
+      if (!trans) continue;     // undefined(未翻)或 ''(dedup 後續行)→ 跳過
+      const next = units[k + 1];
+      const endMs = next ? next.startMs : (u.startMs + _IOS_FS_LAST_CUE_MS);
+      if (!(endMs > u.startMs)) continue;
+      let text = String(trans);
+      if (isBilingual && u.srcText) text = String(u.srcText) + '\n' + text;
+      out.push({ startSec: u.startMs / 1000, endSec: endMs / 1000, text });
+    }
+    return out;
+  }
+  SK._buildIosFsCuesFromRawSegments = _buildIosFsCuesFromRawSegments;   // regression spec 用
 
   // 把 cue 陣列灌進「我們的」native TextTrack(find-or-create + 清舊 cue + 重灌)。
   function _ensureIosFsTrack(video, cues, showNow) {
@@ -2433,6 +2492,10 @@
           }
           const domSegs = document.querySelectorAll('.ytp-caption-segment');
           domSegs.forEach(replaceSegmentEl);
+          // iOS 原生全螢幕字幕軌:非 ASR 不寫 displayCues,改在 captionMap 更新後刷新
+          // (從 rawSegments + captionMap 重組 cue)。非 iOS 平台 _scheduleIosFsTrackRefresh
+          // 內部 early return,零成本。
+          _scheduleIosFsTrackRefresh();
           SK.sendLog('info', 'youtube', `batch done`, {
             batchIdx: b,
             batchSize: batchUnits.length,
@@ -3084,6 +3147,8 @@
           }
         }
       }
+      // iOS 原生全螢幕字幕軌:on-the-fly 也更新了 captionMap → 刷新(非 iOS early return)
+      _scheduleIosFsTrackRefresh();
     } catch (err) {
       SK.sendLog('warn', 'youtube', 'on-the-fly flush error', { error: err.message });
       _notifyTranslationError(err.message);
