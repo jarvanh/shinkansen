@@ -35,6 +35,10 @@ test('--sk-fz 翻倍 → 可讀文字字級翻倍,箱子 zoom 不變', async ({ 
     return {
       rowFont: parseFloat(getComputedStyle(document.querySelector('.row')).fontSize),
       btnFont: parseFloat(getComputedStyle(document.querySelector('button.primary')).fontSize),
+      // footer 的「四指輕點快速切換」提示(.hint)也要跟著放大,否則 iPad Pro 上會跟
+      // 同列被放大的「設定」(button.link)字級不一致(v1.10.34 漏套 → v1.10.35 補)
+      hintFont: parseFloat(getComputedStyle(document.querySelector('.hint')).fontSize),
+      linkFont: parseFloat(getComputedStyle(document.querySelector('button.link')).fontSize),
       bodyZoom: getComputedStyle(document.body).zoom,
     };
   }, fz);
@@ -45,6 +49,9 @@ test('--sk-fz 翻倍 → 可讀文字字級翻倍,箱子 zoom 不變', async ({ 
   // calc(BASEpx * var(--sk-fz)) → fz 翻倍字級翻倍(zoom 為共同因子,比值約掉)
   expect(m2.rowFont / m1.rowFont).toBeCloseTo(2, 1);
   expect(m2.btnFont / m1.btnFont).toBeCloseTo(2, 1);
+  // footer 同列的 .hint 與 button.link 都要隨 --sk-fz 翻倍(避免 iPad 上字級不一致)
+  expect(m2.hintFont / m1.hintFont).toBeCloseTo(2, 1);
+  expect(m2.linkFont / m1.linkFont).toBeCloseTo(2, 1);
   // 箱子 zoom 不隨 --sk-fz 變 → popup 尺寸維持原樣,只有字變大
   expect(m2.bodyZoom).toBe(m1.bodyZoom);
 });

@@ -1,31 +1,30 @@
-// Regression: iOS popup viewport / 放大撐滿（v1.10.22 viewport meta + 寫死 zoom，
-// 本輪改 popup.js 動態 zoom）。
+// Regression: iOS popup viewport / 放大撐滿（v1.10.35 起對齊 JRead 實機驗證做法）
 //
 // Bug 歷程：
 //   1. v1.10.22 前：popup.html 沒 viewport meta → iOS WebKit 用 ~980px 桌面虛擬
 //      viewport，固定 280px body 縮在 sheet 左側（SPEC-PRIVATE §26.7）
-//   2. v1.10.22：加 meta + popup.css `body.runtime-ios` zoom 1.5 / media query
-//      (min-width: 350) 降 1.435（= 402 / 280）——只在 402pt 寬機型剛好撐滿
-//   3. 本輪：430 / 440pt 寬機型（Pro Max 級）右側留 ~38pt 白 → popup.js 依
-//      window.innerWidth 動態算 zoom = 寬 / 280（applyIosZoom，初跑 + resize
-//      重算；module 初跑時 iOS sheet 還沒定尺寸，innerWidth 不可靠）
+//   2. v1.10.22〜v1.10.34：加 meta + popup.css `body.runtime-ios-touch` zoom 1.5 /
+//      media query 降 1.435；popup.js applyIosZoom 依 innerWidth 動態算 zoom = 寬 / 280
+//   3. v1.10.35：上述「固定 280px 窄版面 × zoom 1.5」把內容 ×1.5 撐高,active（已翻譯：
+//      顯示原文 + 編輯譯文）狀態在 iPad mini 超過 popover 高度上限 → 出捲軸（Jimmy 實機
+//      回報）。改成 JRead 同款：**固定放大檔 zoom 1.35（CSS 全權,不再 JS 算）+ 觸控且
+//      viewport 已寬時 width:auto**（版面比 280 寬 → 換行少、內容更矮 → 高度落回 popover
+//      上限內,寬度仍撐滿）。popup.js 只剩 --sk-fz 字體微調,不再碰 zoom / width。
 //
-// 訊號層次：本 spec 驗（a）popup.html viewport meta 存在（整條 iOS 縮放修正的
-// 根本）（b）popup.css 的 runtime-ios zoom fallback 規則在真實 render 下生效
-// （寬 viewport 套 1.435、窄 viewport 套 1.5,body 維持 280px）（c）popup.js
-// 內 applyIosZoom 動態 zoom 結構存在（source 結構 forcing function：初跑 +
-// resize listener + / 280 公式）。
-// 不驗：iOS WebKit 對 zoom / viewport meta 的實際渲染與 sheet 尺寸時序
-// （IS_IOS_BUILD=false 的 repo source 在 Chromium 不會跑 applyIosZoom，且
-// desktop extension popup 一律忽略 viewport meta）——這層只能 iOS Simulator /
-// 真機驗，sim 驗證紀錄見 SPEC-PRIVATE §26.7（iPhone 17 Pro Max 440pt 按鈕
-// 左右邊距 96px / 96px 對稱 + iPad Pro 11" popover 1.5x 無換行）。
+// 訊號層次（CLAUDE.md 工作流原則 §3）:本 spec 驗（a）popup.html viewport meta 存在
+//   （b）popup.css runtime-ios-touch 在真實 render 下：zoom 固定 1.35、寬 viewport 套
+//   width:auto（>280、置中、max-width 480）、窄 viewport fallback 回 280px（c）popup.js
+//   不再用 JS zoom（無 vw/280、無 style.zoom）、只留 --sk-fz 字體微調。
+//   不驗（永久 path B）:iOS WebKit 對 zoom / width:auto / viewport meta 的實際渲染與
+//   popover sizing 時序——Chromium ≠ Safari WebKit,只能 iOS Simulator / 真機驗
+//   （JRead 已在 Jimmy 多機型實機驗證此 zoom 1.35 + width:auto 做法無捲軸 / 無 wrap）。
 //
-// SANITY 紀錄（已驗證 2026-06-07）:
+// SANITY 紀錄（已驗證 2026-06-09）:
 //   1. 拿掉 popup.html viewport meta →（a）fail；還原 → pass。
-//   2. comment 掉 popup.css `@media (min-width: 350px)` 的 zoom 1.435 →（b）
-//      寬 viewport 斷言 fail（computed zoom 1.5）；還原 → pass。
-//   3. 把 popup.js applyIosZoom 的 resize listener 行換掉 →（c）fail；還原 → 全綠。
+//   2. 把 popup.css `@media (min-width: 350px)` 的 width:auto 改回 width:280px →（b）
+//      寬 viewport width 斷言 fail（量到 280 而非 >300）；還原 → pass。
+//   3. 在 popup.js 加回 `document.body.style.zoom = String(vw / 280)` →（c）「不再用 JS
+//      zoom」斷言 fail；還原 → 全綠。
 
 import { test, expect } from '../fixtures/extension.js';
 
@@ -36,40 +35,54 @@ test('popup.html 有 viewport meta（iOS sheet 縮左修正的根本）', async 
   expect(content).toContain('width=device-width');
 });
 
-test('body.runtime-ios-touch 寬 viewport 套 zoom 1.435 fallback、窄 viewport 套 1.5,body 固定 280px', async ({ context, extensionId }) => {
+test('body.runtime-ios-touch:zoom 固定 1.35;寬 viewport width:auto 撐寬置中、窄 viewport fallback 280px', async ({ context, extensionId }) => {
   const page = await context.newPage();
 
-  // 寬 viewport（iPhone sheet 級，≥ 350）:media query 命中 → 1.435。
-  // 放大規則掛 runtime-ios-touch（真觸控裝置）；iOS build 跑在 Mac 只加 runtime-ios
-  // 不加 -touch → 不放大（見 lib/platform.js）
+  // 寬 viewport（iPhone sheet / iPad popover 已定尺寸,≥ 350）:@media 命中 → width:auto
+  // 撐滿（量到 > 300,非固定 280）、max-width 480、margin auto 置中。zoom 固定 1.35。
+  // 放大規則掛 runtime-ios-touch（真觸控）；iOS build 跑在 Mac 不加 -touch → 不放大。
   await page.setViewportSize({ width: 440, height: 956 });
   await page.goto(`chrome-extension://${extensionId}/popup/popup.html`);
   await page.evaluate(() => document.body.classList.add('runtime-ios-touch'));
-  const wide = await page.evaluate(() => ({
-    zoom: getComputedStyle(document.body).zoom,
-    width: getComputedStyle(document.body).width,
-  }));
-  expect(parseFloat(wide.zoom)).toBeCloseTo(1.435, 3);
-  // zoom 下 computed width 有次像素 rounding（實測 279.998px），容差 ±0.5
-  expect(parseFloat(wide.width)).toBeCloseTo(280, 0);
+  const wide = await page.evaluate(() => {
+    const s = getComputedStyle(document.body);
+    return { zoom: s.zoom, width: parseFloat(s.width), maxWidth: s.maxWidth };
+  });
+  expect(parseFloat(wide.zoom)).toBeCloseTo(1.35, 3);
+  expect(wide.width).toBeGreaterThan(300);     // width:auto 撐寬,不再是固定 280
+  expect(wide.maxWidth).toBe('480px');         // 過寬 popover 由 max-width 封頂 + margin:0 auto 置中
 
-  // 窄 viewport（iPad popover 級，< 350）:base 規則 → 1.5
+  // 窄 viewport（popover 尚未定尺寸的早期狀態,< 350）:@media 不命中 → fallback 固定 280px
+  // （min-width guard 防早期窄 viewport 觸發 width:auto ↔ 視窗 sizing 循環 + font-boosting）
   await page.setViewportSize({ width: 280, height: 700 });
-  const narrow = await page.evaluate(() => getComputedStyle(document.body).zoom);
-  expect(parseFloat(narrow)).toBeCloseTo(1.5, 3);
+  const narrow = await page.evaluate(() => {
+    const s = getComputedStyle(document.body);
+    return { zoom: s.zoom, width: parseFloat(s.width) };
+  });
+  expect(parseFloat(narrow.zoom)).toBeCloseTo(1.35, 3);
+  expect(narrow.width).toBeCloseTo(280, 0);
+
+  await page.close();
 });
 
-test('popup.js 有 applyIosZoom 動態 zoom 結構（初跑 + resize 重算 + / 280 公式）', async ({ context, extensionId }) => {
-  // iOS WebKit 實際 zoom 行為 Chromium 驗不到（IS_IOS_BUILD gate + WebKit 渲染）,
-  // 這條鎖 source 結構當 forcing function：誤刪 applyIosZoom / resize listener
-  // 會在這裡 fail，提醒去 SPEC-PRIVATE §26.7 看 sim 驗證流程
+test('popup.js 不再用 JS zoom（無 vw/280、無 style.zoom）、只留 --sk-fz 字體微調', async ({ context, extensionId }) => {
+  // iOS WebKit 實際渲染 Chromium 驗不到（IS_IOS_BUILD gate + WebKit）,這條鎖 source 結構
+  // 當 forcing function：若有人把 JS zoom 加回來（會重蹈 zoom 1.5 撐高出捲軸的覆轍）即 fail。
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup/popup.html`);
-  const src = await page.evaluate(async () => {
-    const r = await fetch('popup.js');
-    return r.text();
-  });
-  expect(src).toContain('applyIosZoom');
-  expect(src).toMatch(/addEventListener\('resize',\s*applyIosZoom\)/);
-  expect(src).toMatch(/vw \/ 280/);
+  const js = await page.evaluate(async () => (await fetch('popup.js')).text());
+  const css = await page.evaluate(async () => (await fetch('popup.css')).text());
+
+  // popup.js 不再算 zoom（zoom 全權交給 popup.css）
+  expect(js).not.toMatch(/vw \/ 280/);
+  expect(js).not.toMatch(/style\.zoom/);
+  // 只剩 --sk-fz 字體微調（依 screen 短邊）
+  expect(js).toContain("setProperty('--sk-fz'");
+  expect(js).toMatch(/Math\.min\(screen\.width/);
+
+  // popup.css 走 JRead 同款:固定 zoom 1.35 + 寬 viewport width:auto
+  expect(css).toMatch(/body\.runtime-ios-touch\s*\{[^}]*zoom:\s*1\.35/);
+  expect(css).toMatch(/@media \(min-width: 350px\)[\s\S]*?width:\s*auto/);
+
+  await page.close();
 });

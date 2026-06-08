@@ -20,27 +20,22 @@ if (IS_IOS_BUILD) {
   document.body.classList.add('runtime-ios');
   if (isTouchScreenDevice()) {
     document.body.classList.add('runtime-ios-touch');
-    // applyIosZoom 做兩件事（SPEC-PRIVATE §26.7 / §26.10）：
-    //   (1) 箱子尺寸（zoom）：popup 是固定 280px 版面 + zoom 撐起 popover / sheet。
-    //       zoom = innerWidth / 280 撐滿螢幕寬（iPhone sheet 390〜440pt；真機 probe
-    //       2026-06-08 實測 iPad popover innerWidth = 420 → 1.5，同 popup.css 基準）。
-    //       **popup 箱子尺寸維持原樣不放大**。
-    //   (2) 字體大小（--sk-fz）：大 iPad（12.9"）跟 iPad mini 共用同一個 popover 尺寸
-    //       （都 ~420pt），但大螢幕檢視距離較遠 → 字看起來偏小。zoom 是整體縮放、
-    //       改不了「字相對箱子」的比例，所以另用 --sk-fz 只放大可讀文字（popup.css
-    //       用 calc 套），箱子尺寸不動。依螢幕短邊校準：iPad mini（短邊 744）→ 1.0
-    //       維持原樣；12.9"（短邊 1024）→ ~1.35。iPhone（短邊 ≤ 440）算出 < 1 被
-    //       clamp 回 1.0 → 不變。用 screen.*（固定值、不隨 orientation 變）。
-    //   模組初跑時 sheet / popover 還沒定尺寸（innerWidth 不可靠），必掛 resize 重算。
-    const applyIosZoom = () => {
-      const vw = window.innerWidth;
-      if (vw >= 350) document.body.style.zoom = String(vw / 280);
+    // 箱子尺寸（zoom）與寬度撐滿改由 popup.css 全權處理（固定放大檔 zoom 1.35 + 觸控且
+    // viewport 已寬時 width:auto,對齊 JRead 實機驗證做法,見 popup.css runtime-ios-touch
+    // 區段註解）。這裡只剩字體大小微調：
+    //   字體大小（--sk-fz）：大 iPad（12.9"）跟 iPad mini 共用同一個 popover 尺寸（都
+    //   ~420pt），但大螢幕檢視距離較遠 → 字看起來偏小。zoom 是整體縮放、改不了「字相對
+    //   箱子」的比例,故另用 --sk-fz 只放大可讀文字（popup.css 用 calc 套），箱子尺寸不動。
+    //   依螢幕短邊校準：iPad mini（短邊 744）→ 1.0 維持原樣；12.9"（短邊 1024）→ ~1.35。
+    //   iPhone（短邊 ≤ 440）算出 < 1 被 clamp 回 1.0 → 不變。用 screen.*（固定值、不隨
+    //   orientation 變）。
+    const applyIosFontScale = () => {
       const screenMin = Math.min(screen.width || 744, screen.height || 744);
       const fz = Math.min(1.4, Math.max(1.0, 1 + (screenMin - 744) / 800));
       document.body.style.setProperty('--sk-fz', String(fz));
     };
-    applyIosZoom();
-    window.addEventListener('resize', applyIosZoom);
+    applyIosFontScale();
+    window.addEventListener('resize', applyIosFontScale);
   }
 }
 

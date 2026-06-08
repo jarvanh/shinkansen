@@ -201,3 +201,45 @@ test('_applyYtCaptionScale:有效值更新已注入 iOS style;超界值被 clamp
 
   await page.close();
 });
+
+// Regression（v1.10.35,iPhone 全螢幕字幕消失）:
+// v1.10.29 起 _refreshIosFsTrack 無條件注入 `video::-webkit-media-text-track-display
+// { font-size: 100% !important }`,連預設 scale=100 也注入。這個 !important 覆寫了 iOS 系統
+// 原本「依影片大小算字級」的原生全螢幕字幕渲染,把字級壓到看不見 → 使用者回報「全螢幕沒字幕」。
+// v1.10.27(實機驗收正常)那版完全不注入任何 cue style。修法:scale=100 時 _ensureIosFsCueStyle
+// 移除既有 style 並 return(零覆寫,交回 iOS 系統),scale≠100 才注入 override。
+// SANITY 紀錄（已驗證）:把 `if (_ytCaptionScale === 100) { if (existing) existing.remove(); return; }`
+//   整段拿掉 → 本 case「scale=100 不留 override style」斷言 fail;還原後 pass。
+test('scale=100:_ensureIosFsCueStyle 不留任何 ::cue override style(還原 iOS 系統原生字級)', async ({
+  context, localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const r = await evaluate(`
+    (() => {
+      const SK = window.__SK;
+      // 先在 scale≠100 注入 override style（模擬 iPhone 上 _refreshIosFsTrack 已建過 style）
+      const st = document.createElement('style');
+      st.id = 'sk-ios-fs-cue-style';
+      document.head.appendChild(st);
+      SK._applyYtCaptionScale(150);
+      const at150 = document.getElementById('sk-ios-fs-cue-style')?.textContent || '';
+
+      // 切回預設 100 → 應移除 override，全螢幕字級交回 iOS 系統
+      SK._applyYtCaptionScale(100);
+      const styleAt100 = document.getElementById('sk-ios-fs-cue-style');
+
+      return {
+        at150HasOverride: at150.includes('font-size: 150%'),
+        styleRemovedAt100: styleAt100 === null,
+      };
+    })()
+  `);
+
+  expect(r.at150HasOverride).toBe(true);    // scale≠100 仍注入 override
+  expect(r.styleRemovedAt100).toBe(true);   // scale=100 移除 override（不再壓 iOS 原生字級）
+
+  await page.close();
+});

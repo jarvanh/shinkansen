@@ -1699,7 +1699,16 @@
   }
   SK._buildIosFsCueCss = _buildIosFsCueCss;   // regression spec 用
   function _ensureIosFsCueStyle() {
-    let st = document.getElementById('sk-ios-fs-cue-style');
+    const existing = document.getElementById('sk-ios-fs-cue-style');
+    // scale = 100（預設）→ 完全不覆寫原生字幕渲染:移除任何既有 style,把全螢幕字級交回
+    // iOS 系統字幕設定(依影片大小算出的原生字級)。無條件注入 `font-size: 100% !important`
+    // 會壓掉系統的字級基準,iPhone 原生全螢幕字幕會縮到看不見 → 使用者看到的就是「字幕消失」。
+    // 等同 v1.10.27(實機驗收正常那版)「不注入任何 cue style」的已驗證良好狀態。
+    if (_ytCaptionScale === 100) {
+      if (existing) existing.remove();
+      return;
+    }
+    let st = existing;
     if (!st) {
       st = document.createElement('style');
       st.id = 'sk-ios-fs-cue-style';

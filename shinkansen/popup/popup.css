@@ -125,18 +125,28 @@ body.runtime-ios #translate-doc-btn {
    剛好，430 / 440pt 機型會右側留白）。media query 以 layout viewport 判：
    iPad popover 的 device-width = popover 自身（~280）、iPhone sheet =
    螢幕寬 ≥ 390，350 為分界。
-   實測過的死路（不要再試）：
-   - width: 100% + zoom：layout viewport 被 zoom 反向壓窄（visual / zoom），
-     280pt popover 變 200px 版面，全部 wrap
-   - viewport width=280 fit-to-width：WebKit 觸發 font boosting，一樣 wrap */
+   高度模型（v1.10.35,對齊 JRead 實機驗證做法）：popover 寬度跟著內容走、但高度有
+   上限。舊做法（popup.js JS zoom = innerWidth/280 ≈ 1.5 + 固定 280px 窄版面）把內容
+   ×1.5 撐高,active（已翻譯：顯示原文 + 編輯譯文）狀態在 iPad mini 超過 popover 高度
+   上限 → 出捲軸（Jimmy 實機回報）。改成 JRead 那套：固定放大檔 zoom 1.35（不再 JS 算）
+   + 觸控且 viewport 已寬時 width:auto（版面比 280 寬 → 換行少、內容更矮）→ 高度落回
+   popover 上限內、寬度仍撐滿。
+   實測過的死路（沒有 min-width guard 時不要試）：
+   - width: 100% + zoom：layout viewport 被 zoom 反向壓窄,280pt popover 變 200px 版面全 wrap
+   - viewport width=280 fit-to-width：WebKit 觸發 font boosting,一樣 wrap
+   解法（JRead 同款）：width:auto 只在 @media (min-width: 350px) 內套——min-width guard
+   排除「popover 尚未定尺寸的早期窄 viewport」,避免 width:auto ↔ 視窗 sizing 互相循環 +
+   font-boosting。窄 viewport 時 fallback 回固定 280px。 */
 body.runtime-ios-touch {
   width: 280px;
   min-width: 0;
-  zoom: 1.5;
+  zoom: 1.35;
 }
 @media (min-width: 350px) {
   body.runtime-ios-touch {
-    zoom: 1.435;
+    width: auto;
+    max-width: 480px;
+    margin: 0 auto;
   }
 }
 
@@ -158,6 +168,7 @@ body.runtime-ios-touch .cache-row { font-size: calc(12px * var(--sk-fz, 1)); }
 body.runtime-ios-touch .cache-info { font-size: calc(11px * var(--sk-fz, 1)); }
 body.runtime-ios-touch button.link { font-size: calc(12px * var(--sk-fz, 1)); }
 body.runtime-ios-touch button.link.small { font-size: calc(12px * var(--sk-fz, 1)); }
+body.runtime-ios-touch .hint { font-size: calc(11px * var(--sk-fz, 1)); }
 
 button.link {
   background: none;
