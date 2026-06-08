@@ -150,6 +150,21 @@ body.runtime-ios-touch {
   }
 }
 
+/* iPad mini popover 高度收斂(v1.10.37,SPEC-PRIVATE §26):觸控版 zoom 1.35 把
+   桌面 ~600px 上限調校過的版面整體 ×1.35,在 YouTube 頁(多出 YouTube 字幕翻譯 /
+   字幕雙語對照 / 字幕大小三列)時全展開高度撐到 ~629px,超過 iPad mini 直立 popover
+   高度上限 → 底部 footer(設定 + 操作提示)被切、要捲動(Jimmy 實機回報)。
+   修法:只壓 runtime-ios-touch 的垂直節奏(margin / padding),不動字級(zoom / --sk-fz
+   保留 → 可讀性不變),水平 16px 不動(保對齊 grid,CLAUDE.md §1)。量測:629 → 528px
+   (recover ~101px scaled)。桌面 / 非觸控走原節奏不受影響(桌面 472px 本就在 600 內)。 */
+body.runtime-ios-touch main { padding-top: 6px; padding-bottom: 6px; }
+body.runtime-ios-touch .row,
+body.runtime-ios-touch .display-mode-row { margin-top: 5px; }
+body.runtime-ios-touch .cache-row { margin-top: 5px; padding-top: 5px; }
+body.runtime-ios-touch .status { margin-top: 4px; }
+body.runtime-ios-touch button.primary { padding: 8px; }
+body.runtime-ios-touch footer { padding-top: 6px; padding-bottom: 6px; }
+
 /* iPad 字體放大（SPEC-PRIVATE §26.10）：大 iPad（12.9"）跟 iPad mini 共用同一個
    popover 尺寸（都 ~420pt），但大螢幕檢視距離較遠 → 字看起來偏小。zoom 是整體
    縮放、改不了「字相對箱子」的比例,故另用 --sk-fz（popup.js 依螢幕短邊設：iPad

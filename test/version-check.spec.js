@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { test, expect } from './fixtures/extension.js';
 import { getShinkansenEvaluator } from './regression/helpers/run-inject.js';
 
-const EXPECTED_VERSION = '1.10.36';
+const EXPECTED_VERSION = '1.10.37';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
