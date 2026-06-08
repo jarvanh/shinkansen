@@ -283,7 +283,9 @@ async function load() {
     }
     updatePresetModelVisibility(slot);
   }
-  refreshPresetKeyBindings();
+  // 自訂快速鍵：storage 讀回值消毒後渲染 recorder 顯示
+  shortcutTable = SC ? SC.sanitizeTable(s.customShortcuts) : shortcutTable;
+  renderShortcutRecorders();
 
   // v1.6.6: 工具列「翻譯本頁」按鈕的 preset slot dropdown
   // v1.6.13: 自動翻譯網站使用的 preset slot
@@ -373,8 +375,8 @@ async function load() {
         if (_vEl) _vEl.textContent = 'v' + browser.runtime.getManifest().version; }
       // 動態 dropdown(refreshSlotDropdownLabels)用 _t() 取 prefix,UI 語系切換要重組
       refreshSlotDropdownLabels();
-      // preset-key badge 唯一寫入者(見 refreshPresetKeyBindings 註解)
-      refreshPresetKeyBindings();
+      // 自訂快速鍵 recorder:「（預設）」後綴 / 「未設定」文案要跟上新語言
+      renderShortcutRecorders();
       // v1.8.61:#currency-rate-display 不掛 data-i18n,applyI18n 不會碰它,
       // UI 語系切換要主動重 render 才會看到新語言的「目前匯率: ...」字串
       refreshExchangeRateDisplay();
@@ -396,6 +398,130 @@ const _t = (key, params) => {
   const dictLang = I18N.getUiLanguage($('uiLanguage')?.value || 'auto');
   return I18N.t(key, params, dictLang);
 };
+
+// ── 自訂快速鍵 recorder ────────────────────────────────────
+// 比對 / 驗證 / 格式化邏輯共用 lib/shortcut-utils.js（window.__SKShortcuts，由
+// options.html 的 plain <script> 在本 module 前載入），與 content-shortcuts.js 的
+// keydown 比對單一資料源。錄好的組合寫回 storage.sync.customShortcuts,
+// content-shortcuts.js 的 onChanged listener 即時生效(不必 reload)。
+const SC = window.__SKShortcuts;
+let shortcutTable = SC ? SC.sanitizeTable(null) : { 2: null, 1: null, 3: null }; // 三 slot 全 null
+let recordingSlot = null; // 錄製中的 slot（null = 沒在錄）
+
+// 依瀏覽器引擎（非 OS / build）決定可用修飾鍵：Safari（Mac / iPad / iPhone，extension URL
+// 前綴 safari-web-extension://）的 ⌥ Option 與 ⌘ Command 不傳給網頁 content script，
+// 自訂鍵必含 ⌃ Control；Chrome / Firefox 無此限，⌥ / ⌘ 皆可。統一一份規則，不再依 iOS build 切。
+let _isSafariRuntime = false;
+try { _isSafariRuntime = browser.runtime.getURL('').startsWith('safari-web-extension://'); } catch (_) {}
+
+// validate() / 衝突回傳的 reason key → 在地化訊息
+function shortcutReasonText(v) {
+  if (v.reason === 'shortcut.invalid.isDefault') return _t('shortcut.invalid.isDefault', { key: v.detail });
+  return _t(v.reason);
+}
+
+// 明顯提示：⚠ 前綴 + amber（CSS）。空字串不撐空間。
+function shortcutHint(text) {
+  const el = $('shortcut-hint');
+  if (el) el.textContent = text ? '⚠ ' + text : '';
+}
+
+// 錄製被拒時讓該 recorder 紅框閃一下（明顯提示，不只靠下方 hint 文字）
+function flashRecorderInvalid(slot) {
+  const btn = $(`sc-${slot}`);
+  if (!btn) return;
+  btn.classList.add('invalid');
+  setTimeout(() => btn.classList.remove('invalid'), 1200);
+}
+
+function renderShortcutRecorders() {
+  if (!SC) return;
+  for (const slot of SC.SLOTS) {
+    const btn = $(`sc-${slot}`);
+    const clearBtn = $(`sc-clear-${slot}`);
+    if (!btn) continue;
+    const custom = shortcutTable[slot];
+    const def = SC.MANIFEST_DEFAULTS[slot];
+    if (recordingSlot === slot) {
+      btn.textContent = _t('shortcut.recording');
+    } else if (custom) {
+      btn.textContent = SC.format(custom);
+    } else {
+      btn.textContent = def ? _t('shortcut.defaultSuffix', { key: SC.format(def) }) : _t('common.unset');
+    }
+    btn.classList.toggle('recording', recordingSlot === slot);
+    btn.classList.toggle('is-default', !custom && recordingSlot !== slot);
+    if (clearBtn) clearBtn.disabled = !custom;
+  }
+}
+
+function saveShortcutTable() {
+  browser.storage.sync.set({ customShortcuts: shortcutTable }).then(() => {
+    $('save-status').textContent = _t('options.action.saved');
+    setTimeout(() => { $('save-status').textContent = ''; }, 2000);
+  }).catch(() => {});
+}
+
+// recorder 點擊（進 / 出錄製）+ 清除（還原預設）。按鈕在靜態 HTML,module
+// deferred 執行時 DOM 已就緒，直接綁。
+if (SC) {
+  for (const slot of SC.SLOTS) {
+    $(`sc-${slot}`)?.addEventListener('click', () => {
+      recordingSlot = recordingSlot === slot ? null : slot; // 再點同顆 = 取消
+      shortcutHint('');
+      renderShortcutRecorders();
+    });
+    $(`sc-clear-${slot}`)?.addEventListener('click', () => {
+      shortcutTable[slot] = null;
+      recordingSlot = null;
+      shortcutHint('');
+      saveShortcutTable();
+      renderShortcutRecorders();
+    });
+  }
+  // 錄製用 keydown:capture phase 搶在頁面其他 handler 前
+  window.addEventListener('keydown', (e) => {
+    if (recordingSlot == null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code === 'Escape') { // 取消錄製
+      recordingSlot = null;
+      renderShortcutRecorders();
+      return;
+    }
+    const s = SC.eventToShortcut(e);
+    if (!s) return; // 純 modifier 鍵——組合未完成，等下一鍵
+    // Safari（Mac / iPad / iPhone）強制 ⌃ Control —— Safari 把 ⌥／⌘ 攔在系統指令層，
+    // 不傳給網頁 content script（真機 probe 實證）。Chrome / Firefox 不限。
+    const v = SC.validate(s, { requireCtrl: _isSafariRuntime });
+    if (!v.ok) {
+      const failedSlot = recordingSlot;
+      shortcutHint(shortcutReasonText(v));
+      recordingSlot = null;
+      renderShortcutRecorders();
+      flashRecorderInvalid(failedSlot);
+      return;
+    }
+    // 與其他 slot 的「生效鍵」（自訂值 || 內建預設）衝突檢查
+    for (const other of SC.SLOTS) {
+      if (other === recordingSlot) continue;
+      const effective = shortcutTable[other] || SC.MANIFEST_DEFAULTS[other];
+      if (effective && SC.shortcutEquals(s, effective)) {
+        const failedSlot = recordingSlot;
+        shortcutHint(_t('shortcut.invalid.assigned', { key: SC.format(s) }));
+        recordingSlot = null;
+        renderShortcutRecorders();
+        flashRecorderInvalid(failedSlot);
+        return;
+      }
+    }
+    shortcutTable[recordingSlot] = s;
+    recordingSlot = null;
+    shortcutHint('');
+    saveShortcutTable();
+    renderShortcutRecorders();
+  }, true);
+}
 
 // v1.6.1: 「不再提示」按鈕——寫 disableUpdateNotice=true 立即生效
 $('update-banner-dismiss')?.addEventListener('click', async (e) => {
@@ -739,34 +865,6 @@ function updateYtPromptCostHint() {
       count: fbCount, tok: fbTok, usd: fmtUSD(fbTok), usdCache: fmtUSD(fbTok, 0.25),
     })}</span><br>` +
     `<span style="font-size: 11px; color: #999;">${_t('options.gemini.cost.estimateFooter.html')}</span>`;
-}
-
-// v1.4.13: 從 chrome.commands.getAll() 讀取實際綁定鍵位顯示在每張 card 右上角
-// v1.8.19: command id 主要預設（slot 2）從 translate-preset-2 改為 translate-preset-0
-//          （字典序保證 chrome://extensions/shortcuts 顯示順序「主要 → 預設 2 → 預設 3」)
-// 本函式是 #preset-key-* badge 的**唯一寫入者**：span 不可掛 data-i18n
-// （v1.8.60 i18n 化時掛了 'options.preset.unset' → applyI18n 重跑會把已寫好的
-// 「Alt+S」清回 '—' placeholder；load() 內 getAll 與 applyI18n 之間隔著 await，
-// 先後順序看 IPC 時序，Chrome 實機踩到 badge 全變 '—'）。
-// applyI18n 重跑的兩條 path（#uiLanguage change handler / subscribeUiLanguageChange）
-// 都要跟著補呼叫本函式，unset 時的「未設定」文案才會跟上新語言。
-async function refreshPresetKeyBindings() {
-  const SLOT_TO_COMMAND_ID = { 1: 'translate-preset-1', 2: 'translate-preset-0', 3: 'translate-preset-3' };
-  try {
-    const cmds = await browser.commands.getAll();
-    for (const slot of [1, 2, 3]) {
-      const cmd = cmds.find(c => c.name === SLOT_TO_COMMAND_ID[slot]);
-      const keyEl = $(`preset-key-${slot}`);
-      if (!keyEl) continue;
-      if (cmd?.shortcut) {
-        keyEl.textContent = cmd.shortcut;
-        keyEl.removeAttribute('data-unset');
-      } else {
-        keyEl.textContent = _t('common.unset');
-        keyEl.setAttribute('data-unset', '1');
-      }
-    }
-  } catch { /* Safari / 舊瀏覽器不支援 commands API，欄位維持 '—' */ }
 }
 
 // v1.8.14: 並發 save 防護
@@ -1125,9 +1223,8 @@ $('uiLanguage')?.addEventListener('change', async () => {
     const dictLang = window.__SK.i18n.getUiLanguage(ul);
     window.__SK.i18n.applyI18n(document, dictLang);
     refreshSlotDropdownLabels();
-    // preset-key badge 唯一寫入者（見 refreshPresetKeyBindings 註解）：
-    // unset 時的「未設定」文案要跟上新語言
-    refreshPresetKeyBindings();
+    // 自訂快速鍵 recorder:「（預設）」後綴 / 「未設定」文案要跟上新語言
+    renderShortcutRecorders();
     // v1.8.61:#currency-rate-display 不掛 data-i18n,主動重 render 拿新語言匯率字串
     refreshExchangeRateDisplay();
     // v1.8.61:幣值 section 隨 UI 語言切換顯示 / 隱藏

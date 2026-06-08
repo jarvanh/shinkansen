@@ -633,6 +633,12 @@ export const DEFAULT_SETTINGS = {
     { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
     { slot: 3, engine: 'google', model: null, label: 'Google MT' },
   ],
+  // 自訂快速鍵：三組 preset 各自的使用者自訂鍵組合（null = 沿用 manifest 內建預設）。
+  // 由 options 的 recorder 錄製、content-shortcuts.js 在頁面 keydown capture 比對。
+  // 值形狀 { code, alt, shift, ctrl, meta }；slot key 為 2 / 1 / 3（與 translatePresets 同編號）。
+  // Why：Safari（含 iOS / iPadOS）沒有瀏覽器層快速鍵設定入口，自訂鍵走 content script
+  // 層攔截；桌面（Chrome / Firefox / macOS Safari）manifest 預設鍵仍並存有效。
+  customShortcuts: { 2: null, 1: null, 3: null },
   // v1.5.6: 中國用語黑名單。使用者自訂時整個陣列覆蓋（不做 per-entry merge）。
   // 內容會以 <forbidden_terms_blacklist> 區塊注入到 systemInstruction 末端，
   // 且修改清單後快取 key 會帶 _b<hash> 後綴讓既有快取自動失效。

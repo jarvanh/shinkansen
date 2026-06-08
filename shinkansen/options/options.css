@@ -307,6 +307,21 @@ a:hover { text-decoration: underline; }
 body.runtime-safari .open-shortcuts-link {
   display: none;
 }
+/* 翻譯快速鍵說明依瀏覽器引擎切換（對應實際可用的修飾鍵）：
+   桌面 Chrome / Firefox → intro-desktop（⌥ Option 或 ⌃ Control）；
+   Safari（Mac / iPad / iPhone，body.runtime-safari）→ intro-safari（只能 ⌃ Control）。
+   body class 由 options.js 依 _shortcutsPlatform 加（runtime-chrome / -firefox / -safari）。 */
+.intro-desktop,
+.intro-safari {
+  display: none;
+}
+body.runtime-chrome .intro-desktop,
+body.runtime-firefox .intro-desktop {
+  display: block;
+}
+body.runtime-safari .intro-safari {
+  display: block;
+}
 /* iOS build 專屬說明（SPEC-PRIVATE §26）：預設隱藏，只在 body.runtime-ios（由
    options.js 依 IS_IOS_BUILD 加 class）顯示——例如快速鍵 section 的四指 tap 說明 */
 .ios-only {
@@ -899,18 +914,83 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
   border-radius: 4px;
   font-size: 13px;
 }
-.preset-key {
+/* 自訂快速鍵 recorder（preset card header 右上角）。固定總寬讓三張 card 對齊。 */
+.shortcut-controls {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 138px;
+  width: 138px;
+}
+.shortcut-recorder {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: #e8e8ed;
-  color: #1d1d1f;
   letter-spacing: 0.02em;
+  color: #1d1d1f;
+  background: #fff;
+  border: 1px solid #d2d2d7;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
-.preset-key[data-unset="1"] {
-  background: #ffe8e6;
+.shortcut-recorder:hover { border-color: #86868b; }
+/* 顯示內建預設值（尚未自訂）時降灰,與「已自訂」黑字雙態區分 */
+.shortcut-recorder.is-default { color: #86868b; }
+/* 錄製中:品牌色 ring(不填色,維持 WYSIWYG 按鈕 active 慣例) */
+.shortcut-recorder.recording {
+  border-color: #0071e3;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+  color: #0071e3;
+}
+/* 驗證被拒:紅框 + 抖動,明顯提示(Safari 按 ⌥／⌘ 等) */
+.shortcut-recorder.invalid {
+  border-color: #ff3b30;
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.18);
   color: #ff3b30;
+  animation: sk-shake 0.32s ease;
+}
+@keyframes sk-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+.shortcut-clear {
+  flex: 0 0 26px;
+  height: 28px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: #86868b;
+  background: #fff;
+  border: 1px solid #d2d2d7;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.shortcut-clear:hover { border-color: #86868b; color: #1d1d1f; }
+.shortcut-clear:disabled { opacity: 0.35; cursor: default; }
+.shortcut-clear:disabled:hover { border-color: #d2d2d7; color: #86868b; }
+/* 錄製驗證失敗原因。空字串時不撐空間 */
+/* 驗證失敗提示:明顯(amber 底色塊 + ⚠,非僅一行小字)。空字串時不撐空間 */
+#shortcut-hint {
+  margin: 8px 0 0;
+  min-height: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #92400e; /* amber-800,警告語意 */
+}
+#shortcut-hint:not(:empty) {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fff7ed; /* amber-50 */
+  border: 1px solid #fed7aa; /* amber-200 */
 }
 .preset-card label {
   display: block;

@@ -105,7 +105,7 @@ Shinkansen offers three customizable translation presets, each bound to a shortc
 | `Alt+S` / `Option+S` | Gemini | Flash ($0.50 / $3.00) | Daily reading, best quality / value |
 | `Alt+D` / `Option+D` | Google Translate | — | No API key needed, fast, free |
 
-**All customizable in the "Translation shortcuts" section of settings**: each preset's engine (Gemini / Google Translate), model (Flash Lite / Flash / Pro / custom), and display label can be changed. The keybindings themselves are configured at `chrome://extensions/shortcuts`.
+**All customizable in the "Translation shortcuts" section of settings**: each preset's engine (Gemini / Google Translate), model (Flash Lite / Flash / Pro / custom), and display label can be changed. The keybindings themselves can also be customized right there — click a preset's key field and press the combination you want (on Chrome use `⌥ Option` or `⌃ Control`; on Safari — Mac / iPad / iPhone — use `⌃ Control`, since iOS Safari doesn't pass `⌥` / `⌘` to web pages; the settings page shows the available keys per browser automatically; press `ESC` to cancel). Works with iPad external keyboards too. You can also adjust the built-in default keys at `chrome://extensions/shortcuts` (Chrome) or `about:addons` (Firefox).
 
 **Unified cancel / restore behavior**:
 - Press any shortcut while translating → cancel immediately

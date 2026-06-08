@@ -82,10 +82,18 @@
 
     <section>
       <h2 data-i18n="options.preset.heading">翻譯快速鍵</h2>
-      <p class="muted" data-i18n-html="options.preset.intro.html">
-        三組可自訂的翻譯預設,對應三個快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
-        已翻譯狀態下按任一快速鍵都會還原原文;翻譯中按任一快速鍵則取消翻譯。
-        鍵位可至 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> 變更
+      <!-- 桌面 Chrome / Firefox 版說明（⌥ Option 或 ⌃ Control）。CSS 依 body.runtime-* 顯示 -->
+      <p class="muted intro-desktop" data-i18n-html="options.preset.intro.html">
+        三組可自訂的翻譯預設，對應三組快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
+        點各組右上方欄位後直接按下想要的組合鍵即可自訂（需包含 <strong>⌥ Option</strong> 或 <strong>⌃ Control</strong>，按 <strong>ESC</strong> 取消）；內建預設鍵仍然有效。
+        已翻譯狀態下按任一快速鍵都會還原原文；翻譯中按任一快速鍵則取消翻譯。
+        鍵位也可至 <a href="#" id="open-shortcuts" class="open-shortcuts-link">chrome://extensions/shortcuts</a> 變更
+      </p>
+      <!-- Safari（Mac / iPad / iPhone）版說明（只能用 ⌃ Control）。body.runtime-safari 才顯示 -->
+      <p class="muted intro-safari" data-i18n-html="options.preset.introSafari.html">
+        三組可自訂的翻譯預設，對應三組快速鍵。依網頁內容選擇不同引擎或模型（例如文學性強用最強模型、一般網頁用最省錢）。
+        點各組右上方欄位後直接按下想要的組合鍵即可自訂（需用 <strong>⌃ Control</strong>，按 <strong>ESC</strong> 取消）；內建預設鍵仍然有效。
+        已翻譯狀態下按任一快速鍵都會還原原文；翻譯中按任一快速鍵則取消翻譯
       </p>
       <!-- iOS / iPadOS 專屬說明（SPEC-PRIVATE §26）：預設隱藏，body.runtime-ios 才顯示 -->
       <p class="muted ios-only" data-i18n-html="options.preset.introIos.html">
@@ -103,7 +111,10 @@
         <div class="preset-card preset-card-primary" data-slot="2">
           <div class="preset-card-header">
             <strong data-i18n="options.preset.primary">主要預設</strong>
-            <span class="preset-key" id="preset-key-2">—</span>
+            <div class="shortcut-controls">
+              <button type="button" class="shortcut-recorder" id="sc-2"></button>
+              <button type="button" class="shortcut-clear" id="sc-clear-2" data-i18n-attr-title="options.preset.restoreDefault" title="還原預設">✕</button>
+            </div>
           </div>
           <label>
             <span data-i18n="options.preset.label">標籤</span>
@@ -130,7 +141,10 @@
         <div class="preset-card" data-slot="1">
           <div class="preset-card-header">
             <strong data-i18n="options.preset.slot2">預設 2</strong>
-            <span class="preset-key" id="preset-key-1">—</span>
+            <div class="shortcut-controls">
+              <button type="button" class="shortcut-recorder" id="sc-1"></button>
+              <button type="button" class="shortcut-clear" id="sc-clear-1" data-i18n-attr-title="options.preset.restoreDefault" title="還原預設">✕</button>
+            </div>
           </div>
           <label>
             <span data-i18n="options.preset.label">標籤</span>
@@ -157,7 +171,10 @@
         <div class="preset-card" data-slot="3">
           <div class="preset-card-header">
             <strong data-i18n="options.preset.slot3">預設 3</strong>
-            <span class="preset-key" id="preset-key-3">—</span>
+            <div class="shortcut-controls">
+              <button type="button" class="shortcut-recorder" id="sc-3"></button>
+              <button type="button" class="shortcut-clear" id="sc-clear-3" data-i18n-attr-title="options.preset.restoreDefault" title="還原預設">✕</button>
+            </div>
           </div>
           <label>
             <span data-i18n="options.preset.label">標籤</span>
@@ -181,6 +198,7 @@
           </label>
         </div>
       </div>
+      <div id="shortcut-hint"></div>
     </section>
 
     <section>
@@ -1150,6 +1168,7 @@
 
   <script src="../lib/vendor/chart.min.js"></script>
   <script src="../lib/i18n.js"></script>
+  <script src="../lib/shortcut-utils.js"></script>
   <script type="module" src="options.js"></script>
 </body>
 </html>

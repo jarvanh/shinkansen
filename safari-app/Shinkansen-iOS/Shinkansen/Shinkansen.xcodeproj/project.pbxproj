@@ -40,6 +40,7 @@
 		9E22C7792FD2A78F00CDA923 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7612FD2A78F00CDA923 /* _locales */; };
 		9E22C77A2FD2A78F00CDA923 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7622FD2A78F00CDA923 /* content.js */; };
 		9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF112FD2A78F00CDA923 /* content-touch.js */; };
+		9EFFFF00AA01000000000011 /* content-shortcuts.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA01000000000012 /* content-shortcuts.js */; };
 		9E22C77B2FD2A78F00CDA923 /* privacy-policy.en.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */; };
 		9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7642FD2A78F00CDA923 /* content-serialize.js */; };
 		9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7652FD2A78F00CDA923 /* content-inject.js */; };
@@ -106,6 +107,7 @@
 		9E22C7612FD2A78F00CDA923 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = Resources/_locales; sourceTree = "<group>"; };
 		9E22C7622FD2A78F00CDA923 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
 		9EFFFF112FD2A78F00CDA923 /* content-touch.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-touch.js"; path = "Resources/content-touch.js"; sourceTree = "<group>"; };
+		9EFFFF00AA01000000000012 /* content-shortcuts.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-shortcuts.js"; path = "Resources/content-shortcuts.js"; sourceTree = "<group>"; };
 		9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.en.html"; path = "Resources/privacy-policy.en.html"; sourceTree = "<group>"; };
 		9E22C7642FD2A78F00CDA923 /* content-serialize.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-serialize.js"; path = "Resources/content-serialize.js"; sourceTree = "<group>"; };
 		9E22C7652FD2A78F00CDA923 /* content-inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-inject.js"; path = "Resources/content-inject.js"; sourceTree = "<group>"; };
@@ -207,6 +209,7 @@
 				9E22C7612FD2A78F00CDA923 /* _locales */,
 				9E22C7622FD2A78F00CDA923 /* content.js */,
 				9EFFFF112FD2A78F00CDA923 /* content-touch.js */,
+				9EFFFF00AA01000000000012 /* content-shortcuts.js */,
 				9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */,
 				9E22C7642FD2A78F00CDA923 /* content-serialize.js */,
 				9E22C7652FD2A78F00CDA923 /* content-inject.js */,
@@ -331,6 +334,7 @@
 				9E22C7712FD2A78F00CDA923 /* content-toast.js in Resources */,
 				9E22C77A2FD2A78F00CDA923 /* content.js in Resources */,
 				9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */,
+				9EFFFF00AA01000000000011 /* content-shortcuts.js in Resources */,
 				9E22C76E2FD2A78F00CDA923 /* content-drive.js in Resources */,
 				9E22C7662FD2A78F00CDA923 /* options in Resources */,
 				9E22C7722FD2A78F00CDA923 /* content-spa.js in Resources */,
@@ -525,7 +529,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.29;
+				CURRENT_PROJECT_VERSION = 1.10.30;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
@@ -536,7 +540,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.29;
+				MARKETING_VERSION = 1.10.30;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -560,7 +564,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.29;
+				CURRENT_PROJECT_VERSION = 1.10.30;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
@@ -571,7 +575,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.29;
+				MARKETING_VERSION = 1.10.30;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -597,7 +601,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.29;
+				CURRENT_PROJECT_VERSION = 1.10.30;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
@@ -611,7 +615,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10.29;
+				MARKETING_VERSION = 1.10.30;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -639,7 +643,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.29;
+				CURRENT_PROJECT_VERSION = 1.10.30;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
@@ -653,7 +657,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10.29;
+				MARKETING_VERSION = 1.10.30;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
