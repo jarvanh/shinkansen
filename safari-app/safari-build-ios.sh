@@ -96,7 +96,11 @@ EOF
 # 3. 版本號同步進 pbxproj
 echo "==> Sync version to project.pbxproj..."
 sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${VERSION};/g" "$PBXPROJ"
-sed -i '' -E "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${VERSION};/g" "$PBXPROJ"
+# MARKETING_VERSION（= CFBundleShortVersionString）Apple 限制最多三段。同一 marketing
+# version 要重出 TestFlight 測試 build 時，build number（CFBundleVersion，允許四段）必須更高
+# → 傳 BUILD_VER=1.10.28.2 之類覆寫。預設 = VERSION（正式 release 三段即可）。
+BUILD_VER="${BUILD_VER:-$VERSION}"
+sed -i '' -E "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${BUILD_VER};/g" "$PBXPROJ"
 
 # 4. clean + archive
 echo "==> xcodebuild archive..."

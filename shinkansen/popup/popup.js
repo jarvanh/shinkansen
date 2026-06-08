@@ -320,6 +320,9 @@ async function init() {
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
       // 沒設定過視為 true（與 DEFAULT_SETTINGS.ytSubtitle.autoTranslate 對齊）
       $('yt-subtitle-toggle').checked = ytSubtitle.autoTranslate !== false;
+      // 字幕大小 scale（全平台統一,只在 YouTube 影片頁顯示）。預設 100。
+      $('yt-caption-size-row').hidden = false;
+      $('yt-caption-size').value = String(ytSubtitle.captionScale ?? 100);
     }
     // commit 5a':Drive 影片 viewer toggle 共用 ytSubtitle.autoTranslate
     // （user 不需要為 Drive 多做設定，跟 YouTube 字幕用同一個開關）
@@ -476,6 +479,22 @@ $('bilingual-toggle').addEventListener('change', async (e) => {
   }
 });
 
+// 字幕大小 scale change handler（寫 ytSubtitle.captionScale；content-youtube onChanged
+// 即時套用 overlay + iOS ::cue,不需 reload 影片頁）
+$('yt-caption-size').addEventListener('change', async (e) => {
+  const scale = parseInt(e.target.value, 10);
+  if (!Number.isFinite(scale)) return;
+  try {
+    const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
+    await browser.storage.sync.set({
+      ytSubtitle: { ...ytSubtitle, captionScale: scale },
+    });
+  } catch (err) {
+    statusEl.textContent = t('popup.status.captionSizeFailed');
+    statusEl.style.color = '#ff3b30';
+  }
+});
+
 $('options-btn').addEventListener('click', async() => {
   try{
     await browser.runtime.openOptionsPage();
@@ -503,6 +522,8 @@ browser.storage.onChanged.addListener((changes, area) => {
   $('drive-subtitle-toggle').checked = enabled;
   // commit 5c:bilingualMode 同步
   $('bilingual-toggle').checked = newVal.bilingualMode === true;
+  // 字幕大小 scale 同步
+  if (newVal.captionScale != null) $('yt-caption-size').value = String(newVal.captionScale);
 });
 
 // v1.0.3: 編輯譯文按鈕

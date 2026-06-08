@@ -560,6 +560,10 @@ export const DEFAULT_SETTINGS = {
     // 主要解 YT 帳號 auto-translate 偏好被套用到所有影片時，Shinkansen 拿到的是 YT 已翻譯後的
     // 字幕 text 而非原始 ASR，導致 prompt mismatch + timing 提前等下游問題。
     preferOriginalTrack: true,
+    // YouTube 字幕字級 scale（%,全平台統一）。一個值套兩條渲染路徑：桌面／macOS／iOS 視窗內
+    // 的 overlay（原生字級 × scale/100）+ iPhone／iPad 原生全螢幕的 video::cue font-size。
+    // 預設 100 = 跟隨各平台原生字幕大小（桌面零改變）。設定在 popup,只在 YouTube 影片頁顯示。
+    captionScale: 100,
   },
   // v0.35 新增：並行翻譯 rate limiter 設定
   // tier 對應 Gemini API 付費層級（free / tier1 / tier2)，決定 RPM/TPM/RPD 上限

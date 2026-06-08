@@ -792,7 +792,7 @@ async function _saveImpl() {
   // v1.6.15: 讀回現存的 geminiConfig.model 不從 UI 取（全域 dropdown 已移除）。
   // 保留 storage 欄位避免 migration，且 testGeminiKey 已改走「主要預設」的 model。
   // v1.6.16: 同樣讀回 settings.pricing（後備路徑單價 UI 也移除了）。
-  const existing = await browser.storage.sync.get(['geminiConfig', 'pricing']);
+  const existing = await browser.storage.sync.get(['geminiConfig', 'pricing', 'ytSubtitle']);
   const existingModel = existing.geminiConfig?.model || DEFAULTS.geminiConfig.model;
   // v1.9.16:targetLanguage 已搬到 popup,由 popup 的 change handler 直接寫 storage,
   // options「儲存設定」不寫此欄位避免回灌 stale 值(使用者在 options 開著時於 popup 改 target,
@@ -866,7 +866,10 @@ async function _saveImpl() {
     displayCurrency: getSelectedCurrency(),
     // v1.0.21: 頁面層級繁中偵測開關
     // v1.2.11: YouTube 字幕設定
+    // 先 spread 現有 ytSubtitle,保留「不在本表單」的 popup-managed 欄位
+    //（captionScale / bilingualMode / preferOriginalTrack）——否則整顆 set 會洗掉它們。
     ytSubtitle: {
+      ...(existing.ytSubtitle || {}),
       engine: ($('ytEngine')?.value || 'gemini'),  // v1.4.0
       autoTranslate:      $('ytAutoTranslate').checked,
       // v1.6.23: ASR 分句單一 toggle——checked=progressive（混合）、unchecked=heuristic
@@ -1768,6 +1771,7 @@ function sanitizeImport(raw) {
       asrMode:             { type: 'string', oneOf: ['heuristic', 'progressive', 'llm'] },
       bilingualMode:       { type: 'boolean' },
       preferOriginalTrack: { type: 'boolean' },
+      captionScale:        { type: 'number', min: 50, max: 400 },
     };
     for (const [key, rule] of Object.entries(ytRules)) {
       if (!(key in yt)) continue;

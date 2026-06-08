@@ -141,6 +141,8 @@ Open a YouTube video with English captions, make sure CC is on, click the Shinka
 
 If you watch a lot of English YouTube content, enable auto-translate in the "YouTube subtitles" tab in settings — translation will start automatically whenever you open a video, no manual toggling.
 
+On YouTube video pages, the toolbar popup shows a "Caption size" dropdown to enlarge the translated captions (100%–200%). It works on both desktop and mobile; on iPhone / iPad it also scales the captions shown by the iOS system player in fullscreen
+
 ### AI smart segmentation (ASR-only)
 
 YouTube auto-generated captions (videos without human captions; CC labeled "auto-generated") are sliced **by time, not by sentence** — each caption is just 1–3 English words with no punctuation. Translating each one individually loses all semantic context, and the output reads like shredded fragments.

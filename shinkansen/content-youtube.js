@@ -1078,6 +1078,8 @@
     } else {
       if (el.textContent !== wrapped) el.textContent = wrapped;
     }
+    // 套用使用者「字幕大小」scale 到原生 segment（內建字幕單語 path 也吃旋鈕,scale=100 不碰）
+    _applyScaleToSegment(el);
   }
 
   // 暴露給 spec 用
@@ -1181,7 +1183,7 @@
     //         (ASR 路徑 _updateOverlay 已做這件事;non-ASR 雙語也要做,否則
     //         中文用預設 18px,英文用 native 36px,大小差好幾倍)
     const nativeFz = _readNativeCaptionFontSize();
-    if (nativeFz) host.style.setProperty('--sk-cue-size', nativeFz + 'px');
+    if (nativeFz) host.style.setProperty('--sk-cue-size', _scaledCueSizePx(nativeFz) + 'px');
     const nativeFf = _readNativeCaptionFontFamily();
     if (nativeFf) host.style.setProperty('--sk-cue-font-family', nativeFf);
     // native CC 的 font-style(italic / normal)— 旁白等敘述字幕常用 italic,
@@ -1384,7 +1386,12 @@
   function _readNativeCaptionFontSize() {
     const seg = document.querySelector('.ytp-caption-segment');
     if (seg) {
-      const fz = parseFloat(getComputedStyle(seg).fontSize);
+      // 若該 segment 已被非 ASR 單語 path 套過字級 scale,inline 字級是「base × scale」,
+      // 要讀回我們存的 YouTube 原始基準(dataset.skBaseFs)避免回授;沒套過才讀 computed。
+      const baseAttr = seg.dataset ? parseFloat(seg.dataset.skBaseFs) : NaN;
+      const fz = (Number.isFinite(baseAttr) && baseAttr > 0)
+        ? baseAttr
+        : parseFloat(getComputedStyle(seg).fontSize);
       if (Number.isFinite(fz) && fz > 0) { _lastGoodCaptionFontSize = fz; return fz; }
     }
     const win = document.querySelector('.caption-window');
@@ -1458,7 +1465,7 @@
     const host = _ensureOverlay();
     if (host) {
       const nativeFz = _readNativeCaptionFontSize();
-      host.style.setProperty('--sk-cue-size', nativeFz + 'px');
+      host.style.setProperty('--sk-cue-size', _scaledCueSizePx(nativeFz) + 'px');
       const nativeFf = _readNativeCaptionFontFamily();
       if (nativeFf) host.style.setProperty('--sk-cue-font-family', nativeFf);
     }
@@ -1624,12 +1631,112 @@
     }
   }
 
-  // 主入口:重建字幕軌 + 綁定全螢幕進出事件。只在 iOS Safari 跑,其他平台直接 return。
+  // ─── YouTube 字幕字級 scale（全平台統一旋鈕,2026-06-08）──────────────────────
+  // ytSubtitle.captionScale（%,預設 100 = 跟隨各平台原生字幕大小,桌面零改變）。
+  // 設定在 popup（只在 YouTube 影片頁顯示),一個值套兩條渲染路徑:
+  //   - 桌面 / macOS / iOS 視窗內：乘到 overlay 的 --sk-cue-size（原生字級 px × scale/100）
+  //   - iPhone / iPad 原生全螢幕：overlay 被系統播放器取代,改注入 video::cue { font-size: scale% }
+  //     （真機驗證 iOS 原生全螢幕吃網頁 ::cue;Safari 18.2 起系統預設字幕樣式可被網頁覆寫,
+  //      研究背景見 SPEC-PRIVATE §26.8）。只設 font-size,顏色 / 底色交回系統字幕設定。
+  let _ytCaptionScale = 100;
+  // 純函式:原生字級 px × scale → overlay 用 px。抽出供 regression 鎖對映。
+  function _scaledCueSizePx(nativeFz) {
+    return Math.round(nativeFz * _ytCaptionScale / 100);
+  }
+  SK._scaledCueSizePx = _scaledCueSizePx;   // regression spec 用
+  // 非 ASR 單語 path:中文寫進 YouTube 原生 .ytp-caption-segment（大小由 YouTube inline 控）。
+  // 把 scale 套到 segment inline 字級,讓「字幕大小」旋鈕對內建字幕也生效(否則只有 overlay
+  // 路徑 = ASR / 雙語吃旋鈕,內建字幕單語不吃 → 使用者看到不一致)。
+  //   - dataset.skBaseFs 捕捉 YouTube 原始基準一次(之後 inline 被我們覆寫成 base×scale,
+  //     不能再從 inline 讀回);新字幕行 = 新 segment 帶 YouTube 新基準,全螢幕 / resize 自然跟上
+  //     (僅切換當下那一句延遲到下一句才套新大小,次秒級)。
+  //   - scale === 100 且從沒套過 → 完全不碰(預設零改變);套過再回 100 → 還原 base。
+  function _applyScaleToSegment(el) {
+    if (!el || !el.style) return;
+    if (_ytCaptionScale === 100 && el.dataset.skBaseFs == null) return;
+    if (el.dataset.skBaseFs == null) el.dataset.skBaseFs = el.style.fontSize || '';
+    const base = parseFloat(el.dataset.skBaseFs);
+    if (!Number.isFinite(base) || base <= 0) return;   // YouTube 沒給 inline 字級 → 不動
+    const px = (_ytCaptionScale === 100 ? base : Math.round(base * _ytCaptionScale / 100)) + 'px';
+    if (el.style.fontSize !== px) el.style.fontSize = px;
+  }
+  SK._applyScaleToSegment = _applyScaleToSegment;   // regression spec 用
+  // scale≠100 時持續把畫面上「任何」字幕 segment 套成設定大小 —— 不論是 Shinkansen 譯文,
+  // 還是 YouTube 自家字幕 / 帳號層級自動翻譯（這種情況 Shinkansen 沒接手寫字幕,光靠
+  // _setSegmentText hook 接不到新字幕行）。使用者在 popup 設「字幕大小」就期望畫面字幕即此
+  // 大小,不該因字幕來源不同而失效。rAF 合併避免高頻 mutation 狂呼;_applyScaleToSegment
+  // idempotent + 值相同不重設,observer 不會自觸發迴圈。scale=100 停掉 observer 並還原 base。
+  let _captionScaleObserver = null;
+  let _captionScaleRaf = 0;
+  function _applyScaleToAllSegments() {
+    document.querySelectorAll('.ytp-caption-segment').forEach(_applyScaleToSegment);
+  }
+  function _startCaptionScaleObserver(retries) {
+    if (_captionScaleObserver) { _applyScaleToAllSegments(); return; }
+    const root = document.querySelector('#movie_player');
+    if (!root) {
+      // 播放器還沒就緒（page load 初期）→ 短重試,避免去觀察整個 body（太重）
+      if ((retries == null ? 10 : retries) > 0) {
+        setTimeout(() => _startCaptionScaleObserver((retries == null ? 10 : retries) - 1), 1000);
+      }
+      return;
+    }
+    _captionScaleObserver = new MutationObserver(() => {
+      if (_captionScaleRaf) return;             // 合併同一幀內的多個 mutation
+      _captionScaleRaf = requestAnimationFrame(() => { _captionScaleRaf = 0; _applyScaleToAllSegments(); });
+    });
+    _captionScaleObserver.observe(root, { childList: true, subtree: true });
+    _applyScaleToAllSegments();
+  }
+  function _stopCaptionScaleObserver() {
+    if (_captionScaleObserver) { _captionScaleObserver.disconnect(); _captionScaleObserver = null; }
+    if (_captionScaleRaf) { cancelAnimationFrame(_captionScaleRaf); _captionScaleRaf = 0; }
+  }
+  // 純函式:scale → iOS 原生全螢幕 ::cue font-size CSS。抽出供 regression 鎖對映（iOS 原生
+  // 全螢幕實際渲染那層 harness 碰不到,只能測 CSS 生成,屬訊號層次 path B,見 spec 註解）。
+  function _buildIosFsCueCss(scale) {
+    return `video::cue,\nvideo::-webkit-media-text-track-display {\n  font-size: ${scale}% !important;\n}`;
+  }
+  SK._buildIosFsCueCss = _buildIosFsCueCss;   // regression spec 用
+  function _ensureIosFsCueStyle() {
+    let st = document.getElementById('sk-ios-fs-cue-style');
+    if (!st) {
+      st = document.createElement('style');
+      st.id = 'sk-ios-fs-cue-style';
+      (document.head || document.documentElement).appendChild(st);
+    }
+    st.textContent = _buildIosFsCueCss(_ytCaptionScale);
+  }
+  // 設定變更即時套用:更新 scale → 重套 overlay --sk-cue-size（視窗內,全平台）+ iOS ::cue style。
+  // overlay 在播放中每幀 timeupdate 也會以 _scaledCueSizePx 重套;此處額外做一次即時 reflow,
+  // 讓暫停 / 非播放時改設定也立刻生效。
+  function _applyYtCaptionScale(scale) {
+    const n = Number(scale);
+    if (Number.isFinite(n) && n >= 50 && n <= 400) _ytCaptionScale = Math.round(n);
+    if (document.getElementById('sk-ios-fs-cue-style')) _ensureIosFsCueStyle();
+    const host = document.querySelector(_OVERLAY_TAG);
+    if (host) {
+      const nativeFz = _readNativeCaptionFontSize();
+      if (nativeFz) host.style.setProperty('--sk-cue-size', _scaledCueSizePx(nativeFz) + 'px');
+    }
+    // 原生 segment:scale≠100 啟動持續 observer（含立即套用一次）;=100 停掉 observer + 還原 base。
+    if (_ytCaptionScale !== 100) {
+      _startCaptionScaleObserver();
+    } else {
+      _stopCaptionScaleObserver();
+      document.querySelectorAll('.ytp-caption-segment').forEach(_applyScaleToSegment);  // 還原 base
+    }
+  }
+  SK._applyYtCaptionScale = _applyYtCaptionScale;   // regression spec 用
+
+  // 主入口:重建 iOS 全螢幕字幕軌 + 綁定全螢幕進出事件。只在 iOS Safari 跑,其他平台直接 return。
+
   function _refreshIosFsTrack() {
     if (!_isIOSSafari()) return;
     const video = SK.YT.videoEl || document.querySelector('video');
     if (!video || typeof video.addTextTrack !== 'function') return;
     try {
+      _ensureIosFsCueStyle();
       _hideForeignTextTracks(video);
       const inFs = video.webkitPresentationMode === 'fullscreen';
       const track = _ensureIosFsTrack(video, _buildIosFsTrackCues(), inFs);
@@ -3421,7 +3528,15 @@
       _applyBilingualMode(newBilingual);
       SK.sendLog('info', 'youtube', 'bilingualMode toggled live', { bilingual: newBilingual, isAsr: SK.YT.isAsr });
     }
+    // 字幕字級 scale:設定變更即時套用(overlay --sk-cue-size + iOS ::cue,見 _applyYtCaptionScale)
+    if ('captionScale' in newVal) _applyYtCaptionScale(newVal.captionScale);
   });
+
+  // 字幕字級 scale 初值:模組載入時讀一次
+  browser.storage.sync.get('ytSubtitle').then((s) => {
+    const sc = s?.ytSubtitle?.captionScale;
+    if (sc != null) _applyYtCaptionScale(sc);
+  }).catch(() => { /* 預設 100 */ });
 
   // ─── 對外 export:給 content-drive.js(Drive ASR commit 3+)共用 ─────
   // parseJson3:json3 → raw segments [{text, normText, startMs, groupId}]
