@@ -17,7 +17,27 @@
 
 ## 條目
 
-(目前沒有 pending 條目)
+### v1.10.27 — 2026-06-08 — iOS 原生全螢幕字幕軌:gate + fullscreen 事件切換層(永久 path B)
+- **症狀**:iPhone / iPad Safari 看 YouTube 一按全螢幕,翻譯字幕消失(iOS 平台限制——
+  webkitEnterFullscreen 進原生播放器只搬 `<video>`,DOM overlay 全被蓋住)
+- **修在**:`shinkansen/content-youtube.js` iOS FS track 模組(`_refreshIosFsTrack` /
+  `_isIOSSafari` / `_iosFsBeginHandler` / `_iosFsEndHandler`)
+- **已寫的 spec**(路徑 A,自動測得到那層):`test/regression/youtube-ios-fullscreen-track.spec.js`
+  4 case + SANITY——驗 `_buildIosFsTrackCues` cue 組裝(純譯文 / 雙語 src\ntgt / ms→s /
+  endMs clamp / 跳過無譯文)+ `_ensureIosFsTrack` 真實建軌灌 VTTCue
+- **為什麼這層永遠寫不出 spec**(訊號層次,CLAUDE.md 工作流原則 §3):
+  1. `_isIOSSafari()` 在 Playwright Chromium 永遠回 false → `_refreshIosFsTrack` 整段
+     early return,自動環境碰不到
+  2. `webkitbeginfullscreen` / `webkitendfullscreen` 是 iOS 原生播放器專屬事件,Chromium
+     不 fire;原生播放器把 TextTrack 渲染出來這件事更是 iPhone 系統層,harness 完全看不到
+- **只能怎麼驗**:iPhone / iPad 實機(TestFlight)——開有自動生成字幕的外語影片 → Alt+S /
+  四指 tap 翻譯 → 進全螢幕 → 肉眼確認系統字幕層出現中文(雙語則中英兩行);退出全螢幕
+  確認切回原本的 DOM overlay
+- **取捨**(非 bug):全螢幕字幕外觀由 iOS「設定→輔助使用→字幕」控制,無法照搬 overlay
+  的中英共用黑底樣式。屬 iPhone 硬限制,成熟同類產品亦同
+- **已知未涵蓋範圍**:目前只鏡像 ASR(自動生成)路徑的 displayCues。非 ASR(手動上傳
+  字幕)路徑走 replaceSegmentEl,沒有 displayCues 來源,全螢幕仍會消失——待後續評估是否
+  補(mobile YouTube 外語影片以 ASR 為大宗,MVP 先涵蓋 ASR)
 
 <!-- v1.10.0 清空紀錄(2026-05-20):
   - B3 整條移除(使用者要求移除 MAS 上架待辦,2026-05-20)。Part 1(popup banner

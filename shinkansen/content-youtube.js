@@ -1527,6 +1527,151 @@
       cues.push(...filtered);
     }
     cues.sort((a, b) => a.startMs - b.startMs);
+    _scheduleIosFsTrackRefresh();   // iOS 原生全螢幕字幕軌跟著 displayCues 變更刷新
+  }
+
+  // ─── iOS 原生全螢幕字幕軌(native TextTrack fallback) ─────────
+  //
+  // 問題:iPhone / iPad Safari 按全螢幕走 video.webkitEnterFullscreen() 進「原生
+  //       播放器」(系統 AVPlayer 層),只把 <video> 元素本身搬進去——所有疊在
+  //       影片上的 DOM(我們的 shinkansen-yt-overlay、甚至 YouTube 自己的 caption
+  //       div)全部留在後面被蓋住 → 全螢幕字幕整個消失。Element.requestFullscreen()
+  //       在 iPhone 不支援,桌面那套「讓整個 #movie_player 進 top layer」用不了。
+  //
+  // 解法:原生播放器唯一吃得進去的文字是 <video> 的 native TextTrack。把 displayCues
+  //       鏡像成一條 VTTCue TextTrack 掛在 video 上,平常 mode='hidden'(交給 DOM
+  //       overlay 顯示),偵測到 webkitbeginfullscreen 才切 'showing' 讓原生播放器
+  //       渲染,webkitendfullscreen 再切回 'hidden'。
+  //
+  // 取捨:全螢幕字幕外觀由 iOS 系統字幕設定(設定→輔助使用→字幕)控制,無法照搬
+  //       overlay 那塊「中英共用黑底」。但「看得到」遠勝「消失」,屬 iPhone 平台硬限制。
+  //
+  // 訊號層次(本模組驗到哪、沒驗到哪 — 見 CLAUDE.md 工作流原則 §3):
+  //   - 自動測得到:_buildIosFsTrackCues 的 cue 組裝(雙語 src\ntgt / 純譯文 / ms→s
+  //     換算 / endMs clamp 到下一句)→ 有 regression spec。
+  //   - 自動測不到:_isIOSSafari gate、webkitbegin/endfullscreen 真實切換、原生播放器
+  //     渲染 → 只能 iPhone 實機驗(harness 是桌面 Chromium,_isIOSSafari()=false)。
+  //     進 PENDING_REGRESSION。
+
+  const _IOS_FS_TRACK_MARKER = 'shinkansen-yt-fs';
+  let _iosFsBeginHandler = null;
+  let _iosFsEndHandler   = null;
+  let _iosFsRefreshPending = false;
+
+  // iOS Safari 偵測:iPhone/iPad UA,或 iPadOS 13+ 偽裝成 Mac(用 maxTouchPoints 判)。
+  function _isIOSSafari() {
+    const ua = navigator.userAgent || '';
+    if (/iP(hone|ad|od)/.test(ua)) return true;
+    // iPadOS 桌面版 UA 偽裝成 MacIntel,但有觸控點
+    return navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
+  }
+
+  // 從 displayCues 組裝原生字幕軌的 cue 陣列:[{ startSec, endSec, text }]。
+  //   - 雙語:text = sourceText + '\n' + targetText(原文上、譯文下,跟 overlay 同序)
+  //   - 純譯文:text = targetText
+  //   - endSec clamp 到下一句 startMs(比照 _findActiveCue,避免閱讀補償延長造成原生
+  //     播放器同時顯示兩句)
+  function _buildIosFsTrackCues() {
+    const YT = SK.YT;
+    const isBilingual = YT.config?.bilingualMode === true;
+    const src = YT.displayCues;
+    const out = [];
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (!c || !c.targetText) continue;
+      const next = src[i + 1];
+      const nextStart = next ? next.startMs : Infinity;
+      const endMs = Math.min(c.endMs, nextStart);
+      if (!(endMs > c.startMs)) continue;     // 退化區間跳過(VTTCue 要 end > start)
+      let text = String(c.targetText);
+      if (isBilingual && c.sourceText) text = String(c.sourceText) + '\n' + text;
+      out.push({ startSec: c.startMs / 1000, endSec: endMs / 1000, text });
+    }
+    return out;
+  }
+  SK._buildIosFsTrackCues = _buildIosFsTrackCues;   // regression spec 用
+
+  // 把 cue 陣列灌進「我們的」native TextTrack(find-or-create + 清舊 cue + 重灌)。
+  function _ensureIosFsTrack(video, cues, showNow) {
+    let track = null;
+    const list = video.textTracks;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] && list[i].__skCreateBy === _IOS_FS_TRACK_MARKER) { track = list[i]; break; }
+    }
+    if (!track) {
+      const lang = SK.STATE?.targetLanguage || 'zh-TW';
+      track = video.addTextTrack('subtitles', 'Shinkansen', lang);
+      track.__skCreateBy = _IOS_FS_TRACK_MARKER;
+    } else {
+      while (track.cues && track.cues.length) track.removeCue(track.cues[0]);
+    }
+    track.mode = showNow ? 'showing' : 'hidden';
+    for (const c of cues) {
+      try { track.addCue(new VTTCue(c.startSec, c.endSec, c.text)); } catch (e) { /* 單 cue 失敗不影響其他 */ }
+    }
+    return track;
+  }
+  SK._ensureIosFsTrack = _ensureIosFsTrack;   // regression spec 用(Chromium 也支援 addTextTrack/VTTCue)
+
+  // 把非我們的字幕軌全壓 hidden,避免原生全螢幕跟 YouTube native track 疊字。
+  function _hideForeignTextTracks(video) {
+    const list = video.textTracks;
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      if (t && t.__skCreateBy !== _IOS_FS_TRACK_MARKER && t.mode !== 'disabled') {
+        try { t.mode = 'hidden'; } catch (e) {}
+      }
+    }
+  }
+
+  // 主入口:重建字幕軌 + 綁定全螢幕進出事件。只在 iOS Safari 跑,其他平台直接 return。
+  function _refreshIosFsTrack() {
+    if (!_isIOSSafari()) return;
+    const video = SK.YT.videoEl || document.querySelector('video');
+    if (!video || typeof video.addTextTrack !== 'function') return;
+    try {
+      _hideForeignTextTracks(video);
+      const inFs = video.webkitPresentationMode === 'fullscreen';
+      const track = _ensureIosFsTrack(video, _buildIosFsTrackCues(), inFs);
+      // 重綁前先移除舊 handler(video 元素可能跨 session 沿用)
+      if (_iosFsBeginHandler) video.removeEventListener('webkitbeginfullscreen', _iosFsBeginHandler);
+      if (_iosFsEndHandler)   video.removeEventListener('webkitendfullscreen',   _iosFsEndHandler);
+      _iosFsBeginHandler = () => { try { track.mode = 'showing'; } catch (e) {} };
+      _iosFsEndHandler   = () => { try { track.mode = 'hidden';  } catch (e) {} };
+      video.addEventListener('webkitbeginfullscreen', _iosFsBeginHandler);
+      video.addEventListener('webkitendfullscreen',   _iosFsEndHandler);
+    } catch (e) {
+      SK.sendLog?.('warn', 'youtube', 'ios fs track refresh failed: ' + e.message);
+    }
+  }
+
+  // debounce:一批 _upsertDisplayCue 會連 push 數十條,300ms 合併成一次重建。
+  function _scheduleIosFsTrackRefresh() {
+    if (!_isIOSSafari()) return;
+    if (_iosFsRefreshPending) return;
+    _iosFsRefreshPending = true;
+    setTimeout(() => { _iosFsRefreshPending = false; _refreshIosFsTrack(); }, 300);
+  }
+
+  // 停止時清掉我們的字幕軌 cue + 解綁全螢幕事件(TextTrack 本身無法移除,清空 cue
+  // + mode='disabled' 即等同關閉)。
+  function _teardownIosFsTrack() {
+    const video = SK.YT.videoEl || document.querySelector('video');
+    if (!video) return;
+    try {
+      if (_iosFsBeginHandler) video.removeEventListener('webkitbeginfullscreen', _iosFsBeginHandler);
+      if (_iosFsEndHandler)   video.removeEventListener('webkitendfullscreen',   _iosFsEndHandler);
+      _iosFsBeginHandler = null;
+      _iosFsEndHandler   = null;
+      const list = video.textTracks;
+      for (let i = 0; i < list.length; i++) {
+        const t = list[i];
+        if (t && t.__skCreateBy === _IOS_FS_TRACK_MARKER) {
+          while (t.cues && t.cues.length) t.removeCue(t.cues[0]);
+          try { t.mode = 'disabled'; } catch (e) {}
+        }
+      }
+    } catch (e) {}
   }
 
   // ─── ASR 子批切分(gap-aware + lead-time aware streaming) ────
@@ -2926,6 +3071,7 @@
     clearTimeout(YT.batchTimer);
     YT.batchTimer = null;
     if (YT.observer) { YT.observer.disconnect(); YT.observer = null; }
+    _teardownIosFsTrack();   // iOS 全螢幕字幕軌:清 cue + 解綁 fullscreen 事件(須在 videoEl 清空前)
     if (YT.videoEl) {
       YT.videoEl.removeEventListener('timeupdate',  onVideoTimeUpdate);
       YT.videoEl.removeEventListener('seeked',      onVideoSeeked);    // v1.3.1: 補漏
