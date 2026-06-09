@@ -104,4 +104,29 @@ describe('v1.0.11: SPA URL 輪詢偵測', () => {
     expect(resetHappened).toBe(true);
     expect(env.shinkansen.getState().translated).toBe(false);
   });
+
+  // code review 2026-06-09 M1:orphan content script(extension reload 後 chrome.runtime.id
+  // 變 undefined 但 content script 還活著)時,URL 輪詢 interval 應自我清除,不再觸發導航。
+  // SANITY 紀錄(已驗證):把 content-spa.js interval 開頭的
+  //   `if (!globalThis.chrome?.runtime?.id) { clearInterval(...); return; }` 拿掉
+  //   → 本 test fail(orphan 後 URL 變化仍 reset translated);還原 → pass。
+  test('orphan(chrome.runtime.id 消失)後 URL 輪詢自我清除,不再觸發導航', async () => {
+    env = createEnv({ url: 'https://medium.com/@user/orphan-1' });
+    env.shinkansen.setTestState({ translated: true });
+
+    // 模擬 orphan:extension context 失效 → chrome.runtime.id 變 undefined
+    delete env.chrome.runtime.id;
+
+    // 改 URL(若 interval 還活著會 reset translated)
+    env.setUrl('https://medium.com/@user/orphan-2');
+
+    // 等數個輪詢週期。interval 下一 tick 看到 id 沒了會自我 clearInterval,
+    // 不會跑 handleSpaNavigation → translated 保持 true(reset 沒發生)
+    const resetHappened = await waitForCondition(
+      () => env.shinkansen.getState().translated === false,
+      { timeout: 1500 }
+    );
+    expect(resetHappened).toBe(false); // 沒被 reset
+    expect(env.shinkansen.getState().translated).toBe(true);
+  });
 });

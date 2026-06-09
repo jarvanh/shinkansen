@@ -162,3 +162,35 @@ test('snapshot() 回傳目前 RPM/TPM/RPD 狀態', async () => {
   expect(snap.rpdCap).toBe(900); // floor(1000 * 0.9)
   expect(snap.safetyMargin).toBe(0.1);
 });
+
+// ── Test 6 (code review 2026-06-09 M9): snapshot 跨日顯示今日 0 ──
+// SANITY 紀錄(已驗證):把 snapshot 的 `crossedDay ? 0 : this.rpdCount` 改回
+//   `this.rpdCount` → 本 test fail(rpdUsed 變 42);還原 → pass。
+test('snapshot() 跨日後顯示今日 RPD=0(不顯示昨天的計數)', async () => {
+  const limiter = new RateLimiter({
+    rpm: 60, tpm: 500_000, rpd: 1000, safetyMargin: 0,
+  });
+  await limiter.acquire(10); // rpdDateKey 設成今天
+  // 偽造成「昨天」的狀態
+  limiter.rpdDateKey = '20000101';
+  limiter.rpdCount = 42;
+
+  const snap = limiter.snapshot();
+  // 跨太平洋午夜後、下次 acquire 重置前,snapshot 純讀層級就該顯示今日 0
+  expect(snap.rpdUsed).toBe(0);
+  expect(snap.rpdDateKey).not.toBe('20000101'); // 換成今日 key
+});
+
+// ── Test 7 (code review 2026-06-09 M9): clearRpdPersistTimer 清 timer + counter ──
+test('clearRpdPersistTimer 清掉 pending persist timer 與 counter', async () => {
+  const limiter = new RateLimiter({
+    rpm: 100, tpm: 1_000_000, rpd: 100, safetyMargin: 0,
+  });
+  limiter.scheduleRpdPersist(); // counter=1 且設了 30s timer
+  expect(limiter.rpdPersistTimer).not.toBeNull();
+  expect(limiter.rpdPersistCounter).toBe(1);
+
+  limiter.clearRpdPersistTimer();
+  expect(limiter.rpdPersistTimer).toBeNull();
+  expect(limiter.rpdPersistCounter).toBe(0);
+});

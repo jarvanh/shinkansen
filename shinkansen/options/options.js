@@ -66,6 +66,10 @@ const $ = (id) => document.getElementById(id);
 // 禁用詞表預設。改成 module-level cache:load() 從 storage 讀進來,storage.onChanged
 // listener 監聽 popup 寫入後同步更新並 reapply refresher。
 let _currentTargetLang = DEFAULT_SETTINGS.targetLanguage;
+// load() 會被多次呼叫(init / 回復預設 / 匯入設定);UI 語系變動訂閱只能註冊一次,
+// 否則每次 load() 疊一個 storage.onChanged listener → 切語言 callback 跑 N 次
+// (連帶 refreshExchangeRateDisplay 的 sendMessage 放大)。此旗標確保只訂閱一次。
+let _uiLangChangeSubscribed = false;
 
 async function load() {
   const saved = await browser.storage.sync.get(null);
@@ -370,6 +374,9 @@ async function load() {
     // picker.value 還沒從 storage sync(走 navigator.language 推 auto),Jimmy 機器是
     // 繁中環境就拿到繁中,即使 stored uiLanguage='en' 也無效。picker.value sync 後重 render 一次。
     updateYtPromptCostHint();
+    // 只訂閱一次(load() 多次呼叫,見 _uiLangChangeSubscribed 宣告處註解)
+    if (!_uiLangChangeSubscribed) {
+    _uiLangChangeSubscribed = true;
     I18N.subscribeUiLanguageChange((newUi /* , newPref */) => {
       I18N.applyI18n(document, newUi);
       { const _vEl = $('options-version');
@@ -389,6 +396,7 @@ async function load() {
       // 主動 reapply 才會看到新語言的 dict 字串
       updateYtPromptCostHint();
     });
+    }
   }
 }
 
@@ -1736,6 +1744,8 @@ function sanitizeImport(raw) {
     if (typeof gl.skipThreshold === 'number' && Number.isInteger(gl.skipThreshold) && gl.skipThreshold >= 0) glClean.skipThreshold = gl.skipThreshold;
     if (typeof gl.blockingThreshold === 'number' && Number.isInteger(gl.blockingThreshold) && gl.blockingThreshold >= 0) glClean.blockingThreshold = gl.blockingThreshold;
     if (typeof gl.maxTerms === 'number' && Number.isInteger(gl.maxTerms) && gl.maxTerms >= 1 && gl.maxTerms <= 500) glClean.maxTerms = gl.maxTerms;
+    // 術語表獨立模型(save 在 saveSettings 的 glossary.model)。空字串代表跟隨主翻譯模型,也合法
+    if (typeof gl.model === 'string') glClean.model = gl.model.trim();
     if (Object.keys(glClean).length > 0) clean.glossary = glClean;
   }
 
@@ -1777,6 +1787,15 @@ function sanitizeImport(raw) {
         && cp.cachedDiscount >= 0 && cp.cachedDiscount <= 1) {
       cpClean.cachedDiscount = cp.cachedDiscount;
     }
+    // thinkingLevel:enum,非法值落回 'auto'(對齊 saveSettings 的 fallback)
+    if (typeof cp.thinkingLevel === 'string'
+        && ['auto', 'off', 'low', 'medium', 'high'].includes(cp.thinkingLevel)) {
+      cpClean.thinkingLevel = cp.thinkingLevel;
+    }
+    // extraBodyJson:自由字串(save 端只 trim,不在此驗 JSON 合法性,維持與 saveSettings 一致)
+    if (typeof cp.extraBodyJson === 'string') cpClean.extraBodyJson = cp.extraBodyJson.trim();
+    // useStrongSegMarker:boolean(預設 true,讀取走 !== false)
+    if (typeof cp.useStrongSegMarker === 'boolean') cpClean.useStrongSegMarker = cp.useStrongSegMarker;
     if (Object.prototype.hasOwnProperty.call(cp, 'apiKey')) {
       warnings.push(_t('options.import.warningCpApiKey'));
     }

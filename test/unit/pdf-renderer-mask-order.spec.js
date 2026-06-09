@@ -120,3 +120,57 @@ test.describe('drawTranslatedOverlay mask 順序', () => {
     expect(rectCount).toBe(5);
   });
 });
+
+// code review 2026-06-09 M5:窄表格 cell-block(寬或高 < 2pt)扣 buffer*2 會變負值,
+// drawRectangle 畫反向 / 0 面積 → 原文沒被蓋。修法:內縮後 ≤ 0 改用原 cell 尺寸蓋。
+// SANITY 紀錄(已驗證):把 pdf-renderer cell-block mask 改回無條件
+//   `width: (bx1-bx0) - buf*2, height: (by1-by0) - buf*2` → 窄 cell case fail
+//   (width 變負);還原 → pass。
+test.describe('drawTranslatedOverlay cell-block 窄 cell mask(M5)', () => {
+  function makeCellLayoutPage(bbox) {
+    return {
+      pageIndex: 0,
+      viewport: { width: 612, height: 792 },
+      blocks: [{
+        blockId: 'cell0',
+        type: 'paragraph',
+        _isCellBlock: true,
+        bbox,
+        column: 0,
+        fontSize: 9,
+        lineCount: 1,
+        runCount: 1,
+        plainText: '1',
+        translation: '一',
+        translationSegments: [{ text: '一', isBold: false, isItalic: false, linkUrl: null }],
+      }],
+      medianLineHeight: 11,
+      columnCount: 1,
+    };
+  }
+
+  test('窄 cell(寬 1.5pt < 2pt)mask 寬高不為負,改蓋全 cell', () => {
+    const page = makeRecordingPage();
+    const font = makeFont();
+    // 寬 1.5pt:扣 buf*2=2 會變 -0.5
+    drawTranslatedOverlay(page, makeCellLayoutPage([100, 200, 101.5, 215]), font, font, []);
+    const rect = page.calls.find((c) => c.kind === 'rect');
+    expect(rect).toBeDefined();
+    expect(rect.opts.width).toBeGreaterThan(0);
+    expect(rect.opts.height).toBeGreaterThan(0);
+    // fallback 用原 cell 尺寸:width = 1.5(全寬),x = bx0
+    expect(rect.opts.width).toBeCloseTo(1.5, 5);
+    expect(rect.opts.x).toBeCloseTo(100, 5);
+  });
+
+  test('正常寬 cell(寬 40pt)仍走 1pt 內縮(留表格邊線 buffer)', () => {
+    const page = makeRecordingPage();
+    const font = makeFont();
+    drawTranslatedOverlay(page, makeCellLayoutPage([100, 200, 140, 215]), font, font, []);
+    const rect = page.calls.find((c) => c.kind === 'rect');
+    expect(rect).toBeDefined();
+    // 內縮:width = 40 - 2 = 38,x = 101
+    expect(rect.opts.width).toBeCloseTo(38, 5);
+    expect(rect.opts.x).toBeCloseTo(101, 5);
+  });
+});

@@ -153,7 +153,17 @@
   // ─── URL 輪詢（SPA 導航 safety net） ─────────────────
 
   const SPA_URL_POLL_MS = 500;
-  setInterval(() => {
+  let spaUrlPollTimer = setInterval(() => {
+    // v1.10.39(code review 2026-06-09 M1):本 interval 是模組唯一沒被 stopSpaObserver
+    // 收斂的週期工作。orphan content script(extension reload / 更新後舊腳本還活著)時
+    // context 失效,輪詢仍每 500ms 跑(handleSpaNavigation 內 storage / sendMessage 雖被
+    // try/catch 接住,但 timer 本身空轉耗電)。偵測到 context 失效就自我清除。
+    // 偵測法鏡像 content-ns.js safeSendMessage 的 orphan 判斷(chrome.runtime.id 失效變 undefined)。
+    if (!globalThis.chrome?.runtime?.id) {
+      clearInterval(spaUrlPollTimer);
+      spaUrlPollTimer = null;
+      return;
+    }
     // v1.6.10: 分頁隱藏時跳過 URL 輪詢——背景分頁不會由使用者觸發導航,
     // pushState patch + popstate + hashchange 三條 listener 仍活躍,真正
     // 主動觸發的 SPA 導航不會漏接。輪詢只是萬一上述 patch 沒套到的 safety

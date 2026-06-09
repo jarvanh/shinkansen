@@ -10,6 +10,7 @@ const STORE_NAME = 'translations';
 
 /** 取得或建立 IndexedDB 連線（singleton Promise） */
 let _dbPromise = null;
+let _db = null; // 目前 resolve 出來的連線,供 onclose / onversionchange 比對是否仍是當前連線
 function getDB() {
   if (_dbPromise) return _dbPromise;
   _dbPromise = new Promise((resolve, reject) => {
@@ -21,7 +22,22 @@ function getDB() {
         store.createIndex('timestamp', 'timestamp', { unique: false });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      _db = db;
+      // v1.10.39(code review 2026-06-09 M4):連線被外部關閉時把 singleton 失效,讓下次
+      // getDB 重建。否則 _dbPromise 會 cache 著死連線,後續 db.transaction() 一律丟
+      // InvalidStateError → 所有 usage 寫入靜默失敗直到 SW 重啟。比對 _db === db 確保
+      // 只在「關閉的是當前連線」時才失效(避免舊連線的晚到 onclose 誤殺新連線)。
+      //   - onclose:瀏覽器強制關閉連線(例如儲存空間壓力)
+      //   - onversionchange:其他 context 升級 DB → 主動關閉本連線讓升級進行
+      db.onclose = () => { if (_db === db) { _db = null; _dbPromise = null; } };
+      db.onversionchange = () => {
+        try { db.close(); } catch (_) { /* 略 */ }
+        if (_db === db) { _db = null; _dbPromise = null; }
+      };
+      resolve(db);
+    };
     req.onerror = () => {
       _dbPromise = null;
       reject(req.error);

@@ -15,6 +15,10 @@ let setCallCount = 0;
 let removedKeys = [];
 // 可選：模擬配額滿（第一次 set 拋錯，之後正常）
 let quotaErrorOnNextSet = false;
+// H3 race 模擬:設成某 key 時,evictOldest 的「remove 前重讀候選」那次陣列 get
+// 會先把該 key 的 timestamp 灌成最新(模擬 snapshot 之後被 flushTouches / setBatch
+// touch),用來驗證修法會跳過已被 touch 的 entry。null = 不注入。
+let injectTouchKeyOnReRead = null;
 
 globalThis.chrome = {
   storage: {
@@ -24,6 +28,12 @@ globalThis.chrome = {
         if (keys === null) {
           // get(null) → 回傳所有 entries
           return { ...store };
+        }
+        // 陣列 get(候選 keys) = evictOldest 的 remove 前重讀。在回傳前注入「被 touch」
+        if (injectTouchKeyOnReRead && Array.isArray(keys) && keys.includes(injectTouchKeyOnReRead)
+            && store[injectTouchKeyOnReRead]) {
+          // 換成新物件(不動 snapshot 持有的舊 reference),t 設成最新
+          store[injectTouchKeyOnReRead] = { ...store[injectTouchKeyOnReRead], t: 9_999_999_999 };
         }
         const result = {};
         const keyList = Array.isArray(keys) ? keys : [keys];
@@ -59,6 +69,7 @@ test.beforeEach(() => {
   setCallCount = 0;
   removedKeys = [];
   quotaErrorOnNextSet = false;
+  injectTouchKeyOnReRead = null;
 });
 
 test.describe('v0.85 LRU 快取值結構', () => {
@@ -145,6 +156,31 @@ test.describe('v0.85 配額滿 LRU 淘汰', () => {
 
     // 舊格式 A（t=0）應該最先被淘汰
     expect(removedKeys).toContain(`tc_${hashA}`);
+  });
+});
+
+test.describe('LRU 淘汰 race 防護(code review 2026-06-09 H3)', () => {
+  // SANITY 紀錄(已驗證):把 cache.js evictOldest 的「remove 前重讀候選比對 t」整段
+  // 改回直接 remove(toRemove)→ 本 spec fail(被 touch 的 A 仍被刪);還原 → pass。
+  test('evictOldest snapshot 後被 touch 的 entry 不應被誤刪', async () => {
+    const hashA = await hashText('race-a');
+    const hashB = await hashText('race-b');
+    const hashC = await hashText('race-c');
+    // A 最舊(會排第一個淘汰),但會在 snapshot 之後被 touch
+    store[`tc_${hashA}`] = { v: '舊A', t: 1000 };
+    store[`tc_${hashB}`] = { v: '舊B', t: 2000 };
+    store[`tc_${hashC}`] = { v: '舊C', t: 3000 };
+
+    // 模擬:evictOldest 重讀候選時,A 已被 flushTouches 灌成最新 timestamp
+    injectTouchKeyOnReRead = `tc_${hashA}`;
+
+    quotaErrorOnNextSet = true;
+    await setBatch(['race-d'], ['D譯']);
+
+    // A 在 snapshot 後變最熱 → 修法應跳過,不在淘汰名單
+    expect(removedKeys).not.toContain(`tc_${hashA}`);
+    // B / C 沒被 touch,正常淘汰(至少其一被刪,證明淘汰本身有跑)
+    expect(removedKeys.length).toBeGreaterThan(0);
   });
 });
 

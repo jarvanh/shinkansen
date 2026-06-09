@@ -93,7 +93,12 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
   onProgress({ stage: 'parsing' });
   // password: '' 是 cantoo 解密路徑的 trigger;對非加密 PDF 無副作用
   // (cantoo 內部會先檢查 isEncrypted 才走 decrypt branch)
-  const origDoc = await PDFDocument.load(originalArrayBuffer, { ignoreEncryption: true, password: '' });
+  // v1.10.39(code review 2026-06-09 M6):傳 slice(0) 副本,不消費共用的
+  // originalArrayBuffer。buildBilingualPdf 對同一 buffer 會被呼叫多次(reader 開啟 /
+  // retry regenerate / download fallback),且加密 PDF 走 cantoo decrypt 分支可能
+  // transfer/detach buffer → 第二次 build 拿到 length 0 整份失敗。extractPdfMetaForOverlay
+  // (下方 line 104)早已自己 slice(0),此處對齊同樣防護。
+  const origDoc = await PDFDocument.load(originalArrayBuffer.slice(0), { ignoreEncryption: true, password: '' });
   const pageCount = layoutDoc.pages.length;
   // 一次 embedPages 全部頁(比 for-loop 內逐頁 embedPage 快；pdf-lib 內部 batch parse)
   const origPages = origDoc.getPages().slice(0, pageCount);
@@ -247,12 +252,17 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
       // 表格 cell 內容多為短英數字,殘影風險低
       const [bx0, by0, bx1, by1] = block.bbox;
       const buf = 1;
-      const pdfMaskBottom = pageH - (by1 - buf);
+      // v1.10.39(code review 2026-06-09 M5):窄 cell(寬或高 < 2pt,如數量 / 單位欄)
+      // 扣掉 buf*2 會變負值 → drawRectangle 畫反向 / 0 面積矩形 → 原文沒被蓋、譯文疊在
+      // 原文上。任一維度內縮後 ≤ 0 時改用原 cell 尺寸蓋(寧可壓到表格邊線也不漏蓋原文)。
+      const insetW = (bx1 - bx0) - buf * 2;
+      const insetH = (by1 - by0) - buf * 2;
+      const useInset = insetW > 0 && insetH > 0;
       page.drawRectangle({
-        x: bx0 + buf,
-        y: pdfMaskBottom,
-        width: (bx1 - bx0) - buf * 2,
-        height: (by1 - by0) - buf * 2,
+        x: useInset ? bx0 + buf : bx0,
+        y: useInset ? pageH - (by1 - buf) : pageH - by1,
+        width: useInset ? insetW : (bx1 - bx0),
+        height: useInset ? insetH : (by1 - by0),
         color: rgb(1, 1, 1),
         borderWidth: 0,
       });
@@ -520,32 +530,13 @@ function expandBoxToCoverItems(finalBox, block, items) {
   return { x0, y0, x1, y1 };
 }
 
-// 判斷 block 在原 PDF 是否「多數 bold」(字符數加權,bold ratio ≥ 0.5)。
-// 用 textContent items 的 bbox 中心點落入 block bbox 為判定範圍
-function isBlockBold(block, items) {
-  if (!items || items.length === 0) return false;
-  const [bx0, by0, bx1, by1] = block.bbox;
-  let boldChars = 0;
-  let totalChars = 0;
-  for (const it of items) {
-    const [ix0, iy0, ix1, iy1] = it.bbox;
-    const cx = (ix0 + ix1) / 2;
-    const cy = (iy0 + iy1) / 2;
-    if (cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
-      const n = it.str.length;
-      totalChars += n;
-      if (it.isBold) boldChars += n;
-    }
-  }
-  return totalChars > 0 && boldChars / totalChars >= 0.5;
-}
-
 // ----- 從原 PDF 抽 link + 字型 metadata -----
 
 // 用 PDF.js 一輪解全頁,每頁回傳:
 //   - links: { rect, url }  (rect PDF y-up 直接給 pdf-lib 用;新 page 同 size + 1:1 嵌)
 //   - items: [{ str, bbox, isBold }]  (bbox canvas 座標,同 layout-analyzer 用的座標系)
-// items 用於 drawTranslatedOverlay 的 isBlockBold 判定;判 bold 走兩條:
+// items 供 expandBoxToCoverItems 用(W7 起 bold 改走 styleSegments,不再用 items 反推
+// block-level bold)。判 bold 走兩條:
 //   1. font.bold === true (PDF 字型物件直接帶)
 //   2. font.name regex /Bold|Black|Heavy|Demi|Semi/  (subset 過的字型常無 .bold flag,
 //      但 name 通常仍含 weight 字串,例:'BCDFEE+Arial-Black')
@@ -644,33 +635,11 @@ function addLinkAnnotations(newDoc, newPage, links) {
 
 // 不可行首的標點(中文全形 + 半形,新行起頭看到這些字符會把它拉回上一行末)。
 // 涵蓋:句號逗號、頓號、分號冒號、感嘆問號、右括號、右引號、書名號右半
+// 不可行首字符後處理由 applyCJKPunctuationRulesPieces(segment-aware 版)負責,常數共用。
 const FORBIDDEN_LINE_START = '、。，：；！？」』）〕】》〉,.;:!?)]}';
 
-// 後處理:把違規行首字符拉回上一行末。視覺上輕微拉長上一行,但中文標點
-// 全形寬通常 fontSize 以內,且 PDF reader 不嚴格 clip,可接受
-function applyCJKPunctuationRules(lines) {
-  if (!lines || lines.length < 2) return lines;
-  const out = [...lines];
-  // 多 pass:單 pass 後若 line 開頭仍違規(罕見,連續兩個禁標點),再做一次
-  for (let pass = 0; pass < 3; pass++) {
-    let moved = false;
-    for (let i = 1; i < out.length; i++) {
-      const ln = out[i];
-      if (!ln.length) continue;
-      const firstCh = ln[0];
-      if (FORBIDDEN_LINE_START.includes(firstCh)) {
-        out[i - 1] = out[i - 1] + firstCh;
-        out[i] = ln.slice(1);
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-  return out.filter((l) => l.length > 0);
-}
-
-// W7:segment-aware wrap。對每 styleSegment 切 chunks(同 wrapTextToWidth 的
-// CJK 逐字 / ASCII 詞 / 空白獨立 切法),chunks 帶 segment 的 style;累加 chunk
+// W7:segment-aware wrap。對每 styleSegment 切 chunks(CJK 逐字 / ASCII 詞 /
+// 空白獨立 切法),chunks 帶 segment 的 style;累加 chunk
 // 寬超過 maxWidth 就斷新行。同 line 內合併連續同 style chunks 成 piece。
 //
 // @returns {Array<{ pieces: Array<{ text, isBold, isItalic, linkUrl }> }>}
@@ -796,50 +765,3 @@ function applyCJKPunctuationRulesPieces(lines) {
     .filter((l) => l.pieces.length > 0);
 }
 
-// 中文按字斷，英文按詞斷，累加字寬超過 maxWidth 即斷行
-function wrapTextToWidth(text, font, fontSize, maxWidth) {
-  if (!text) return [];
-  // 分 segments:CJK 字逐字、ASCII 詞按空白切、空白獨立 segment
-  const segments = [];
-  let buf = '';
-  for (const ch of text) {
-    const cp = ch.codePointAt(0);
-    const isCJK =
-      (cp >= 0x3000 && cp <= 0x9FFF) ||
-      (cp >= 0x3400 && cp <= 0x4DBF) ||
-      (cp >= 0xFF00 && cp <= 0xFFEF); // 全形標點 / 全形 ASCII
-    const isWS = /\s/.test(ch);
-    if (isCJK || isWS) {
-      if (buf) { segments.push(buf); buf = ''; }
-      segments.push(ch);
-    } else {
-      buf += ch;
-    }
-  }
-  if (buf) segments.push(buf);
-
-  const lines = [];
-  let current = '';
-  let currentWidth = 0;
-
-  function widthOf(s) {
-    try { return font.widthOfTextAtSize(s, fontSize); }
-    catch { return s.length * fontSize * 0.5; }
-  }
-
-  for (const seg of segments) {
-    const segW = widthOf(seg);
-    // 如果當前 line 是純空白起頭跳過(避免新行開頭一個空白)
-    if (current === '' && /^\s+$/.test(seg)) continue;
-    if (currentWidth + segW > maxWidth && current.length > 0) {
-      lines.push(current);
-      current = /^\s+$/.test(seg) ? '' : seg;
-      currentWidth = current ? widthOf(current) : 0;
-    } else {
-      current += seg;
-      currentWidth += segW;
-    }
-  }
-  if (current.length > 0) lines.push(current);
-  return applyCJKPunctuationRules(lines);
-}

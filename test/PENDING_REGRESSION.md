@@ -17,7 +17,58 @@
 
 ## 條目
 
-(目前沒有 pending 條目)
+### code review 2026-06-09 M2 — content-drive.js rAF loop orphan 收斂 + 防重複綁定
+- **症狀**(潛在):content-drive.js:411 _startRenderLoop 的 rAF loop 原本無條件遞迴永不停,orphan content script 後仍每幀 getBoundingClientRect 空轉;_listenPlayerMessages 無防重複綁定
+- **修在**:`shinkansen/content-drive.js` _startRenderLoop 加 orphan 自我停止(`!chrome.runtime?.id`)+ DRIVE.renderLoopRunning 防重複啟動 guard;_listenPlayerMessages 加 DRIVE._msgListenerInstalled guard
+- **為什麼還不能寫測試**:orphan context 同 M1(harness 無法重現);防重複啟動 / 綁定 guard 要測需 expose 內部 + 計 rAF 次數,收益低。既有 drive-bilingual-overlay / drive-engine-normalize spec 已驗 overlay 結構 / render 邏輯沒被破壞(本輪跑過全綠)
+- **取捨(非 bug)**:不在 _autoTranslateEnabled=false 時暫停 loop——暫停後需可靠 resume 觸發,風險高於收益(Drive niche 路徑),只收斂「回不來」的 orphan
+- **建議 spec 位置**:無(orphan 部分永久 path B)
+
+### code review 2026-06-09 M4 — usage-db getDB 連線失效自我重建
+- **症狀**(潛在):lib/usage-db.js getDB singleton 沒掛 onclose / onversionchange,連線被瀏覽器關閉後 _dbPromise cache 死連線 → 後續 db.transaction() 丟 InvalidStateError,usage 寫入靜默失敗到 SW 重啟
+- **修在**:`shinkansen/lib/usage-db.js` req.onsuccess 掛 `db.onclose` / `db.onversionchange`,比對 `_db === db` 後 null 掉 _dbPromise 讓下次 getDB 重建
+- **為什麼還不能寫測試**:專案無 IndexedDB 測試基建(無 fake-indexeddb dep,既有 usage spec 都是讀 source / 測 handler 架構,不跑真 IndexedDB)。onclose 要瀏覽器儲存壓力才觸發;onversionchange 要跨 context DB 升級,但 DB_VERSION 恆=1 production 不會升級。兩者在 harness representatively 重現需另建基建,收益低
+- **建議 spec 位置**:無;若未來引入 fake-indexeddb 或 sw context IndexedDB 測試再補
+- **驗證方式**:code inspection + node --check;_db===db 比對防舊連線晚到 onclose 誤殺新連線
+
+### code review 2026-06-09 M8 — YT heuristic / on-the-fly 批次結果 res.result 防禦
+- **症狀**(潛在,path drift):content-youtube.js heuristic(_runBatch)與 on-the-fly(flushOnTheFly)路徑用 `res.result[j]`,若 res.ok=true 但 res.result 缺失會 throw;非 ASR 主路徑(_injectBatchResult)早已 `res.result || []`,這兩條沒跟上(CLAUDE.md §5 單一資料源 drift)
+- **修在**:`shinkansen/content-youtube.js` 兩處改 `const results = res.result || []` 再 index
+- **為什麼還不能寫測試**:觸發條件是「background 回 ok=true 卻不帶 result」的契約違反,正常不會發生;要在 YT fixture 路徑產生需深層 mock safeSendMessage + 跑完整 window 翻譯流程,收益低。修法與主路徑已測的 `|| []` 同 pattern,風險近零(只在 result undefined 時改變行為——舊 code 是 throw)
+- **建議 spec 位置**:無;若未來建 YT 批次路徑 mock harness 可一併補
+
+---
+
+## Deferred 改善項(code review 2026-06-09,待評估排程)
+
+> 這些是 2026-06-09 全 codebase review 找出、但當輪決定**不動**的項目(架構級重構 / 低 ROI)。
+> 不是 bug,功能現況正確。放這裡是為了不遺失,未來有空再評估。**不計入 release gate**。
+
+### M9(c) — onStartup / onAlarm 分散註冊合併成單一 dispatcher
+- background.js 的 `onStartup` 註冊 4 次、`onAlarm` 3 次,各自過濾 alarm name。功能正確但分散難追,未來新增 alarm 容易漏接。
+- **為何 deferred**:純維護性重構,動 SW 初始化有 regression 風險、零功能收益。
+- **建議**:合併成單一 onAlarm dispatcher(name → handler map),對齊既有 messageHandlers 風格。
+
+### L2(a 完整) — drive 批次函式合一
+- content-drive.js 三個 `_runOneBatch*`(Gemini/Google/Custom)+ content-youtube.js `_runAsrSubBatch` 結構高度重複。
+- **本輪已做**:magic 1500 已抽成 `SK.ASR_LAST_CUE_FALLBACK_MS`(content-ns.js)。
+- **為何 deferred**:把 4 函式合一觸及翻譯正確性路徑,風險 > 收益。
+- **建議**:抽 `_runAsrBatch(batch, msgType, parseMode)` 共用核心,engine 差異傳參。
+
+### L2(b) — content-toast.js 金額格式化與 lib/format.js 重複 + 硬編匯率 31.6
+- content-toast.js 的 formatTWD/formatUSD/formatMoney 與 lib/format.js 重複,fallback 匯率 31.6 硬編 3 次(lib/exchange-rate.js 已有 FALLBACK_USD_TWD_RATE 常數)。
+- **為何 deferred**:content script 不能 import ES module,正解需抽 window.__SK UMD 共用檔(架構改動);fallback 匯率罕變,drift 風險低。
+- **建議**:把格式化函式抽到非 module、掛 window.__SK 的共用檔(類似 shortcut-utils.js UMD 寫法)。
+
+### L5 — gemini.js segment mismatch 逐段 fallback 不過 rate limiter
+- lib/gemini.js translateChunk mismatch 時逐段重打 API,不經 limiter.acquire(不計入 RPM/TPM 視窗)。
+- **為何 deferred**:修法需把 limiter 從 background 接進純 API 模組(架構改動);mismatch 罕見,逐段 fallback 內層已有 429 退避兜底,後果良性。
+- **建議**:fallback 逐段也走 limiter,或在 background 層處理 mismatch retry。
+
+## 已評估為「非 bug / 維持原樣」(不要再被當問題重提)
+
+- **M7 PDF 多行末行被吞**:**誤報**。數學證明 fit 保證 `requiredH ≤ blockH+1`,drawText 的 `cy < pdfBottom - lineHeight` break 對成功 fit 的最後一行永不觸發(餘裕 = `fontSize×(visualRatio-1)+lineHeight-1 ≥ 5.5 > 0`)。break 只在 fallback overflow 情境清掉真的溢出的行——正確行為。移除 break 反而讓 fallback 譯文溢出蓋下個 block。2026-06-09 Plano/Quotation/Trimble 真翻譯 Read 譯文 PDF 均無末行遺失。
+- **L1 caption scale observer**:**維持觀察 #movie_player**,不縮到 .ytp-caption-window-container。YT 在字幕 toggle / 全螢幕 / 畫質切換時銷毀重建該容器,observer 掛舊容器會漏掉重建。現有 rAF 合併 + idempotent apply 已壓住成本(且只在 scale≠100 啟動)。
 
 <!-- iOS host app ↔ extension App Group 設定橋接（Phase 2,SPEC-PRIVATE §26.12）清空紀錄
   （2026-06-09,模擬器端到端驗收完成）:

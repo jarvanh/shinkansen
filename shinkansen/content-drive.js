@@ -362,6 +362,10 @@
   const _MAX_INITIAL_LOGS = 5;
 
   function _listenPlayerMessages() {
+    // v1.10.39(code review 2026-06-09):防重複綁定。_init 正常只跑一次,但加 guard
+    // 確保即使被多次呼叫也不疊加 message listener(infoDelivery 每 250ms 推,疊加會放大 currentTimeMs 寫入)。
+    if (DRIVE._msgListenerInstalled) return;
+    DRIVE._msgListenerInstalled = true;
     window.addEventListener('message', (e) => {
       if (e.origin !== 'https://youtube.googleapis.com') return;
       let data = e.data;
@@ -408,13 +412,26 @@
   }
 
   // ─── 主 rAF loop:rect 追蹤 + render cue ─────────────
+  // 每幀做 getBoundingClientRect(_updateOverlayPosition)讓 overlay 平順跟隨 Drive
+  // 頁捲動,所以維持 per-frame。但 v1.10.39(code review 2026-06-09 M2)補兩道收斂:
+  //   1. orphan content script(extension reload)→ 自我停止,避免空轉耗電(同 M1 / safeSendMessage 偵測法)
+  //   2. 防重複啟動(_init 萬一被呼叫多次也只跑一條 loop)
+  // 註:不在 _autoTranslateEnabled=false 時暫停——暫停後需可靠的 resume 觸發,風險高於
+  //     收益(Drive 是 niche 路徑),故只收斂「永遠回不來」的 orphan 情境。
   function _startRenderLoop() {
+    if (DRIVE.renderLoopRunning) return; // 已在跑,不重複啟動
+    DRIVE.renderLoopRunning = true;
     function loop() {
+      if (!globalThis.chrome?.runtime?.id) { // orphan → 停止
+        DRIVE.renderLoopRunning = false;
+        DRIVE.renderLoopId = null;
+        return;
+      }
       _updateOverlayPosition();
       _renderActiveCue();
-      requestAnimationFrame(loop);
+      DRIVE.renderLoopId = requestAnimationFrame(loop);
     }
-    requestAnimationFrame(loop);
+    DRIVE.renderLoopId = requestAnimationFrame(loop);
   }
 
   // ─── 單批翻譯:Gemini D' 模式(LLM 自由合句 + 時間戳對齊) ────
@@ -423,7 +440,7 @@
 
     const inputArr = batch.map((seg, i) => {
       const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + 1500;
+      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
       return { s: seg.startMs, e: endMs, t: seg.text };
     });
     const inputJson = JSON.stringify(inputArr);
@@ -513,7 +530,7 @@
       const text = String(translations[i] || '').trim();
       if (!text) continue;
       const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + 1500;
+      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
       DRIVE.entries.push({ startMs: seg.startMs, endMs, text });
       pushedCount++;
     }
@@ -537,7 +554,7 @@
 
     const inputArr = batch.map((seg, i) => {
       const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + 1500;
+      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
       return { s: seg.startMs, e: endMs, t: seg.text };
     });
     const inputJson = JSON.stringify(inputArr);

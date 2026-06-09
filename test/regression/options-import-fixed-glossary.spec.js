@@ -262,3 +262,103 @@ test('匯入設定時 12 條 audit 漏掉的 key 必須全部 round-trip', async
     preferOriginalTrack: false,
   });
 });
+
+// Code review 2026-06-09 H1:sanitizeImport 漏列 customProvider.thinkingLevel /
+// extraBodyJson / useStrongSegMarker 與 glossary.model,匯出再匯入這幾個欄位被默默丟。
+// SANITY 紀錄（已驗證）:
+//   把 options.js sanitizeImport() 內新增的「thinkingLevel / extraBodyJson /
+//   useStrongSegMarker」三行與 glClean 的「gl.model」一行註解掉 → 本 spec fail
+//   (Received cpClean 缺 thinkingLevel 等);還原 → pass。
+test('匯入設定時 customProvider 進階欄位與 glossary.model 必須 round-trip', async ({ context, extensionId }) => {
+  const sw = context.serviceWorkers()[0]
+    || (await context.waitForEvent('serviceworker', { timeout: 10_000 }));
+
+  await sw.evaluate(async () => {
+    await chrome.storage.sync.clear();
+    await chrome.storage.local.clear();
+  });
+
+  const page = await context.newPage();
+  page.on('dialog', d => d.accept());
+
+  await page.goto(`chrome-extension://${extensionId}/options/options.html`);
+  await page.waitForSelector('#import-input', { state: 'attached' });
+
+  const importPayload = {
+    customProvider: {
+      baseUrl: 'https://example.com/v1',
+      model: 'my-model',
+      thinkingLevel: 'high',
+      extraBodyJson: '{"top_k": 40}',
+      useStrongSegMarker: false,
+    },
+    glossary: {
+      enabled: true,
+      model: 'gemini-3-flash-lite',
+    },
+  };
+
+  await page.setInputFiles('#import-input', {
+    name: 'shinkansen-settings-cp.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(importPayload), 'utf8'),
+  });
+
+  const start = Date.now();
+  let stored;
+  while (Date.now() - start < 5000) {
+    stored = await sw.evaluate(async () => chrome.storage.sync.get(['customProvider', 'glossary']));
+    if (stored?.customProvider?.thinkingLevel === 'high') break;
+    await page.waitForTimeout(50);
+  }
+
+  expect(stored.customProvider).toMatchObject({
+    thinkingLevel: 'high',
+    extraBodyJson: '{"top_k": 40}',
+    useStrongSegMarker: false,
+  });
+  expect(stored.glossary.model).toBe('gemini-3-flash-lite');
+});
+
+// Code review 2026-06-09 H1 補強:非法 thinkingLevel 不可進 storage（落回 saveSettings 預設前的防線）
+test('匯入設定時非法 customProvider.thinkingLevel 會被過濾', async ({ context, extensionId }) => {
+  const sw = context.serviceWorkers()[0]
+    || (await context.waitForEvent('serviceworker', { timeout: 10_000 }));
+
+  await sw.evaluate(async () => {
+    await chrome.storage.sync.clear();
+    await chrome.storage.local.clear();
+  });
+
+  const page = await context.newPage();
+  page.on('dialog', d => d.accept());
+
+  await page.goto(`chrome-extension://${extensionId}/options/options.html`);
+  await page.waitForSelector('#import-input', { state: 'attached' });
+
+  const importPayload = {
+    customProvider: {
+      model: 'my-model',
+      thinkingLevel: 'ultra',   // 非法 enum → 應被丟
+      useStrongSegMarker: 'yes', // 非 boolean → 應被丟
+    },
+  };
+
+  await page.setInputFiles('#import-input', {
+    name: 'shinkansen-settings-cp-bad.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(importPayload), 'utf8'),
+  });
+
+  const start = Date.now();
+  let stored;
+  while (Date.now() - start < 5000) {
+    stored = await sw.evaluate(async () => chrome.storage.sync.get('customProvider'));
+    if (stored?.customProvider?.model === 'my-model') break;
+    await page.waitForTimeout(50);
+  }
+
+  expect(stored.customProvider.model).toBe('my-model');
+  expect(stored.customProvider).not.toHaveProperty('thinkingLevel');
+  expect(stored.customProvider).not.toHaveProperty('useStrongSegMarker');
+});

@@ -152,18 +152,48 @@ async function evictOldest(targetBytes, preFetchedAll = null) {
   cacheEntries.sort((a, b) => a.t - b.t);
 
   let freed = 0;
-  const toRemove = [];
+  const candidates = []; // { key, size, t }——保留 t 以便 remove 前比對是否被 touch
   for (const entry of cacheEntries) {
     if (freed >= targetBytes) break;
-    toRemove.push(entry.key);
+    candidates.push(entry);
     freed += entry.size;
   }
 
-  if (toRemove.length > 0) {
-    await browser.storage.local.remove(toRemove);
-    debugLog('info', 'cache', 'LRU eviction', { removed: toRemove.length, freedKB: +(freed / 1024).toFixed(1) });
+  if (candidates.length === 0) {
+    return { removed: 0, freedBytes: 0 };
   }
-  return { removed: toRemove.length, freedBytes: freed };
+
+  // v1.10.39: 防 LRU 淘汰 race(code review 2026-06-09 H3)。
+  // 淘汰名單由本函式開頭的 get(null) 快照算出,但 snapshot 與下面 remove 之間,
+  // flushTouches(timestamp 寫回)或 setBatch(改寫譯文)可能把某候選 entry 的 t
+  // 更新成最新 → 它已不再是「最舊」,用 stale 快照淘汰會誤刪剛變最熱的 entry。
+  // remove 前重讀候選的當前值,只刪「t 仍與快照一致」(期間沒被 touch / 改寫)的。
+  // 誤刪後果僅是 cache miss(多打一次 API),但能避免就避免。
+  const candidateKeys = candidates.map(c => c.key);
+  let confirmed = candidateKeys;
+  let confirmedFreed = freed;
+  try {
+    const fresh = await browser.storage.local.get(candidateKeys);
+    confirmed = [];
+    confirmedFreed = 0;
+    for (const c of candidates) {
+      const cur = fresh[c.key];
+      if (cur == null) continue;                       // 期間已被別處刪掉
+      if (extractTimestamp(cur) !== c.t) continue;     // 期間被 touch / 改寫 → 不是最舊,跳過
+      confirmed.push(c.key);
+      confirmedFreed += c.size;
+    }
+  } catch (_) {
+    // 重讀失敗 → 退回用快照名單(維持原行為,寧可淘汰也不要 quota 爆掉)
+    confirmed = candidateKeys;
+    confirmedFreed = freed;
+  }
+
+  if (confirmed.length > 0) {
+    await browser.storage.local.remove(confirmed);
+    debugLog('info', 'cache', 'LRU eviction', { removed: confirmed.length, freedKB: +(confirmedFreed / 1024).toFixed(1) });
+  }
+  return { removed: confirmed.length, freedBytes: confirmedFreed };
 }
 
 /**

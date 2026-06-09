@@ -577,7 +577,7 @@
   // ─── ASR 模式視窗翻譯(D',timestamp mode) ─────
   //
   // 輸入 windowSegs 的每條 segment 只有 startMs(YouTube ASR 不給 dur)。
-  // 我們以「下一條 startMs」當作本條的 endMs;最後一條用 startMs + 1500ms 當保守 endMs。
+  // 我們以「下一條 startMs」當作本條的 endMs;最後一條用 startMs + SK.ASR_LAST_CUE_FALLBACK_MS 當保守 endMs。
   // LLM 收到緊湊 JSON 陣列,自由合句後回傳同格式陣列。
   //
   // 解析容錯:LLM 可能用 ```json fence 包,先剝;陣列驗證寬鬆——
@@ -725,7 +725,7 @@
       const text = group.map(e => e.utf8).join('').replace(/\n/g, ' ').trim();
       const startMs = group[0].tStartMs;
       const next = compact[idx + 1];
-      const endMs = next ? next[0].tStartMs : group[group.length - 1].tStartMs + 1500;
+      const endMs = next ? next[0].tStartMs : group[group.length - 1].tStartMs + SK.ASR_LAST_CUE_FALLBACK_MS;
       return {
         startMs,
         endMs,
@@ -1952,7 +1952,7 @@
     const inputArr = subSegs.map((seg, i) => {
       const next = subSegs[i + 1];
       // 子批內最後一條 fallback +1500ms(子批間不重疊)
-      const endMs = next ? next.startMs : seg.startMs + 1500;
+      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
       return { s: seg.startMs, e: endMs, t: seg.text };
     });
     const inputJson = JSON.stringify(inputArr);
@@ -2157,10 +2157,13 @@
         _batchApiMs[b] = elapsed;
         if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
         _logWindowUsage(batchUnits.length, res.usage);
+        // v1.10.39(code review 2026-06-09 M8):防 res.ok=true 但 res.result 缺失時
+        // res.result[j] 直接 throw(對齊非 ASR 主路徑 _injectBatchResult 的 res.result || [])
+        const results = res.result || [];
         for (let j = 0; j < batchUnits.length; j++) {
           const unit = batchUnits[j];
           // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
-          const trans = SK.sanitizeMarkers(String(res.result[j] || unit.text).trim());
+          const trans = SK.sanitizeMarkers(String(results[j] || unit.text).trim());
           let normTrans = trans;
           if (unit.keys.length === 1) {
             YT.captionMap.set(unit.keys[0], trans);
@@ -2547,9 +2550,6 @@
             } else if (message.type === 'STREAMING_DONE') {
               const elapsed = Date.now() - _t0;
               _batchApiMs[0] = elapsed;
-              // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
-              // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
-              // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
               // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段)時 reject,
               // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming(整批 resolve 後一次 split)。
               // segment 0 可能已被 streaming 注入合併譯文(A 已 sanitize),retry 會用乾淨版本覆蓋。
@@ -3127,10 +3127,12 @@
       // v1.2.39: 累積並記錄 on-the-fly 批次用量
       _logWindowUsage(texts.length, res.usage);
 
+      // v1.10.39(code review 2026-06-09 M8):防 res.ok=true 但 res.result 缺失 throw
+      const results = res.result || [];
       for (let i = 0; i < texts.length; i++) {
         const key = texts[i];
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
-        const trans = SK.sanitizeMarkers(res.result[i] || texts[i]);
+        const trans = SK.sanitizeMarkers(results[i] || texts[i]);
         YT.captionMap.set(key, trans);
         const isBilingual = YT.config?.bilingualMode === true;
         for (const el of (queue.get(key) || [])) {

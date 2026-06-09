@@ -164,6 +164,11 @@ if (window.__shinkansen_loaded) {
   // armSpaObserverRescan debounce 1s 後 + idle gate 走完整 inject path)。
   SK.USER_INTERACTION_BLACKOUT_MS = 2000;
   SK._lastInteractionT = 0;
+
+  // v1.10.39(code review 2026-06-09 L2):字幕 / Drive 最後一條 cue 沒有「下一條 startMs」
+  // 可推 endMs 時,用 startMs + 此值當保守結尾。原本這個 magic 1500 在 content-drive.js
+  // (×3)+ content-youtube.js(×2)各自寫死 → 任一處調整其他不會跟著改。集中成共用常數。
+  SK.ASR_LAST_CUE_FALLBACK_MS = 1500;
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     const markInteraction = () => { SK._lastInteractionT = Date.now(); };
     // capture phase + passive: 確保最早 fire,不阻塞網頁 listener。
@@ -763,7 +768,11 @@ if (window.__shinkansen_loaded) {
       // once: true 已自動 remove,這層只是保險(處理 dispatch 拋例外的情境)
       el.removeEventListener('shinkansen-fw-detect-response', handler);
     }
-    _fwQueryCache.set(el, result);
+    // v1.10.39(code review 2026-06-09 M3):只快取 true。result=false 可能是「查詢時機
+    // 早於 React/Vue fiber 掛載」(streaming hydration:Medium / Substack / Notion)的假陰性,
+    // 永久快取會讓該 element 後續被框架接管後仍走 single innerHTML 注入 → 撞 fiber 孤兒
+    // (本機制原本就是要避免的)。false 不快取 → 下次該 element 再被查時重新偵測。
+    if (result) _fwQueryCache.set(el, result);
     return result;
   };
 

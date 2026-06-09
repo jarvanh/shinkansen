@@ -1298,11 +1298,15 @@ async function clearCurrentDocCache() {
     segTexts.map(async (s) => 'tc_' + (await sha1(s.text))),
   );
   const prefixSet = new Set(prefixes);
-  // 全 storage 掃 keys 比對 prefix(一份 PDF 通常 < 200 段,storage 全 key 通常 < 1000 條,
-  // 一次 chrome.storage.local.get(null) 可接受)
-  const all = await chrome.storage.local.get(null);
+  // v1.10.39(code review 2026-06-09 L4):只需比對 key prefix,不需 value。網頁翻譯快取
+  // (tc_ 前綴)也存在 storage.local,重度使用者可能累積數千~數萬條 → get(null) 會把
+  // 整份快取(可能數十 MB)反序列化進記憶體只為比 key。優先用 getKeys()(Chrome 130+,
+  // 只回 key 不載 value);舊瀏覽器 fallback get(null)。
+  const allKeys = (typeof chrome.storage.local.getKeys === 'function')
+    ? await chrome.storage.local.getKeys()
+    : Object.keys(await chrome.storage.local.get(null));
   const matchedKeys = [];
-  for (const key of Object.keys(all)) {
+  for (const key of allKeys) {
     if (!key.startsWith('tc_')) continue;
     // tc_<40 char sha1>... — 取前 43 字當 prefix 比對
     const prefix = key.slice(0, 43);

@@ -195,7 +195,7 @@
     } else if (target === 'ja') {
       if (/^ja\b/i.test(langHint)) return 'skip';
     } else if (target === 'ko') {
-      if (/^ko\b/i.test(langHint)) return 'ko' === target ? 'skip' : 'unknown';
+      if (/^ko\b/i.test(langHint)) return 'skip';
     }
     return 'unknown';
   }
@@ -1433,19 +1433,21 @@
 
     // 只合併有 >= 2 個 inline unit 的 group
     const toRemove = new Set();
-    const replacements = []; // { insertAt, unit }
+    // v1.10.39(code review 2026-06-09 L4):改用 Map<insertAt, unit>,避免下方 loop
+    // 對每個被移除 unit 都 O(replacements) 線性 .find(大頁面 dual mode O(removed×groups))
+    const replacementByIndex = new Map(); // insertAt → 合併後的 ancestor unit
     for (const [anc, indices] of groups) {
       if (indices.length < 2) continue;
       for (const idx of indices) toRemove.add(idx);
-      replacements.push({ insertAt: indices[0], unit: { kind: 'element', el: anc } });
+      replacementByIndex.set(indices[0], { kind: 'element', el: anc });
     }
     if (toRemove.size === 0) return units;
 
     const result = [];
     for (let i = 0; i < units.length; i++) {
       if (toRemove.has(i)) {
-        const rep = replacements.find(r => r.insertAt === i);
-        if (rep) result.push(rep.unit);
+        const rep = replacementByIndex.get(i);
+        if (rep) result.push(rep);
         continue;
       }
       result.push(units[i]);

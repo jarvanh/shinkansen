@@ -6260,9 +6260,17 @@
       if (!key) return;
       el.innerHTML = t(key, pickParams(el), lang);
     });
-    // attribute 注入(placeholder / title / aria-label 等)
+    // attribute 注入(placeholder / title / aria-label)
+    // v1.10.39(code review 2026-06-09 L4):原本 querySelectorAll('*') 全節點掃,大頁面
+    // (options.html)每次 UI 語系切換 / load() 都掃一遍所有 element。改用精準 selector
+    // 只取真的帶 data-i18n-attr-* 的 element。
+    // ⚠ 新增 data-i18n-attr-<X> 屬性時,必須在下方 selector union 加 [data-i18n-attr-X],
+    //   否則只帶該新屬性的 element 不會被掃到(內層 loop 仍泛用處理已匹配 element 上的任何
+    //   data-i18n-attr-*,所以只差「element 完全沒有這三個已知屬性」的情況)。
     if (root.querySelectorAll) {
-      const all = root.querySelectorAll('*');
+      const all = root.querySelectorAll(
+        '[data-i18n-attr-placeholder],[data-i18n-attr-title],[data-i18n-attr-aria-label]'
+      );
       all.forEach((el) => {
         const attrs = el.attributes;
         if (!attrs) return;

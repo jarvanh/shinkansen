@@ -982,6 +982,9 @@ const messageHandlers = {
         limiter.rpdCount = 0;
         limiter.rpdLoaded = false;
         limiter.rpdLoadingPromise = null;
+        // v1.10.39(code review 2026-06-09 M9):清掉殘留 persist timer,避免它 30 秒後
+        // 用重置後的 rpdCount 又寫回剛被刪掉的 RPD key
+        limiter.clearRpdPersistTimer?.();
       }
       debugLog('info', 'rate-limit', 'RPD cleared via debug bridge', { removedKeys: rpdKeys });
       return { removedKeys: rpdKeys };
