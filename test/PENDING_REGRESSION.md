@@ -19,6 +19,23 @@
 
 (目前沒有 pending 條目)
 
+<!-- iOS host app ↔ extension App Group 設定橋接（Phase 2,SPEC-PRIVATE §26.12）清空紀錄
+  （2026-06-09,模擬器端到端驗收完成）:
+  - 功能:host app onboarding / 設定畫面選的 API Key + 預設模型，經 App Group 共享
+    UserDefaults + native messaging 拉進 extension storage，四指 tap / Alt+S / popup 翻譯用到。
+  - 改在:ViewController.swift（saveSettings/getSettings）/ SafariWebExtensionHandler.swift
+    （pullHostSettings）/ shinkansen/background.js（pullHostSettings + model→slot2 + seq 消費）/
+    shinkansen/content-touch.js（頁面載入送 PULL_HOST_SETTINGS）。
+  - 為什麼 path B（harness 抓不到）:pull 以 IS_IOS_BUILD gate（Chromium false 早退）+
+    sendNativeMessage 需 Safari appex native handler + App Group 共享容器（Chromium 無對應）+
+    Safari WebExtension chrome.storage 在 WebKit 不透明位置（自動讀不到 consumedSeq）。
+  - ★ 清空依據:2026-06-09 Jimmy 模擬器驗收——App Group plist 確認 host 寫入（hostApiKey/
+    hostModel/hostSettingsSeq=6）、擴充功能已啟用（Extensions.plist GrantedPermissions）、
+    設 Gemini 模型 + sim Safari 翻譯英文頁回報「測試翻譯正常」→ 整條 host 寫 → pull → 套用 →
+    翻譯生效跑通。比照 §26.6/26.7 靠「實際翻譯成功」ground truth 結案，queue 不再追蹤。
+  - 已知未涵蓋（非 pending,屬上架流程）:真機 TestFlight smoke-check + profile 重簽（§26.12 ⑥）。 -->
+
+
 <!-- v1.10.27 清空紀錄(2026-06-08,iPhone 實機驗收完成):
   - iOS 原生全螢幕字幕軌:gate + fullscreen 事件切換層(永久 path B)
   - 症狀:iPhone / iPad Safari 看 YouTube 一按全螢幕,翻譯字幕消失(iOS 平台限制——

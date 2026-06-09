@@ -67,4 +67,14 @@
   window.addEventListener('touchcancel', () => {
     gesture = null;
   }, { passive: true, capture: true });
+
+  // Phase 2（SPEC-PRIVATE §26.12）：頁面載入時請 background 拉一次 host app 設定。
+  // host app onboarding / 設定畫面剛存的 API Key + 預設模型寫在 App Group，background
+  // 經 native messaging 拉走套用。在「四指 tap 翻譯」之前（頁面載入 → 使用者點，有人為
+  // 延遲）就完成套用，避免第一次 tap 還用到舊設定。iOS only（桌面 background 也有
+  // IS_IOS_BUILD gate，這裡再 gate 一層省掉桌面的無謂訊息）。distribution-cs.js 在本檔
+  // 之前載入，IS_IOS_BUILD 此時已就緒。
+  if (SK.IS_IOS_BUILD === true) {
+    SK.safeSendMessage({ type: 'PULL_HOST_SETTINGS' });
+  }
 })(window.__SK);

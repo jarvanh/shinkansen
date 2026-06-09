@@ -146,3 +146,334 @@ body {
 .links a:active {
     opacity: 0.6;
 }
+
+/* ===== Onboarding 輪播（首次啟動引導）=====
+   .onboard / .home 是 .lang 的子層，預設由 inline script 控制顯隱。
+   display:flex 會蓋掉 UA [hidden]{display:none}（author > UA），所以下面每個
+   會被 script 切 hidden 的容器都要明列 [hidden]{display:none} 壓回。 */
+.onboard,
+.home {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+}
+
+.onboard[hidden],
+.home[hidden] {
+    display: none;
+}
+
+/* 步驟容器：固定最小高度，讓圓點 / 按鈕在各步間不要上下大幅跳動 */
+.ob-track {
+    width: 100%;
+    min-height: 188px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ob-step {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+}
+
+.ob-step[hidden] {
+    display: none;
+}
+
+.ob-head {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--fg);
+}
+
+/* 歡迎頁三行（副標 / 說明 / 以下幾個步驟完成設定）等距：用較大的 step gap 統一拉開，
+   不在個別行加 margin（加 margin 會讓某兩行間距 ≠ 其他，破壞等距）。 */
+.ob-step[data-step="0"] {
+    gap: 28px;
+}
+
+/* 示意圖示（四指 / YouTube）：以品牌色描邊，僅開發期草稿，正式版可由 Claude Design 替換 */
+.ob-glyph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+}
+
+.ob-glyph svg circle,
+.ob-glyph svg rect {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 4;
+}
+
+.ob-glyph svg .ob-glyph-fill {
+    fill: currentColor;
+    stroke: none;
+}
+
+/* 四指輕點圖示：四個圓圈（指尖）一起循環落到觸控面上（輕點動畫）。
+   四顆同一條 animation、無 delay → 同時落下。
+   prefers-reduced-motion 時不播動畫，顯示四個靜態圓圈。 */
+.ob-glyph .ob-tap .ob-drop {
+    fill: currentColor;
+    stroke: none;
+    animation: ob-drop 1.8s ease-in-out infinite;
+}
+
+.ob-glyph .ob-tap .ob-surface {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 4;
+    stroke-linecap: round;
+    opacity: 0.4;
+}
+
+@keyframes ob-drop {
+    0%   { transform: translateY(-20px); opacity: 0; }
+    25%  { transform: translateY(0);     opacity: 1; }
+    70%  { transform: translateY(0);     opacity: 1; }
+    88%  { transform: translateY(0);     opacity: 0; }
+    100% { transform: translateY(-20px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ob-glyph .ob-tap .ob-drop {
+        animation: none;
+        opacity: 1;
+    }
+}
+
+/* 導覽列：圓點指示 + 按鈕 */
+.ob-nav {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--divider);
+}
+
+.ob-dots {
+    display: flex;
+    gap: 8px;
+}
+
+.ob-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--fg-secondary);
+    opacity: 0.35;
+}
+
+.ob-dot.on {
+    opacity: 1;
+    background: var(--accent);
+}
+
+.ob-buttons {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.ob-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 11px 22px;
+    border-radius: 12px;
+    border: none;
+    color: var(--accent);
+    background: var(--card-bg);
+    cursor: pointer;
+}
+
+.ob-btn[hidden] {
+    display: none;
+}
+
+.ob-btn.ob-primary {
+    color: #fff;
+    background: var(--accent);
+    min-width: 110px;
+}
+
+.ob-btn:active {
+    opacity: 0.7;
+}
+
+.ob-finish-note {
+    font-size: 14px;
+    color: var(--fg-secondary);
+}
+
+/* 引導內說明文字（API Key 提示 / 模型提示 / 收尾），比 intro 弱一階 */
+.ob-note {
+    font-size: 14px;
+    color: var(--fg-secondary);
+}
+
+/* ===== API Key 輸入 + 取得連結 ===== */
+.sk-field {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 16px;
+    padding: 13px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--divider);
+    background: var(--card-bg);
+    color: var(--fg);
+    text-align: start;
+}
+
+.sk-field::placeholder {
+    color: var(--fg-secondary);
+    opacity: 0.8;
+}
+
+.sk-field:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.sk-getkey {
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    align-self: center;
+}
+
+.sk-getkey:active {
+    opacity: 0.6;
+}
+
+/* 測試 API Key：按鈕 + 狀態文字 */
+.sk-test-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.sk-test {
+    font-size: 14px;
+    font-weight: 500;
+    padding: 9px 18px;
+    flex: 0 0 auto;
+}
+
+.sk-test[disabled] {
+    opacity: 0.5;
+}
+
+.sk-test-status {
+    font-size: 13px;
+    color: var(--fg-secondary);
+}
+
+.sk-test-status.ok {
+    color: #2e9e57;
+}
+
+.sk-test-status.err {
+    color: #e0533d;
+}
+
+/* ===== 預設翻譯方式：可選卡片 ===== */
+.model-picker {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.model-card {
+    -webkit-appearance: none;
+    appearance: none;
+    font: inherit;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: start;
+    padding: 13px 16px;
+    border-radius: 12px;
+    border: 2px solid transparent;
+    background: var(--card-bg);
+    color: var(--fg);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.model-card .model-name {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.model-card .model-desc {
+    font-size: 13px;
+    color: var(--fg-secondary);
+}
+
+/* 選中：accent 2px 邊框 + 淡底（非填滿，留出卡片內容可讀） */
+.model-card.selected {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--card-bg));
+}
+
+.model-card.disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.model-card:not(.disabled):active {
+    opacity: 0.8;
+}
+
+/* ===== 設定畫面 ===== */
+.settings {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 22px;
+}
+
+.settings[hidden] {
+    display: none;
+}
+
+.settings .ob-head {
+    text-align: center;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.settings-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg-secondary);
+    text-align: start;
+}

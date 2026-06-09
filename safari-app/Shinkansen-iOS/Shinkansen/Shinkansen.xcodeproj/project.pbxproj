@@ -39,11 +39,11 @@
 		9E22C7782FD2A78F00CDA923 /* content-ns.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7602FD2A78F00CDA923 /* content-ns.js */; };
 		9E22C7792FD2A78F00CDA923 /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7612FD2A78F00CDA923 /* _locales */; };
 		9E22C77A2FD2A78F00CDA923 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7622FD2A78F00CDA923 /* content.js */; };
-		9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF112FD2A78F00CDA923 /* content-touch.js */; };
-		9EFFFF00AA01000000000011 /* content-shortcuts.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA01000000000012 /* content-shortcuts.js */; };
 		9E22C77B2FD2A78F00CDA923 /* privacy-policy.en.html in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */; };
 		9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7642FD2A78F00CDA923 /* content-serialize.js */; };
 		9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7652FD2A78F00CDA923 /* content-inject.js */; };
+		9EFFFF00AA01000000000011 /* content-shortcuts.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA01000000000012 /* content-shortcuts.js */; };
+		9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF112FD2A78F00CDA923 /* content-touch.js */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -106,11 +106,13 @@
 		9E22C7602FD2A78F00CDA923 /* content-ns.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-ns.js"; path = "Resources/content-ns.js"; sourceTree = "<group>"; };
 		9E22C7612FD2A78F00CDA923 /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; name = _locales; path = Resources/_locales; sourceTree = "<group>"; };
 		9E22C7622FD2A78F00CDA923 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = content.js; path = Resources/content.js; sourceTree = "<group>"; };
-		9EFFFF112FD2A78F00CDA923 /* content-touch.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-touch.js"; path = "Resources/content-touch.js"; sourceTree = "<group>"; };
-		9EFFFF00AA01000000000012 /* content-shortcuts.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-shortcuts.js"; path = "Resources/content-shortcuts.js"; sourceTree = "<group>"; };
 		9E22C7632FD2A78F00CDA923 /* privacy-policy.en.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = "privacy-policy.en.html"; path = "Resources/privacy-policy.en.html"; sourceTree = "<group>"; };
 		9E22C7642FD2A78F00CDA923 /* content-serialize.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-serialize.js"; path = "Resources/content-serialize.js"; sourceTree = "<group>"; };
 		9E22C7652FD2A78F00CDA923 /* content-inject.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-inject.js"; path = "Resources/content-inject.js"; sourceTree = "<group>"; };
+		9EF9CDA52FD791E700AEDE11 /* Shinkansen.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Shinkansen.entitlements; sourceTree = "<group>"; };
+		9EF9CDA62FD7935900AEDE11 /* Shinkansen Extension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Shinkansen Extension.entitlements"; sourceTree = "<group>"; };
+		9EFFFF00AA01000000000012 /* content-shortcuts.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-shortcuts.js"; path = "Resources/content-shortcuts.js"; sourceTree = "<group>"; };
+		9EFFFF112FD2A78F00CDA923 /* content-touch.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-touch.js"; path = "Resources/content-touch.js"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -152,6 +154,7 @@
 		9E22C7202FD2A78E00CDA923 /* Shinkansen */ = {
 			isa = PBXGroup;
 			children = (
+				9EF9CDA52FD791E700AEDE11 /* Shinkansen.entitlements */,
 				9E22C7212FD2A78E00CDA923 /* AppDelegate.swift */,
 				9E22C72B2FD2A78E00CDA923 /* SceneDelegate.swift */,
 				9E22C72D2FD2A78E00CDA923 /* ViewController.swift */,
@@ -177,6 +180,7 @@
 		9E22C73F2FD2A78F00CDA923 /* Shinkansen Extension */ = {
 			isa = PBXGroup;
 			children = (
+				9EF9CDA62FD7935900AEDE11 /* Shinkansen Extension.entitlements */,
 				9E22C74D2FD2A78F00CDA923 /* Resources */,
 				9E22C7402FD2A78F00CDA923 /* SafariWebExtensionHandler.swift */,
 				9E22C7422FD2A78F00CDA923 /* Info.plist */,
@@ -527,9 +531,11 @@
 		9E22C7472FD2A78F00CDA923 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Shinkansen Extension/Shinkansen Extension.entitlements";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1.10.38;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.37;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
@@ -540,15 +546,14 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.37;
+				MARKETING_VERSION = 1.10.38;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios.Extension;
-				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS Ext App Store";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS Ext App Store";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -562,9 +567,11 @@
 		9E22C7482FD2A78F00CDA923 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Shinkansen Extension/Shinkansen Extension.entitlements";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1.10.38;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.37;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shinkansen Extension";
@@ -575,15 +582,14 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.10.37;
+				MARKETING_VERSION = 1.10.38;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios.Extension;
-				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS Ext App Store";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS Ext App Store";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -599,9 +605,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Shinkansen/Shinkansen.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1.10.38;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.37;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
@@ -615,7 +623,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10.37;
+				MARKETING_VERSION = 1.10.38;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -623,9 +631,8 @@
 					WebKit,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios;
-				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS App Store";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS App Store";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -641,9 +648,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Shinkansen/Shinkansen.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1.10.38;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
-				CURRENT_PROJECT_VERSION = 1.10.37;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shinkansen;
@@ -657,7 +666,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.10.37;
+				MARKETING_VERSION = 1.10.38;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -665,9 +674,8 @@
 					WebKit,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.shinkansen.ios;
-				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS App Store";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "Shinkansen iOS App Store";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;

@@ -2,10 +2,11 @@
 // 職責：接收翻譯請求、呼叫 Gemini API、處理快取、處理快捷鍵、統一除錯 Log。
 
 import { browser } from './lib/compat.js';
+import { IS_IOS_BUILD } from './lib/distribution.js'; // Phase 2: host app 設定橋接只在 iOS build 走 native messaging
 import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
-import { getSettings, getSettingsCached, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt } from './lib/storage.js';
+import { getSettings, getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -133,6 +134,86 @@ browser.alarms?.create('exchange-rate-fetch', { periodInMinutes: 60 * 24 });
 browser.alarms?.onAlarm.addListener((alarm) => {
   if (alarm.name !== 'exchange-rate-fetch') return;
   refreshExchangeRate().catch(err => debugLog('warn', 'exchange-rate', 'alarm fetch failed', { error: err.message }));
+});
+
+// ─── Phase 2（SPEC-PRIVATE §26.12）：iOS host app 設定橋接 ─────────────────
+// iOS Safari 下，host app（WKWebView）寫不進 extension 的 storage。host app 把
+// 使用者在 onboarding / 設定畫面選的 API Key + 預設模型寫進「App Group 共享
+// UserDefaults」，這裡用 browser.runtime.sendNativeMessage 經 native handler
+// （SafariWebExtensionHandler，跑在 appex、讀得到同一個 App Group）拉回，套用進
+// extension 自己的 storage。
+//
+// 單一資料源（CLAUDE.md §5）：host 每次存遞增 hostSettingsSeq；這裡記 consumedSeq，
+// 只在 seq > consumedSeq 時套用一次 → 已消費的不重套、host 新存的會贏、使用者中途
+// 在 options 改的不被舊 pending 蓋。host 為「寫入來源」，不反向覆蓋 options 的後續改動。
+//
+// 「預設模型」對映：四指 tap / Alt+S / 工具列按鈕全走 translatePresets slot 2，
+// 所以把選的 engine+model 寫進 slot 2 那組 preset（不是切 autoTranslateSlot）。
+const HOST_MODEL_PRESETS = {
+  flash:  { engine: 'gemini', model: 'gemini-3-flash-preview' },
+  lite:   { engine: 'gemini', model: 'gemini-3.1-flash-lite' },
+  google: { engine: 'google', model: null },
+};
+
+// sendNativeMessage 跨瀏覽器簽名不一（Chrome callback、部分回 Promise），統一包成 Promise。
+function sendNativeMessageAsync(appId, msg) {
+  return new Promise((resolve, reject) => {
+    try {
+      const ret = browser.runtime.sendNativeMessage(appId, msg, (r) => {
+        const err = browser.runtime.lastError;
+        if (err) reject(new Error(err.message || 'native messaging error'));
+        else resolve(r);
+      });
+      if (ret && typeof ret.then === 'function') ret.then(resolve, reject);
+    } catch (e) { reject(e); }
+  });
+}
+
+async function pullHostSettings(trigger) {
+  if (!IS_IOS_BUILD) return;                                   // 桌面 / 非 iOS build 不走
+  if (!browser.runtime || typeof browser.runtime.sendNativeMessage !== 'function') return;
+  let resp;
+  try {
+    resp = await sendNativeMessageAsync('app.shinkansen.ios', { action: 'pullHostSettings' });
+  } catch (e) {
+    debugLog('warn', 'host-settings', 'native pull failed', { trigger, error: e.message });
+    return;
+  }
+  if (!resp || typeof resp !== 'object') return;
+  const seq = Number(resp.seq) || 0;
+  if (seq <= 0) return;                                        // host 還沒存過任何設定
+  const { hostSettingsConsumedSeq = 0 } = await browser.storage.local.get('hostSettingsConsumedSeq');
+  if (seq <= hostSettingsConsumedSeq) return;                  // 已消費 / 無新設定
+
+  const patch = {};
+  if (typeof resp.apiKey === 'string' && resp.apiKey.length > 0) patch.apiKey = resp.apiKey;
+  const presetCfg = HOST_MODEL_PRESETS[resp.model];
+  if (presetCfg) {
+    const settings = await getSettings();
+    const presets = Array.isArray(settings.translatePresets)
+      ? settings.translatePresets.map(p => ({ ...p }))
+      : null;
+    const idx = presets ? presets.findIndex(p => p && p.slot === 2) : -1;
+    if (idx >= 0) {
+      presets[idx].engine = presetCfg.engine;
+      presets[idx].model = presetCfg.model;
+      patch.translatePresets = presets;
+    }
+  }
+  if (Object.keys(patch).length > 0) {
+    await setSettings(patch);
+    debugLog('info', 'host-settings', 'applied', { trigger, seq, hasKey: !!patch.apiKey, model: resp.model || null });
+  }
+  await browser.storage.local.set({ hostSettingsConsumedSeq: seq });
+}
+
+// 觸發點：SW/event page 冷啟動、onStartup、onInstalled、content script 載入送的 PULL_HOST_SETTINGS。
+pullHostSettings('sw-init');
+browser.runtime.onStartup?.addListener(() => { pullHostSettings('onStartup'); });
+browser.runtime.onInstalled.addListener(() => { pullHostSettings('onInstalled'); });
+browser.runtime.onMessage.addListener((message) => {
+  if (message && message.type === 'PULL_HOST_SETTINGS') pullHostSettings('content-init');
+  // fire-and-forget，不回 response → 不 return true
 });
 
 // 累計用量（grand total）由 IndexedDB usage-db.js 透過 QUERY_USAGE_STATS 提供。

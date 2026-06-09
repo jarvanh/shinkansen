@@ -66,6 +66,15 @@ mv "$STAGING/manifest.json.tmp" "$STAGING/manifest.json"
 #     在 staging 端 patch → 之後 rsync 進 Resources,drift check 自然一致。
 bash safari-app/patch-manifest-background.sh "$STAGING/manifest.json"
 
+# 1.6 Phase 2（SPEC-PRIVATE §26.12）：注入 nativeMessaging 權限（Safari only）。
+#     host app 設定橋接靠 browser.runtime.sendNativeMessage,Safari 需此權限。
+#     只在 Safari build 注入,不寫進 shinkansen/manifest.json —— Chrome / Firefox 宣告
+#     nativeMessaging 會跳「與原生應用程式通訊」安裝警告,Safari 則不會跳 prompt。
+#     冪等:已有就不重複加。
+jq '.permissions |= (if index("nativeMessaging") then . else . + ["nativeMessaging"] end)' \
+  "$STAGING/manifest.json" > "$STAGING/manifest.json.tmp"
+mv "$STAGING/manifest.json.tmp" "$STAGING/manifest.json"
+
 # 2. 同步 staging → Resources/(--delete 移除已不存在舊檔)
 echo "==> Sync extension Resources..."
 mkdir -p "$EXTENSION_RESOURCES"

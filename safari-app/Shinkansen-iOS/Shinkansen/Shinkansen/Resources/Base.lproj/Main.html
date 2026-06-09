@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://generativelanguage.googleapis.com">
 
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 
@@ -15,41 +15,297 @@
 
         <!-- 繁中（系統語言為中文時顯示，由下方 inline script 切換） -->
         <section class="lang lang-zh" hidden>
-            <p class="subtitle">快速、流暢的網頁與字幕翻譯</p>
-            <p class="intro">Shinkansen 是 Safari 的網頁翻譯擴充功能。這個 App 是 iOS host，擴充功能本身要在 Safari 設定中啟用後才會運作</p>
-            <div class="steps">
-                <p class="steps-title">啟用方式</p>
-                <ol>
-                    <li>在 iOS「設定」中找到「Safari」→「擴充功能」，開啟「Shinkansen」並允許網站存取權限</li>
-                    <li>或在 Safari 網址列點擴充功能按鈕，選「管理擴充功能」開啟</li>
-                </ol>
+            <!-- ===== 首次啟動引導（onboarding 輪播）===== -->
+            <div class="onboard" hidden>
+                <div class="ob-track">
+                    <!-- 0 歡迎 -->
+                    <article class="ob-step" data-step="0">
+                        <p class="subtitle">快速、流暢的網頁與字幕翻譯</p>
+                        <p class="intro">Shinkansen 是 Safari 的網頁翻譯擴充功能</p>
+                        <p class="intro ob-lead">以下幾個步驟完成設定</p>
+                    </article>
+                    <!-- 1 API Key -->
+                    <article class="ob-step" data-step="1" hidden>
+                        <p class="ob-head">填入 Gemini API Key</p>
+                        <input class="sk-field sk-apikey" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="貼上 API Key（沒有可先不填）">
+                        <div class="sk-test-row">
+                            <button type="button" class="ob-btn sk-test">測試 API Key</button>
+                            <span class="sk-test-status" role="status"></span>
+                        </div>
+                        <p class="intro ob-note">使用 Gemini 翻譯能提供最自然流暢的語感。API Key 只存在這台裝置，不會上傳</p>
+                        <p class="intro ob-note">目前還沒有 API Key 也沒關係，現在可以先不用輸入，以後再申請，下一步選擇免費的 Google 翻譯即可</p>
+                        <a class="sk-getkey" href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md">取得免費 API Key</a>
+                    </article>
+                    <!-- 2 選預設翻譯方式 -->
+                    <article class="ob-step" data-step="2" hidden>
+                        <p class="ob-head">選擇預設翻譯方式</p>
+                        <div class="model-picker">
+                            <button type="button" class="model-card" data-model="flash" data-needs-key="1">
+                                <span class="model-name">Gemini Flash</span>
+                                <span class="model-desc">品質最佳，需 API Key</span>
+                            </button>
+                            <button type="button" class="model-card" data-model="lite" data-needs-key="1">
+                                <span class="model-name">Gemini Flash Lite</span>
+                                <span class="model-desc">更快更省，需 API Key</span>
+                            </button>
+                            <button type="button" class="model-card" data-model="google">
+                                <span class="model-name">Google 翻譯</span>
+                                <span class="model-desc">免費、免 API Key</span>
+                            </button>
+                        </div>
+                        <p class="intro ob-note model-hint"></p>
+                    </article>
+                    <!-- 3 四指輕點 -->
+                    <article class="ob-step" data-step="3" hidden>
+                        <div class="ob-glyph" aria-hidden="true">
+                            <svg class="ob-tap" viewBox="0 0 96 60" width="92" height="58">
+                                <circle class="ob-drop" cx="21" cy="40" r="7"></circle>
+                                <circle class="ob-drop" cx="39" cy="40" r="7"></circle>
+                                <circle class="ob-drop" cx="57" cy="40" r="7"></circle>
+                                <circle class="ob-drop" cx="75" cy="40" r="7"></circle>
+                                <line class="ob-surface" x1="12" y1="49" x2="84" y2="49"></line>
+                            </svg>
+                        </div>
+                        <p class="ob-head">四指輕點切換翻譯</p>
+                        <p class="intro">在任何網頁上用四根手指輕點畫面，就會翻譯整頁；再點一次切回原文</p>
+                    </article>
+                    <!-- 4 YouTube 自動字幕 -->
+                    <article class="ob-step" data-step="4" hidden>
+                        <div class="ob-glyph" aria-hidden="true">
+                            <svg viewBox="0 0 84 56" width="84" height="58">
+                                <rect x="4" y="6" width="76" height="44" rx="10"></rect>
+                                <polygon points="34,20 34,36 50,28" class="ob-glyph-fill"></polygon>
+                            </svg>
+                        </div>
+                        <p class="ob-head">YouTube 字幕自動翻譯</p>
+                        <p class="intro">打開 YouTube 影片時，Shinkansen 會自動把字幕翻成中文。不需要時可在擴充功能設定中關閉</p>
+                    </article>
+                    <!-- 5 啟用擴充功能（收尾） -->
+                    <article class="ob-step" data-step="5" hidden>
+                        <p class="ob-head">最後一步：在 Safari 啟用</p>
+                        <div class="steps">
+                            <p class="steps-title">啟用方式</p>
+                            <ol>
+                                <li>在 iOS「設定」中找到「Safari」→「擴充功能」，開啟「Shinkansen」並允許網站存取權限</li>
+                                <li>或在 Safari 網址列點擴充功能按鈕，選「管理擴充功能」開啟</li>
+                            </ol>
+                        </div>
+                        <p class="intro ob-note">剛才的設定會在啟用後自動同步到擴充功能</p>
+                    </article>
+                </div>
+                <div class="ob-nav">
+                    <div class="ob-dots" aria-hidden="true"></div>
+                    <div class="ob-buttons">
+                        <button type="button" class="ob-btn ob-prev" hidden>上一步</button>
+                        <button type="button" class="ob-btn ob-skip">略過</button>
+                        <button type="button" class="ob-btn ob-primary ob-next">下一步</button>
+                    </div>
+                </div>
             </div>
-            <nav class="links">
-                <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md">API Key 設定教學</a>
-                <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.html">隱私權政策</a>
-                <a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW">專案主頁</a>
-                <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html">上架版本紀錄</a>
-            </nav>
+
+            <!-- ===== 主畫面（引導完成後 / 再次開啟）===== -->
+            <div class="home" hidden>
+                <p class="subtitle">快速、流暢的網頁與字幕翻譯</p>
+                <div class="steps">
+                    <p class="steps-title">啟用方式</p>
+                    <ol>
+                        <li>在 iOS「設定」中找到「Safari」→「擴充功能」，開啟「Shinkansen」並允許網站存取權限</li>
+                        <li>網頁上四指輕點即可翻譯整頁；YouTube 影片字幕會自動翻譯</li>
+                    </ol>
+                </div>
+                <button type="button" class="ob-btn ob-primary open-settings">API Key 與預設模型設定</button>
+                <nav class="links">
+                    <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md">API Key 設定教學</a>
+                    <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.html">隱私權政策</a>
+                    <a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW">專案主頁</a>
+                    <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html">上架版本紀錄</a>
+                    <a href="#" class="replay-onboard">重新看導覽</a>
+                </nav>
+            </div>
+
+            <!-- ===== 設定畫面（常駐，可隨時改 API Key 與預設模型）===== -->
+            <div class="settings" hidden>
+                <p class="ob-head">設定</p>
+                <div class="settings-field">
+                    <label class="settings-label">Gemini API Key</label>
+                    <input class="sk-field sk-apikey" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="貼上 API Key（沒有可先不填）">
+                    <div class="sk-test-row">
+                        <button type="button" class="ob-btn sk-test">測試 API Key</button>
+                        <span class="sk-test-status" role="status"></span>
+                    </div>
+                    <a class="sk-getkey" href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md">取得免費 API Key</a>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">預設翻譯方式</label>
+                    <div class="model-picker">
+                        <button type="button" class="model-card" data-model="flash" data-needs-key="1">
+                            <span class="model-name">Gemini Flash</span>
+                            <span class="model-desc">品質最佳，需 API Key</span>
+                        </button>
+                        <button type="button" class="model-card" data-model="lite" data-needs-key="1">
+                            <span class="model-name">Gemini Flash Lite</span>
+                            <span class="model-desc">更快更省，需 API Key</span>
+                        </button>
+                        <button type="button" class="model-card" data-model="google">
+                            <span class="model-name">Google 翻譯</span>
+                            <span class="model-desc">免費、免 API Key</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="intro ob-note">這些設定會同步到擴充功能。也可在擴充功能的設定中更改</p>
+                <div class="ob-buttons">
+                    <button type="button" class="ob-btn close-settings">返回</button>
+                    <button type="button" class="ob-btn ob-primary save-settings">儲存</button>
+                </div>
+            </div>
         </section>
 
         <!-- English（預設顯示 / 非中文系統語言）。預設不 hidden → 即使下方 script 沒跑
              （CSP / 例外）也保證有內容，不會空白；中文系統時由 script 換成繁中區塊。 -->
         <section class="lang lang-en">
-            <p class="subtitle">Fast web &amp; subtitle translator</p>
-            <p class="intro">Shinkansen is a Safari web translation extension. This app is the iOS host — the extension itself must be enabled in Safari Settings before it works.</p>
-            <div class="steps">
-                <p class="steps-title">How to enable</p>
-                <ol>
-                    <li>In iOS Settings, open Safari → Extensions, turn on “Shinkansen” and allow website access</li>
-                    <li>Or in Safari, tap the extensions button in the address bar and choose “Manage Extensions”</li>
-                </ol>
+            <!-- ===== Onboarding carousel ===== -->
+            <div class="onboard" hidden>
+                <div class="ob-track">
+                    <!-- 0 Welcome -->
+                    <article class="ob-step" data-step="0">
+                        <p class="subtitle">Fast web &amp; subtitle translator</p>
+                        <p class="intro">Shinkansen is a Safari web translation extension.</p>
+                        <p class="intro ob-lead">Set it up in a few steps.</p>
+                    </article>
+                    <!-- 1 API Key -->
+                    <article class="ob-step" data-step="1" hidden>
+                        <p class="ob-head">Add your Gemini API Key</p>
+                        <input class="sk-field sk-apikey" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste API Key (skip if you don't have one)">
+                        <div class="sk-test-row">
+                            <button type="button" class="ob-btn sk-test">Test API Key</button>
+                            <span class="sk-test-status" role="status"></span>
+                        </div>
+                        <p class="intro ob-note">Gemini gives the most natural, fluent translations. Your API Key stays on this device and is never uploaded.</p>
+                        <p class="intro ob-note">No API Key yet? That's fine — you can skip it now and get one later; just pick free Google Translate on the next step.</p>
+                        <a class="sk-getkey" href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.en.md">Get a free API Key</a>
+                    </article>
+                    <!-- 2 Choose default engine -->
+                    <article class="ob-step" data-step="2" hidden>
+                        <p class="ob-head">Choose your default translator</p>
+                        <div class="model-picker">
+                            <button type="button" class="model-card" data-model="flash" data-needs-key="1">
+                                <span class="model-name">Gemini Flash</span>
+                                <span class="model-desc">Best quality, needs API Key</span>
+                            </button>
+                            <button type="button" class="model-card" data-model="lite" data-needs-key="1">
+                                <span class="model-name">Gemini Flash Lite</span>
+                                <span class="model-desc">Faster &amp; cheaper, needs API Key</span>
+                            </button>
+                            <button type="button" class="model-card" data-model="google">
+                                <span class="model-name">Google Translate</span>
+                                <span class="model-desc">Free, no API Key</span>
+                            </button>
+                        </div>
+                        <p class="intro ob-note model-hint"></p>
+                    </article>
+                    <!-- 3 Four-finger tap -->
+                    <article class="ob-step" data-step="3" hidden>
+                        <div class="ob-glyph" aria-hidden="true">
+                            <svg class="ob-tap" viewBox="0 0 96 60" width="92" height="58">
+                                <circle class="ob-drop" cx="21" cy="40" r="7"></circle>
+                                <circle class="ob-drop" cx="39" cy="40" r="7"></circle>
+                                <circle class="ob-drop" cx="57" cy="40" r="7"></circle>
+                                <circle class="ob-drop" cx="75" cy="40" r="7"></circle>
+                                <line class="ob-surface" x1="12" y1="49" x2="84" y2="49"></line>
+                            </svg>
+                        </div>
+                        <p class="ob-head">Four-finger tap to translate</p>
+                        <p class="intro">On any web page, tap with four fingers to translate the whole page; tap again to switch back.</p>
+                    </article>
+                    <!-- 4 YouTube auto subtitles -->
+                    <article class="ob-step" data-step="4" hidden>
+                        <div class="ob-glyph" aria-hidden="true">
+                            <svg viewBox="0 0 84 56" width="84" height="58">
+                                <rect x="4" y="6" width="76" height="44" rx="10"></rect>
+                                <polygon points="34,20 34,36 50,28" class="ob-glyph-fill"></polygon>
+                            </svg>
+                        </div>
+                        <p class="ob-head">YouTube subtitles, auto-translated</p>
+                        <p class="intro">When you open a YouTube video, Shinkansen translates the subtitles automatically. You can turn this off in the extension settings.</p>
+                    </article>
+                    <!-- 5 Enable in Safari -->
+                    <article class="ob-step" data-step="5" hidden>
+                        <p class="ob-head">Last step: enable in Safari</p>
+                        <div class="steps">
+                            <p class="steps-title">How to enable</p>
+                            <ol>
+                                <li>In iOS Settings, open Safari → Extensions, turn on “Shinkansen” and allow website access</li>
+                                <li>Or in Safari, tap the extensions button in the address bar and choose “Manage Extensions”</li>
+                            </ol>
+                        </div>
+                        <p class="intro ob-note">The settings you just chose sync to the extension once it's enabled.</p>
+                    </article>
+                </div>
+                <div class="ob-nav">
+                    <div class="ob-dots" aria-hidden="true"></div>
+                    <div class="ob-buttons">
+                        <button type="button" class="ob-btn ob-prev" hidden>Back</button>
+                        <button type="button" class="ob-btn ob-skip">Skip</button>
+                        <button type="button" class="ob-btn ob-primary ob-next">Next</button>
+                    </div>
+                </div>
             </div>
-            <nav class="links">
-                <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.en.md">API Key Setup Guide</a>
-                <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html">Privacy Policy</a>
-                <a href="https://jimmysu0309.github.io/shinkansen/?lang=en">Homepage</a>
-                <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html">Release Notes</a>
-            </nav>
+
+            <!-- ===== Home (after onboarding / on later launches) ===== -->
+            <div class="home" hidden>
+                <p class="subtitle">Fast web &amp; subtitle translator</p>
+                <div class="steps">
+                    <p class="steps-title">How to enable</p>
+                    <ol>
+                        <li>In iOS Settings, open Safari → Extensions, turn on “Shinkansen” and allow website access</li>
+                        <li>Four-finger tap any page to translate it; YouTube subtitles translate automatically</li>
+                    </ol>
+                </div>
+                <button type="button" class="ob-btn ob-primary open-settings">API Key &amp; default model</button>
+                <nav class="links">
+                    <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.en.md">API Key Setup Guide</a>
+                    <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html">Privacy Policy</a>
+                    <a href="https://jimmysu0309.github.io/shinkansen/?lang=en">Homepage</a>
+                    <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html">Release Notes</a>
+                    <a href="#" class="replay-onboard">Replay intro</a>
+                </nav>
+            </div>
+
+            <!-- ===== Settings (persistent; change API Key & default model anytime) ===== -->
+            <div class="settings" hidden>
+                <p class="ob-head">Settings</p>
+                <div class="settings-field">
+                    <label class="settings-label">Gemini API Key</label>
+                    <input class="sk-field sk-apikey" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste API Key (skip if you don't have one)">
+                    <div class="sk-test-row">
+                        <button type="button" class="ob-btn sk-test">Test API Key</button>
+                        <span class="sk-test-status" role="status"></span>
+                    </div>
+                    <a class="sk-getkey" href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.en.md">Get a free API Key</a>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label">Default translator</label>
+                    <div class="model-picker">
+                        <button type="button" class="model-card" data-model="flash" data-needs-key="1">
+                            <span class="model-name">Gemini Flash</span>
+                            <span class="model-desc">Best quality, needs API Key</span>
+                        </button>
+                        <button type="button" class="model-card" data-model="lite" data-needs-key="1">
+                            <span class="model-name">Gemini Flash Lite</span>
+                            <span class="model-desc">Faster &amp; cheaper, needs API Key</span>
+                        </button>
+                        <button type="button" class="model-card" data-model="google">
+                            <span class="model-name">Google Translate</span>
+                            <span class="model-desc">Free, no API Key</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="intro ob-note">These sync to the extension. You can also change them in the extension settings.</p>
+                <div class="ob-buttons">
+                    <button type="button" class="ob-btn close-settings">Back</button>
+                    <button type="button" class="ob-btn ob-primary save-settings">Save</button>
+                </div>
+            </div>
         </section>
     </main>
 
@@ -64,14 +320,274 @@
             if (screenMin >= 700) {
                 document.body.style.zoom = Math.min(1.45, Math.max(1, 1 + (screenMin - 744) / 700));
             }
+
             // 中文系統語言時切成繁中區塊（en 預設已顯示 → 非中文 / script 沒跑都不空白）
-            if (/^zh/i.test(navigator.language || '')) {
+            var isZh = /^zh/i.test(navigator.language || '');
+            if (isZh) {
                 document.documentElement.lang = 'zh-Hant';
                 var zh = document.querySelector('.lang-zh');
                 var en = document.querySelector('.lang-en');
                 if (zh) zh.hidden = false;
                 if (en) en.hidden = true;
             }
+
+            // 目前顯示中的語言區塊（onboarding / home / settings 控制都只作用在這一塊）
+            var lang = document.querySelector('.lang-' + (isZh ? 'zh' : 'en'));
+            if (!lang) return;
+
+            var ONBOARD_KEY = 'sk_onboarded';
+            var onboard = lang.querySelector('.onboard');
+            var home = lang.querySelector('.home');
+            var settings = lang.querySelector('.settings');
+            var steps = onboard ? Array.prototype.slice.call(onboard.querySelectorAll('.ob-step')) : [];
+            var dotsBox = onboard ? onboard.querySelector('.ob-dots') : null;
+            var prevBtn = onboard ? onboard.querySelector('.ob-prev') : null;
+            var skipBtn = onboard ? onboard.querySelector('.ob-skip') : null;
+            var nextBtn = onboard ? onboard.querySelector('.ob-next') : null;
+            var idx = 0;
+
+            // ===== 設定狀態（API Key + 預設 slot），onboarding 與 settings 共用 =====
+            // explicit：使用者是否親手點過某張卡（或 host 回填過存值）。false 時預設值跟著
+            // 有無 API Key 自動推導（有 key→Flash、沒 key→Google），這樣「填了 key 再回到
+            // 選模型步」會自動升級到 Flash；一旦親手點過就尊重使用者選擇不再自動改。
+            // model：'flash'（Gemini Flash）/ 'lite'（Gemini Flash Lite）/ 'google'（Google 翻譯）。
+            // background 會把它寫進 translatePresets slot 2 的 engine+model（四指 tap / Alt+S /
+            // 工具列按鈕都走 slot 2，改 slot 2 = 改預設翻譯方式）。
+            var state = { apiKey: '', model: null, explicit: false };
+
+            function txt(zhStr, enStr) { return isZh ? zhStr : enStr; }
+
+            // 把目前 state 同步到「某個容器內」的 input + model picker 顯示
+            function syncControls(scope) {
+                if (!scope) return;
+                var input = scope.querySelector('.sk-apikey');
+                if (input && input.value !== state.apiKey) input.value = state.apiKey;
+                refreshPicker(scope);
+            }
+
+            // 依有無 API Key 決定 Gemini 卡片可否選、修正非法選擇、標出選中卡
+            function refreshPicker(scope) {
+                var picker = scope.querySelector('.model-picker');
+                if (!picker) return;
+                var hasKey = state.apiKey.trim().length > 0;
+                var cards = Array.prototype.slice.call(picker.querySelectorAll('.model-card'));
+                if (!state.explicit) {
+                    // 沒親手選過 → 預設跟著 key：有 key 用 Flash，沒 key 用 Google
+                    state.model = hasKey ? 'flash' : 'google';
+                } else if (!hasKey && (state.model === 'flash' || state.model === 'lite')) {
+                    // 親手選了需 key 的 Gemini 但 key 又被清掉 → 退回 Google 翻譯
+                    state.model = 'google';
+                }
+                if (state.model == null) state.model = hasKey ? 'flash' : 'google';
+                cards.forEach(function (c) {
+                    var model = c.getAttribute('data-model');
+                    var needsKey = c.getAttribute('data-needs-key') === '1';
+                    var disabled = needsKey && !hasKey;
+                    c.classList.toggle('disabled', disabled);
+                    c.disabled = disabled;
+                    c.classList.toggle('selected', model === state.model && !disabled);
+                });
+                var hint = scope.querySelector('.model-hint');
+                if (hint) {
+                    hint.textContent = hasKey
+                        ? txt('四指輕點與工具列按鈕都會用這個方式翻譯', 'Four-finger tap and the toolbar button will use this.')
+                        : txt('未填 API Key，先用免費的 Google 翻譯。之後填了 Key 可改用 Gemini', 'No API Key yet — start with free Google Translate. Add a key later to switch to Gemini.');
+                }
+            }
+
+            // 測試 API Key：打 Gemini models endpoint 驗證金鑰是否有效。
+            // 用 x-goog-api-key header 帶 key（不放 URL query，避免機密進 URL）；
+            // CSP 已放行 connect 到 generativelanguage.googleapis.com。fetch 不觸發
+            // ViewController 的 navigationAction 攔截（那只攔 top-level 導覽）。
+            function testApiKey(scope) {
+                var status = scope.querySelector('.sk-test-status');
+                var btn = scope.querySelector('.sk-test');
+                if (!status) return;
+                var key = (state.apiKey || '').trim();
+                if (!key) {
+                    status.textContent = txt('請先輸入 API Key', 'Enter an API Key first');
+                    status.className = 'sk-test-status warn';
+                    return;
+                }
+                status.textContent = txt('測試中…', 'Testing…');
+                status.className = 'sk-test-status';
+                if (btn) btn.disabled = true;
+                fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+                    headers: { 'x-goog-api-key': key }
+                }).then(function (r) {
+                    if (btn) btn.disabled = false;
+                    if (r.ok) {
+                        status.textContent = txt('API Key 有效', 'API Key is valid');
+                        status.className = 'sk-test-status ok';
+                    } else if (r.status === 400 || r.status === 401 || r.status === 403) {
+                        status.textContent = txt('API Key 無效', 'API Key is invalid');
+                        status.className = 'sk-test-status err';
+                    } else {
+                        status.textContent = txt('測試失敗（' + r.status + '）', 'Test failed (' + r.status + ')');
+                        status.className = 'sk-test-status err';
+                    }
+                }).catch(function () {
+                    if (btn) btn.disabled = false;
+                    status.textContent = txt('網路錯誤，請重試', 'Network error, please retry');
+                    status.className = 'sk-test-status err';
+                });
+            }
+
+            // 綁定某容器內的 API Key 輸入 + 測試按鈕 + model 卡片點選
+            function bindControls(scope) {
+                if (!scope || scope.dataset.skBound === '1') return;
+                scope.dataset.skBound = '1';
+                var input = scope.querySelector('.sk-apikey');
+                var testStatus = scope.querySelector('.sk-test-status');
+                if (input) input.addEventListener('input', function () {
+                    state.apiKey = input.value;
+                    // key 一改，舊的測試結果就失效 → 清掉
+                    if (testStatus) { testStatus.textContent = ''; testStatus.className = 'sk-test-status'; }
+                    refreshPicker(scope);
+                });
+                var testBtn = scope.querySelector('.sk-test');
+                if (testBtn) testBtn.addEventListener('click', function () { testApiKey(scope); });
+                var picker = scope.querySelector('.model-picker');
+                if (picker) picker.addEventListener('click', function (e) {
+                    var card = e.target.closest('.model-card');
+                    if (!card || card.disabled) return;
+                    state.model = card.getAttribute('data-model');
+                    state.explicit = true;
+                    refreshPicker(scope);
+                });
+            }
+
+            // ===== 寫設定回 host app（Swift 透過 message handler 接，再寫進 App Group）=====
+            // cage / 一般瀏覽器沒有 webkit.messageHandlers → 安全 no-op，UI 流程照走。
+            function saveToHost() {
+                try {
+                    var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.controller;
+                    if (h) h.postMessage({ action: 'saveSettings', apiKey: state.apiKey, model: state.model });
+                } catch (e) {}
+            }
+            function requestHostSettings() {
+                try {
+                    var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.controller;
+                    if (h) h.postMessage({ action: 'getSettings' });
+                } catch (e) {}
+            }
+            // Swift 端 evaluateJavaScript 回填現值用
+            window.__skApplySettings = function (apiKey, model) {
+                state.apiKey = typeof apiKey === 'string' ? apiKey : '';
+                if (model === 'flash' || model === 'lite' || model === 'google') { state.model = model; state.explicit = true; }
+                if (settings && !settings.hidden) syncControls(settings);
+            };
+
+            // localStorage 在 WKWebView persistent store 跨啟動保留；存取失敗（隱私模式 /
+            // 例外）一律當「沒看過」處理，頂多多看一次引導，不會壞。
+            function seenOnboard() {
+                try { return localStorage.getItem(ONBOARD_KEY) === '1'; } catch (e) { return false; }
+            }
+            function markOnboard() {
+                try { localStorage.setItem(ONBOARD_KEY, '1'); } catch (e) {}
+            }
+            function clearOnboard() {
+                try { localStorage.removeItem(ONBOARD_KEY); } catch (e) {}
+            }
+
+            // 建圓點指示
+            if (dotsBox && steps.length) {
+                steps.forEach(function () {
+                    var d = document.createElement('span');
+                    d.className = 'ob-dot';
+                    dotsBox.appendChild(d);
+                });
+            }
+
+            // onboarding 各步進來時要套用的副作用（綁定 + 同步控制項）
+            function onEnterStep() {
+                var step = steps[idx];
+                if (!step) return;
+                if (step.querySelector('.sk-apikey') || step.querySelector('.model-picker')) {
+                    bindControls(step);
+                    syncControls(step);
+                }
+            }
+
+            function render() {
+                steps.forEach(function (s, i) { s.hidden = i !== idx; });
+                if (dotsBox) {
+                    Array.prototype.forEach.call(dotsBox.children, function (d, i) {
+                        d.classList.toggle('on', i === idx);
+                    });
+                }
+                if (prevBtn) prevBtn.hidden = idx === 0;
+                var last = idx === steps.length - 1;
+                if (skipBtn) skipBtn.hidden = last;
+                if (nextBtn) nextBtn.textContent = last ? txt('完成', 'Done') : txt('下一步', 'Next');
+                onEnterStep();
+            }
+
+            function showOnboard() {
+                if (!onboard) { finishOnboard(); return; }
+                idx = 0;
+                if (home) home.hidden = true;
+                if (settings) settings.hidden = true;
+                onboard.hidden = false;
+                render();
+            }
+
+            function finishOnboard() {
+                markOnboard();
+                saveToHost();             // 把 onboarding 選的 API Key + 模型寫回 host
+                if (onboard) onboard.hidden = true;
+                if (settings) settings.hidden = true;
+                if (home) home.hidden = false;
+            }
+
+            if (nextBtn) nextBtn.addEventListener('click', function () {
+                if (idx >= steps.length - 1) { finishOnboard(); return; }
+                idx++; render();
+            });
+            if (prevBtn) prevBtn.addEventListener('click', function () {
+                if (idx > 0) { idx--; render(); }
+            });
+            if (skipBtn) skipBtn.addEventListener('click', finishOnboard);
+
+            // ===== 主畫面入口 =====
+            if (home) {
+                var replay = home.querySelector('.replay-onboard');
+                if (replay) replay.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    clearOnboard();
+                    showOnboard();
+                });
+                var openBtn = home.querySelector('.open-settings');
+                if (openBtn) openBtn.addEventListener('click', openSettings);
+            }
+
+            // ===== 設定畫面 =====
+            function openSettings() {
+                if (!settings) return;
+                if (home) home.hidden = true;
+                if (onboard) onboard.hidden = true;
+                bindControls(settings);
+                requestHostSettings();    // 請 host 回填現值（Swift 端 __skApplySettings）
+                syncControls(settings);
+                settings.hidden = false;
+            }
+            function closeSettings() {
+                if (settings) settings.hidden = true;
+                if (home) home.hidden = false;
+            }
+            if (settings) {
+                var saveBtn = settings.querySelector('.save-settings');
+                if (saveBtn) saveBtn.addEventListener('click', function () {
+                    saveToHost();
+                    closeSettings();
+                });
+                var closeBtn = settings.querySelector('.close-settings');
+                if (closeBtn) closeBtn.addEventListener('click', closeSettings);
+            }
+
+            // 入口：看過 → 直接 home；沒看過 → 跑引導
+            if (seenOnboard()) { finishOnboard(); }
+            else { showOnboard(); }
         })();
     </script>
 </body>
