@@ -150,20 +150,29 @@ body.runtime-ios-touch {
   }
 }
 
-/* iPad mini popover 高度收斂(v1.10.37,SPEC-PRIVATE §26):觸控版 zoom 1.35 把
-   桌面 ~600px 上限調校過的版面整體 ×1.35,在 YouTube 頁(多出 YouTube 字幕翻譯 /
-   字幕雙語對照 / 字幕大小三列)時全展開高度撐到 ~629px,超過 iPad mini 直立 popover
-   高度上限 → 底部 footer(設定 + 操作提示)被切、要捲動(Jimmy 實機回報)。
+/* 觸控版 popup 垂直節奏收斂(v1.10.37 起,SPEC-PRIVATE §26):觸控版 zoom 1.35〜1.5 把
+   桌面 ~600px 上限調校過的版面整體放大,兩個情境會撐爆可見範圍:
+   (1) iPad mini 直立 popover:YouTube 頁多三列(字幕翻譯 / 雙語對照 / 字幕大小)全展開
+       撐到 ~629px,超過 popover 上限 → footer 被切(v1.10.37 首次收斂)。
+   (2) iPhone sheet:Safari 把 popup 當底部 sheet 呈現,開啟時停在較矮的 detent(可手動
+       上拉,但 footer 在摺線下)。已翻譯 active 狀態(顯示原文 + 編輯譯文 + 累計列)在
+       zoom ~1.5 下高度超出開啟 detent 約一個 footer → 底部「設定 / 快速切換」看不到
+       (Jimmy 實機回報)。iPhone sheet 的 detent 高度 / 開啟位置由 Safari 決定,網頁端
+       無法控制(查證:Apple 開發者論壇多 thread + WWDC,iOS 無 web extension popup 的
+       sheet detent API)→ 唯一能做的是把版面壓矮,讓內容落進開啟 detent 內。
    修法:只壓 runtime-ios-touch 的垂直節奏(margin / padding),不動字級(zoom / --sk-fz
-   保留 → 可讀性不變),水平 16px 不動(保對齊 grid,CLAUDE.md §1)。量測:629 → 528px
-   (recover ~101px scaled)。桌面 / 非觸控走原節奏不受影響(桌面 472px 本就在 600 內)。 */
+   保留 → 可讀性不變),水平 16px 不動(保對齊 grid,CLAUDE.md §1)。iPad popover 會跟著
+   內容縮(sized-to-content)→ 一起更緊湊、無副作用。量測(@1.35):iPad YT 629→~498px、
+   iPhone active 457→~417px(各 recover 一個 footer 以上)。桌面 / 非觸控走原節奏不受影響。 */
+body.runtime-ios-touch header { padding-top: 5px; padding-bottom: 5px; }
 body.runtime-ios-touch main { padding-top: 6px; padding-bottom: 6px; }
+body.runtime-ios-touch button.primary { padding: 6px; }
+body.runtime-ios-touch button.secondary { margin-top: 4px; padding: 6px; }
 body.runtime-ios-touch .row,
-body.runtime-ios-touch .display-mode-row { margin-top: 5px; }
-body.runtime-ios-touch .cache-row { margin-top: 5px; padding-top: 5px; }
-body.runtime-ios-touch .status { margin-top: 4px; }
-body.runtime-ios-touch button.primary { padding: 8px; }
-body.runtime-ios-touch footer { padding-top: 6px; padding-bottom: 6px; }
+body.runtime-ios-touch .display-mode-row { margin-top: 4px; }
+body.runtime-ios-touch .cache-row { margin-top: 4px; padding-top: 4px; }
+body.runtime-ios-touch .status { margin-top: 3px; }
+body.runtime-ios-touch footer { padding-top: 5px; padding-bottom: 5px; }
 
 /* iPad 字體放大（SPEC-PRIVATE §26.10）：大 iPad（12.9"）跟 iPad mini 共用同一個
    popover 尺寸（都 ~420pt），但大螢幕檢視距離較遠 → 字看起來偏小。zoom 是整體

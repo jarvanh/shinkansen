@@ -104,10 +104,14 @@ EOF
 
 # 3. 版本號同步進 pbxproj
 echo "==> Sync version to project.pbxproj..."
-sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${VERSION};/g" "$PBXPROJ"
-# MARKETING_VERSION（= CFBundleShortVersionString）Apple 限制最多三段。同一 marketing
-# version 要重出 TestFlight 測試 build 時，build number（CFBundleVersion，允許四段）必須更高
-# → 傳 BUILD_VER=1.10.28.2 之類覆寫。預設 = VERSION（正式 release 三段即可）。
+# MARKETING_VERSION（= CFBundleShortVersionString）Apple 限制最多三段。manifest 可能掛
+# dev tail（§1.6,四段 1.10.40.1 → reload 後一眼識別跑的是 working tree）→ MARKETING 取
+# 前三段(cut -f1-3),四段 dev tail build 的 marketing version 仍合法(= 上一個正式三段)。
+MARKETING_VER=$(echo "$VERSION" | cut -d. -f1-3)
+sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${MARKETING_VER};/g" "$PBXPROJ"
+# build number（CFBundleVersion,允許四段）必須比同一 marketing version 上一次上傳更高。
+# 預設 = VERSION:dev tail 四段(1.10.40.1)天生就比正式三段(1.10.40)大 → 重出測試 build 免手動
+# 覆寫;正式 release 三段時 = MARKETING 同值亦可(首次上傳)。仍可傳 BUILD_VER 覆寫。
 BUILD_VER="${BUILD_VER:-$VERSION}"
 sed -i '' -E "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${BUILD_VER};/g" "$PBXPROJ"
 
