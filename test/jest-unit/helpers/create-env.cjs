@@ -32,6 +32,7 @@ const CONTENT_SCRIPT_FILES = [
   'content-ns.js',
   'lib/distribution-cs.js',
   'lib/i18n.js',
+  'lib/format-currency.js',
   'content-toast.js',
   'content-detect.js',
   'content-serialize.js',

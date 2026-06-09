@@ -434,8 +434,11 @@
     DRIVE.renderLoopId = requestAnimationFrame(loop);
   }
 
-  // ─── 單批翻譯:Gemini D' 模式(LLM 自由合句 + 時間戳對齊) ────
-  async function _runOneBatchGemini(batch, batchIdx, totalBatches) {
+  // ─── 單批翻譯：LLM D' 模式（自由合句 + 時間戳對齊）─────────
+  // Gemini 與 OpenAI-compat（自訂 Provider）共用同一條核心，只差送的 message type
+  // （background 走 handleTranslate / handleTranslateCustom）與 log 標籤；兩者都用同一份
+  // ASR JSON timestamp 協定 + parseAsrResponse，跟 YouTube ASR 自訂 Provider 路徑同源。
+  async function _runOneBatchLlm(batch, batchIdx, totalBatches, msgType, engineLabel) {
     if (batch.length === 0) return;
 
     const inputArr = batch.map((seg, i) => {
@@ -448,18 +451,18 @@
     let res;
     try {
       res = await SK.safeSendMessage({
-        type: 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH',
+        type: msgType,
         payload: { texts: [inputJson], glossary: null },
       });
     } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} gemini sendMessage failed`, {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} sendMessage failed`, {
         error: e?.message || String(e),
       });
       return;
     }
 
     if (!res?.ok) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} gemini failed`, {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} failed`, {
         error: res?.error || 'unknown',
       });
       return;
@@ -470,7 +473,7 @@
     try {
       entries = SK.ASR.parseAsrResponse(rawText);
     } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed`, {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed (${engineLabel})`, {
         error: e?.message || String(e),
         rawHead: rawText.slice(0, 200),
       });
@@ -488,7 +491,7 @@
     }
     DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
 
-    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (gemini)`, {
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (${engineLabel})`, {
       llmEntryCount: entries.length,
       pushedToOverlay: pushedCount,
       totalOverlayEntries: DRIVE.entries.length,
@@ -539,71 +542,6 @@
     SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (google)`, {
       inputCount: batch.length,
       translatedCount: translations.length,
-      pushedToOverlay: pushedCount,
-      totalOverlayEntries: DRIVE.entries.length,
-      usage: res.usage,
-    });
-  }
-
-  // ─── 單批翻譯:OpenAI-compat D' 模式(自訂 Provider 走 LLM 自由合句 + 時間戳對齊) ──
-  // 結構跟 _runOneBatchGemini 對齊,只差送 TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM 給
-  // background 的 handleTranslateCustom(走使用者自訂 baseUrl / model / apiKey)。
-  // 跟 YouTube ASR 自訂 Provider 路徑同源(共用 ASR JSON timestamp 協定 + parseAsrResponse)。
-  async function _runOneBatchCustom(batch, batchIdx, totalBatches) {
-    if (batch.length === 0) return;
-
-    const inputArr = batch.map((seg, i) => {
-      const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
-      return { s: seg.startMs, e: endMs, t: seg.text };
-    });
-    const inputJson = JSON.stringify(inputArr);
-
-    let res;
-    try {
-      res = await SK.safeSendMessage({
-        type: 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM',
-        payload: { texts: [inputJson], glossary: null },
-      });
-    } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} openai-compat sendMessage failed`, {
-        error: e?.message || String(e),
-      });
-      return;
-    }
-
-    if (!res?.ok) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} openai-compat failed`, {
-        error: res?.error || 'unknown',
-      });
-      return;
-    }
-
-    const rawText = res.result?.[0] || '';
-    let entries;
-    try {
-      entries = SK.ASR.parseAsrResponse(rawText);
-    } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed (openai-compat)`, {
-        error: e?.message || String(e),
-        rawHead: rawText.slice(0, 200),
-      });
-      return;
-    }
-
-    let pushedCount = 0;
-    for (const entry of entries) {
-      const sStart = Number(entry.s);
-      const sEnd = Number(entry.e);
-      const text = String(entry.t || '').trim();
-      if (!Number.isFinite(sStart) || !Number.isFinite(sEnd) || sEnd < sStart || !text) continue;
-      DRIVE.entries.push({ startMs: sStart, endMs: sEnd, text });
-      pushedCount++;
-    }
-    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
-
-    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (openai-compat)`, {
-      llmEntryCount: entries.length,
       pushedToOverlay: pushedCount,
       totalOverlayEntries: DRIVE.entries.length,
       usage: res.usage,
@@ -670,9 +608,9 @@
         if (_engine === 'google') {
           await _runOneBatchGoogle(batches[idx], idx, totalBatches);
         } else if (_engine === 'openai-compat') {
-          await _runOneBatchCustom(batches[idx], idx, totalBatches);
+          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat');
         } else {
-          await _runOneBatchGemini(batches[idx], idx, totalBatches);
+          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH', 'gemini');
         }
       }
     }

@@ -870,7 +870,7 @@
     // (background.js 每天 fetch 一次寫進去），失敗則用 fallback 31.6。
     {
       const currency = settings.displayCurrency === 'USD' ? 'USD' : 'TWD';
-      let rate = 31.6;
+      let rate = window.__SKFormat.FALLBACK_USD_TWD_RATE;
       try {
         const { exchangeRate } = await browser.storage.local.get('exchangeRate');
         if (exchangeRate && Number.isFinite(exchangeRate.rate) && exchangeRate.rate > 0) {

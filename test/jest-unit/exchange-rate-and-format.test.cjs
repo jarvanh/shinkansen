@@ -46,6 +46,16 @@ function loadFormat() {
   return loadEsmAsSandbox('../../shinkansen/lib/format.js');
 }
 
+// format-currency.js 是 UMD（掛 window.__SKFormat + module.exports），不是 ES module，
+// 不能走 loadEsmAsSandbox。給它一個假 window，跑 source 後讀 window.__SKFormat。
+function loadFormatCurrency() {
+  const src = fs.readFileSync(path.resolve(__dirname, '../../shinkansen/lib/format-currency.js'), 'utf-8');
+  const win = {};
+  const ctx = vm.createContext({ window: win, Number, String, Object, Math, JSON });
+  vm.runInNewContext(src, ctx, { filename: 'format-currency.js' });
+  return win.__SKFormat;
+}
+
 describe('v1.8.41 formatTWD', () => {
   let format;
   beforeAll(() => { format = loadFormat(); });
@@ -89,6 +99,95 @@ describe('v1.8.41 formatMoney dispatcher', () => {
   test('currency=TWD 但無 rate（意外狀態）→ 不爆，走 rate=0 顯示 NT$ 0', () => {
     // 防禦性：未來呼叫端忘記傳 rate 不應該丟例外讓 toast 整條炸掉
     expect(format.formatMoney(5, { currency: 'TWD' })).toBe('NT$ 0');
+  });
+});
+
+// ─── L2(b)（code review 2026-06-09）：金額格式化抽 UMD 共用檔 ───────────────────
+// content script 不能 import ES module，故 content 世界（content-toast.js / content.js）的
+// 金額格式化改走 lib/format-currency.js UMD 單一來源（原本 content-toast.js 自己重複定義
+// formatUSD / formatTWD + 硬編 31.6 三處）。lib/format.js ESM 版仍給 popup / options 用
+//（export 檔不能同時當 classic content script，兩個世界無法共用同一檔，是已知架構限制）。
+//
+// 這條 spec 鎖三層：
+//   1. UMD 行為正確（formatUSD / formatTWD / formatMoney / FALLBACK 常數）
+//   2. drift guard：UMD 與 ESM lib/format.js 的 formatUSD / formatTWD 對同組輸入逐筆相同
+//      （兩份是同一份事實的雙實作，CLAUDE.md §5 單一資料源——這條就是 sync 觸發守門員）
+//   3. source 斷言：content-toast.js 不再自己定義 formatUSD/formatTWD、不再硬編 31.6；
+//      content.js fallback rate 改讀 window.__SKFormat.FALLBACK_USD_TWD_RATE
+//
+// SANITY 紀錄（已驗證，2026-06-09）：
+//   - 把 format-currency.js 的 formatUSD `n.toFixed(2)` 改成 `toFixed(3)` → drift parity
+//     case 與 UMD 行為 case 一起 fail；還原 → pass
+//   - 把 content-toast.js 改回 `SK.formatUSD = function formatUSD` → source 斷言 fail；還原 → pass
+describe('L2(b) format-currency UMD（content 世界金額格式化單一來源）', () => {
+  let umd, esm;
+  beforeAll(() => {
+    umd = loadFormatCurrency();
+    esm = loadFormat();
+  });
+
+  test('window.__SKFormat 掛載成功，export 四項', () => {
+    expect(umd).toBeTruthy();
+    expect(typeof umd.formatUSD).toBe('function');
+    expect(typeof umd.formatTWD).toBe('function');
+    expect(typeof umd.formatMoney).toBe('function');
+    expect(umd.FALLBACK_USD_TWD_RATE).toBe(31.6);
+  });
+
+  test('formatUSD 邊界（極小 4 位 / <1 三位 / 一般兩位 / 0）', () => {
+    expect(umd.formatUSD(0)).toBe('$0');
+    expect(umd.formatUSD(0.005)).toBe('$0.0050');
+    expect(umd.formatUSD(0.5)).toBe('$0.500');
+    expect(umd.formatUSD(1.5)).toBe('$1.50');
+  });
+
+  test('formatTWD 邊界（0 / 極小 3 位 / 一般 1 位）', () => {
+    expect(umd.formatTWD(0, 31.6)).toBe('NT$ 0');
+    expect(umd.formatTWD(0.001, 31.6)).toMatch(/^NT\$ 0\.0\d{2}$/);
+    expect(umd.formatTWD(1, 31.6)).toBe('NT$ 31.6');
+  });
+
+  test('formatMoney：TWD 走 formatTWD、USD 走 formatUSD、無 state 預設 USD', () => {
+    expect(umd.formatMoney(1, { currency: 'TWD', rate: 31.6 })).toBe('NT$ 31.6');
+    expect(umd.formatMoney(0.005, { currency: 'USD' })).toBe('$0.0050');
+    expect(umd.formatMoney(1.5)).toBe('$1.50');
+  });
+
+  test('formatMoney：TWD 但 state 缺 rate → 用 FALLBACK 31.6（content 世界保留原 content-toast 行為，非 ESM 的 NT$ 0）', () => {
+    // 這是 content 世界刻意與 ESM lib/format.js 不同的一點：content-toast 原本就 `st.rate || 31.6`，
+    // popup/options 走 ESM 版才是 `opts.rate || 0` → NT$ 0。保留既有差異，不算 drift。
+    expect(umd.formatMoney(1, { currency: 'TWD' })).toBe('NT$ 31.6');
+  });
+
+  test('drift guard：UMD 與 ESM lib/format.js 的 formatUSD / formatTWD 對同組輸入逐筆相同', () => {
+    const usdInputs = [0, 0.0001, 0.005, 0.5, 1, 1.5, 12.345, 999.999];
+    for (const n of usdInputs) {
+      expect(umd.formatUSD(n)).toBe(esm.formatUSD(n));
+    }
+    const twdCases = [[0, 31.6], [0.001, 31.6], [0.01, 31.6], [1, 31.6], [5.5, 32]];
+    for (const [usd, rate] of twdCases) {
+      expect(umd.formatTWD(usd, rate)).toBe(esm.formatTWD(usd, rate));
+    }
+  });
+
+  test('FALLBACK 常數與 lib/exchange-rate.js 的 FALLBACK_USD_TWD_RATE 一致（兩個世界同一保守值）', () => {
+    // exchange-rate.js 的常數在本檔下方 describe 已鎖 = 31.6，這裡確認 UMD 沒漂走
+    expect(umd.FALLBACK_USD_TWD_RATE).toBe(31.6);
+  });
+
+  test('source 斷言：content-toast.js 不再自己定義 formatUSD/formatTWD、不再硬編 31.6', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../shinkansen/content-toast.js'), 'utf-8');
+    expect(src).not.toMatch(/SK\.formatUSD\s*=\s*function/);
+    expect(src).not.toMatch(/SK\.formatTWD\s*=\s*function/);
+    expect(src).toMatch(/window\.__SKFormat/);
+    // 硬編 31.6 只允許留在註解；斷言沒有「: 31.6」這種數值賦值殘留
+    expect(src).not.toMatch(/rate:\s*31\.6/);
+  });
+
+  test('source 斷言：content.js fallback rate 改讀 window.__SKFormat.FALLBACK_USD_TWD_RATE', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../shinkansen/content.js'), 'utf-8');
+    expect(src).toMatch(/let rate = window\.__SKFormat\.FALLBACK_USD_TWD_RATE/);
+    expect(src).not.toMatch(/let rate = 31\.6/);
   });
 });
 

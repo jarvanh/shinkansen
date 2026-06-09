@@ -41,8 +41,12 @@ test('alarm period 設成 0.5 分鐘(Chrome 最低週期)', () => {
   expect(BACKGROUND_SRC).toMatch(/_STREAM_KEEPALIVE_PERIOD_MIN\s*=\s*0\.5\b/);
 });
 
-test('註冊 browser.alarms.onAlarm.addListener(SW 喚醒後處理 idle 清理)', () => {
-  expect(BACKGROUND_SRC).toMatch(/browser\.alarms\.onAlarm\.addListener\(/);
+test('keepalive idle 清理走單一 onAlarm dispatcher（M9(c) 重構後）', () => {
+  // M9(c)（v1.10.40）：keepalive 不再自己 addListener，改往 _registerAlarm 註冊 handler，
+  // 由單一 dispatcher（browser.alarms?.onAlarm.addListener，依 alarm.name 分派）統一觸發。
+  // 仍保留「SW 喚醒後處理 idle 清理」這條 onAlarm 路徑，只是註冊方式換成 dispatcher。
+  expect(BACKGROUND_SRC).toMatch(/browser\.alarms\??\.onAlarm\.addListener\(/);
+  expect(BACKGROUND_SRC).toMatch(/_registerAlarm\(\s*_STREAM_KEEPALIVE_ALARM/);
 });
 
 test('_stopStreamKeepAliveIfIdle 在 inFlightStreams 空時 clear alarm(避免無限喚醒)', () => {

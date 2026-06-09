@@ -108,9 +108,21 @@ browser.runtime.onStartup?.addListener(() => {
   checkForUpdate().catch(err => debugLog('warn', 'update-check', 'onStartup check failed', { error: err.message }));
 });
 
+// ─── 單一 onAlarm dispatcher（name → handler map）─────────────────────
+// 各 alarm 不再各自 addListener；改往 _alarmHandlers 註冊一筆 handler，由下方唯一的
+// onAlarm listener 依 alarm.name 分派。新增 alarm 只要 _registerAlarm 一行，避免分散
+// 註冊難追、未來漏接。淨行為與原本多個 name-filter listener 完全相同。
+const _alarmHandlers = Object.create(null);
+function _registerAlarm(name, handler) { _alarmHandlers[name] = handler; }
+try {
+  browser.alarms?.onAlarm.addListener((alarm) => {
+    const handler = alarm && _alarmHandlers[alarm.name];
+    if (handler) handler(alarm);
+  });
+} catch (_) { /* alarms 不可用環境 */ }
+
 browser.alarms?.create('update-check', { periodInMinutes: 60 * 24 });
-browser.alarms?.onAlarm.addListener((alarm) => {
-  if (alarm.name !== 'update-check') return;
+_registerAlarm('update-check', () => {
   checkForUpdate().catch(err => debugLog('warn', 'update-check', 'alarm check failed', { error: err.message }));
 });
 
@@ -131,8 +143,7 @@ browser.runtime.onStartup?.addListener(() => {
 });
 
 browser.alarms?.create('exchange-rate-fetch', { periodInMinutes: 60 * 24 });
-browser.alarms?.onAlarm.addListener((alarm) => {
-  if (alarm.name !== 'exchange-rate-fetch') return;
+_registerAlarm('exchange-rate-fetch', () => {
   refreshExchangeRate().catch(err => debugLog('warn', 'exchange-rate', 'alarm fetch failed', { error: err.message }));
 });
 
@@ -1123,16 +1134,13 @@ function _stopStreamKeepAliveIfIdle() {
     try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
   }
 }
-// alarm 觸發即「SW 被喚醒到」這個事實本身就是 keep-alive。listener body 不必做事；
+// alarm 觸發即「SW 被喚醒到」這個事實本身就是 keep-alive。handler body 不必做事；
 // 但 alarm 觸發時若 inFlightStreams 已空（stream 完成同時 alarm fire 的 race)，順手清理。
-try {
-  browser.alarms.onAlarm.addListener((alarm) => {
-    if (alarm?.name !== _STREAM_KEEPALIVE_ALARM) return;
-    if (inFlightStreams.size === 0) {
-      try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
-    }
-  });
-} catch (_) { /* alarms 不可用環境 */ }
+_registerAlarm(_STREAM_KEEPALIVE_ALARM, () => {
+  if (inFlightStreams.size === 0) {
+    try { browser.alarms.clear(_STREAM_KEEPALIVE_ALARM); } catch (_) {}
+  }
+});
 
 // v1.8.0: Streaming 翻譯 handler。
 // v1.8.9: 加 opts 參數，支援字幕路徑（TRANSLATE_SUBTITLE_BATCH_STREAM）復用同一條 streaming pipeline,

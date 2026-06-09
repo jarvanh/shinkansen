@@ -43,22 +43,12 @@
 
 > 這些是 2026-06-09 全 codebase review 找出、但當輪決定**不動**的項目(架構級重構 / 低 ROI)。
 > 不是 bug,功能現況正確。放這裡是為了不遺失,未來有空再評估。**不計入 release gate**。
-
-### M9(c) — onStartup / onAlarm 分散註冊合併成單一 dispatcher
-- background.js 的 `onStartup` 註冊 4 次、`onAlarm` 3 次,各自過濾 alarm name。功能正確但分散難追,未來新增 alarm 容易漏接。
-- **為何 deferred**:純維護性重構,動 SW 初始化有 regression 風險、零功能收益。
-- **建議**:合併成單一 onAlarm dispatcher(name → handler map),對齊既有 messageHandlers 風格。
-
-### L2(a 完整) — drive 批次函式合一
-- content-drive.js 三個 `_runOneBatch*`(Gemini/Google/Custom)+ content-youtube.js `_runAsrSubBatch` 結構高度重複。
-- **本輪已做**:magic 1500 已抽成 `SK.ASR_LAST_CUE_FALLBACK_MS`(content-ns.js)。
-- **為何 deferred**:把 4 函式合一觸及翻譯正確性路徑,風險 > 收益。
-- **建議**:抽 `_runAsrBatch(batch, msgType, parseMode)` 共用核心,engine 差異傳參。
-
-### L2(b) — content-toast.js 金額格式化與 lib/format.js 重複 + 硬編匯率 31.6
-- content-toast.js 的 formatTWD/formatUSD/formatMoney 與 lib/format.js 重複,fallback 匯率 31.6 硬編 3 次(lib/exchange-rate.js 已有 FALLBACK_USD_TWD_RATE 常數)。
-- **為何 deferred**:content script 不能 import ES module,正解需抽 window.__SK UMD 共用檔(架構改動);fallback 匯率罕變,drift 風險低。
-- **建議**:把格式化函式抽到非 module、掛 window.__SK 的共用檔(類似 shortcut-utils.js UMD 寫法)。
+>
+> **2026-06-09 後續處理**：M9(c)、L2(a)（部分：只合 Drive Gemini+Custom）、L2(b) 已於本輪
+> 完成，走路徑 A 寫了 regression spec（`test/jest-unit/alarm-dispatcher.test.cjs` /
+> `drive-batch-merge.test.cjs` / `exchange-rate-and-format.test.cjs` 新增 describe）並 SANITY 驗過，
+> 從本清單移除。L2(a) 的 Google / YouTube `_runAsrSubBatch` 折疊評估後風險 > 收益，**不做**
+>（輸入格式 / 輸出目標 / 時間戳生成全不同）。剩 L5 待評估。
 
 ### L5 — gemini.js segment mismatch 逐段 fallback 不過 rate limiter
 - lib/gemini.js translateChunk mismatch 時逐段重打 API,不經 limiter.acquire(不計入 RPM/TPM 視窗)。

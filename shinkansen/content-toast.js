@@ -298,31 +298,20 @@
     return n.toLocaleString('en-US');
   };
 
-  SK.formatUSD = function formatUSD(n) {
-    if (!n) return '$0';
-    if (n < 0.01)  return '$' + n.toFixed(4);
-    if (n < 1)     return '$' + n.toFixed(3);
-    return '$' + n.toFixed(2);
-  };
-
-  // v1.8.41:TWD 格式化（USD × rate → NT$，一位小數；極小值 < NT$ 0.1 用 3 位）
-  SK.formatTWD = function formatTWD(usd, rate) {
-    if (!usd) return 'NT$ 0';
-    const twd = usd * rate;
-    if (twd < 0.1) return 'NT$ ' + twd.toFixed(3);
-    return 'NT$ ' + twd.toFixed(1);
-  };
+  // 金額格式化走 lib/format-currency.js UMD 單一來源（manifest 在 content-toast.js 前載入），
+  // 不在這裡重複定義 formatUSD / formatTWD，也不再硬編 31.6。
+  const _F = window.__SKFormat;
+  SK.formatUSD = _F.formatUSD;
+  SK.formatTWD = _F.formatTWD;
 
   // v1.8.41：依 SK.currencyState 自動選擇 USD / TWD 顯示。
   // currencyState 由 content.js 從 storage 讀進來注入（預設 fallback 在這保險）。
   SK.formatMoney = function formatMoney(usd) {
-    const st = SK.currencyState || { currency: 'TWD', rate: 31.6 };
-    if (st.currency === 'TWD') return SK.formatTWD(usd, st.rate || 31.6);
-    return SK.formatUSD(usd);
+    return _F.formatMoney(usd, SK.currencyState || { currency: 'TWD', rate: _F.FALLBACK_USD_TWD_RATE });
   };
 
   // 預設值——content.js init 時會用真實值覆蓋
-  SK.currencyState = SK.currencyState || { currency: 'TWD', rate: 31.6 };
+  SK.currencyState = SK.currencyState || { currency: 'TWD', rate: _F.FALLBACK_USD_TWD_RATE };
 
   /**
    * kind: 'loading' | 'success' | 'error'
