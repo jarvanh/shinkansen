@@ -97,7 +97,30 @@
   <p class="lang-switch"><a href="release-notes.html">繁體中文</a> | <strong>English</strong></p>
 
   <h1>Store Release Notes</h1>
-  <p class="subtitle">Update summary for users on Chrome Web Store and Firefox Add-ons. Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
+  <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
+
+  <h2>v1.10.42 <span class="release-date">Released 2026-06-09</span></h2>
+  <p class="release-meta">Compared with the previous store version v1.10.17</p>
+
+  <p class="lead">The headline of this release is the launch of Shinkansen for iOS / iPadOS Safari. Across all platforms, it also improves YouTube subtitles, adds custom translation shortcuts, makes translation cancellation restore instantly, and ships several site-translation and settings fixes.</p>
+
+  <ul>
+    <li><strong>Shinkansen for iOS / iPadOS Safari</strong>: Shinkansen now installs on Safari for iPhone / iPad. Alongside hardware keyboard shortcuts, a new "four-finger tap" gesture toggles full-page translation; a first-launch onboarding flow lets you enter your Gemini API Key and pick a default translation method, and the toolbar popup and settings page are re-adapted for phone / tablet screens (the iOS version does not include PDF document translation).</li>
+
+    <li><strong>New "custom translation shortcuts"</strong>: the shortcut keys for all three translation presets can now be recorded directly on the settings page under "Translation shortcuts" (click the field, then press the combination you want). This works on every platform and specifically solves the lack of a key-remapping entry point on Safari / iPad external keyboards.</li>
+
+    <li><strong>Canceling a translation now restores immediately</strong>: previously, canceling with a shortcut had to wait for the in-flight batch to return before the original text was actually restored (a large batch on a slow model could take several to a dozen seconds); this release restores instantly on key press and lets you re-translate right away, and rapid repeated presses no longer get stuck.</li>
+
+    <li><strong>Several YouTube subtitle improvements</strong>: (1) a new "subtitle size" setting (100%–200%, in the toolbar popup, shown only on YouTube video pages, applied on both desktop and mobile full screen); (2) mobile m.youtube.com now supports subtitle translation; (3) fixed auto-generated subtitles suddenly ballooning in size during pauses in speech; (4) fixed translated subtitles disappearing after entering native full screen on iPhone / iPad (both auto-generated and English subtitles).</li>
+
+    <li><strong>Forum main-post translation fix</strong>: on forums like vBulletin / phpBB where the entire main post is wrapped directly in bold, the whole post was previously left untranslated (while quoted blocks in the same post were translated), causing "some translated, some not" within one post; this is now fixed and the main post translates normally.</li>
+
+    <li><strong>Importing settings no longer drops fields</strong>: when exporting and re-importing settings, fields such as a custom model's thinking level, extra request parameters, and the glossary's dedicated model were previously silently discarded; this release fills them in so settings round-trip completely.</li>
+
+    <li><strong>PDF narrow cells no longer reveal source text</strong>: in very narrow PDF table cells (quantity / unit columns), the white mask was previously sized incorrectly, leaving the source uncovered with the translation overlapping it; this release covers the cell fully.</li>
+
+    <li><strong>Cost accounting aligned with Gemini 3 billing</strong>: Gemini 3 is a reasoning model, and Google bills the "thinking" process as part of output; the usage breakdown now includes thinking tokens and aligns with Gemini 3's generation parameters (Top P / Top K, which are inert on Gemini 3, are no longer sent and have been removed from the settings page). Amounts for the everyday default model (Flash Lite) are unaffected.</li>
+  </ul>
 
   <h2>v1.10.17 <span class="release-date">Released 2026-06-02</span></h2>
   <p class="release-meta">Compared with the previous store version v1.10.11</p>

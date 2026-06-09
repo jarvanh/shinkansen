@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.43** —— **修 iOS host app「API Key 與預設模型設定」畫面顯示舊值、按儲存把現值清掉**。iOS host app 的設定畫面（填 API Key、選預設翻譯方式）進入時只讀「host app 自己上次寫的副本」，不是擴充功能目前真正在用的值。使用者若在擴充功能設定頁改過 API Key／預設模型、或首次引導時略過 API Key（預設停在 Google 翻譯），畫面就顯示空白或舊值 → 按儲存把現值覆寫（尤其「預設翻譯方式」沒有「空值不覆寫」防護）→ 設定被清掉。修法（單一資料源）：擴充功能主動把現值（API Key 與預設翻譯方式）推進 App Group 共享儲存，host 設定畫面優先讀這份真值、讀不到才退回舊副本。推送掛在「每次頁面載入」這條可靠路徑——iOS Safari 的背景是 event page、閒置會卸載，單靠「設定變更事件」在背景睡著時收不到 → 改用頁面載入觸發（與既有已驗證可靠的設定拉取同一條）。真機驗證：擴充功能設好 Gemini Flash 與 API Key → host 設定畫面正確顯示現值、儲存不再清掉。純 iOS 介面修正，Chrome／Firefox／macOS 桌面版不受影響。native 與 App Group 路徑 harness 無法重現，以真機驗收（path B regression 已紀錄）。**不需清快取**：只動 host app 設定回填路徑，不碰譯文內容、預設 prompt、偵測、注入與 cache key 結構。
+
 **v1.10.42** —— **「自動翻譯網站」名單填整段網址也能命中**。白名單原本只接受裸網域（`stratechery.com`），使用者貼完整網址（`https://stratechery.com/`）時，比對的是 `location.hostname`（只有主機名、沒有協定與尾斜線）→ exact-match 永遠不命中 → 自動翻譯不觸發。修法把網域正規化與比對收斂成單一共用模組 `lib/domain-utils.js`：填裸網域或整段網址（含協定 / 路徑 / query / 尾斜線 / 埠號 / `www.` 前綴）都先正規化成主機名再比，三種形式等價；`*.example.com` 萬用字元語法不變。結構通則（§8）：只看 URL 語法特徵，非站點特判。新增 regression：純函式層 10 條（`jest-unit/domain-whitelist`）＋ 真實路徑層（載入真 extension、改 storage 後驗 `isDomainWhitelisted`）＋ 兩層 SANITY。**不需清快取**：本輪只動白名單比對邏輯，不碰譯文內容、預設 prompt、偵測、注入與 cache key 結構。
 
 **v1.10.41** —— **iOS popup 底部內容不再被切（iPhone / iPad 觸控版高度收斂）**。iPhone 上 popup 是 Safari 從底部彈出的 sheet，開啟時停在較矮的位置，已翻譯狀態（顯示原文 + 編輯譯文）下方的「設定 / 快速切換」會落在摺線下、要手動上拉才看得到。sheet 開啟高度由 Safari 決定、網頁端沒有任何 API 能控制，唯一解是把版面壓矮讓內容落進開啟範圍 → 進一步收斂觸控版的垂直節奏（標題列、主／次按鈕、各設定列、快取／累計列、底部列的間距），不動字級與水平對齊。真機驗證兩種狀態（未翻譯 / 已翻譯）sheet 都完整貼合內容、底部列一開啟就看得到。純 iOS 介面調整，Chrome / Firefox / macOS 桌面版不受影響。新增 regression：觸控版 YouTube 頁全展開 ≤ 550px、非 YouTube 已翻譯狀態 ≤ 450px 兩條高度守門。**不需清快取**：本輪只動 popup 版面間距，不碰譯文內容、預設 prompt、偵測、注入與 cache key 結構。

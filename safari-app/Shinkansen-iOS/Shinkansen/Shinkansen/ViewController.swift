@@ -77,11 +77,15 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
         defaults.set(seq, forKey: "hostSettingsSeq")
     }
 
-    // 設定畫面開啟時回填現值（host 直接讀自己寫進 App Group 的值；不反向讀 extension）。
+    // 設定畫面開啟時回填現值。單一資料源（CLAUDE.md §5）：API Key / 預設模型的「真值」在
+    // extension storage,extension 會把現值推進 App Group 的 extApiKey/extModel（見
+    // SafariWebExtensionHandler.writeExtSettings + background.js pushExtSettings）。這裡優先讀
+    // ext*（extension 真值），讀不到才 fallback hostApiKey/hostModel（host 自己上次寫的、可能過時）。
+    // 這樣設定畫面顯示的就是目前真正在用的設定,按儲存只會把同值寫回,不會把現值覆寫清掉。
     private func sendSettingsToPage() {
         guard let defaults = sharedDefaults else { return }
-        let apiKey = defaults.string(forKey: "hostApiKey") ?? ""
-        let model = defaults.string(forKey: "hostModel") ?? ""
+        let apiKey = defaults.string(forKey: "extApiKey") ?? defaults.string(forKey: "hostApiKey") ?? ""
+        let model = defaults.string(forKey: "extModel") ?? defaults.string(forKey: "hostModel") ?? ""
         let js = "window.__skApplySettings && window.__skApplySettings(\(jsStringLiteral(apiKey)), \(jsStringLiteral(model)))"
         webView.evaluateJavaScript(js, completionHandler: nil)
     }

@@ -27,12 +27,20 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         os_log(.default, "Received message from browser.runtime.sendNativeMessage: %@", String(describing: message))
 
         // background.js 的 pullHostSettings 會送 { action: "pullHostSettings" }；
-        // 回傳 host app 寫進 App Group 的設定。其餘訊息維持 echo（沿用預設行為）。
+        // 回傳 host app 寫進 App Group 的設定。
+        // pushExtSettings { action, apiKey, model } 則反過來把 extension 現值寫進 App Group,
+        // 供 host app 設定畫面回填真值（避免顯示舊值、儲存時覆寫）。其餘訊息維持 echo。
         var payload: [String: Any]
         if let dict = message as? [String: Any],
-           let action = dict["action"] as? String,
-           action == "pullHostSettings" {
-            payload = readHostSettings()
+           let action = dict["action"] as? String {
+            switch action {
+            case "pullHostSettings":
+                payload = readHostSettings()
+            case "pushExtSettings":
+                payload = writeExtSettings(dict)
+            default:
+                payload = ["echo": message as Any]
+            }
         } else {
             payload = ["echo": message as Any]
         }
@@ -61,6 +69,25 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             out["model"] = model
         }
         return out
+    }
+
+    // 把 extension 推來的現值寫進 App Group 的 extApiKey / extModel（與 host* 分開,
+    // 不碰 seq → 不觸發 host→ext 的 pull 迴圈）。供 ViewController.sendSettingsToPage 優先讀取。
+    // apiKey 一律寫（含空字串=已清空,要如實反映）；model 僅接受三選一,空字串 / 非法 →
+    // 清掉 extModel 讓 host fallback 回 hostModel（自訂引擎無法用三選一表示時的退路）。
+    private func writeExtSettings(_ dict: [String: Any]) -> [String: Any] {
+        guard let defaults = UserDefaults(suiteName: appGroupID) else {
+            return ["ok": false]
+        }
+        if let apiKey = dict["apiKey"] as? String {
+            defaults.set(apiKey, forKey: "extApiKey")
+        }
+        if let model = dict["model"] as? String, ["flash", "lite", "google"].contains(model) {
+            defaults.set(model, forKey: "extModel")
+        } else {
+            defaults.removeObject(forKey: "extModel")
+        }
+        return ["ok": true]
     }
 
 }

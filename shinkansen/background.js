@@ -218,14 +218,71 @@ async function pullHostSettings(trigger) {
   await browser.storage.local.set({ hostSettingsConsumedSeq: seq });
 }
 
+// ─── 反向：extension 真值 → App Group（host app 設定畫面回填用）─────────────
+// 問題（單一資料源 §5）：host app 的「API Key 與預設模型設定」畫面原本只讀 host 自己
+// 寫過的 hostApiKey/hostModel，那份是「host 上次推了什麼」而非 extension 目前真正在用的值。
+// 使用者若在擴充功能 options 改過、或 onboarding 被略過，畫面就顯示空白 / 舊值 →
+// 一按儲存可能把現值（尤其預設模型，無「空不覆寫」防護）覆寫掉 → 設定被清除。
+// 修法：extension 主動把現值推進 App Group 的 extApiKey/extModel（與 host* 分開的 key,
+// 不碰 seq → 不觸發 pull,無迴圈）；ViewController.sendSettingsToPage 優先讀 ext*。
+//
+// 「預設模型」反向對映：slot 2（四指 tap / Alt+S / 工具列按鈕共用）的 engine+model → host
+// 三選一 token。自訂引擎 / 無法用三選一表示時回 ''（host 端清掉 extModel、fallback host*）。
+function extModelToken(settings) {
+  const presets = Array.isArray(settings.translatePresets) ? settings.translatePresets : [];
+  const p = presets.find((x) => x && x.slot === 2);
+  if (!p) return '';
+  if (p.engine === 'google') return 'google';
+  if (p.engine === 'gemini') {
+    return (typeof p.model === 'string' && p.model.includes('lite')) ? 'lite' : 'flash';
+  }
+  return '';
+}
+
+async function pushExtSettings(trigger) {
+  if (!IS_IOS_BUILD) return;                                   // 桌面 / 非 iOS build 不走
+  if (!browser.runtime || typeof browser.runtime.sendNativeMessage !== 'function') return;
+  try {
+    const settings = await getSettings();
+    const apiKey = typeof settings.apiKey === 'string' ? settings.apiKey : '';  // 真值（含空字串=已清空）
+    const model = extModelToken(settings);
+    await sendNativeMessageAsync('app.shinkansen.ios', { action: 'pushExtSettings', apiKey, model });
+    debugLog('info', 'host-settings', 'pushed ext settings to App Group', { trigger, hasKey: !!apiKey, model: model || null });
+  } catch (e) {
+    debugLog('warn', 'host-settings', 'native push failed', { trigger, error: e.message });
+  }
+}
+
 // 觸發點：SW/event page 冷啟動、onStartup、onInstalled、content script 載入送的 PULL_HOST_SETTINGS。
 pullHostSettings('sw-init');
-browser.runtime.onStartup?.addListener(() => { pullHostSettings('onStartup'); });
+pushExtSettings('sw-init');                                    // 啟動就把現值同步給 host
+browser.runtime.onStartup?.addListener(() => { pullHostSettings('onStartup'); pushExtSettings('onStartup'); });
 browser.runtime.onInstalled.addListener(() => { pullHostSettings('onInstalled'); });
 browser.runtime.onMessage.addListener((message) => {
-  if (message && message.type === 'PULL_HOST_SETTINGS') pullHostSettings('content-init');
+  if (message && message.type === 'PULL_HOST_SETTINGS') {
+    pullHostSettings('content-init');
+    pushExtSettings('content-init');   // 同條 content-init 路徑也把現值推回 host(見下方 reliability 註解)
+  }
   // fire-and-forget，不回 response → 不 return true
 });
+
+// apiKey（storage.local）/ translatePresets（storage.sync）一變動就把現值推給 host,
+// 讓設定畫面隨時讀得到 extension 真值。只在 iOS build 註冊（其他平台無 host app）。
+//
+// ⚠️ 但 iOS Safari 的 background 是 event page（v1.10.24 起,非持久 SW),閒置會卸載。
+// 使用者在擴充功能 options 改 Key / 模型時 event page 可能正在睡 → 此 onChanged 收不到 →
+// push 沒跑 → extModel 沒更新 → host 設定畫面 fallback 到過時的 hostModel（onboarding 略過
+// Key 時寫的 'google'）→ 顯示錯誤的預設翻譯方式。所以「真正可靠」的觸發是上面 content-init
+// 那條（content-touch.js 每次頁面載入送 PULL_HOST_SETTINGS,pull 已驗證會喚醒 event page,
+// push 搭同一條等效可靠）。這個 onChanged 只當 event page 醒著時的即時補強,不是唯一依賴。
+if (IS_IOS_BUILD) {
+  browser.storage.onChanged.addListener((changes, area) => {
+    if ((area === 'local' && 'apiKey' in changes) ||
+        (area === 'sync' && 'translatePresets' in changes)) {
+      pushExtSettings('storage-changed');
+    }
+  });
+}
 
 // 累計用量（grand total）由 IndexedDB usage-db.js 透過 QUERY_USAGE_STATS 提供。
 // 不再額外維護 storage.local 累計欄位，避免與明細紀錄 drift。

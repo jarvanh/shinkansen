@@ -17,6 +17,23 @@
 
 ## 條目
 
+<!-- iOS host app 設定畫面回填 extension 真值（反向 push extApiKey/extModel,v1.10.43）清空紀錄
+  （2026-06-09,Jimmy 真機驗收完成）:
+  - 症狀:host app「API Key 與預設模型設定」畫面進入時只讀 host 自己寫過的 hostApiKey/hostModel
+    （host 上次推的值,非 extension 真值）→ 顯示空白 / 舊值 → 按儲存覆寫現值（尤其預設翻譯方式
+    無「空不覆寫」防護）→ 設定被清掉。
+  - 修在:shinkansen/background.js（pushExtSettings + extModelToken slot2 反向對映 + content-init
+    /sw-init/onStartup/storage.onChanged 觸發,IS_IOS_BUILD gate）/ SafariWebExtensionHandler.swift
+    （pushExtSettings action → 寫 extApiKey/extModel）/ ViewController.swift（sendSettingsToPage
+    優先讀 ext*,fallback host*）。
+  - 為什麼 path B:同 §26.12 forward 橋接——IS_IOS_BUILD gate（Chromium false 早退）+ sendNativeMessage
+    需 Safari appex native handler + App Group（Chromium 無對應）+ host 端 WKWebView 讀 App Group plist。
+  - 1.10.42.1 真機:API Key 回填正確,但預設翻譯方式顯示 Google（實際 Gemini Flash）。根因:iOS background
+    是 event page,options 改設定時在睡 → storage.onChanged 沒喚醒 → extModel 沒寫 → fallback 到舊
+    hostModel='google'。1.10.42.2 修:push 改掛 content-init（每次頁面載入,pull 已驗證會喚醒 event page）。
+  - ★ 清空依據:2026-06-09 Jimmy 真機（1.10.42.2 TestFlight）驗收——擴充功能設 Gemini Flash + API Key →
+    host 設定畫面正確顯示現值、儲存後設定不再被清 → 回報「結果正確」。比照 §26.12 靠真機 ground truth 結案。 -->
+
 ### code review 2026-06-09 M2 — content-drive.js rAF loop orphan 收斂 + 防重複綁定
 - **症狀**(潛在):content-drive.js:411 _startRenderLoop 的 rAF loop 原本無條件遞迴永不停,orphan content script 後仍每幀 getBoundingClientRect 空轉;_listenPlayerMessages 無防重複綁定
 - **修在**:`shinkansen/content-drive.js` _startRenderLoop 加 orphan 自我停止(`!chrome.runtime?.id`)+ DRIVE.renderLoopRunning 防重複啟動 guard;_listenPlayerMessages 加 DRIVE._msgListenerInstalled guard
