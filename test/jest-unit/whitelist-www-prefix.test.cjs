@@ -28,7 +28,7 @@ const fs = require('fs');
 
 function loadContentScripts() {
   const root = path.join(__dirname, '..', '..', 'shinkansen');
-  const files = ['content-ns.js', 'content-toast.js', 'content-detect.js',
+  const files = ['content-ns.js', 'lib/domain-utils.js', 'content-toast.js', 'content-detect.js',
                  'content-serialize.js', 'content-inject.js', 'content-spa.js'];
   return files.map(f => fs.readFileSync(path.join(root, f), 'utf8'));
 }

@@ -53,18 +53,9 @@
     try {
       const { domainRules } = await browser.storage.sync.get('domainRules');
       if (!domainRules?.whitelist?.length) return false;
-      const hostname = location.hostname.toLowerCase();
-      // exact-match 兩邊都去掉開頭 `www.` 再比,讓 `culpium.com` 與 `www.culpium.com` 互通
-      // (要匹配所有子網域請用 `*.culpium.com`)。
-      const normHost = hostname.replace(/^www\./, '');
-      return domainRules.whitelist.some(raw => {
-        const pattern = String(raw).toLowerCase();
-        if (pattern.startsWith('*.')) {
-          const suffix = pattern.slice(1);
-          return hostname === pattern.slice(2) || hostname.endsWith(suffix);
-        }
-        return normHost === pattern.replace(/^www\./, '');
-      });
+      // 比對規則(含使用者貼整段網址時的正規化)統一走 lib/domain-utils.js 單一來源,
+      // 讓 `https://stratechery.com/`、`stratechery.com/`、`stratechery.com` 三者等價。
+      return window.__SKDomain.matchDomain(location.hostname, domainRules.whitelist);
     } catch (err) {
       SK.sendLog('warn', 'system', 'isDomainWhitelisted: failed to read storage', { error: err.message });
       return false;
