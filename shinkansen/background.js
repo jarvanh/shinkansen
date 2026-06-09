@@ -1168,6 +1168,23 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// iOS background keep-alive port（content-touch.js 開，SPEC-PRIVATE §26.14）。
+// iOS Safari 的 background event page 閒置後會被系統永久回收且叫不醒（thread
+// 758346）→ 表現為「用一陣子後四指 / popup 翻譯失效」。content script 開一條
+// 長連線 port + 每 20s ping；「持續有 port 連著 + 收訊息」這個事實本身就讓系統
+// 把 background 維持在非閒置，不被回收。handler body 幾乎不必做事——收到 ping
+// 回個 pong 讓 content 端能偵測背景是否還活著。
+//   無條件註冊（不以 IS_IOS_BUILD gate）：桌面 build 的 content-touch.js 根本不
+// 會開這條 port（content 端有 IS_IOS_BUILD gate）→ 此 listener 在桌面永不觸發，
+// 零行為差異；無條件註冊讓 Playwright（Chromium）能驗真實 content↔background
+// round-trip（iOS 平台的回收行為 harness 測不到，但 port 接線測得到）。
+browser.runtime.onConnect.addListener((port) => {
+  if (port?.name !== 'shinkansen-keepalive') return;
+  port.onMessage.addListener(() => {
+    try { port.postMessage({ pong: true }); } catch (_) {}
+  });
+});
+
 // v1.8.0: streamId → AbortController 對映，支援使用者中途取消 streaming
 const inFlightStreams = new Map();
 

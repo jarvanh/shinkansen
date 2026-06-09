@@ -68,6 +68,67 @@
     gesture = null;
   }, { passive: true, capture: true });
 
+  // ── iOS background keep-alive（SPEC-PRIVATE §26.14）─────────────────────
+  // iOS Safari 的擴充功能 background（即使宣告成 event page）閒置一段時間後會被
+  // 系統「永久回收」且叫不醒：sendMessage 叫不醒、開關 Safari 也沒用，只有強制
+  // 關閉 Safari 才復活（Apple Developer Forums thread 758346，iOS 17.4 起、迄今
+  // 未修；只發生在真機，模擬器 / macOS 不會）。表現為「用一陣子後四指 / popup 按
+  // 翻譯失效」——因為四指與 popup 翻譯最後都要送請求給 background 做 API 呼叫。
+  //
+  // 死後救不回，所以修法不是「死了再救」而是「不讓它睡到被回收」：開一條長連線
+  // port + 每 20s ping，讓 background 一直保持非閒置（收訊息會重置系統的閒置計時）。
+  // 只在「分頁可見」時 ping（切到背景就斷，省電）；只在 iOS build + top frame 啟用
+  // （每個分頁一條 port 就夠，iframe 不重複開）。桌面 build 不啟用——桌面的 SW
+  // 生命週期正常，不需要這個 workaround。
+  const KEEPALIVE_PORT_NAME = 'shinkansen-keepalive';
+  const KEEPALIVE_PING_MS = 20000; // < iOS ~30s 回收窗，留餘裕
+  let kaPort = null;
+  let kaTimer = null;
+
+  function stopKeepAlive() {
+    if (kaTimer) { clearInterval(kaTimer); kaTimer = null; }
+    if (kaPort) { try { kaPort.disconnect(); } catch (_) {} kaPort = null; }
+  }
+
+  function startKeepAlive() {
+    if (kaPort || document.hidden) return;        // 已連線 / 分頁不可見 → 不開
+    if (!browser.runtime?.id) return;             // context 失效（extension reload 中）
+    try {
+      kaPort = browser.runtime.connect({ name: KEEPALIVE_PORT_NAME });
+    } catch (_) { kaPort = null; return; }
+    // background 回 pong → 記錄「背景還活著」（spec 驗 port round-trip；production
+    // 不依賴此值，純粹讓自動化測得到真實 content↔background 連線）
+    kaPort.onMessage.addListener(() => { SK._keepAliveAlive = true; });
+    // 背景被回收 / 重啟 → port 斷。仍可見就重連（context 失效時 startKeepAlive 自會早退，
+    // 1s 延遲避免 reload 期間緊迴圈）
+    kaPort.onDisconnect.addListener(() => {
+      kaPort = null;
+      if (kaTimer) { clearInterval(kaTimer); kaTimer = null; }
+      if (!document.hidden) setTimeout(startKeepAlive, 1000);
+    });
+    const ping = () => {
+      if (!kaPort) return;
+      try { kaPort.postMessage({ t: Date.now() }); }
+      catch (_) { stopKeepAlive(); if (!document.hidden) setTimeout(startKeepAlive, 1000); }
+    };
+    ping();                                       // 連線即送首 ping，不等 20s 第一輪
+    kaTimer = setInterval(ping, KEEPALIVE_PING_MS);
+  }
+
+  // iOS build + top frame 才啟用。動態讀 SK.IS_IOS_BUILD（不在載入期快照），讓
+  // regression spec 可 runtime 翻 flag 後手動觸發。
+  function maybeStartKeepAlive() {
+    if (SK.IS_IOS_BUILD !== true || window !== window.top) return;
+    startKeepAlive();
+  }
+  SK.maybeStartKeepAlive = maybeStartKeepAlive;
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopKeepAlive();
+    else maybeStartKeepAlive();
+  });
+  maybeStartKeepAlive();
+
   // Phase 2（SPEC-PRIVATE §26.12）：頁面載入時請 background 拉一次 host app 設定。
   // host app onboarding / 設定畫面剛存的 API Key + 預設模型寫在 App Group，background
   // 經 native messaging 拉走套用。在「四指 tap 翻譯」之前（頁面載入 → 使用者點，有人為
