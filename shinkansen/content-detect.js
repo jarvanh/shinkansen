@@ -714,6 +714,18 @@
               const frags = extractInlineFragments(el);
               if (frags.length > 0) {
                 fragmentExtracted.add(el);
+                // v1.10.45:Case A 容器同時是「其他 block 單元的祖先」。fragment 注入路徑
+                // (injectFragmentTranslation)會對整個容器 el 做 snapshotOnce(存 el.innerHTML),
+                // 但該 snapshot 是注入時才 lazy 取——容器內的 block 子單元(P/LI…)在更早批次
+                // 已翻譯注入,導致容器的「原文」snapshot 被污染成含譯文。RESTORE 時
+                // `el.innerHTML = 污染snapshot` 會把已還原的子段落整批沖回譯文,使用者按取消
+                // 看到原文回不來(telefoncek.si .wrapper「Kategorije:」尾段 fragment + 內含
+                // 37 個 ARTICLE P 的真實 case)。
+                // 修法:趁全頁尚未翻譯,在收集當下就 snapshot 容器原文,確保 originalHTML[el]
+                // 是真原文。snapshotOnce 具冪等性,注入時的呼叫變 no-op。
+                // 結構通則(§8):描述「fragment 容器是其他 block 單元祖先」這個 DOM 巢狀特徵,
+                // 不綁站點 / class。
+                SK.snapshotOnce?.(el);
                 for (const f of frags) {
                   results.push(f);
                   seen.add(f.startNode);

@@ -2219,6 +2219,9 @@
       captionMapSize: YT.captionMap.size,
     });
   }
+  // 暴露給 spec 端直接驅動 heuristic 批次路徑(M8 res.result 缺失防禦回歸測試用),
+  // 不影響 production behaviour。
+  SK._runAsrHeuristicWindow = _runAsrHeuristicWindow;
 
   // ─── 時間視窗翻譯 ──────────────────────────────────────────
 
@@ -3159,6 +3162,9 @@
     YT.flushing = false;
     if (YT.pendingQueue.size > 0) setTimeout(flushOnTheFly, 100);
   }
+  // 暴露給 spec 端直接驅動 on-the-fly 批次路徑(M8 res.result 缺失防禦回歸測試用),
+  // 不影響 production behaviour。
+  SK._flushOnTheFly = flushOnTheFly;
 
   function startCaptionObserver() {
     const YT = SK.YT;

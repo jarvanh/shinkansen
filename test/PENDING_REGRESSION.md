@@ -34,25 +34,37 @@
   - ★ 清空依據:2026-06-09 Jimmy 真機（1.10.42.2 TestFlight）驗收——擴充功能設 Gemini Flash + API Key →
     host 設定畫面正確顯示現值、儲存後設定不再被清 → 回報「結果正確」。比照 §26.12 靠真機 ground truth 結案。 -->
 
-### code review 2026-06-09 M2 — content-drive.js rAF loop orphan 收斂 + 防重複綁定
-- **症狀**(潛在):content-drive.js:411 _startRenderLoop 的 rAF loop 原本無條件遞迴永不停,orphan content script 後仍每幀 getBoundingClientRect 空轉;_listenPlayerMessages 無防重複綁定
-- **修在**:`shinkansen/content-drive.js` _startRenderLoop 加 orphan 自我停止(`!chrome.runtime?.id`)+ DRIVE.renderLoopRunning 防重複啟動 guard;_listenPlayerMessages 加 DRIVE._msgListenerInstalled guard
-- **為什麼還不能寫測試**:orphan context 同 M1(harness 無法重現);防重複啟動 / 綁定 guard 要測需 expose 內部 + 計 rAF 次數,收益低。既有 drive-bilingual-overlay / drive-engine-normalize spec 已驗 overlay 結構 / render 邏輯沒被破壞(本輪跑過全綠)
-- **取捨(非 bug)**:不在 _autoTranslateEnabled=false 時暫停 loop——暫停後需可靠 resume 觸發,風險高於收益(Drive niche 路徑),只收斂「回不來」的 orphan
-- **建議 spec 位置**:無(orphan 部分永久 path B)
+### ~~code review 2026-06-09 M2 — content-drive.js rAF loop orphan 收斂 + 防重複綁定~~
+- ★ **關閉(2026-06-10,Jimmy 決定)**:orphan content script 情境 harness 永久無法重現(同 M1),屬永久 path B,寫不出乾淨 spec。code 修法早已 in place、風險已堵住(orphan 自停 + 防重複綁定 guard),既有 drive-* spec 已驗 overlay / render 邏輯沒被破壞。無對應測試可補 → 關閉,不再佔活動 queue。
+- ~~**症狀**(潛在):content-drive.js:411 _startRenderLoop 的 rAF loop 原本無條件遞迴永不停,orphan content script 後仍每幀 getBoundingClientRect 空轉;_listenPlayerMessages 無防重複綁定~~
+- ~~**修在**:`shinkansen/content-drive.js` _startRenderLoop 加 orphan 自我停止(`!chrome.runtime?.id`)+ DRIVE.renderLoopRunning 防重複啟動 guard;_listenPlayerMessages 加 DRIVE._msgListenerInstalled guard~~
+- ~~**為什麼還不能寫測試**:orphan context 同 M1(harness 無法重現);防重複啟動 / 綁定 guard 要測需 expose 內部 + 計 rAF 次數,收益低~~
+- ~~**取捨(非 bug)**:不在 _autoTranslateEnabled=false 時暫停 loop,只收斂「回不來」的 orphan~~
 
-### code review 2026-06-09 M4 — usage-db getDB 連線失效自我重建
-- **症狀**(潛在):lib/usage-db.js getDB singleton 沒掛 onclose / onversionchange,連線被瀏覽器關閉後 _dbPromise cache 死連線 → 後續 db.transaction() 丟 InvalidStateError,usage 寫入靜默失敗到 SW 重啟
-- **修在**:`shinkansen/lib/usage-db.js` req.onsuccess 掛 `db.onclose` / `db.onversionchange`,比對 `_db === db` 後 null 掉 _dbPromise 讓下次 getDB 重建
-- **為什麼還不能寫測試**:專案無 IndexedDB 測試基建(無 fake-indexeddb dep,既有 usage spec 都是讀 source / 測 handler 架構,不跑真 IndexedDB)。onclose 要瀏覽器儲存壓力才觸發;onversionchange 要跨 context DB 升級,但 DB_VERSION 恆=1 production 不會升級。兩者在 harness representatively 重現需另建基建,收益低
-- **建議 spec 位置**:無;若未來引入 fake-indexeddb 或 sw context IndexedDB 測試再補
-- **驗證方式**:code inspection + node --check;_db===db 比對防舊連線晚到 onclose 誤殺新連線
+### ~~code review 2026-06-09 M4 — usage-db getDB 連線失效自我重建~~
+- ★ **已清(2026-06-10,走路徑 A)**:`test/jest-unit/usage-db-reconnect.test.cjs`(4 case)。
+  用假 indexedDB.open 替身(reuse exchange-rate test 的 vm sandbox loadEsm pattern,getDB
+  是 hoisted function declaration 直接 ctx.getDB() 可呼叫),觀測 openCount + 回傳 db identity
+  驗:singleton 共用 / onclose 重建 / onversionchange close+重建 / **stale onclose 不誤殺新連線
+  (_db===db guard)**。SANITY 已驗(拿掉 onclose 的 `if (_db === db)` → stale onclose 測試
+  fail,還原 pass)。零新 dep、零 production 改動。
+  - 訊號層界定:本 spec 驗「連線失效後的記帳邏輯」,不驗「真瀏覽器儲存壓力下是否真的 fire
+    onclose / 重建後 transaction 是否成功」(harness 到不了的層,fake-indexeddb 也模擬不出
+    儲存壓力驅逐,故不引入)。
+- ~~**症狀**(潛在):getDB singleton 沒掛 onclose / onversionchange,連線被瀏覽器關閉後 _dbPromise cache 死連線 → db.transaction() 丟 InvalidStateError,usage 寫入靜默失敗到 SW 重啟~~
+- ~~**修在**:`shinkansen/lib/usage-db.js` req.onsuccess 掛 `db.onclose` / `db.onversionchange`,比對 `_db === db` 後 null 掉 _dbPromise 讓下次 getDB 重建~~
 
-### code review 2026-06-09 M8 — YT heuristic / on-the-fly 批次結果 res.result 防禦
-- **症狀**(潛在,path drift):content-youtube.js heuristic(_runBatch)與 on-the-fly(flushOnTheFly)路徑用 `res.result[j]`,若 res.ok=true 但 res.result 缺失會 throw;非 ASR 主路徑(_injectBatchResult)早已 `res.result || []`,這兩條沒跟上(CLAUDE.md §5 單一資料源 drift)
-- **修在**:`shinkansen/content-youtube.js` 兩處改 `const results = res.result || []` 再 index
-- **為什麼還不能寫測試**:觸發條件是「background 回 ok=true 卻不帶 result」的契約違反,正常不會發生;要在 YT fixture 路徑產生需深層 mock safeSendMessage + 跑完整 window 翻譯流程,收益低。修法與主路徑已測的 `|| []` 同 pattern,風險近零(只在 result undefined 時改變行為——舊 code 是 throw)
-- **建議 spec 位置**:無;若未來建 YT 批次路徑 mock harness 可一併補
+### ~~code review 2026-06-09 M8 — YT heuristic / on-the-fly 批次結果 res.result 防禦~~
+- ★ **已清(2026-06-10,走路徑 A)**:`test/regression/youtube-batch-missing-result-guard.spec.js`(2 case)。
+  production 加 2 個測試 seam(`SK._runAsrHeuristicWindow` / `SK._flushOnTheFly`,同既有 `SK._runAsrSubBatch` 性質),
+  spec mock `safeSendMessage` 回 ok=true 但不帶 result,直接驅動兩條路徑。
+  - 觀測點:兩條 result 迴圈都包 try/catch,throw 會被吞 → 不能用「不 reject」斷言。改觀測
+    captionMap:有 fix → 每段 fallback 原文填入(非空);無 fix → `undefined[j]` 第一步 throw 被吞
+    → captionMap 維持空。
+  - SANITY 已驗:兩處 `const results = res.result || []` 改回 `res.result` 直接索引 →
+    captionMap.size > 0 斷言 fail(throw 被吞、captionMap 空)→ 還原 pass。
+  - 訊號層界定:驗「缺 result 時 fallback 原文寫 captionMap 不靜默丟空」,不驗 background 真會不會
+    違反契約(正常不會)/ overlay 視覺。
 
 ---
 
