@@ -42,8 +42,9 @@ SPEC-PRIVATE.md
 DEBUG-BOARD.md
 /reports/
 
-# Claude Code ScheduleWakeup transient lock
-.claude/scheduled_tasks.lock
+# Claude Code 本機工作流(專案 skill / transient lock 等,含個人資訊,
+# 跟 CLAUDE.md 同待遇不入公開 repo)
+.claude/
 
 # macOS Safari Web Extension Xcode project — Phase 2 起 commit project 骨架,
 # 只 ignore build artifacts / per-user Xcode state / rsync 進來的 Extension Resources
