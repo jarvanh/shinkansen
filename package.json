@@ -5,7 +5,7 @@
   "description": "Shinkansen Chrome Extension 的 Playwright 自動化測試 harness",
   "type": "module",
   "scripts": {
-    "test": "playwright test",
+    "test": "playwright test && jest --config jest.config.cjs",
     "test:regression": "playwright test test/regression/",
     "test:unit": "playwright test test/unit/",
     "test:version": "playwright test test/version-check.spec.js",
@@ -16,7 +16,8 @@
     "pdf-snapshot": "node tools/pdf-layout-snapshot.js",
     "pdf-snapshot:update": "node tools/pdf-layout-snapshot.js --update",
     "pdf-snapshot:metrics": "node tools/pdf-layout-snapshot.js --metrics",
-    "pdf-verify": "node tools/pdf-verify-harness.js"
+    "pdf-verify": "node tools/pdf-verify-harness.js",
+    "pdf-structure-verify": "node tools/pdf-structure-verify.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

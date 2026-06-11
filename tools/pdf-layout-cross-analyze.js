@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-// Cross-PDF analyzer:讀全部 .playwright-mcp/pdf-summaries/*.txt 對應的 dump JSON,
-// 抓出系統性問題:type 誤判 / column 異常 / block 切分異常等。
+// 【狀態：dev 期一次性分析工具，非常駐流程】2026-05-05 PDF layout 大升級期間
+// 用來掃系統性問題的輔助腳本，依賴 pdf-layout-harness 先產出 .playwright-mcp/
+// pdf-summaries/*.txt 才能跑。日常 PDF 驗收流程是 pdf-layout-harness --translate
+// + pdf-verify-harness + pdf-layout-snapshot（見 CLAUDE.md「PDF 翻譯改動必走
+// 自驗流程」），不含本檔。留著供未來 layout 大改時重用，確定不需要可刪。
 //
-// 由於 dump JSON 每跑一次 harness 就被覆寫(只保留最後一份),這個 analyzer 改成
-// 重新 spawn harness 跑每份 PDF,把 dump 寫進獨立檔。
+// Cross-PDF analyzer：讀全部 .playwright-mcp/pdf-summaries/*.txt 對應的 dump JSON,
+// 抓出系統性問題：type 誤判 / column 異常 / block 切分異常等。
 //
-// 簡化版:直接讀已產生的 .txt summary,做 grep / 統計。
+// 由於 dump JSON 每跑一次 harness 就被覆寫（只保留最後一份），這個 analyzer 改成
+// 重新 spawn harness 跑每份 PDF，把 dump 寫進獨立檔。
+//
+// 簡化版：直接讀已產生的 .txt summary，做 grep / 統計。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,7 +34,7 @@ for (const file of summaries) {
   const pageBlocks = txt.split(/^## /m).slice(1);
   for (const pageBlock of pageBlocks) {
     const headerLine = pageBlock.split('\n')[0];
-    // 匹配:p0  595 × 842pt  · column 2  · medianLineHeight 6.4pt  · bodyFs 6.4pt  · blocks 14  (table 8 / paragraph 4 / heading 2)
+    // 匹配：p0  595 × 842pt  · column 2  · medianLineHeight 6.4pt  · bodyFs 6.4pt  · blocks 14  (table 8 / paragraph 4 / heading 2)
     const m = headerLine.match(/^p(\d+)\s+(\d+)\s*×\s*(\d+)pt\s+·\s+column\s+(\d+)\s+·\s+medianLineHeight\s+([\d.]+)pt\s+·\s+bodyFs\s+([\d.]+)pt\s+·\s+blocks\s+(\d+)/);
     if (!m) continue;
     const [, pageIdx, w, h, col, mlh, bodyFs, blockCount] = m;
@@ -53,7 +59,7 @@ for (const file of summaries) {
 
 // ---- 報告 ----
 
-console.log(`分析 ${summaries.length} 份 PDF 的 summary,共抓到 ${problems.length} 個問題`);
+console.log(`分析 ${summaries.length} 份 PDF 的 summary，共抓到 ${problems.length} 個問題`);
 console.log('');
 
 // 按問題類型分組
@@ -78,7 +84,7 @@ const otherTypes = Object.keys(byType).filter((t) => !typeOrder.includes(t));
 
 for (const t of [...typeOrder, ...otherTypes]) {
   if (!byType[t] || byType[t].length === 0) continue;
-  console.log(`### ${t} (${byType[t].length} 條)`);
+  console.log(`### ${t} （${byType[t].length} 條）`);
   // 印前 8 條
   for (const p of byType[t].slice(0, 8)) {
     console.log(`  - ${p.pdf} p${p.page}: ${p.detail}`);
@@ -117,7 +123,7 @@ function checkPage(p) {
   const probs = [];
   const { columnCount, medianLineHeight, bodyFontSize, blocks, pageWidth, pageHeight } = p;
 
-  // 1) 頁面 bodyFs 為 0(空白頁)
+  // 1) 頁面 bodyFs 為 0（空白頁）
   if (blocks.length === 0) {
     probs.push({
       type: 'page-bodyFs-zero',
@@ -126,7 +132,7 @@ function checkPage(p) {
     return probs;
   }
 
-  // 2) 巨 block lineCount > 30:極可能該切沒切
+  // 2) 巨 block lineCount > 30：極可能該切沒切
   for (const b of blocks) {
     if (b.lineCount > 30) {
       probs.push({
@@ -136,8 +142,8 @@ function checkPage(p) {
     }
   }
 
-  // 3) heading 字體比 body 大太多(> 3×):可能是 logo / decoration 不該翻譯;
-  //    但也可能是真實大標題,只標 hint 不算錯
+  // 3) heading 字體比 body 大太多（> 3×）：可能是 logo / decoration 不該翻譯；
+  //    但也可能是真實大標題，只標 hint 不算錯
   for (const b of blocks) {
     if (b.type === 'heading' && bodyFontSize > 0 && b.fontSize > bodyFontSize * 3 && b.lineCount === 1) {
       probs.push({
@@ -147,26 +153,26 @@ function checkPage(p) {
     }
   }
 
-  // 4) 同欄內中段冒出 heading:heading 通常在段落起頭;若前後都是同欄 paragraph
-  //    且 heading 排在中間,可能是子標題或誤判
-  // (這不算錯,只是 hint)
+  // 4) 同欄內中段冒出 heading:heading 通常在段落起頭；若前後都是同欄 paragraph
+  //    且 heading 排在中間，可能是子標題或誤判
+  // （這不算錯，只是 hint）
   for (let i = 1; i < blocks.length - 1; i++) {
     const cur = blocks[i];
     const prev = blocks[i - 1];
     const next = blocks[i + 1];
     if (cur.type === 'heading' && prev.type === 'paragraph' && next.type === 'paragraph' &&
         cur.column === prev.column && cur.column === next.column) {
-      // 子標題很常見,只在 next paragraph lineCount 很小才標
+      // 子標題很常見，只在 next paragraph lineCount 很小才標
       if (next.lineCount === 1) {
         probs.push({
           type: 'heading-mid-paragraph',
-          detail: `#${cur.order} 中段 heading,後段只有 ${next.lineCount} 行`,
+          detail: `#${cur.order} 中段 heading，後段只有 ${next.lineCount} 行`,
         });
       }
     }
   }
 
-  // 5) 連續多個 1-line paragraph:可能該被合併成一個 list-item / bullet group
+  // 5) 連續多個 1-line paragraph：可能該被合併成一個 list-item / bullet group
   let consecutive1Line = 0;
   for (const b of blocks) {
     if (b.type === 'paragraph' && b.lineCount === 1) {
@@ -184,11 +190,11 @@ function checkPage(p) {
   if (consecutive1Line >= 5) {
     probs.push({
       type: 'short-paragraph-1-line-many',
-      detail: `連續 ${consecutive1Line} 個 1-line paragraph 沒合併(尾段)`,
+      detail: `連續 ${consecutive1Line} 個 1-line paragraph 沒合併（尾段）`,
     });
   }
 
-  // 6) column=N 但實際 block 都集中在某一欄(其他欄空 / 只 1-2 個 block)
+  // 6) column=N 但實際 block 都集中在某一欄（其他欄空 / 只 1-2 個 block）
   if (columnCount >= 2) {
     const counts = new Array(columnCount).fill(0);
     for (const b of blocks) counts[b.column]++;
@@ -204,7 +210,7 @@ function checkPage(p) {
     }
   }
 
-  // 7) 孤立小 block:bbox 極小、字數 < 5,可能是 OCR 殘渣或裝飾
+  // 7) 孤立小 block:bbox 極小、字數 < 5，可能是 OCR 殘渣或裝飾
   for (const b of blocks) {
     const w = b.bbox[2] - b.bbox[0];
     const h = b.bbox[3] - b.bbox[1];
@@ -217,7 +223,7 @@ function checkPage(p) {
     }
   }
 
-  // 8) table 但只 2 行(table 啟發式應該要 ≥4 行,< 4 不該被歸 table——但實作允許)
+  // 8) table 但只 2 行（table 啟發式應該要 ≥4 行，< 4 不該被歸 table——但實作允許）
   for (const b of blocks) {
     if (b.type === 'table' && b.lineCount < 4) {
       probs.push({
