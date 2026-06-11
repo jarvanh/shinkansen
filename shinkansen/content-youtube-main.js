@@ -15,6 +15,19 @@
   const TIMEDTEXT_RE = /\/api\/timedtext/;
   const CAPTION_EVENT = 'shinkansen-yt-captions';
 
+  // ─── bridge detail 雙格式相容讀 ───────────────────────────
+  // Firefox：isolated world dispatch 的 object detail 在 main world 讀屬性會
+  // throw Permission denied（Xray 安全模型）→ isolated 端（content-youtube.js
+  // bridgeRequest）一律送 JSON 字串（primitive 跨 compartment 可讀）。
+  // 這裡字串就 parse、物件直收 —— Chrome 新舊協定皆通，不需兩側同步升級。
+  function parseBridgeDetail(e) {
+    const d = e?.detail;
+    if (typeof d === 'string') {
+      try { return JSON.parse(d); } catch (_) { return null; }
+    }
+    return d || null;
+  }
+
   // ─── XMLHttpRequest monkey-patch ──────────────────────────
   // YouTube 播放器用 XHR 抓字幕，攔截 open() 記錄 URL，
   // 在 readystatechange 等到完成時把 responseText 丟出去。
@@ -140,7 +153,7 @@
   // 結果以 shinkansen-yt-cc-control-result 回送 { op, ok, ccOn, error }。
 
   window.addEventListener('shinkansen-yt-cc-control', (e) => {
-    const op = e?.detail?.op || 'status';
+    const op = parseBridgeDetail(e)?.op || 'status';
     let ok = false;
     let ccOn = false;
     let error = null;
@@ -219,7 +232,7 @@
   // 結果以 shinkansen-yt-set-caption-track-result 回送（ok / error）。
 
   window.addEventListener('shinkansen-yt-set-caption-track', (e) => {
-    const { languageCode, kind } = e?.detail || {};
+    const { languageCode, kind } = parseBridgeDetail(e) || {};
     let ok = false;
     let error = null;
     try {

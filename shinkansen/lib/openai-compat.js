@@ -25,6 +25,9 @@ import { DELIMITER, SEP_RE, MARKER_COMPACT, MARKER_STRONG, packChunks, buildEffe
 import { buildThinkingPayload } from './openai-compat-thinking.js';
 
 const MAX_BACKOFF_MS = 8000;
+// v1.10.46(批次 2-1):429 Retry-After 等待上限(同 lib/gemini.js)。provider 可能回
+// 數百秒的 Retry-After,MV3 SW 等不到那麼久,無上限等待等於永久卡批次。
+const RETRY_AFTER_CAP_MS = 30_000;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -42,64 +45,88 @@ async function fetchWithRetry(url, headers, body, { maxRetries = 3, timeoutMs = 
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    let resp;
+    // v1.10.46(批次 2-2):abortTimer 涵蓋範圍從「只到 headers 抵達」延伸到「body 讀完」。
+    // 原本 fetch resolve 即 clearTimeout,但 fetch resolve 只代表 headers 到,行動網路 /
+    // proxy 中途吊住時 resp.json() 可無限 pending → 該批永久卡住無錯誤。改成在 controller
+    // 還在 scope 的這裡把 body 讀完(逾時 → abort → body 讀取 reject → 走網路錯誤 retry),
+    // 成功路徑回傳以 body 文字重建的 Response,呼叫端 resp.json() / clone() 行為不變。
+    // timer 統一在 finally 清(每輪 continue / return / throw 都會經過)。
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      clearTimeout(abortTimer);
-      const isTimeout = err.name === 'AbortError';
-      const errMsg = isTimeout ? `逾時(${timeoutMs}ms)` : err.message;
-      await debugLog('error', 'api', isTimeout ? 'openai-compat fetch timeout' : 'openai-compat fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? timeoutMs : undefined });
-      if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
-      await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
-      attempt += 1;
-      continue;
-    }
-    clearTimeout(abortTimer);
-
-    // 5xx → 退避重試
-    if (resp.status >= 500 && resp.status < 600) {
-      await debugLog('warn', 'api', `openai-compat ${resp.status} server error`, { status: resp.status, attempt });
-      if (attempt >= maxRetries) {
-        let errMsg = `HTTP ${resp.status}`;
-        try { const j = await resp.json(); errMsg = j?.error?.message || errMsg; } catch { /* noop */ }
-        throw new Error(errMsg);
+      let resp;
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        const isTimeout = err.name === 'AbortError';
+        const errMsg = isTimeout ? `逾時(${timeoutMs}ms)` : err.message;
+        await debugLog('error', 'api', isTimeout ? 'openai-compat fetch timeout' : 'openai-compat fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? timeoutMs : undefined });
+        if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+        await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+        attempt += 1;
+        continue;
       }
-      await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+
+      // 5xx → 退避重試
+      if (resp.status >= 500 && resp.status < 600) {
+        await debugLog('warn', 'api', `openai-compat ${resp.status} server error`, { status: resp.status, attempt });
+        if (attempt >= maxRetries) {
+          let errMsg = `HTTP ${resp.status}`;
+          try { const j = await resp.json(); errMsg = j?.error?.message || errMsg; } catch { /* noop */ }
+          throw new Error(errMsg);
+        }
+        await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+        attempt += 1;
+        continue;
+      }
+
+      if (resp.status !== 429) {
+        // 成功 / 非 429 錯誤:body 在 timer 涵蓋下讀完(2-2)
+        let bodyText;
+        try {
+          bodyText = await resp.text();
+        } catch (err) {
+          const isTimeout = err.name === 'AbortError';
+          const errMsg = isTimeout ? `回應讀取逾時(${timeoutMs}ms)` : err.message;
+          await debugLog('error', 'api', isTimeout ? 'openai-compat body read timeout' : 'openai-compat body read error', { error: err.message, attempt });
+          if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+          await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+          attempt += 1;
+          continue;
+        }
+        // bodyText 為空字串時傳 null(204 等 null-body status 帶 body 會 throw)
+        return new Response(bodyText || null, { status: resp.status, statusText: resp.statusText, headers: resp.headers });
+      }
+
+      // 429 退避（不依 quota dimension 細分，OpenAI 相容 provider 沒有統一的維度標記）
+      let bodyJson = null;
+      try { bodyJson = await resp.clone().json(); } catch { /* noop */ }
+      const retryAfterHeader = resp.headers.get('retry-after');
+      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+
+      await debugLog('warn', 'api', 'openai-compat 429 rate limit', {
+        retryAfter: retryAfterHeader,
+        attempt,
+        error: bodyJson?.error?.message,
+      });
+
+      if (attempt >= maxRetries) {
+        const msg = bodyJson?.error?.message || `HTTP 429`;
+        throw new Error(msg);
+      }
+      const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? Math.min(retryAfterSec * 1000 + 100, RETRY_AFTER_CAP_MS)
+        : Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt));
+      await sleep(waitMs);
       attempt += 1;
-      continue;
+    } finally {
+      clearTimeout(abortTimer);
     }
-
-    if (resp.status !== 429) return resp;
-
-    // 429 退避（不依 quota dimension 細分，OpenAI 相容 provider 沒有統一的維度標記）
-    let bodyJson = null;
-    try { bodyJson = await resp.clone().json(); } catch { /* noop */ }
-    const retryAfterHeader = resp.headers.get('retry-after');
-    const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
-
-    await debugLog('warn', 'api', 'openai-compat 429 rate limit', {
-      retryAfter: retryAfterHeader,
-      attempt,
-      error: bodyJson?.error?.message,
-    });
-
-    if (attempt >= maxRetries) {
-      const msg = bodyJson?.error?.message || `HTTP 429`;
-      throw new Error(msg);
-    }
-    const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
-      ? retryAfterSec * 1000 + 100
-      : Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt));
-    await sleep(waitMs);
-    attempt += 1;
   }
 }
 
@@ -137,7 +164,11 @@ export async function translateBatch(texts, settings, glossary, fixedGlossary, f
   const out = new Array(texts.length);
   const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
   let hadMismatch = false;
-  const chunks = packChunks(texts);
+  // 批次 5-3：帶使用者設定的分批上限（原本寫死 20 段／3500 字，調高設定無效）
+  const chunks = packChunks(texts, {
+    maxUnits: settings?.maxUnitsPerBatch,
+    maxChars: settings?.maxCharsPerBatch,
+  });
   for (const { start, end } of chunks) {
     const slice = texts.slice(start, end);
     const result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
@@ -356,14 +387,16 @@ export async function extractGlossary(compressedText, settings) {
     await debugLog('error', 'glossary', `openai-compat glossary extraction failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
     return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `${reason}: ${err.message}` };
   }
-  clearTimeout(abortTimer);
-
+  // v1.10.46(批次 2-2):json 讀完才清 timer——body 中途吊住時 timer 到點 abort,
+  // resp.json() reject 走下方 catch 回 best-effort 空結果,不再無限 pending
   let json;
   try {
     json = await resp.json();
   } catch (parseErr) {
     await debugLog('error', 'glossary', 'openai-compat glossary response body parse failed', { status: resp.status, error: parseErr.message });
     return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `resp.json() failed: ${parseErr.message}` };
+  } finally {
+    clearTimeout(abortTimer);
   }
   const ms = Date.now() - t0;
   const u = json?.usage || {};

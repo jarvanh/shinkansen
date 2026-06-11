@@ -21,10 +21,10 @@
 import { renderPageToCanvas } from './pdf-engine.js';
 import { translateSingleBlock } from './translate.js';
 import { buildBilingualPdf } from './pdf-renderer.js';
+import { TRANSLATABLE_TYPES } from './block-types.js';
 import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
 
 const READER_RENDER_SCALE = 1.5;
-const TRANSLATABLE_TYPES = new Set(['paragraph', 'heading', 'list-item', 'caption', 'footnote']);
 const SCROLL_SYNC_RESET_MS = 250;
 
 /**

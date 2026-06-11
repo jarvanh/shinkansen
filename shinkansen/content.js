@@ -10,6 +10,10 @@
   const STATE = SK.STATE;
 
   // ─── v0.88: Debug Bridge ──────────────────────────────
+  // 已知限制（刻意不修）：response 的 object detail 在 Firefox main world 讀屬性
+  // 會 throw Permission denied（Xray 安全模型，同 content-youtube.js bridgeRequest
+  // 註解）→ Firefox 上 Debug Bridge 回讀不可用。消費者（cage / debug-harness /
+  // CLAUDE.md 文件片段）全是 Chromium-only tooling，改 JSON 字串反而破既有讀法。
   window.addEventListener('shinkansen-debug-request', (e) => {
     const { action, afterSeq } = (e.detail || {});
     const respond = (detail) => {
@@ -174,6 +178,29 @@
   let rescanAttempts = 0;
   let rescanTimer = null;
 
+  // v1.10.46(批次 2-4):rescan 注入路徑的 abort 訊號。
+  // rescanTick(本檔)/ spaObserverRescan(content-spa.js)呼叫 translateUnitsByProvider
+  // 原本不帶 signal → translateUnits 的注入前 `signal?.aborted` guard 全是 undefined
+  // 放行——使用者還原頁面後,晚到的 rescan 批次仍把譯文注回乾淨頁面(DOM 帶
+  // data-shinkansen-translated 但 STATE.translated=false 的殭屍狀態)。
+  // 這顆 controller 由 translateUnitsByProvider 統一掛上(呼叫端沒自帶 signal 時),
+  // restorePage / restoreOriginalHTMLAndReset / resetForSpaNavigation 時 abort。
+  let rescanAbortController = null;
+
+  SK.getRescanSignal = function getRescanSignal() {
+    if (!rescanAbortController || rescanAbortController.signal.aborted) {
+      rescanAbortController = new AbortController();
+    }
+    return rescanAbortController.signal;
+  };
+
+  SK.abortRescanRuns = function abortRescanRuns() {
+    if (rescanAbortController) {
+      rescanAbortController.abort();
+      rescanAbortController = null;
+    }
+  };
+
   SK.cancelRescan = function cancelRescan() {
     if (rescanTimer) {
       clearTimeout(rescanTimer);
@@ -230,7 +257,7 @@
     let timer;
     const timeoutPromise = new Promise((_, reject) => {
       timer = setTimeout(
-        () => reject(new Error(`批次逾時（${timeoutMs / 1000}s）`)),
+        () => reject(new Error(SK.t('error.batchTimeout', { s: timeoutMs / 1000 }))),
         timeoutMs,
       );
     });
@@ -238,7 +265,10 @@
       .finally(() => clearTimeout(timer));
   }
 
-  async function runWithConcurrency(jobs, maxConcurrent, workerFn) {
+  // v1.10.46(批次 2-4):改收 signal 參數,不再讀全域 STATE.abortController——
+  // 全域那顆只屬於「當前主翻譯 run」,rescan run 讀它等於跨輪耦合(主 run 結束後
+  // 為 null,rescan 永遠不會停;新主 run 開跑時 rescan 又誤讀新輪的 controller)。
+  async function runWithConcurrency(jobs, maxConcurrent, workerFn, signal) {
     const n = Math.min(maxConcurrent, jobs.length);
     if (n === 0) return;
     let cursor = 0;
@@ -247,7 +277,7 @@
       workers.push((async () => {
         // eslint-disable-next-line no-constant-condition
         while (true) {
-          if (STATE.abortController?.signal.aborted) return;
+          if (signal?.aborted) return;
           const idx = cursor++;
           if (idx >= jobs.length) return;
           await workerFn(jobs[idx]);
@@ -437,7 +467,7 @@
         const cacheHit = response?.usage?.cacheHits || 0;
         const apiCalls = job.texts.length - cacheHit;
         SK.sendLog('info', 'translate', `batch ${batchIdx + 1}/${jobs.length} done`, { elapsed, cacheHits: cacheHit, apiCalls });
-        if (!response?.ok) throw new Error(response?.error || '未知錯誤');
+        if (!response?.ok) throw new Error(response?.error || SK.t('common.errorUnknown'));
         const translations = response.result;
         if (response.usage) {
           pageUsage.inputTokens += response.usage.inputTokens || 0;
@@ -460,13 +490,34 @@
           // v1.10.20: 取消已立即還原原文，晚到的批次回應不得再注入（會把譯文注回乾淨頁面）
           if (signal?.aborted) return;
           let injectedThisBatch = 0;
+          // v1.10.46: 同輪同 el 去重——收集層若混入「同 el 雙 unit」(補抓 pass 漏
+          // seen.add / fragment+element 雙收),broadcast 會對同 el 注入兩次,第二次
+          // _preText 已是譯文 → echo 判定誤判 → 沖回原文。規則:
+          //   element unit:同 el 已注入過(element 或 fragment)→ skip
+          //   fragment unit:同 el 已整顆 element 注入過 → skip;
+          //                  其他 fragment 注入過不擋(同 el 多 run 是合法的)
+          const injectedEls = new Set();          // element unit 注入過的 el
+          const fragmentInjectedEls = new Set();  // fragment unit 注入過的容器 el
+          const shouldSkipDupInject = (u) => {
+            if (!u?.el) return false;
+            if (u.kind === 'element') {
+              if (injectedEls.has(u.el) || fragmentInjectedEls.has(u.el)) return true;
+              injectedEls.add(u.el);
+            } else if (u.kind === 'fragment') {
+              if (injectedEls.has(u.el)) return true;
+              fragmentInjectedEls.add(u.el);
+            }
+            return false;
+          };
           translations.forEach((tr, j) => {
             const sanitized = SK.sanitizeMarkers(tr);
             const uniqueText = job.texts[j];
             const allOrigIndices = origIndicesByText.get(uniqueText);
             if (allOrigIndices && allOrigIndices.length > 0) {
               for (const origIdx of allOrigIndices) {
-                SK.injectTranslation(units[origIdx], sanitized, slotsList[origIdx]);
+                const u = units[origIdx];
+                if (shouldSkipDupInject(u)) { injectedThisBatch++; continue; }  // 跳過注入但計入進度
+                SK.injectTranslation(u, sanitized, slotsList[origIdx]);
                 injectedThisBatch++;
               }
             } else {
@@ -570,8 +621,23 @@
                 const uniqueText = job.texts[idx];
                 const allOrigIndices = origIndicesByText.get(uniqueText);
                 if (allOrigIndices && allOrigIndices.length > 0) {
+                  // v1.10.46: 同 segment broadcast 範圍內同 el 去重(規則同非 streaming
+                  // 路徑 shouldSkipDupInject——同 el 注入兩次會被 echo 判定沖回原文;
+                  // fragment 同 el 多 run 合法不擋,element vs fragment 互斥)
+                  const injectedEls = new Set();
+                  const fragmentInjectedEls = new Set();
                   for (const origIdx of allOrigIndices) {
-                    SK.injectTranslation(units[origIdx], tr, slotsList[origIdx]);
+                    const u = units[origIdx];
+                    if (u?.el) {
+                      if (u.kind === 'element') {
+                        if (injectedEls.has(u.el) || fragmentInjectedEls.has(u.el)) { done += 1; continue; }
+                        injectedEls.add(u.el);
+                      } else if (u.kind === 'fragment') {
+                        if (injectedEls.has(u.el)) { done += 1; continue; }
+                        fragmentInjectedEls.add(u.el);
+                      }
+                    }
+                    SK.injectTranslation(u, tr, slotsList[origIdx]);
                     done += 1;
                   }
                 } else {
@@ -696,7 +762,7 @@
           const willParallel = jobs.length > 1 && !signal?.aborted && !skipBatch1Plus;
           SK.sendLog('info', 'translate', 'parallel batches dispatch decision', { willParallel, count: willParallel ? jobs.length - 1 : 0 });
           const parallelP = willParallel
-            ? runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch)
+            ? runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch, signal)
             : Promise.resolve();
           try {
             await stream.donePromise;
@@ -726,7 +792,7 @@
         // v1.7.1 行為：序列跑 batch 0 → 並行 batch 1+(partialMode 啟用時跳過 batch 1+)
         await runBatch(jobs[0]);
         if (jobs.length > 1 && !signal?.aborted && !skipBatch1Plus) {
-          await runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch);
+          await runWithConcurrency(jobs.slice(1), maxConcurrent, runBatch, signal);
         }
       }
     }
@@ -968,7 +1034,8 @@
 
     const t_preser_start = Date.now();
     const preSerialized = units.map(unit => {
-      if (unit.kind === 'fragment') return { text: (unit.parent?.innerText || '').trim() };
+      // v1.10.46: fragment unit 沒有 parent 欄位,讀 unit.el(之前 unit.parent 永遠
+      // undefined → fragment 估 0 字,批次數估算失真)
       return { text: (unit.el?.innerText || '').trim() };
     });
     const preTexts = preSerialized.map(s => s.text);
@@ -1091,11 +1158,16 @@
 
       if (abortSignal.aborted) {
         const restoredEarly = _earlyRestoredAborts.has(myAbortController);
-        SK.sendLog('info', 'translate', 'translation aborted', { done, total, restoredEarly });
+        // v1.10.46: identity guard——SPA 導航 reset 會 abort 舊輪並清掉（或換掉）
+        // STATE.abortController；舊輪 in-flight 批次最長 90s 後才 settle 回來,此時
+        // STATE.originalHTML 裡已是新頁備份,無條件還原會把新頁譯文整批沖回原文
+        // + 跳莫名「已取消」toast。只有「STATE.abortController 還是自己這輪的
+        // controller」（= abort 來源沒接手頁面 state）才允許 unwind 還原。
+        const stillOwnsRun = STATE.abortController === myAbortController;
+        SK.sendLog('info', 'translate', 'translation aborted', { done, total, restoredEarly, stillOwnsRun });
         // v1.10.20: 快速鍵取消已在按下當下立即還原 + 跳「已取消」toast
-        // (abortInProgressTranslation)，unwind 只收尾不重複。SPA 導航等其他
-        // abort 來源（沒走 helper）維持原本 unwind 時還原。
-        if (!restoredEarly) {
+        // (abortInProgressTranslation)，unwind 只收尾不重複。
+        if (!restoredEarly && stillOwnsRun) {
           restoreOriginalHTMLAndReset();
           SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
         }
@@ -1134,11 +1206,11 @@
         // v1.8.7: partialMode + 有剩餘未翻段落 → 訊息對齊「節省模式」語意
         let successMsg;
         if (pmActive && pmSkippedCount > 0) {
-          successMsg = `已翻譯前 ${total} 段（共 ${total + pmSkippedCount} 段）`;
+          successMsg = SK.t('toast.donePartial', { total, all: total + pmSkippedCount });
         } else if (truncatedCount > 0) {
-          successMsg = `翻譯完成 （${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`;
+          successMsg = SK.t('toast.doneTruncated', { total, truncated: truncatedCount });
         } else {
-          successMsg = `翻譯完成 （${total} 段）`;
+          successMsg = SK.t('toast.done', { total });
         }
         let detail;
         if (totalTokens > 0) {
@@ -1155,7 +1227,7 @@
           }
           detail = `${line1}\n${line2}`;
         } else if (pageUsage.cacheHits === total) {
-          detail = '全部快取命中 · 本次未計費';
+          detail = SK.t('toast.allCacheHit');
         }
         SK.sendLog('info', 'translate', 'page translation usage', {
           segments: total,
@@ -1179,7 +1251,7 @@
         // 點按 → 觸發 ignorePartialMode 路徑（忽略 toggle 一次，但不改 toggle 設定）,
         // 前面已翻好的 N 段從 cache fast path 命中，只後段打 API。toast 常駐直到使用者點按或關閉。
         const action = (pmActive && pmSkippedCount > 0) ? {
-          label: '翻譯剩餘段落',
+          label: SK.t('toast.translateRemaining'),
           onClick: () => {
             SK.translatePage({
               ...options,
@@ -1232,7 +1304,7 @@
       if (rpdWarning) {
         setTimeout(() => {
           SK.showToast('error', SK.t('toast.budgetWarning'), {
-            detail: '翻譯仍可正常使用，但請留意用量。每日計數於太平洋時間午夜重置（約台灣時間下午 3 點）',
+            detail: SK.t('toast.budgetWarningDetail'),
             autoHideMs: 6000,
           });
         }, 1500);
@@ -1257,6 +1329,8 @@
   // SPA reset(content-spa.js:resetForSpaNavigation）語意不同（頁面已變不需還原
   // 舊頁 innerHTML)，不抽進這條 helper。
   function restoreOriginalHTMLAndReset() {
+    // v1.10.46(批次 2-4):還原時 abort in-flight 的 rescan 批次(同 restorePage)
+    SK.abortRescanRuns();
     if (STATE.originalHTML.size > 0) {
       // v1.8.20: SPA framework rerender 後 el 可能已 detached，直接寫 innerHTML 不會報錯
       // 但對使用者頁面零作用。記下 detached 數量讓 Jimmy 從 Debug 分頁能看出原因。
@@ -1325,6 +1399,8 @@
   function restorePage() {
     if (editModeActive) toggleEditMode(false);
     SK.cancelRescan();
+    // v1.10.46(批次 2-4):還原時 abort in-flight 的 rescan 批次,擋掉晚到回應再注入
+    SK.abortRescanRuns();
     SK.stopSpaObserver();
 
     // v1.5.0: dual 模式還原——只移除 wrapper，原文未動所以不需 innerHTML 還原。
@@ -1433,7 +1509,7 @@
           type: 'TRANSLATE_BATCH_GOOGLE',
           payload: { texts: job.texts },
         }, BATCH_TIMEOUT_MS);
-        if (!response?.ok) throw new Error(response?.error || '未知錯誤');
+        if (!response?.ok) throw new Error(response?.error || SK.t('common.errorUnknown'));
         totalChars += response.usage?.chars || 0;
         totalCacheHits += response.usage?.cacheHits || 0;
         const translations = response.result;
@@ -1474,7 +1550,7 @@
     if (jobs.length > 0) {
       await runBatch(jobs[0]);
       if (jobs.length > 1 && !signal?.aborted) {
-        await runWithConcurrency(jobs.slice(1), 5, runBatch);
+        await runWithConcurrency(jobs.slice(1), 5, runBatch, signal);
       }
     }
 
@@ -1498,6 +1574,11 @@
   // 都跳「已翻譯 N 段新內容」success toast,在 X / Threads 等不斷 lazy-load 的
   // 站滑動時被使用者體感為「不斷彈 toast 干擾」。
   SK.translateUnitsByProvider = async function translateUnitsByProvider(units, opts = {}) {
+    // v1.10.46(批次 2-4):rescan 呼叫端(rescanTick / spaObserverRescan / SPA nav
+    // fallback)都不自帶 signal——統一在這個 router 掛 rescan AbortController,
+    // restorePage / SPA reset abort 它之後,晚到批次的注入前 `signal?.aborted` guard
+    // 才真的擋得住(原本 signal=undefined 全放行,還原後零星段落又變回譯文)。
+    if (!opts.signal) opts = { ...opts, signal: SK.getRescanSignal() };
     const ctx = STATE.translationContext;
     if (!ctx) {
       // 防禦性:理論上 rescan 一定在 translated=true 之後觸發,context 應已 set;
@@ -1648,7 +1729,8 @@
 
       if (abortSignal.aborted) {
         // v1.10.20: 同 Gemini 路徑——快速鍵取消已立即還原，unwind 不重複
-        if (!_earlyRestoredAborts.has(myAbortController)) {
+        // v1.10.46: identity guard 同 Gemini 路徑——SPA reset 打斷後不得還原新頁
+        if (!_earlyRestoredAborts.has(myAbortController) && STATE.abortController === myAbortController) {
           restoreOriginalHTMLAndReset();
           SK.showToast('success', SK.t('toast.cancelled'), { progress: 1, stopTimer: true, autoHideMs: 2000 });
         }
@@ -1676,8 +1758,8 @@
 
       if (!failures.length) {
         const successMsg = truncatedCount > 0
-          ? `Google 翻譯完成（${total} 段，另有 ${truncatedCount} 段因頁面過長被略過）`
-          : `Google 翻譯完成（${total} 段）`;
+          ? SK.t('toast.googleDoneTruncated', { total, truncated: truncatedCount })
+          : SK.t('toast.googleDone', { total });
         // v1.6.1: 同 Gemini 路徑 — 成功 toast 順帶顯示「有新版可下載」
         // v1.6.5: 同時帶 welcome notice
         const updateNotice = await SK.maybeBuildUpdateNotice();
@@ -1685,7 +1767,7 @@
         SK.showToast('success', successMsg, {
           progress: 1,
           stopTimer: true,
-          detail: `${chars.toLocaleString()} 字元 · 免費`,
+          detail: SK.t('toast.googleFreeDetail', { chars: chars.toLocaleString() }),
           updateNotice,
           welcomeNotice,
         });
@@ -1827,7 +1909,8 @@
     if (msg?.type === 'MODE_CHANGED') {
       const mode = msg.mode === 'dual' ? 'dual' : 'single';
       if (STATE.translated) {
-        const desc = mode === 'dual' ? '雙語對照' : '單語覆蓋';
+        // 批次 5-7d：desc 改走 dict（原硬編繁中，en 使用者會看到中文夾在英文模板裡）
+        const desc = SK.t(mode === 'dual' ? 'popup.label.modeDual' : 'popup.label.modeSingle');
         SK.showToast('success', SK.t('toast.modeChanged', { desc }), {
           autoHideMs: 5000,
         });
@@ -2086,7 +2169,7 @@
           SK.handleTranslatePreset(slot);
         } else {
           // 防禦性 fallback（理論上 SK.handleTranslatePreset 永遠在 content.js 內 export)
-          SK.translatePage({ label: '自動翻譯' });
+          SK.translatePage({ label: SK.t('toast.autoTranslateLabel') });
         }
       }
     } catch (err) {

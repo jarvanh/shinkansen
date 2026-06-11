@@ -48,3 +48,21 @@ test('AbortError 轉換成有意義訊息(不裸 throw AbortError)', () => {
     '_fetchTranslate 缺 AbortError → `Google Translate 逾時(...)` 訊息轉換',
   ).toMatch(/err\.name\s*===\s*['"]AbortError['"][\s\S]{0,200}逾時/);
 });
+
+// v1.10.46(批次 2-2):timer 涵蓋到 resp.json() 讀完(同 lib/gemini.js 修法,
+// fetch resolve 只代表 headers 到,body 中途吊住時 json 讀取可無限 pending)
+// SANITY 紀錄(已驗證,2026-06-11):暫時把 try 內 `data = await resp.json()` 改名廢掉
+// → 「resp.json() 在 timer 涵蓋內」case fail → 還原 → pass
+test('2-2: resp.json() 在 timer 涵蓋內(clearTimeout 走 finally)', () => {
+  const fnStart = SRC.indexOf('async function _fetchTranslate');
+  const fnBody = SRC.slice(fnStart, fnStart + 1500);
+  expect(
+    fnBody,
+    '_fetchTranslate 缺 `finally { clearTimeout(abortTimer); }`(json 讀完才清 timer)',
+  ).toMatch(/finally\s*\{\s*clearTimeout\s*\(\s*abortTimer\s*\)\s*;?\s*\}/);
+  // json 讀取必須在 finally 之前(同一 try 區塊內)
+  const tryIdx = fnBody.indexOf('data = await resp.json()');
+  const finallyIdx = fnBody.indexOf('finally');
+  expect(tryIdx, '_fetchTranslate 缺 try 區塊內的 `data = await resp.json()`').toBeGreaterThan(-1);
+  expect(tryIdx, 'resp.json() 應在 finally(清 timer)之前').toBeLessThan(finallyIdx);
+});

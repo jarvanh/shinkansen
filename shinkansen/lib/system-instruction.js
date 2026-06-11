@@ -91,19 +91,28 @@ function sanitizeTermText(s) {
 /**
  * Greedy 打包：對 texts 陣列用字元預算 + 段數上限雙門檻切成連續子批次，
  * 回傳「起始 / 結束 index」陣列讓呼叫端可以對齊結果。
+ *
+ * 批次 5-3（v1.10.46）：上限改可由 opts 帶入（呼叫端傳 settings.maxUnitsPerBatch /
+ * maxCharsPerBatch）——原本寫死預設值，使用者在 options 調高 maxUnitsPerBatch 後
+ * content 端分批生效但 adapter 端在這裡重切蓋掉（>20 段的設定無效且無提示）。
+ * opts 缺漏或非法值 fallback 預設，既有呼叫端不傳 opts 行為不變。
  */
-export function packChunks(texts) {
+export function packChunks(texts, opts = {}) {
+  const maxUnits = (Number.isFinite(opts.maxUnits) && opts.maxUnits >= 1)
+    ? Math.floor(opts.maxUnits) : MAX_UNITS_PER_CHUNK;
+  const maxChars = (Number.isFinite(opts.maxChars) && opts.maxChars >= 1)
+    ? Math.floor(opts.maxChars) : MAX_CHARS_PER_CHUNK;
   const batches = [];
   let cur = null;
   const flush = () => { if (cur && cur.end > cur.start) batches.push(cur); cur = null; };
   for (let i = 0; i < texts.length; i++) {
     const len = (texts[i] || '').length;
-    if (len > MAX_CHARS_PER_CHUNK) {
+    if (len > maxChars) {
       flush();
       batches.push({ start: i, end: i + 1 });
       continue;
     }
-    if (cur && (cur.chars + len > MAX_CHARS_PER_CHUNK || (cur.end - cur.start) >= MAX_UNITS_PER_CHUNK)) {
+    if (cur && (cur.chars + len > maxChars || (cur.end - cur.start) >= maxUnits)) {
       flush();
     }
     if (!cur) cur = { start: i, end: i, chars: 0 };

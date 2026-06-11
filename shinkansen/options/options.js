@@ -2,7 +2,7 @@
 // v1.0.4: 改為 ES module，從 lib/ 匯入共用常數與工具函式，消除重複程式碼。
 
 import { browser } from '../lib/compat.js';
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault } from '../lib/storage.js';
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
@@ -15,7 +15,7 @@ const DEFAULTS = DEFAULT_SETTINGS;
 // v1.4.12: 模型參考價統一由 lib/model-pricing.js 提供，與 background.js 共用同一份，
 // 避免兩邊不同步（以前 background 用 settings.pricing 單一值，options 用 local 表，
 // preset 切換 model 時 toast 會算錯）。此處做 input/output key 轉換保留原 options.js 介面。
-import { MODEL_PRICING as LIB_MODEL_PRICING } from '../lib/model-pricing.js';
+import { MODEL_PRICING as LIB_MODEL_PRICING, DEFAULT_GEMINI_CACHED_DISCOUNT } from '../lib/model-pricing.js';
 const MODEL_PRICING = Object.fromEntries(
   Object.entries(LIB_MODEL_PRICING).map(([model, p]) => [model, { input: p.inputPerMTok, output: p.outputPerMTok }])
 );
@@ -862,18 +862,23 @@ function updateYtPromptCostHint() {
   // AMO source review: 模型名稱經 escapeHtml,其他 ${...} 是純數字計算結果,無 user input;
   // dict 字串本身在 i18n.js 中,t() 內部 _interp 不做 escape,但 params 來源都是
   // 計算結果或預先 escape 過的字串,符合 AMO 要求。
+  // 批次 5-5（v1.10.46）：cache 命中費率改引用 model-pricing 單一資料源——原本寫死
+  // 0.25（Gemini 舊制 75% off），現制 DEFAULT_GEMINI_CACHED_DISCOUNT=0.90（命中付 10%），
+  // 顯示高估 2.5 倍。footer 文案的百分比同步帶 {pct} placeholder。
+  const cachedRate = 1 - DEFAULT_GEMINI_CACHED_DISCOUNT;
+  const cachedPct = Math.round(cachedRate * 100);
   hintEl.innerHTML =
     _t('options.gemini.cost.estimateHeader.html', {
       model: escapeHtml(modelDisplay),
       inputPrice,
     }) + '<br>' +
     `<span style="display:inline-block; margin-left: 12px;">${_t('options.gemini.cost.estimateGlossary.html', {
-      count: fgCount, tok: fgTok, usd: fmtUSD(fgTok), usdCache: fmtUSD(fgTok, 0.25),
+      count: fgCount, tok: fgTok, usd: fmtUSD(fgTok), usdCache: fmtUSD(fgTok, cachedRate),
     })}</span><br>` +
     `<span style="display:inline-block; margin-left: 12px;">${_t('options.gemini.cost.estimateForbidden.html', {
-      count: fbCount, tok: fbTok, usd: fmtUSD(fbTok), usdCache: fmtUSD(fbTok, 0.25),
+      count: fbCount, tok: fbTok, usd: fmtUSD(fbTok), usdCache: fmtUSD(fbTok, cachedRate),
     })}</span><br>` +
-    `<span style="font-size: 11px; color: #999;">${_t('options.gemini.cost.estimateFooter.html')}</span>`;
+    `<span style="font-size: 11px; color: #999;">${_t('options.gemini.cost.estimateFooter.html', { pct: cachedPct })}</span>`;
 }
 
 // v1.8.14: 並發 save 防護
@@ -928,15 +933,17 @@ async function _saveImpl() {
     // v1.6.19: 改用 parseUserNum——空字串/非法字元走 default，合法數字（含 0）保留。
     // 沿用 `|| default` 會把使用者明確打的 0 一律當 falsy 改回預設，造成 UI 不一致。
     // v1.8.19: safetyMargin 從 UI 移除，save() 不再寫，維持 storage 既有值（0.1)
-    maxRetries: parseUserNum($('maxRetries').value, 3),
-    maxConcurrentBatches: parseUserNum($('maxConcurrentBatches').value, 10),
-    maxUnitsPerBatch: parseUserNum($('maxUnitsPerBatch').value, 20),
-    maxCharsPerBatch: parseUserNum($('maxCharsPerBatch').value, 3500),
-    maxTranslateUnits: parseUserNum($('maxTranslateUnits').value, 1000),
+    // 批次 5-6（v1.10.46）：fallback 全改引用 DEFAULTS 單一資料源——原本字面值手抄，
+    // maxConcurrentBatches 已 drift（寫死 10 vs DEFAULTS 30，空欄存檔會悄悄掉到 10）。
+    maxRetries: parseUserNum($('maxRetries').value, DEFAULTS.maxRetries),
+    maxConcurrentBatches: parseUserNum($('maxConcurrentBatches').value, DEFAULTS.maxConcurrentBatches),
+    maxUnitsPerBatch: parseUserNum($('maxUnitsPerBatch').value, DEFAULTS.maxUnitsPerBatch),
+    maxCharsPerBatch: parseUserNum($('maxCharsPerBatch').value, DEFAULTS.maxCharsPerBatch),
+    maxTranslateUnits: parseUserNum($('maxTranslateUnits').value, DEFAULTS.maxTranslateUnits),
     // v1.8.3: 只翻文章開頭（節省費用）
     partialMode: {
       enabled: $('partialModeEnabled').checked,
-      maxUnits: parseUserNum($('partialModeMaxUnits').value, 25),
+      maxUnits: parseUserNum($('partialModeMaxUnits').value, DEFAULTS.partialMode.maxUnits),
     },
     // 只有 custom tier 才寫入 override（其他 tier 的數字從對照表讀，不存）
     rpmOverride: $('tier').value === 'custom' ? (Number($('rpm').value) || null) : null,
@@ -954,7 +961,7 @@ async function _saveImpl() {
       // v1.7.3: blockingThreshold 使用者可調（0 = 永遠 fire-and-forget，大值 = 幾乎都 blocking)
       blockingThreshold: parseUserNum($('glossaryBlockingThreshold').value, DEFAULTS.glossary.blockingThreshold),
       // v1.8.61:UI 是秒,儲存前 × 1000 換算成 ms(storage schema 仍 timeoutMs)
-      timeoutMs: parseUserNum($('glossaryTimeout').value, 60) * 1000,
+      timeoutMs: parseUserNum($('glossaryTimeout').value, (DEFAULTS.glossary.timeoutMs ?? 60000) / 1000) * 1000,
       maxTerms: DEFAULTS.glossary.maxTerms,
     },
     // v1.0.17: Toast 透明度 / v1.0.31: Toast 位置
@@ -1095,7 +1102,9 @@ async function _saveImpl() {
       systemPrompt: $('cp-systemPrompt').value || '',
       // v1.8.20: temperature 改 parseUserNum 避免 0 被當 falsy；單價 0 是合法值改 parseUserNum 0
       temperature: parseUserNum($('cp-temperature').value, DEFAULTS.customProvider?.temperature ?? 0.7),
-      fetchTimeoutSec: parseUserNum($('cp-fetchTimeout').value, 15),
+      fetchTimeoutSec: parseUserNum($('cp-fetchTimeout').value, DEFAULTS.customProvider?.fetchTimeoutSec ?? 15),
+      // 單價空欄 fallback 0 是刻意 sentinel（空 = 無計價，費用顯示 $0），不引 DEFAULTS 的
+      // OpenRouter 校準單價——清空欄位不該悄悄用別人的價格估費
       inputPerMTok: parseUserNum($('cp-inputPerMTok').value, 0),
       outputPerMTok: parseUserNum($('cp-outputPerMTok').value, 0),
       // v1.9.2: UI 0-100% → 儲存比例 0-1;空白 → null(讓 background 走 baseUrl 自動推導)
@@ -1177,11 +1186,11 @@ function _syncPromptTextareaToTarget(textareaId, hintId, getEffectiveFn) {
   if (!textarea) return;
   const tl = _currentTargetLang;
   const cur = textarea.value || '';
-  // 所有 target 各自的 effective default 對 cur 跑 isPromptUnchangedFromDefault(走 storage.js
-  // normalize 邏輯,容忍歷史小幅修字,例如 v1.8.59 的「中國大陸」→「中國」)。
+  // 所有 target 各自的 effective default 對 cur 跑比對(走 storage.js normalize 邏輯,
+  // 容忍歷史小幅修字,例如 v1.8.59 的「中國大陸」→「中國」)。
   // 任一命中 → 視為「未客製」,自動覆蓋為新 target 的 default;否則保留 + show hint。
-  const treatedAsUnchanged = TARGET_LANGUAGES
-    .some(t => isPromptUnchangedFromDefault(cur, getEffectiveFn(t, '')));
+  // v1.10.46:判定下沉到 lib/storage.js 共用(跟 _buildEffective 的未客製判定同源)。
+  const treatedAsUnchanged = isPromptUnchangedFromAnyTargetDefault(cur, getEffectiveFn);
   if (treatedAsUnchanged) {
     textarea.value = getEffectiveFn(tl, '');
     if (hint) hint.hidden = true;
@@ -1702,6 +1711,9 @@ function sanitizeImport(raw) {
     else if ('systemPrompt' in td) warnings.push(_t('options.import.warningTransDocPrompt'));
     if (typeof td.applyGlossary === 'boolean') tdClean.applyGlossary = td.applyGlossary;
     else if ('applyGlossary' in td) warnings.push(_t('options.import.warningTransDocApply'));
+    // 批次 5-2：applyFixedGlossary（文件翻譯是否套用固定術語表）原本漏列，匯入被默默丟掉
+    if (typeof td.applyFixedGlossary === 'boolean') tdClean.applyFixedGlossary = td.applyFixedGlossary;
+    else if ('applyFixedGlossary' in td) warnings.push(_t('options.import.warningSkipType', { key: 'translateDoc.applyFixedGlossary' }));
     if (typeof td.temperature === 'number' && Number.isFinite(td.temperature)
         && td.temperature >= 0 && td.temperature <= 2) {
       tdClean.temperature = td.temperature;
@@ -1929,6 +1941,18 @@ function sanitizeImport(raw) {
       pmClean.maxUnits = pm.maxUnits;
     }
     if (Object.keys(pmClean).length > 0) clean.partialMode = pmClean;
+  }
+
+  // 批次 5-2：customShortcuts（自訂快速鍵三 slot 表）。匯出是 sync.get(null) 全量，
+  // 匯入原本漏列 → 還原備份後自訂快速鍵整個消失且無警告。
+  // 走 shortcut-utils sanitizeTable 消毒（保證三 slot key 都在、value 是合法 shortcut 或 null）。
+  if ('customShortcuts' in raw) {
+    const cs = raw.customShortcuts;
+    if (SC && cs && typeof cs === 'object' && !Array.isArray(cs)) {
+      clean.customShortcuts = SC.sanitizeTable(cs);
+    } else {
+      warnings.push(_t('options.import.warningSkipType', { key: 'customShortcuts' }));
+    }
   }
 
   return { clean, warnings };

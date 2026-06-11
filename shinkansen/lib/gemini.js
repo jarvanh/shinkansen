@@ -8,6 +8,10 @@ import { debugLog } from './logger.js';
 import { DELIMITER, SEP_RE, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
 
 const MAX_BACKOFF_MS = 8000;
+// v1.10.46(批次 2-1):429 Retry-After 等待上限。provider 可能回數百秒的 Retry-After,
+// MV3 SW 等不到那麼久(30 秒 idle 即可能被回收),無上限等待等於永久卡批次。
+// cap 在 30 秒,等完仍 429 就走 maxRetries 放棄路徑回報錯誤。
+const RETRY_AFTER_CAP_MS = 30_000;
 
 /** 自訂錯誤:RPD 每日配額用盡,不應該被重試。 */
 export class DailyQuotaExceededError extends Error {
@@ -24,7 +28,7 @@ function sleep(ms) {
 /**
  * v1.6.12:依模型決定 thinkingConfig。Gemini 3+ 改用 thinkingLevel(舊
  * thinkingBudget Google 標 not recommended)。實測(tools/probe-gemini-pro.js):
- *   - gemini-3-pro-preview / gemini-2.5-pro 強制 thinking-only,thinkingBudget=0
+ *   - Pro 系列(gemini-3-pro-preview 等)強制 thinking-only,thinkingBudget=0
  *     會 400 "Budget 0 is invalid. This model only works in thinking mode"
  *   - gemini-3 Pro 不支援 thinkingLevel='minimal',最低支援 'low'
  *   - gemini-3 Flash / Flash Lite 用 thinkingLevel='minimal'(合法範圍內最省)
@@ -127,71 +131,95 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    let resp;
+    // v1.10.46(批次 2-2):abortTimer 涵蓋範圍從「只到 headers 抵達」延伸到「body 讀完」。
+    // 原本 fetch resolve 即 clearTimeout,但 fetch resolve 只代表 headers 到,行動網路 /
+    // proxy 中途吊住時 resp.json() 可無限 pending → 該批永久卡住無錯誤。改成在 controller
+    // 還在 scope 的這裡把 body 讀完(逾時 → abort → body 讀取 reject → 走網路錯誤 retry),
+    // 成功路徑回傳以 body 文字重建的 Response,呼叫端 resp.json() / clone() 行為不變。
+    // timer 統一在 finally 清(每輪 continue / return / throw 都會經過)。
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-      resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      clearTimeout(abortTimer);
-      const isTimeout = err.name === 'AbortError';
-      const errMsg = isTimeout ? `逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
-      await debugLog('error', 'api', isTimeout ? 'gemini fetch timeout' : 'gemini fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? FETCH_TIMEOUT_MS : undefined });
-      if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
-      await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
-      attempt += 1;
-      continue;
-    }
-    clearTimeout(abortTimer);
-
-    // v0.84: 5xx 伺服器錯誤也重試（Gemini 偶爾回 500/503 服務暫時不可用）
-    if (resp.status >= 500 && resp.status < 600) {
-      await debugLog('warn', 'api', `gemini ${resp.status} server error`, { status: resp.status, attempt });
-      if (attempt >= maxRetries) {
-        let errMsg = `HTTP ${resp.status}`;
-        try { const j = await resp.json(); errMsg = j?.error?.message || errMsg; } catch { /* noop */ }
-        throw new Error(errMsg);
+      let resp;
+      try {
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        const isTimeout = err.name === 'AbortError';
+        const errMsg = isTimeout ? `逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
+        await debugLog('error', 'api', isTimeout ? 'gemini fetch timeout' : 'gemini fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? FETCH_TIMEOUT_MS : undefined });
+        if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+        await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+        attempt += 1;
+        continue;
       }
-      await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+
+      // v0.84: 5xx 伺服器錯誤也重試（Gemini 偶爾回 500/503 服務暫時不可用）
+      if (resp.status >= 500 && resp.status < 600) {
+        await debugLog('warn', 'api', `gemini ${resp.status} server error`, { status: resp.status, attempt });
+        if (attempt >= maxRetries) {
+          let errMsg = `HTTP ${resp.status}`;
+          try { const j = await resp.json(); errMsg = j?.error?.message || errMsg; } catch { /* noop */ }
+          throw new Error(errMsg);
+        }
+        await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+        attempt += 1;
+        continue;
+      }
+
+      if (resp.status !== 429) {
+        // 成功 / 非 429 錯誤:body 在 timer 涵蓋下讀完(2-2)
+        let bodyText;
+        try {
+          bodyText = await resp.text();
+        } catch (err) {
+          const isTimeout = err.name === 'AbortError';
+          const errMsg = isTimeout ? `回應讀取逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
+          await debugLog('error', 'api', isTimeout ? 'gemini body read timeout' : 'gemini body read error', { error: err.message, attempt });
+          if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+          await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
+          attempt += 1;
+          continue;
+        }
+        // bodyText 為空字串時傳 null(204 等 null-body status 帶 body 會 throw)
+        return new Response(bodyText || null, { status: resp.status, statusText: resp.statusText, headers: resp.headers });
+      }
+
+      // 429 處理
+      let bodyJson = null;
+      try { bodyJson = await resp.clone().json(); } catch { /* noop */ }
+      const dim = extractQuotaDimension(bodyJson);
+      const retryAfterHeader = resp.headers.get('retry-after');
+      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
+
+      await debugLog('warn', 'api', 'gemini 429 rate limit', {
+        dimension: dim,
+        retryAfter: retryAfterHeader,
+        attempt,
+        error: bodyJson?.error?.message,
+      });
+
+      if (dim === 'RPD') {
+        throw new DailyQuotaExceededError('今日 Gemini API 配額已用盡(RPD 達上限),請明天再試或升級付費層級。');
+      }
+
+      if (attempt >= maxRetries) {
+        const msg = bodyJson?.error?.message || `HTTP 429(${dim || '未知維度'})`;
+        throw new Error(msg);
+      }
+
+      const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? Math.min(retryAfterSec * 1000 + 100, RETRY_AFTER_CAP_MS)
+        : Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt));
+      await sleep(waitMs);
       attempt += 1;
-      continue;
+    } finally {
+      clearTimeout(abortTimer);
     }
-
-    if (resp.status !== 429) return resp;
-
-    // 429 處理
-    let bodyJson = null;
-    try { bodyJson = await resp.clone().json(); } catch { /* noop */ }
-    const dim = extractQuotaDimension(bodyJson);
-    const retryAfterHeader = resp.headers.get('retry-after');
-    const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
-
-    await debugLog('warn', 'api', 'gemini 429 rate limit', {
-      dimension: dim,
-      retryAfter: retryAfterHeader,
-      attempt,
-      error: bodyJson?.error?.message,
-    });
-
-    if (dim === 'RPD') {
-      throw new DailyQuotaExceededError('今日 Gemini API 配額已用盡(RPD 達上限),請明天再試或升級付費層級。');
-    }
-
-    if (attempt >= maxRetries) {
-      const msg = bodyJson?.error?.message || `HTTP 429(${dim || '未知維度'})`;
-      throw new Error(msg);
-    }
-
-    const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
-      ? retryAfterSec * 1000 + 100
-      : Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt));
-    await sleep(waitMs);
-    attempt += 1;
   }
 }
 
@@ -281,14 +309,16 @@ export async function extractGlossary(compressedText, settings) {
     await debugLog('error', 'glossary', `glossary extraction failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
     return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `${reason}: ${err.message}` };
   }
-  clearTimeout(abortTimer);
-
+  // v1.10.46(批次 2-2):json 讀完才清 timer——body 中途吊住時 timer 到點 abort,
+  // resp.json() reject 走下方 catch 回 best-effort 空結果,不再無限 pending
   let json;
   try {
     json = await resp.json();
   } catch (parseErr) {
     await debugLog('error', 'glossary', 'glossary response body parse failed', { status: resp.status, error: parseErr.message });
     return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `resp.json() failed: ${parseErr.message}` };
+  } finally {
+    clearTimeout(abortTimer);
   }
   const ms = Date.now() - t0;
   // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
@@ -397,10 +427,32 @@ export async function translateBatch(texts, settings, glossary, fixedGlossary, f
   const out = new Array(texts.length);
   const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
   let hadMismatch = false; // v0.94: 追蹤本批是否有 segment mismatch
-  const chunks = packChunks(texts);
+  // 批次 5-3：帶使用者設定的分批上限（原本寫死 20 段／3500 字，調高設定無效）
+  const chunks = packChunks(texts, {
+    maxUnits: settings?.maxUnitsPerBatch,
+    maxChars: settings?.maxCharsPerBatch,
+  });
   for (const { start, end } of chunks) {
     const slice = texts.slice(start, end);
-    const result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
+    let result;
+    try {
+      result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
+    } catch (err) {
+      // v1.10.46(批次 2-5):多 chunk 中途失敗時,前面已完成的 chunk 已經付過費——
+      // 把累積 usage 附在 error 上讓呼叫端(background handleTranslate)記帳後再
+      // rethrow,否則 content 端收到 error 不會發 LOG_USAGE,已付費 token 系統性
+      // 漏記(對帳低估)。translateChunk 逐段 fallback 半途 throw 也會把已累積
+      // usage 掛在 err.usage,這裡一併加總。
+      if (err && typeof err === 'object') {
+        const partial = err.usage || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+        err.usage = {
+          inputTokens: usage.inputTokens + (partial.inputTokens || 0),
+          outputTokens: usage.outputTokens + (partial.outputTokens || 0),
+          cachedTokens: usage.cachedTokens + (partial.cachedTokens || 0),
+        };
+      }
+      throw err;
+    }
     for (let j = 0; j < result.parts.length; j++) out[start + j] = result.parts[j];
     usage.inputTokens += result.usage.inputTokens;
     usage.outputTokens += result.usage.outputTokens;
@@ -586,7 +638,15 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     const tFallback0 = Date.now();
     for (let fi = 0; fi < texts.length; fi++) {
       const tSeg0 = Date.now();
-      const r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary, forbiddenTerms);
+      let r;
+      try {
+        r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary, forbiddenTerms);
+      } catch (err) {
+        // v1.10.46(批次 2-5):逐段 fallback 半途失敗——本批原始請求 + 已完成的逐段
+        // 都付過費,把累積 usage 掛在 error 上交給 translateBatch 外層加總(見上)。
+        if (err && typeof err === 'object') err.usage = { ...aggUsage };
+        throw err;
+      }
       await debugLog('info', 'api', `fallback segment ${fi + 1}/${texts.length}`, { elapsed: Date.now() - tSeg0 });
       aligned.push(r.parts[0] || '');
       aggUsage.inputTokens += r.usage.inputTokens;

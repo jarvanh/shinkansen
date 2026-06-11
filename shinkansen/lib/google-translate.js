@@ -16,6 +16,17 @@ const MAX_URL_ENCODED_CHARS = 5500;
 // Translate 端點代號完全一致,不需轉換;未識別的 target 退回 zh-TW(向下相容)。
 const SUPPORTED_TL = new Set(['zh-TW', 'zh-CN', 'en', 'ja', 'ko', 'es', 'fr', 'de']);
 
+// v1.10.46(批次 2-8):echo retry 防護。
+// RETRY_SKIP_THRESHOLD:超過此段數且「全數 echo」視為「整頁已是 target」,直接放棄
+// 逐筆 retry(echo 值本來就是正解,N 段 = N 次 serial 重打只會增加 IP 被封風險)。
+// RETRY_DELAY_MS:逐筆 retry 之間的間隔,降低對非官方端點的請求密度。
+const RETRY_SKIP_THRESHOLD = 20;
+const RETRY_DELAY_MS = 150;
+
+function _sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function _normalizeTl(targetLanguage) {
   return SUPPORTED_TL.has(targetLanguage) ? targetLanguage : 'zh-TW';
 }
@@ -122,9 +133,19 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
   }
 
   // ─── 逐筆 retry ────────────────────────────────────────────
-  if (needsRetry.length > 0) {
+  // v1.10.46(批次 2-8):retry 加上限與間隔。整頁已是 target 的頁面會讓每段都 echo
+  // → 全部進 needsRetry → N 段 = N 次 serial 重打非官方端點(請求密度高,IP 被封風險)。
+  // 「>20 段且全數 echo」視為「整頁已是 target」直接放棄 retry(echo 值本來就是正解);
+  // 其餘 retry 逐筆之間加小 delay 降低請求密度。
+  const allEcho = needsRetry.length === texts.length;
+  if (needsRetry.length > RETRY_SKIP_THRESHOLD && allEcho) {
+    await debugLog('info', 'api', 'google batch retry skipped — whole page already in target', {
+      echoed: needsRetry.length,
+    });
+  } else if (needsRetry.length > 0) {
     let recoveredCount = 0;
-    for (const g of needsRetry) {
+    for (let ri = 0; ri < needsRetry.length; ri++) {
+      const g = needsRetry[ri];
       try {
         const single = await _fetchTranslate(g.text, tl);
         const tr = single[0];
@@ -135,6 +156,7 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
       } catch (_) {
         // 單筆失敗就放著,維持 echo 值;不阻擋整批
       }
+      if (ri < needsRetry.length - 1) await _sleep(RETRY_DELAY_MS);
     }
     await debugLog('info', 'api', 'google batch retry done', {
       attempted: needsRetry.length,
@@ -158,22 +180,24 @@ async function _fetchTranslate(text, tl) {
     `?client=gtx&sl=auto&tl=${encodeURIComponent(tl)}&dt=t&q=` +
     encodeURIComponent(text);
 
+  // v1.10.46(批次 2-2):abortTimer 涵蓋到 resp.json() 讀完才清(同 lib/gemini.js)。
+  // fetch resolve 只代表 headers 到,body 中途吊住時 json 讀取可無限 pending;
+  // timer 到點 abort → json reject AbortError → 統一轉成逾時錯誤。
   const controller = new AbortController();
   const abortTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let resp;
+  let data;
   try {
-    resp = await fetch(url, { signal: controller.signal });
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) throw new Error(`Google Translate HTTP ${resp.status}`);
+    data = await resp.json();
   } catch (err) {
-    clearTimeout(abortTimer);
     if (err.name === 'AbortError') {
       throw new Error(`Google Translate 逾時(${FETCH_TIMEOUT_MS}ms)`);
     }
     throw err;
+  } finally {
+    clearTimeout(abortTimer);
   }
-  clearTimeout(abortTimer);
-  if (!resp.ok) throw new Error(`Google Translate HTTP ${resp.status}`);
-
-  const data = await resp.json();
   // 回應格式：[[[譯文片段, 原文片段, ...], ...], ...]
   // 取 data[0] 的所有陣列元素的第一個欄位串接即完整譯文
   const full = (data[0] || [])

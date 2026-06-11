@@ -213,12 +213,11 @@
   SK._driveFindOverlappingSrcText = _findOverlappingSrcText;
   SK._driveNormalizeEngine = _normalizeDriveEngine;
 
-  // ─── Runtime gate ───────────────────────────────────
-  // 只在 Drive viewer top frame 啟動實際 runtime(message listener / batch 翻譯 / iframe 偵測)。
-  // 上面定義的 helpers 在 spec 環境也存在(localServer 跑 fixture page)。
-  if (location.hostname !== 'drive.google.com') return;
-  if (!location.pathname.startsWith('/file/')) return;
-  if (window.top !== window) return;
+  // ─── 翻譯 pipeline（v1.10.46 起定義在 runtime gate 之前）──────────
+  // 跟 overlay helpers 同理：純函式 + module state，不掛任何 listener，在非 Drive 頁
+  // 零成本；移到 gate 前讓 regression spec（localServer fixture）能直接驅動
+  // _handleCaptionsMessage 驗重入 guard / entry 對齊 / engine latch。
+  // runtime 接線（storage 設定載入、onMessage 註冊、iframe _init）仍在 gate 之後。
 
   // commit 5a:整支切批,30 段一批,throttled max 3 並行
   const BATCH_SIZE = 30;
@@ -231,6 +230,247 @@
   // v1.8.54:bilingualMode 從本地 let 改放 DRIVE.bilingualMode,讓 _renderActiveCue 同源讀取
   let _autoTranslateEnabled = true;
   let _engine = 'gemini';
+
+  // ─── 關掉 YouTube embed player 的原生 CC ──────────────
+  // 透過 IFrame Player API postMessage 'command' func='unloadModule' arg='captions'。
+  // 必須在 player onReady 之後送(timing 由 onMessage listener 控制)。
+  // 注意:必須等 timedtext 已被 PerformanceObserver 捕捉**之後**才 unload,否則 player
+  // 不再 fetch timedtext = iframe 偵測不到 URL = 字幕翻譯 pipeline 直接斷。
+  // v1.8.54:雙語也走 overlay(中英並排),native CC 一律關 — 不再有「雙語=保留 native CC」分支。
+  function _disablePlayerCaptions() {
+    if (!DRIVE.iframeEl?.contentWindow) return;
+    try {
+      DRIVE.iframeEl.contentWindow.postMessage(
+        JSON.stringify({ event: 'command', func: 'unloadModule', args: ['captions'] }),
+        'https://youtube.googleapis.com'
+      );
+      SK.sendLog('info', 'drive', 'sent unloadModule captions');
+    } catch (e) {
+      SK.sendLog('warn', 'drive', 'unloadModule captions failed', { error: e?.message || String(e) });
+    }
+  }
+
+  // ─── 單批翻譯：LLM D' 模式（自由合句 + 時間戳對齊）─────────
+  // Gemini 與 OpenAI-compat（自訂 Provider）共用同一條核心，只差送的 message type
+  // （background 走 handleTranslate / handleTranslateCustom）與 log 標籤；兩者都用同一份
+  // ASR JSON timestamp 協定 + parseAsrResponse，跟 YouTube ASR 自訂 Provider 路徑同源。
+  async function _runOneBatchLlm(batch, batchIdx, totalBatches, msgType, engineLabel) {
+    if (batch.length === 0) return;
+
+    const startMsSet = new Set(batch.map(seg => seg.startMs));
+    const inputArr = batch.map((seg, i) => {
+      const next = batch[i + 1];
+      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
+      return { s: seg.startMs, e: endMs, t: seg.text };
+    });
+    const inputJson = JSON.stringify(inputArr);
+
+    let res;
+    try {
+      res = await SK.safeSendMessage({
+        type: msgType,
+        payload: { texts: [inputJson], glossary: null },
+      });
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} sendMessage failed`, {
+        error: e?.message || String(e),
+      });
+      return;
+    }
+
+    if (!res?.ok) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} failed`, {
+        error: res?.error || 'unknown',
+      });
+      return;
+    }
+
+    const rawText = res.result?.[0] || '';
+    let entries;
+    try {
+      entries = SK.ASR.parseAsrResponse(rawText);
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed (${engineLabel})`, {
+        error: e?.message || String(e),
+        rawHead: rawText.slice(0, 200),
+      });
+      return;
+    }
+
+    let pushedCount = 0;
+    let droppedCount = 0;
+    for (const entry of entries) {
+      // v1.10.46: 對齊驗證收斂到 SK.ASR.normalizeAsrEntry(YT _runAsrSubBatch 同源，
+      // 避免同協定雙實作 drift)——entry.s 必須等於某條原始 startMs,LLM 幻覺時間戳丟棄。
+      const norm = SK.ASR.normalizeAsrEntry(entry, startMsSet);
+      if (!norm) { droppedCount++; continue; }
+      // Drive overlay 以 [startMs, endMs) 區間顯示，零長度 cue 永不可見 → 一併丟棄
+      // （YT 路徑 e 退回 s 仍有意義，因 captionMap 以 normText 定位、非區間顯示）
+      if (norm.endMs <= norm.startMs) { droppedCount++; continue; }
+      DRIVE.entries.push({ startMs: norm.startMs, endMs: norm.endMs, text: norm.text });
+      pushedCount++;
+    }
+    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (${engineLabel})`, {
+      llmEntryCount: entries.length,
+      pushedToOverlay: pushedCount,
+      droppedMisaligned: droppedCount,
+      totalOverlayEntries: DRIVE.entries.length,
+      usage: res.usage,
+    });
+  }
+
+  // ─── 單批翻譯:Google Translate 模式(逐段翻、不合句、免費) ──
+  // input/output 都是 N 條 1:1 對應(ASR 不合句),時間戳沿用 raw segment 的 startMs。
+  async function _runOneBatchGoogle(batch, batchIdx, totalBatches) {
+    if (batch.length === 0) return;
+
+    const texts = batch.map(seg => seg.text);
+
+    let res;
+    try {
+      res = await SK.safeSendMessage({
+        type: 'TRANSLATE_DRIVE_BATCH_GOOGLE',
+        payload: { texts, glossary: null },
+      });
+    } catch (e) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google sendMessage failed`, {
+        error: e?.message || String(e),
+      });
+      return;
+    }
+
+    if (!res?.ok) {
+      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google failed`, {
+        error: res?.error || 'unknown',
+      });
+      return;
+    }
+
+    const translations = Array.isArray(res.result) ? res.result : [];
+    let pushedCount = 0;
+    for (let i = 0; i < batch.length; i++) {
+      const seg = batch[i];
+      const text = String(translations[i] || '').trim();
+      if (!text) continue;
+      const next = batch[i + 1];
+      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
+      DRIVE.entries.push({ startMs: seg.startMs, endMs, text });
+      pushedCount++;
+    }
+    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (google)`, {
+      inputCount: batch.length,
+      translatedCount: translations.length,
+      pushedToOverlay: pushedCount,
+      totalOverlayEntries: DRIVE.entries.length,
+      usage: res.usage,
+    });
+  }
+
+  // ─── DRIVE_ASR_CAPTIONS handler ───────────────────────
+  async function _handleCaptionsMessage(message) {
+    if (!_autoTranslateEnabled) {
+      SK.sendLog('info', 'drive', 'autoTranslate off — skipping captions');
+      return;
+    }
+    const { json3 } = message.payload || {};
+    if (!json3) {
+      SK.sendLog('warn', 'drive', 'DRIVE_ASR_CAPTIONS payload missing json3');
+      return;
+    }
+    if (!SK.ASR?.parseJson3 || !SK.ASR?.parseAsrResponse || !SK.ASR?.normalizeAsrEntry) {
+      SK.sendLog('warn', 'drive', 'SK.ASR helpers not available (load order issue?)');
+      return;
+    }
+    const rawSegments = SK.ASR.parseJson3(json3);
+    SK.sendLog('info', 'drive', 'asr segments parsed', {
+      count: rawSegments.length,
+      firstStartMs: rawSegments[0]?.startMs,
+      lastStartMs: rawSegments[rawSegments.length - 1]?.startMs,
+    });
+
+    if (rawSegments.length === 0) return;
+
+    // v1.10.46: 重入 guard——同一支字幕重複送進來（iframe reload / PerformanceObserver
+    // 重複捕捉）時不重翻：entries 疊加 + 整支重翻 token ×2。指紋 = 條數 + 首尾 startMs。
+    const _fp = `${rawSegments.length}|${rawSegments[0].startMs}|${rawSegments[rawSegments.length - 1].startMs}`;
+    if (DRIVE._lastCaptionsFp === _fp) {
+      SK.sendLog('info', 'drive', 'duplicate captions payload — skipping retranslation', { fp: _fp });
+      return;
+    }
+    DRIVE._lastCaptionsFp = _fp;
+
+    // v1.8.54:存 raw segments 給雙語 overlay .src 撈對應時段原文
+    DRIVE.rawSegments = rawSegments;
+
+    // commit 5c:timedtext 已被 PerformanceObserver 捕捉(ASR_CAPTIONS 都送進來了),
+    // 這時關 player CC 安全 — 不會影響字幕翻譯 pipeline。
+    // v1.8.54:雙語也走 overlay(中英並排於 .cue-block 共用黑底),native CC 一律關。
+    _disablePlayerCaptions();
+
+    // commit 5a:整支切批 throttled 並行
+    const batches = [];
+    for (let i = 0; i < rawSegments.length; i += BATCH_SIZE) {
+      batches.push(rawSegments.slice(i, i + BATCH_SIZE));
+    }
+    const totalBatches = batches.length;
+
+    // v1.10.46: engine 在整支翻譯開始前 latch 成 const——原註解宣稱 latch 但實作每批
+    // 重讀 _engine,mid-run 切設定會跨批混用 google / gemini / openai-compat 結果
+    const engine = _engine;
+
+    SK.sendLog('info', 'drive', 'starting full transcript translation', {
+      totalSegments: rawSegments.length,
+      totalBatches,
+      maxConcurrent: MAX_CONCURRENT,
+      engine,
+    });
+
+    let nextBatchIdx = 0;
+    async function _worker() {
+      while (true) {
+        const idx = nextBatchIdx++;
+        if (idx >= totalBatches) return;
+        // 設定途中被關閉就停止後續批次(已送的 in-flight 仍會完成)
+        if (!_autoTranslateEnabled) {
+          SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
+          return;
+        }
+        if (engine === 'google') {
+          await _runOneBatchGoogle(batches[idx], idx, totalBatches);
+        } else if (engine === 'openai-compat') {
+          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat');
+        } else {
+          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH', 'gemini');
+        }
+      }
+    }
+
+    const tStart = Date.now();
+    await Promise.all(Array(MAX_CONCURRENT).fill(0).map(_worker));
+    SK.sendLog('info', 'drive', 'full transcript translation completed', {
+      totalBatches,
+      totalEntries: DRIVE.entries.length,
+      elapsedMs: Date.now() - tStart,
+    });
+  }
+
+  // 暴露給 spec 用（drive captions pipeline regression：重入 guard / entry 對齊 / engine latch）
+  SK._driveHandleCaptionsMessage = _handleCaptionsMessage;
+  SK._driveSetEngine = (v) => { _engine = _normalizeDriveEngine(v); };
+  SK._driveSetAutoTranslate = (v) => { _autoTranslateEnabled = v !== false; };
+
+  // ─── Runtime gate ───────────────────────────────────
+  // 只在 Drive viewer top frame 啟動實際 runtime(message listener / batch 翻譯 / iframe 偵測)。
+  // 上面定義的 helpers 在 spec 環境也存在(localServer 跑 fixture page)。
+  if (location.hostname !== 'drive.google.com') return;
+  if (!location.pathname.startsWith('/file/')) return;
+  if (window.top !== window) return;
+
+  // ─── ytSubtitle 設定載入（pipeline state 定義在 gate 前，這裡只做 runtime 接線）──
   (async () => {
     try {
       const { ytSubtitle = {} } = await browser.storage.sync.get('ytSubtitle');
@@ -266,25 +506,6 @@
       SK.sendLog('info', 'drive', 'bilingualMode toggled live', { bilingual: nextBilingual });
     }
   });
-
-  // ─── 關掉 YouTube embed player 的原生 CC ──────────────
-  // 透過 IFrame Player API postMessage 'command' func='unloadModule' arg='captions'。
-  // 必須在 player onReady 之後送(timing 由 onMessage listener 控制)。
-  // 注意:必須等 timedtext 已被 PerformanceObserver 捕捉**之後**才 unload,否則 player
-  // 不再 fetch timedtext = iframe 偵測不到 URL = 字幕翻譯 pipeline 直接斷。
-  // v1.8.54:雙語也走 overlay(中英並排),native CC 一律關 — 不再有「雙語=保留 native CC」分支。
-  function _disablePlayerCaptions() {
-    if (!DRIVE.iframeEl?.contentWindow) return;
-    try {
-      DRIVE.iframeEl.contentWindow.postMessage(
-        JSON.stringify({ event: 'command', func: 'unloadModule', args: ['captions'] }),
-        'https://youtube.googleapis.com'
-      );
-      SK.sendLog('info', 'drive', 'sent unloadModule captions');
-    } catch (e) {
-      SK.sendLog('warn', 'drive', 'unloadModule captions failed', { error: e?.message || String(e) });
-    }
-  }
 
   function _findPlayerIframe() {
     return document.querySelector('iframe[src*="youtube.googleapis.com/embed"]');
@@ -432,196 +653,6 @@
       DRIVE.renderLoopId = requestAnimationFrame(loop);
     }
     DRIVE.renderLoopId = requestAnimationFrame(loop);
-  }
-
-  // ─── 單批翻譯：LLM D' 模式（自由合句 + 時間戳對齊）─────────
-  // Gemini 與 OpenAI-compat（自訂 Provider）共用同一條核心，只差送的 message type
-  // （background 走 handleTranslate / handleTranslateCustom）與 log 標籤；兩者都用同一份
-  // ASR JSON timestamp 協定 + parseAsrResponse，跟 YouTube ASR 自訂 Provider 路徑同源。
-  async function _runOneBatchLlm(batch, batchIdx, totalBatches, msgType, engineLabel) {
-    if (batch.length === 0) return;
-
-    const inputArr = batch.map((seg, i) => {
-      const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
-      return { s: seg.startMs, e: endMs, t: seg.text };
-    });
-    const inputJson = JSON.stringify(inputArr);
-
-    let res;
-    try {
-      res = await SK.safeSendMessage({
-        type: msgType,
-        payload: { texts: [inputJson], glossary: null },
-      });
-    } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} sendMessage failed`, {
-        error: e?.message || String(e),
-      });
-      return;
-    }
-
-    if (!res?.ok) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} ${engineLabel} failed`, {
-        error: res?.error || 'unknown',
-      });
-      return;
-    }
-
-    const rawText = res.result?.[0] || '';
-    let entries;
-    try {
-      entries = SK.ASR.parseAsrResponse(rawText);
-    } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed (${engineLabel})`, {
-        error: e?.message || String(e),
-        rawHead: rawText.slice(0, 200),
-      });
-      return;
-    }
-
-    let pushedCount = 0;
-    for (const entry of entries) {
-      const sStart = Number(entry.s);
-      const sEnd = Number(entry.e);
-      const text = String(entry.t || '').trim();
-      if (!Number.isFinite(sStart) || !Number.isFinite(sEnd) || sEnd < sStart || !text) continue;
-      DRIVE.entries.push({ startMs: sStart, endMs: sEnd, text });
-      pushedCount++;
-    }
-    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
-
-    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (${engineLabel})`, {
-      llmEntryCount: entries.length,
-      pushedToOverlay: pushedCount,
-      totalOverlayEntries: DRIVE.entries.length,
-      usage: res.usage,
-    });
-  }
-
-  // ─── 單批翻譯:Google Translate 模式(逐段翻、不合句、免費) ──
-  // input/output 都是 N 條 1:1 對應(ASR 不合句),時間戳沿用 raw segment 的 startMs。
-  async function _runOneBatchGoogle(batch, batchIdx, totalBatches) {
-    if (batch.length === 0) return;
-
-    const texts = batch.map(seg => seg.text);
-
-    let res;
-    try {
-      res = await SK.safeSendMessage({
-        type: 'TRANSLATE_DRIVE_BATCH_GOOGLE',
-        payload: { texts, glossary: null },
-      });
-    } catch (e) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google sendMessage failed`, {
-        error: e?.message || String(e),
-      });
-      return;
-    }
-
-    if (!res?.ok) {
-      SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} google failed`, {
-        error: res?.error || 'unknown',
-      });
-      return;
-    }
-
-    const translations = Array.isArray(res.result) ? res.result : [];
-    let pushedCount = 0;
-    for (let i = 0; i < batch.length; i++) {
-      const seg = batch[i];
-      const text = String(translations[i] || '').trim();
-      if (!text) continue;
-      const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
-      DRIVE.entries.push({ startMs: seg.startMs, endMs, text });
-      pushedCount++;
-    }
-    DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
-
-    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (google)`, {
-      inputCount: batch.length,
-      translatedCount: translations.length,
-      pushedToOverlay: pushedCount,
-      totalOverlayEntries: DRIVE.entries.length,
-      usage: res.usage,
-    });
-  }
-
-  // ─── DRIVE_ASR_CAPTIONS handler ───────────────────────
-  async function _handleCaptionsMessage(message) {
-    if (!_autoTranslateEnabled) {
-      SK.sendLog('info', 'drive', 'autoTranslate off — skipping captions');
-      return;
-    }
-    const { json3 } = message.payload || {};
-    if (!json3) {
-      SK.sendLog('warn', 'drive', 'DRIVE_ASR_CAPTIONS payload missing json3');
-      return;
-    }
-    if (!SK.ASR?.parseJson3 || !SK.ASR?.parseAsrResponse) {
-      SK.sendLog('warn', 'drive', 'SK.ASR helpers not available (load order issue?)');
-      return;
-    }
-    const rawSegments = SK.ASR.parseJson3(json3);
-    SK.sendLog('info', 'drive', 'asr segments parsed', {
-      count: rawSegments.length,
-      firstStartMs: rawSegments[0]?.startMs,
-      lastStartMs: rawSegments[rawSegments.length - 1]?.startMs,
-    });
-
-    if (rawSegments.length === 0) return;
-
-    // v1.8.54:存 raw segments 給雙語 overlay .src 撈對應時段原文
-    DRIVE.rawSegments = rawSegments;
-
-    // commit 5c:timedtext 已被 PerformanceObserver 捕捉(ASR_CAPTIONS 都送進來了),
-    // 這時關 player CC 安全 — 不會影響字幕翻譯 pipeline。
-    // v1.8.54:雙語也走 overlay(中英並排於 .cue-block 共用黑底),native CC 一律關。
-    _disablePlayerCaptions();
-
-    // commit 5a:整支切批 throttled 並行
-    const batches = [];
-    for (let i = 0; i < rawSegments.length; i += BATCH_SIZE) {
-      batches.push(rawSegments.slice(i, i + BATCH_SIZE));
-    }
-    const totalBatches = batches.length;
-
-    SK.sendLog('info', 'drive', 'starting full transcript translation', {
-      totalSegments: rawSegments.length,
-      totalBatches,
-      maxConcurrent: MAX_CONCURRENT,
-      engine: _engine,
-    });
-
-    let nextBatchIdx = 0;
-    async function _worker() {
-      while (true) {
-        const idx = nextBatchIdx++;
-        if (idx >= totalBatches) return;
-        // 設定途中被關閉就停止後續批次(已送的 in-flight 仍會完成)
-        if (!_autoTranslateEnabled) {
-          SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
-          return;
-        }
-        // engine 切換在 worker 開始前 latch(避免一輪內混用 google / gemini / openai-compat 結果)
-        if (_engine === 'google') {
-          await _runOneBatchGoogle(batches[idx], idx, totalBatches);
-        } else if (_engine === 'openai-compat') {
-          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat');
-        } else {
-          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH', 'gemini');
-        }
-      }
-    }
-
-    const tStart = Date.now();
-    await Promise.all(Array(MAX_CONCURRENT).fill(0).map(_worker));
-    SK.sendLog('info', 'drive', 'full transcript translation completed', {
-      totalBatches,
-      totalEntries: DRIVE.entries.length,
-      elapsedMs: Date.now() - tStart,
-    });
   }
 
   browser.runtime.onMessage.addListener((message) => {

@@ -32,29 +32,41 @@ cleanupLegacySyncKeys();
 // 設定變更時會透過 storage.onChanged 重新套用上限。
 let limiter = null;
 
-async function initLimiter() {
-  const settings = await getSettings();
-  const limits = getLimitsForSettings(settings);
-  limiter = new RateLimiter(limits);
-  // v1.8.60: SW idle-die 每 5-25 分鐘 cold start → 此 log 在 Debug 分頁視覺上很雜。
-  // 加 24h 去重:同 limits 設定 24h 內只 log 一次;limits 變化(tier / override / model)
-  // 仍即時 log,值得記。dedup 邏輯抽到 lib/rate-limit-init-log-dedup.js 方便 unit test。
-  const payload = {
-    tier: settings.tier,
-    model: settings.geminiConfig.model,
-    rpm: limits.rpm,
-    tpm: limits.tpm,
-    rpd: limits.rpd,
-    safetyMargin: limits.safetyMargin,
-  };
-  try {
-    const { _rateLimitInitLog: prev } = await browser.storage.local.get('_rateLimitInitLog');
-    if (!_shouldLogRateLimitInit(prev, Date.now(), payload)) return;
-    await browser.storage.local.set({ _rateLimitInitLog: { payload, timestamp: Date.now() } });
-  } catch { /* storage 失敗就 fall through 寫 log,不阻 SW 啟動 */ }
-  debugLog('info', 'rate-limit', 'rate limiter initialized', payload);
+// v1.10.46(批次 2-3):單一 in-flight promise lock(仿 _stickyHydratingPromise)。
+// 原本 module top-level fire-and-forget + handler 內 `if (!limiter) await initLimiter()`
+// 在 SW 冷啟動同時進來兩個翻譯請求時會並發跑兩次 init,各自 new RateLimiter——
+// 後完成者用空視窗覆蓋前者已記帳的 RPM/TPM sliding window,限流形同重置。
+let _limiterInitPromise = null;
+
+function initLimiter() {
+  if (_limiterInitPromise) return _limiterInitPromise;
+  _limiterInitPromise = (async () => {
+    const settings = await getSettings();
+    const limits = getLimitsForSettings(settings);
+    limiter = new RateLimiter(limits);
+    // v1.8.60: SW idle-die 每 5-25 分鐘 cold start → 此 log 在 Debug 分頁視覺上很雜。
+    // 加 24h 去重:同 limits 設定 24h 內只 log 一次;limits 變化(tier / override / model)
+    // 仍即時 log,值得記。dedup 邏輯抽到 lib/rate-limit-init-log-dedup.js 方便 unit test。
+    const payload = {
+      tier: settings.tier,
+      model: settings.geminiConfig.model,
+      rpm: limits.rpm,
+      tpm: limits.tpm,
+      rpd: limits.rpd,
+      safetyMargin: limits.safetyMargin,
+    };
+    try {
+      const { _rateLimitInitLog: prev } = await browser.storage.local.get('_rateLimitInitLog');
+      if (!_shouldLogRateLimitInit(prev, Date.now(), payload)) return;
+      await browser.storage.local.set({ _rateLimitInitLog: { payload, timestamp: Date.now() } });
+    } catch { /* storage 失敗就 fall through 寫 log,不阻 SW 啟動 */ }
+    debugLog('info', 'rate-limit', 'rate limiter initialized', payload);
+  })();
+  // 失敗別 cache:getSettings 偶發 storage 失敗時讓下次 initLimiter 重試,不永久卡死
+  _limiterInitPromise.catch(() => { _limiterInitPromise = null; });
+  return _limiterInitPromise;
 }
-initLimiter();
+initLimiter().catch(() => { /* 失敗交由下次 handler 內 initLimiter 重試 */ });
 
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync') return;
@@ -67,7 +79,9 @@ browser.storage.onChanged.addListener((changes, area) => {
         limiter.updateLimits(limits);
         debugLog('info', 'rate-limit', 'rate limiter limits updated', limits);
       } else {
-        limiter = new RateLimiter(limits);
+        // v1.10.46(批次 2-3):走 initLimiter 的 promise lock,不直接 new——避免跟
+        // in-flight init 並發出兩顆 limiter 互相覆蓋(initLimiter 會自己重讀 settings)
+        initLimiter().catch(() => {});
       }
     });
   }
@@ -389,6 +403,50 @@ function preferArticleGlossaryEntries(fixedGlossaryEntries, articleGlossary, ena
   const articleSources = new Set(articleGlossary.map((entry) => entry.source));
   const filtered = fixedGlossaryEntries.filter((entry) => !articleSources.has(entry.source));
   return filtered.length > 0 ? filtered : null;
+}
+
+// 三條翻譯路徑（handleTranslate / handleTranslateStream / handleTranslateCustom）共用的
+// cache key suffix 組裝單一資料源。組裝規則：
+//   cacheTag（'_yt' / '_doc' / '_oc' 等，呼叫端明確指定）
+//   + '_g<hash12>'（有 glossary 時；+= 附加不可 = 覆蓋，覆蓋會把 cacheTag 吃掉 →
+//     _doc 清快取漏清、_yt 撞網頁 key）
+//   + '_b<hash>'（forbiddenTerms 非空時；使用者改清單後既有快取自動失效）
+//   + '_m<modelKeyPart>'（同段文字在不同 model 之間不共用快取；Gemini 路徑傳
+//     sanitized model 字串，custom 路徑傳 baseUrlHash_safeModel 避免不同 provider
+//     同 model name 撞 key）
+//   + '_lang<tl>'（targetLanguage 非 zh-TW 時；zh-TW 不加維持向下相容）
+//   + '_t<temp>'（docTemperature 為有限數值時；只有文件翻譯路徑傳入，讓使用者改
+//     文件獨立 temperature 後立即生效，網頁／字幕路徑不加避免 cache 多分裂）
+async function buildCacheKeySuffix({
+  cacheTag = '',
+  glossary = null,
+  fixedGlossaryEntries = null,
+  forbiddenTermsList = [],
+  modelKeyPart = 'unknown',
+  targetLanguage = '',
+  docTemperature = undefined,
+}) {
+  let suffix = cacheTag;
+  const allGlossaryForHash = [
+    ...(glossary || []).map((e) => `${e.source}:${e.target}`),
+    ...(fixedGlossaryEntries || []).map((e) => `F:${e.source}:${e.target}`),
+  ];
+  if (allGlossaryForHash.length > 0) {
+    const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
+    suffix += '_g' + fullHash.slice(0, 12);
+  }
+  const forbiddenHash = await cache.hashForbiddenTerms(forbiddenTermsList);
+  if (forbiddenHash) {
+    suffix += '_b' + forbiddenHash;
+  }
+  suffix += '_m' + modelKeyPart;
+  if (targetLanguage && targetLanguage !== 'zh-TW') {
+    suffix += '_lang' + targetLanguage.replace(/[^a-z0-9]/gi, '');
+  }
+  if (typeof docTemperature === 'number' && Number.isFinite(docTemperature)) {
+    suffix += '_t' + docTemperature.toFixed(2);
+  }
+  return suffix;
 }
 
 // ─── Extension icon badge（已翻譯紅點提示） ─────────────────
@@ -1267,45 +1325,33 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
 
   // 固定術語表 / 禁用詞清單。字幕路徑預設不套用（applyFixedGlossary/applyForbiddenTerms=false),
   // 跟 handleTranslate 對 ytSubtitle 的處理一致。
-  let fixedGlossaryEntries = null;
-  const fg = applyFixedGlossary ? settings.fixedGlossary : null;
-  if (fg) {
-    const globalEntries = Array.isArray(fg.global) ? fg.global.filter((e) => e.source && e.target) : [];
-    let domainEntries = [];
-    if (fg.byDomain && sender?.tab?.url) {
-      try {
-        const hostname = new URL(sender.tab.url).hostname;
-        domainEntries = Array.isArray(fg.byDomain[hostname]) ? fg.byDomain[hostname].filter((e) => e.source && e.target) : [];
-      } catch { /* 無效 URL，略過 */ }
-    }
-    if (globalEntries.length || domainEntries.length) {
-      fixedGlossaryEntries = [...globalEntries, ...domainEntries];
-    }
-  }
+  // v1.10.46: 改走 buildFixedGlossaryEntries + preferArticleGlossaryEntries 共用邏輯——
+  // 原手抄版沒做 Map dedup 也沒呼叫 preferArticleGlossaryEntries，global+domain 同 source
+  // 重疊時 batch 0（streaming）與 batch 1+（non-streaming）算出不同 _g hash，同頁兩個
+  // cache namespace。
+  let fixedGlossaryEntries = buildFixedGlossaryEntries(
+    applyFixedGlossary ? settings.fixedGlossary : null,
+    sender,
+  );
+  fixedGlossaryEntries = preferArticleGlossaryEntries(
+    fixedGlossaryEntries,
+    payload?.glossary,
+    payload?.preferArticleGlossary,
+  );
   const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
     ? settings.forbiddenTerms : [];
 
-  // v1.8.1/v1.8.9: cache key suffix（跟 handleTranslate 對齊）— 起始 cacheTag('_yt' / '')
-  // glossary 存在時會被覆蓋成 '_g<hash>'，維持跟非 streaming 路徑同 key 規則。
-  let cacheKeySuffix = cacheTag;
+  // v1.8.1/v1.8.9: cache key suffix 跟 handleTranslate 同 key 規則（v1.10.46 起共用
+  // buildCacheKeySuffix 單一資料源）— 起始 cacheTag（'_yt' / ''）
   const glossary = payload?.glossary || null;
-  const allGlossaryForHash = [
-    ...(glossary || []).map((e) => `${e.source}:${e.target}`),
-    ...(fixedGlossaryEntries || []).map((e) => `F:${e.source}:${e.target}`),
-  ];
-  if (allGlossaryForHash.length > 0) {
-    const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
-    cacheKeySuffix = '_g' + fullHash.slice(0, 12);
-  }
-  const forbiddenHash = await cache.hashForbiddenTerms(forbiddenTermsList);
-  if (forbiddenHash) cacheKeySuffix += '_b' + forbiddenHash;
-  const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
-  cacheKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
-  // P1: targetLanguage 進 cache key(同 handleTranslate),zh-TW 不加維持向下相容
-  const tl = effectiveSettings.targetLanguage;
-  if (tl && tl !== 'zh-TW') {
-    cacheKeySuffix += '_lang' + tl.replace(/[^a-z0-9]/gi, '');
-  }
+  const cacheKeySuffix = await buildCacheKeySuffix({
+    cacheTag,
+    glossary,
+    fixedGlossaryEntries,
+    forbiddenTermsList,
+    modelKeyPart: (effectiveSettings.geminiConfig?.model || 'unknown').replace(/[^a-z0-9.\-]/gi, '_'),
+    targetLanguage: effectiveSettings.targetLanguage,
+  });
 
   // v1.8.1: 先查 cache。若全部命中，走 fast path 直接 emit 假 first_chunk + 所有 segment + done,
   // 不打 Gemini API。對應使用者「翻完還原重翻」的 case,batch 0 內容應該秒出。
@@ -1372,7 +1418,9 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     );
 
     // v1.8.1: 寫回 cache（使用跟 handleTranslate 一致的 keySuffix)，下次重翻可命中 fast path
-    if (result.translations && result.translations.length > 0) {
+    // v1.10.46: hadMismatch 時不寫 — translateBatchStream 不做逐段 fallback,mismatch 的
+    // translations 是錯位陣列,以 texts[i]→translations[i] 配對寫進去會永久污染快取
+    if (!result.hadMismatch && result.translations && result.translations.length > 0) {
       // setBatch 內部會跳過 falsy translations，且 length 不對齊時也只寫對齊的那部分
       const writableTexts = [];
       const writableTranslations = [];
@@ -1495,44 +1543,20 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
     ? settings.forbiddenTerms : [];
 
-  // v0.70: 若有術語表，快取 key 加上 glossary hash 後綴，
-  // 確保「有術語表」與「無術語表」的翻譯分開快取。
   // v1.4.12: cacheTag 由呼叫端明確指定（'_yt' = 字幕模式 / '' = 網頁翻譯含 preset）。
   // 不再用 geminiOverrides 是否有值來判斷，因為 preset 快速鍵也會傳 { model } override，
-  // 會被誤判為字幕模式污染快取。
-  let glossaryKeySuffix = cacheTag;
-  const allGlossaryForHash = [
-    ...(glossary || []).map(e => `${e.source}:${e.target}`),
-    ...(fixedGlossaryEntries || []).map(e => `F:${e.source}:${e.target}`),
-  ];
-  if (allGlossaryForHash.length > 0) {
-    const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
-    glossaryKeySuffix = '_g' + fullHash.slice(0, 12);
-  }
-  // v1.5.6: 黑名單 hash。空清單時回傳 ''，不附加後綴。
-  const forbiddenHash = await cache.hashForbiddenTerms(forbiddenTermsList);
-  if (forbiddenHash) {
-    glossaryKeySuffix += '_b' + forbiddenHash;
-  }
-  // v1.4.12: 把 model 字串納入 cache key，避免同段文字在不同 preset 之間共用快取
-  // （例如先按 Alt+A 走 Flash Lite 翻過，再按 Alt+S 走 Flash 應該重新打 API，不該命中 Flash Lite 的舊譯文）。
-  const modelStr = effectiveSettings.geminiConfig?.model || 'unknown';
-  glossaryKeySuffix += '_m' + modelStr.replace(/[^a-z0-9.\-]/gi, '_');
-  // P1: targetLanguage 進 cache key,避免不同目標語言撞 cache(zh-TW vs zh-CN 翻同一段必須分開)。
-  // zh-TW 不加 suffix(向下相容,既有 zh-TW 使用者 cache 仍 hit);zh-CN / en 加 _lang<x>
-  const tl = effectiveSettings.targetLanguage;
-  if (tl && tl !== 'zh-TW') {
-    glossaryKeySuffix += '_lang' + tl.replace(/[^a-z0-9]/gi, '');
-  }
-  // W7：文件翻譯路徑（_doc)cache key 加 temperature，讓使用者在 settings page 改
-  // 文件翻譯獨立 temperature 後立即生效（不會 cache hit 拿到舊 temp 的譯文)。
-  // 網頁 / 字幕路徑沒獨立 temperature 設定，不加（避免 cache 多分裂)
-  if (cacheTag === '_doc') {
-    const tdTemp = effectiveSettings.geminiConfig?.temperature;
-    if (typeof tdTemp === 'number' && Number.isFinite(tdTemp)) {
-      glossaryKeySuffix += '_t' + tdTemp.toFixed(2);
-    }
-  }
+  // 會被誤判為字幕模式污染快取。組裝規則見 buildCacheKeySuffix（v1.10.46 起三條路徑
+  // 共用單一資料源）。
+  const glossaryKeySuffix = await buildCacheKeySuffix({
+    cacheTag,
+    glossary,
+    fixedGlossaryEntries,
+    forbiddenTermsList,
+    modelKeyPart: (effectiveSettings.geminiConfig?.model || 'unknown').replace(/[^a-z0-9.\-]/gi, '_'),
+    targetLanguage: effectiveSettings.targetLanguage,
+    // W7：只有文件翻譯路徑帶 temperature 進 key（改文件獨立 temperature 後立即生效）
+    docTemperature: cacheTag === '_doc' ? effectiveSettings.geminiConfig?.temperature : undefined,
+  });
 
   // 1. 先撈快取
   const cached = await cache.getBatch(texts, glossaryKeySuffix);
@@ -1576,7 +1600,51 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     const t0 = Date.now();
     const totalChars = missingTexts.reduce((s, t) => s + (t?.length || 0), 0);
     debugLog('info', 'api', 'translateBatch start', { texts: missingTexts.length, chars: totalChars });
-    const res = await translateBatch(missingTexts, effectiveSettings, glossary, fixedGlossaryEntries, forbiddenTermsList);
+    let res;
+    try {
+      res = await translateBatch(missingTexts, effectiveSettings, glossary, fixedGlossaryEntries, forbiddenTermsList);
+    } catch (err) {
+      // v1.10.46(批次 2-5):多 chunk 中途失敗時前面 chunk 已付費(translateBatch 把
+      // 累積 usage 掛在 err.usage)。content 端收到 error 不會發 LOG_USAGE,這筆錢若不
+      // 在這裡直接記進 usage-db 就永遠漏帳(對帳系統性低估)。記完原樣 rethrow。
+      const partialUsage = err?.usage;
+      if (partialUsage && (partialUsage.inputTokens > 0 || partialUsage.outputTokens > 0)) {
+        try {
+          const cachedRate = pricingToCachedRate(effectivePricing) ?? 0.10;
+          const cachedSavedRatio = 1 - cachedRate;
+          await usageDB.logTranslation({
+            url: sender?.tab?.url || '',
+            title: sender?.tab?.title || '',
+            inputTokens: partialUsage.inputTokens,
+            outputTokens: partialUsage.outputTokens,
+            cachedTokens: partialUsage.cachedTokens || 0,
+            billedInputTokens: Math.max(0, Math.round(
+              partialUsage.inputTokens - (partialUsage.cachedTokens || 0) * cachedSavedRatio,
+            )),
+            billedCostUSD: computeBilledCostUSD(
+              partialUsage.inputTokens,
+              partialUsage.cachedTokens || 0,
+              partialUsage.outputTokens,
+              effectivePricing,
+              cachedRate,
+            ),
+            segments: missingTexts.length,
+            cacheHits,
+            timestamp: Date.now(),
+            engine: 'gemini',
+            model: effectiveSettings.geminiConfig?.model || 'unknown',
+            // 批次中途失敗的已付費部分(結果丟棄,錢有花)
+            partialFailure: true,
+          });
+          debugLog('warn', 'api', 'translateBatch failed mid-way — partial usage logged', {
+            inputTokens: partialUsage.inputTokens,
+            outputTokens: partialUsage.outputTokens,
+            error: err?.message,
+          });
+        } catch (_) { /* 記帳失敗不影響原錯誤回報 */ }
+      }
+      throw err;
+    }
     fresh = res.translations;
     batchUsage = res.usage;
     batchHadMismatch = res.hadMismatch || false; // v0.94: mismatch 旗標
@@ -1771,32 +1839,20 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
     ? settings.forbiddenTerms : [];
 
-  // Cache key：'_oc' （網頁） / '_oc_yt' （字幕） base tag + glossary/forbidden hash + baseUrl hash + safe model
-  let suffix = cacheTag;
-  const allGlossaryForHash = [
-    ...(glossary || []).map(e => `${e.source}:${e.target}`),
-    ...(fixedGlossaryEntries || []).map(e => `F:${e.source}:${e.target}`),
-  ];
-  if (allGlossaryForHash.length > 0) {
-    const fullHash = await cache.hashText(allGlossaryForHash.join('|'));
-    suffix += '_g' + fullHash.slice(0, 12);
-  }
-  const forbiddenHash = await cache.hashForbiddenTerms(forbiddenTermsList);
-  if (forbiddenHash) {
-    suffix += '_b' + forbiddenHash;
-  }
+  // Cache key：'_oc' （網頁） / '_oc_yt' （字幕） base tag，組裝規則見 buildCacheKeySuffix
+  // （v1.10.46 起三條路徑共用單一資料源）。
   // baseUrl hash 6 字元 + safe model — 避免不同 provider 同 model name 共用快取
   const baseUrlHash = (await cache.hashText(cp.baseUrl)).slice(0, 6);
   const safeModel = String(cp.model).replace(/[^a-z0-9.\-]/gi, '_');
-  suffix += `_m${baseUrlHash}_${safeModel}`;
-  // P1 (v1.8.59):targetLanguage 進 cache key,zh-TW 不加維持向下相容
-  const tl = settings.targetLanguage;
-  if (tl && tl !== 'zh-TW') {
-    suffix += '_lang' + tl.replace(/[^a-z0-9]/gi, '');
-  }
-  if (cacheTag === '_oc_doc' && typeof cp.temperature === 'number' && Number.isFinite(cp.temperature)) {
-    suffix += '_t' + cp.temperature.toFixed(2);
-  }
+  const suffix = await buildCacheKeySuffix({
+    cacheTag,
+    glossary,
+    fixedGlossaryEntries,
+    forbiddenTermsList,
+    modelKeyPart: `${baseUrlHash}_${safeModel}`,
+    targetLanguage: settings.targetLanguage,
+    docTemperature: cacheTag === '_oc_doc' ? cp.temperature : undefined,
+  });
 
   // 1. 撈快取
   const cached = await cache.getBatch(texts, suffix);

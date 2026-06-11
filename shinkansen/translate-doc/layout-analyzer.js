@@ -358,37 +358,41 @@ function classifyBlockType(block, ctx) {
 // ---------- 1) 同視覺行 merge(canvas 座標) ----------
 
 function groupIntoLines(runs, medianLineHeight) {
-  // 先按 top 升序(canvas 座標 = 視覺由上往下);top 接近時按 left 升序
-  const sorted = runs.slice().sort((a, b) => {
-    const dy = a.bbox[1] - b.bbox[1];
-    if (Math.abs(dy) > SAME_LINE_Y_TOLERANCE) return dy;
-    return a.bbox[0] - b.bbox[0];
-  });
-
+  // 兩階段分行,取代原本「tolerance 式 y 相等 + left tiebreak」單一 comparator:
+  // 那種 comparator 非遞移(a≈b、b≈c 可推 a≉c),Array.sort 對非遞移 comparator
+  // 的輸出依實作而異,row 邊界附近的 run 順序不穩定。
+  //   階段 1:純按 top 升序(遞移),再用 refTop tolerance 把 runs 切成 visual row
+  //   階段 2:row 內按 left 升序,依 x gap 切 line(雙欄第一行 baseline 接近時
+  //          不被誤合併——x gap 判斷必須在「row 內已按 left 排好」前提下才正確)
+  const sorted = runs.slice().sort((a, b) => a.bbox[1] - b.bbox[1]);
   const sameLineMaxXGap = medianLineHeight * SAME_LINE_MAX_X_GAP_FACTOR;
 
   const lines = [];
-  let currentLine = null;
-  for (const run of sorted) {
-    if (!currentLine) {
-      currentLine = newLineFromRun(run);
-      continue;
+  let i = 0;
+  while (i < sorted.length) {
+    // 階段 1:以本 row 第一條(top 最小)run 的 top 為 refTop,收同 row 的 runs
+    const refTop = sorted[i].bbox[1];
+    let j = i;
+    while (j + 1 < sorted.length && Math.abs(sorted[j + 1].bbox[1] - refTop) <= SAME_LINE_Y_TOLERANCE) {
+      j++;
     }
-    // 1) y_top 必須在容忍範圍內(canvas 座標)
-    const sameRowY = Math.abs(run.bbox[1] - currentLine.refTop) <= SAME_LINE_Y_TOLERANCE;
-    // 2) x 不能距既有 line 的右緣太遠——避免雙欄第一行 baseline 接近時被誤合併
-    //    把「x 與 currentLine 既有 bbox 重疊或相鄰一段距離」視為同行
-    const xGap = run.bbox[0] - currentLine.bbox[2]; // 正值 = run 在 line 右邊有空白；負值 = 重疊
-    const sameRowX = xGap <= sameLineMaxXGap;
-    if (sameRowY && sameRowX) {
-      currentLine.runs.push(run);
-      currentLine.bbox = unionBBox(currentLine.bbox, run.bbox);
-    } else {
-      lines.push(finalizeLine(currentLine));
-      currentLine = newLineFromRun(run);
+    // 階段 2:row 內按 left 升序,x gap 過大處切開(雙欄 / 左右分置)
+    const row = sorted.slice(i, j + 1).sort((a, b) => a.bbox[0] - b.bbox[0]);
+    let currentLine = newLineFromRun(row[0]);
+    for (let k = 1; k < row.length; k++) {
+      const run = row[k];
+      const xGap = run.bbox[0] - currentLine.bbox[2]; // 正值 = run 在 line 右邊有空白；負值 = 重疊
+      if (xGap <= sameLineMaxXGap) {
+        currentLine.runs.push(run);
+        currentLine.bbox = unionBBox(currentLine.bbox, run.bbox);
+      } else {
+        lines.push(finalizeLine(currentLine));
+        currentLine = newLineFromRun(run);
+      }
     }
+    lines.push(finalizeLine(currentLine));
+    i = j + 1;
   }
-  if (currentLine) lines.push(finalizeLine(currentLine));
   return lines;
 }
 
@@ -931,39 +935,44 @@ function maybeSubsplitListBlock(block) {
 function mergeLabelValueRows(lines, medianLineHeight) {
   if (lines.length < 2) return lines;
   const maxXGap = FORM_ROW_MAX_X_GAP_FACTOR * (medianLineHeight || 12);
-  const sortedIdx = lines.map((_, i) => i).sort((a, b) => {
-    const dy = lines[a].bbox[1] - lines[b].bbox[1];
-    if (Math.abs(dy) > SAME_LINE_Y_TOLERANCE) return dy;
-    return lines[a].bbox[0] - lines[b].bbox[0];
-  });
-  const consumed = new Set();
+  // 同 groupIntoLines 的兩階段:純按 top 升序(遞移 comparator)→ refTop tolerance
+  // 分 visual row → row 內按 left 升序再掃 label/value。原版「tolerance 式 y 相等 +
+  // left tiebreak」comparator 非遞移,sort 輸出依實作而異
+  const sorted = lines.slice().sort((a, b) => a.bbox[1] - b.bbox[1]);
   const out = [];
-  for (let i = 0; i < sortedIdx.length; i++) {
-    const ai = sortedIdx[i];
-    if (consumed.has(ai)) continue;
-    const a = lines[ai];
-    const aText = (a.plainText || '').trim();
-    // 只有左 line 結尾 : 才考慮 merge 右側 value
-    if (/[:：]\s*$/.test(aText)) {
-      // 找同 y 的下一條 line(右側 value)
-      for (let j = i + 1; j < sortedIdx.length; j++) {
-        const bi = sortedIdx[j];
-        if (consumed.has(bi)) continue;
-        const b = lines[bi];
-        if (Math.abs(b.bbox[1] - a.bbox[1]) > SAME_LINE_Y_TOLERANCE) break;
-        const xGap = b.bbox[0] - a.bbox[2];
-        if (xGap < 0 || xGap > maxXGap) continue;
-        // merge:plainText 接 + runs 接 + bbox union + dominantFontName 重算
-        a.plainText = aText + ' ' + (b.plainText || '');
-        a.runs = [...(a.runs || []), ...(b.runs || [])];
-        a.bbox = unionBBox(a.bbox, b.bbox);
-        // fontSize / dominantFontName:沿用 a(label 那段);若需精確可加權平均,
-        // 但對 form metadata 影響小
-        consumed.add(bi);
-        break;
-      }
+  let i = 0;
+  while (i < sorted.length) {
+    const refTop = sorted[i].bbox[1];
+    let j = i;
+    while (j + 1 < sorted.length && Math.abs(sorted[j + 1].bbox[1] - refTop) <= SAME_LINE_Y_TOLERANCE) {
+      j++;
     }
-    out.push(a);
+    const row = sorted.slice(i, j + 1).sort((a, b) => a.bbox[0] - b.bbox[0]);
+    const consumed = new Set();
+    for (let k = 0; k < row.length; k++) {
+      if (consumed.has(k)) continue;
+      const a = row[k];
+      const aText = (a.plainText || '').trim();
+      // 只有左 line 結尾 : 才考慮 merge 右側 value(row 已按 left 排序,往右掃即可)
+      if (/[:：]\s*$/.test(aText)) {
+        for (let l = k + 1; l < row.length; l++) {
+          if (consumed.has(l)) continue;
+          const b = row[l];
+          const xGap = b.bbox[0] - a.bbox[2];
+          if (xGap < 0 || xGap > maxXGap) continue;
+          // merge:plainText 接 + runs 接 + bbox union + dominantFontName 重算
+          a.plainText = aText + ' ' + (b.plainText || '');
+          a.runs = [...(a.runs || []), ...(b.runs || [])];
+          a.bbox = unionBBox(a.bbox, b.bbox);
+          // fontSize / dominantFontName:沿用 a(label 那段);若需精確可加權平均,
+          // 但對 form metadata 影響小
+          consumed.add(l);
+          break;
+        }
+      }
+      out.push(a);
+    }
+    i = j + 1;
   }
   return out;
 }
@@ -1059,7 +1068,7 @@ function maybeSplitNarrowMultilineBlock(block, colLefts, colRights) {
 }
 
 // W7-iter:export 給 unit spec 驗 narrow-multi-line split 路徑
-export { maybeSplitNarrowMultilineBlock, mergeLabelValueRows, maybeSubsplitFormBlock, maybeSubsplitTableRowCells };
+export { maybeSplitNarrowMultilineBlock, mergeLabelValueRows, maybeSubsplitFormBlock, maybeSubsplitTableRowCells, groupIntoLines };
 
 function unionBBox(a, b) {
   return [

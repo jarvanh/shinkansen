@@ -76,9 +76,12 @@ export function preflightFile(file) {
  *
  * @param {File} file
  * @param {(progress: { stage: string, current?: number, total?: number }) => void} [onProgress]
+ * @param {object} [options]
+ * @param {AbortSignal} [options.signal] — 取消信號;page loop 每頁開頭檢查,
+ *        aborted 時 throw PdfParseError('aborted') 並釋放 pdfDoc
  * @returns {Promise<RawPdfDocument>}
  */
-export async function parsePdf(file, onProgress = () => {}) {
+export async function parsePdf(file, onProgress = () => {}, options = {}) {
   onProgress({ stage: 'reading' });
   const buffer = await file.arrayBuffer();
 
@@ -102,9 +105,23 @@ export async function parsePdf(file, onProgress = () => {}) {
     throw new PdfParseError('open-failed', `無法開啟 PDF:${err && err.message ? err.message : String(err)}`, err);
   }
 
+  // pdfDoc 開啟後的所有後續處理:中途任何 throw(too-many-pages / scanned / 取消 /
+  // 非預期例外)都先 destroy pdfDoc 再 rethrow — caller 只在成功回傳後才接手
+  // pdfDoc 的釋放責任,中途失敗不留 PDF.js Worker 資源洩漏
+  try {
+    return await extractRawDoc(pdfDoc, file, onProgress, options);
+  } catch (err) {
+    closeDocument(pdfDoc);
+    throw err;
+  }
+}
+
+// parsePdf 本體:從已開啟的 pdfDoc 抽每頁 text run。中途 throw 時由 parsePdf
+// 統一釋放 pdfDoc,本函式內不需要逐分支 destroy
+async function extractRawDoc(pdfDoc, file, onProgress, options) {
+  const { signal } = options || {};
   const pageCount = pdfDoc.numPages;
   if (pageCount > LIMITS.hardMaxPages) {
-    pdfDoc.destroy();
     throw new PdfParseError('too-many-pages', `PDF 共 ${pageCount} 頁,超過 ${LIMITS.hardMaxPages} 頁上限`);
   }
 
@@ -112,6 +129,7 @@ export async function parsePdf(file, onProgress = () => {}) {
   let totalChars = 0;
   let nonPrintable = 0;
   let printable = 0;
+  let droppedRotatedTotal = 0;
 
   // metadata(title 用於 result UI)
   let title = file.name || '';
@@ -128,6 +146,10 @@ export async function parsePdf(file, onProgress = () => {}) {
   let firstPageSize = { width: 0, height: 0 };
 
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+    // 使用者按「取消」:立即停掉 page loop(parse 真的中止,不是只有 UI 切走)
+    if (signal && signal.aborted) {
+      throw new PdfParseError('aborted', '已取消解析');
+    }
     onProgress({ stage: 'page', current: pageIndex + 1, total: pageCount });
     const page = await pdfDoc.getPage(pageIndex + 1);
     const viewport = page.getViewport({ scale: 1.0 });
@@ -216,6 +238,7 @@ export async function parsePdf(file, onProgress = () => {}) {
 
     const textRuns = [];
     let droppedOutsideViewport = 0;
+    let droppedRotated = 0;
     for (const item of textContent.items) {
       // PDF.js TextItem.transform 是 raw text matrix [scaleX, skewY, skewX, scaleY, x, y]
       // 在 PDF 座標系下(y 由下往上)。某些 PDF(PowerPoint/Excel 匯出)的 raw 座標
@@ -231,6 +254,17 @@ export async function parsePdf(file, onProgress = () => {}) {
       if (item.str.trim().length === 0) continue;
 
       const m = matMul(viewport.transform, item.transform);
+      // 旋轉 / 直排文字 run 偵測:對水平 run,m[1](y 向旋轉分量)≈ 0、|m[0]|
+      // (水平 scale)≈ fontSize;|m[1]| > |m[0]| 代表 glyph 前進方向偏垂直
+      // (旋轉 90° 的圖表軸標籤等)。下方 bbox 公式假設 run 水平(top = baseline -
+      // fontSize、right = left + width),對這類 run 算出的 bbox 完全錯位 → 下游
+      // mask / 譯文位置全錯。丟棄不送翻(計數告警,doc warning 提示使用者)。
+      // 已知限制:RTL(item.dir === 'rtl')的 dir 欄位有抽但下游尚未消費,
+      // RTL 文字仍按 LTR bbox 處理
+      if (Math.abs(m[1]) > Math.abs(m[0])) {
+        droppedRotated++;
+        continue;
+      }
       // m 套完 viewport.transform 後是 6-element affine。對沒有旋轉/翻轉的 PDF:
       //   m[0] = horizontal scale = fontSize, m[3] = vertical scale = -fontSize(因 viewport y 翻轉)
       //   m[4] = baseline x(canvas), m[5] = baseline y(canvas)
@@ -304,6 +338,10 @@ export async function parsePdf(file, onProgress = () => {}) {
     if (droppedOutsideViewport > 0) {
       console.log(`[Shinkansen] page ${pageIndex + 1}: 丟棄 ${droppedOutsideViewport} 個 viewport 外的 text run`);
     }
+    if (droppedRotated > 0) {
+      console.log(`[Shinkansen] page ${pageIndex + 1}: 丟棄 ${droppedRotated} 個旋轉 / 直排 text run(bbox 假設不適用,不送翻)`);
+      droppedRotatedTotal += droppedRotated;
+    }
 
     pages.push({
       pageIndex,
@@ -316,7 +354,6 @@ export async function parsePdf(file, onProgress = () => {}) {
   // 偵測掃描 PDF / 字型亂碼（SPEC §17.2）
   const warnings = [];
   if (totalChars < SCANNED_PDF_TEXT_THRESHOLD) {
-    pdfDoc.destroy();
     throw new PdfParseError('scanned', '此 PDF 為掃描影像或無可抽取文字，本工具不支援 OCR');
   }
   const totalCharsForRatio = printable + nonPrintable;
@@ -328,6 +365,12 @@ export async function parsePdf(file, onProgress = () => {}) {
         message: '此 PDF 字型映射不完整，翻譯品質可能受影響',
       });
     }
+  }
+  if (droppedRotatedTotal > 0) {
+    warnings.push({
+      code: 'rotated-text-dropped',
+      message: `此 PDF 含 ${droppedRotatedTotal} 段旋轉或直排文字，該部分維持原文不翻譯`,
+    });
   }
 
   // pdfDoc 不在此 destroy——caller(index.js) 需要保留它供 debug overlay

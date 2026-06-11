@@ -51,14 +51,34 @@ test('catch 區塊辨識 AbortError', () => {
   ).toMatch(/err\.name\s*===\s*['"]AbortError['"]/);
 });
 
-test('clearTimeout(abortTimer) 成功與失敗兩路徑都呼叫', () => {
+// ── v1.10.46(批次 2-2):timeout 涵蓋範圍延伸到 body 讀完(同 lib/gemini.js)──
+// SANITY 紀錄(已驗證,2026-06-11):暫時把 `bodyText = await resp.text()` 改名廢掉
+// → 「body 在 timer 涵蓋下讀完」case fail → 還原 → pass
+
+test('clearTimeout(abortTimer) 走 try/finally 統一清', () => {
   const fnStart = SRC.indexOf('async function fetchWithRetry');
-  const fnBody = SRC.slice(fnStart, fnStart + 2000);
-  const matches = fnBody.match(/clearTimeout\s*\(\s*abortTimer\s*\)/g) || [];
+  const fnBody = SRC.slice(fnStart, fnStart + 6000);
   expect(
-    matches.length,
-    `應 ≥ 2 次 clearTimeout,實際 ${matches.length}`,
-  ).toBeGreaterThanOrEqual(2);
+    fnBody,
+    'fetchWithRetry 缺 `finally { clearTimeout(abortTimer); }` 結構',
+  ).toMatch(/finally\s*\{\s*clearTimeout\s*\(\s*abortTimer\s*\)\s*;?\s*\}/);
+});
+
+test('2-2: body 在 timer 涵蓋下讀完(resp.text() + 重建 Response)', () => {
+  const fnStart = SRC.indexOf('async function fetchWithRetry');
+  const fnBody = SRC.slice(fnStart, fnStart + 6000);
+  expect(
+    fnBody,
+    'fetchWithRetry 成功路徑缺 `await resp.text()`(body 讀取不在 abortTimer 涵蓋內)',
+  ).toMatch(/bodyText\s*=\s*await\s+resp\.text\s*\(\s*\)/);
+  expect(
+    fnBody,
+    'fetchWithRetry 缺以 body 文字重建 Response 回傳',
+  ).toMatch(/new\s+Response\s*\(\s*bodyText/);
+  expect(
+    fnBody,
+    'fetchWithRetry body 讀取 catch 缺逾時辨識(openai-compat body read timeout)',
+  ).toMatch(/openai-compat body read timeout/);
 });
 
 test('extractGlossary 預設 fetchTimeoutMs 為 15_000(對齊主翻譯,跟 Gemini 同)', () => {

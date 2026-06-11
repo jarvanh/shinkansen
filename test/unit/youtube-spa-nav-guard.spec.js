@@ -101,8 +101,10 @@ test.describe('content-youtube.js: yt-navigate-finish listener 同 videoId guard
 
   test('guard 命中時 early return(避免繼續跑 reset path)', () => {
     // 抓 guard if (...) 後面接 { ... return; ... } 或 if (...) return;
-    // 用更寬的 pattern:guard 條件之後 200 字內出現 return
-    expect(body).toMatch(/YT\.active\s*&&[\s\S]{0,80}===\s*YT\.videoId\s*\)\s*\{?[\s\S]{0,200}return\s*[;\n]/);
+    // 用更寬的 pattern:guard 條件之後 500 字內出現 return
+    // (v1.10.46 批次 3-5:guard 內補 attachVideoListener() + 註解,200 字視窗不夠;
+    //  500 字仍鎖「return 緊跟在 guard 區塊內」,不會誤吃到 reset path 尾端的 return)
+    expect(body).toMatch(/YT\.active\s*&&[\s\S]{0,80}===\s*YT\.videoId\s*\)\s*\{?[\s\S]{0,500}return\s*[;\n]/);
   });
 
   test('guard 在 reset path(stopYouTubeTranslation / 清 captionMap)之前', () => {

@@ -98,3 +98,79 @@ test('getSettingsCached: storage.onChanged 觸發後應 invalidate 重新讀', a
   await getSettingsCached();
   expect(syncGetCalls, 'onChanged 後應重新觸發 1 次 → 共 2 次').toBe(2);
 });
+
+// ── v1.10.46(批次 2-6):invalidator 過濾無關的 local 高頻寫入 ──
+//
+// 原 bug:onChanged listener 任何變動都 invalidate。翻譯期間 logger persistLog
+// (yt_debug_log,高頻)與 tc_* 快取 flush 都寫 storage.local → cache 被自己的
+// log 寫入持續打穿,翻譯熱路徑的實際命中率近零(v1.8.14 的初衷整個失效)。
+//
+// 修法:只在 area==='sync',或 local 且 changes 含 apiKey / customProviderApiKey
+// 時才 invalidate(getSettings 的資料來源只有這些)。
+//
+// SANITY 紀錄(已驗證,2026-06-11):暫時把 listener 的過濾條件拿掉(改回無條件
+// invalidate)→「yt_debug_log / tc_* 寫入不得 invalidate」case fail → 還原 → pass。
+
+function makeChromeMock() {
+  const state = { syncGetCalls: 0, listener: null };
+  globalThis.chrome = {
+    storage: {
+      sync: {
+        get: async () => { state.syncGetCalls++; return { debugLog: false, geminiConfig: { model: 'gemini-flash' } }; },
+        remove: async () => {},
+      },
+      local: { get: async () => ({}) },
+      onChanged: { addListener: (cb) => { state.listener = cb; } },
+    },
+  };
+  return state;
+}
+
+test('2-6: local 的 yt_debug_log / tc_* 寫入不得 invalidate settings cache', async () => {
+  const state = makeChromeMock();
+  const { getSettingsCached } = await import(
+    '../../shinkansen/lib/storage.js?cb=' + Date.now() + '-filter1'
+  );
+
+  await getSettingsCached();
+  expect(state.syncGetCalls).toBe(1);
+
+  // 翻譯期間的高頻 local 寫入(logger persistLog / cache flush)
+  state.listener({ yt_debug_log: { newValue: [] } }, 'local');
+  await getSettingsCached();
+  state.listener({ tc_abc123: { newValue: 'x' }, tc_def456: { newValue: 'y' } }, 'local');
+  await getSettingsCached();
+
+  expect(
+    state.syncGetCalls,
+    'yt_debug_log / tc_* 的 local 寫入不該 invalidate(翻譯熱路徑會把 cache 打穿)',
+  ).toBe(1);
+});
+
+test('2-6: local 的 apiKey / customProviderApiKey 變動仍要 invalidate', async () => {
+  const state = makeChromeMock();
+  const { getSettingsCached } = await import(
+    '../../shinkansen/lib/storage.js?cb=' + Date.now() + '-filter2'
+  );
+
+  await getSettingsCached();
+  state.listener({ apiKey: { newValue: 'new-key' } }, 'local');
+  await getSettingsCached();
+  expect(state.syncGetCalls, 'apiKey 變動應 invalidate').toBe(2);
+
+  state.listener({ customProviderApiKey: { newValue: 'cp-key' } }, 'local');
+  await getSettingsCached();
+  expect(state.syncGetCalls, 'customProviderApiKey 變動應 invalidate').toBe(3);
+});
+
+test('2-6: sync 任何變動仍要 invalidate(設定頁存設定)', async () => {
+  const state = makeChromeMock();
+  const { getSettingsCached } = await import(
+    '../../shinkansen/lib/storage.js?cb=' + Date.now() + '-filter3'
+  );
+
+  await getSettingsCached();
+  state.listener({ tier: { newValue: 'tier2' } }, 'sync');
+  await getSettingsCached();
+  expect(state.syncGetCalls, 'sync 變動應 invalidate').toBe(2);
+});

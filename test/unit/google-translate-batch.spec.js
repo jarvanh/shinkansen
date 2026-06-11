@@ -308,3 +308,97 @@ test('translateGoogleBatch: 段內混雜以主導字數判定群組(整段算同
 //   「整批全 echo」測試 fetchCalls 從 4 降到 1、translations 全為原文,
 //   「retry 仍 echo」測試 fetchCalls 從 3 降到 1。
 //   還原後 3 條全 pass。已驗證。
+
+// ── v1.10.46(批次 2-8):echo retry 上限與間隔 ──
+//
+// 原 bug:整頁已是 target 的頁面會讓每段都 echo → 全部進 needsRetry → N 段 = N 次
+// serial 重打非官方端點(請求密度高,IP 被封風險);v1.9.5 的 retry 完全無上限無間隔。
+//
+// 修法:「> RETRY_SKIP_THRESHOLD(20)段且全數 echo」視為整頁已是 target,直接放棄
+// retry(echo 值本來就是正解);其餘 retry 逐筆間加 RETRY_DELAY_MS(150ms)。
+//
+// SANITY 紀錄(已驗證,2026-06-11):暫時把 translateGoogleBatch 的
+// `if (needsRetry.length > RETRY_SKIP_THRESHOLD && allEcho)` skip 分支拿掉(恢復
+// 無條件 retry)→「25 段全 echo 不得逐筆 retry」case fail(fetchCalls 1 → 26)
+// → 還原 → pass。
+
+test('2-8: 25 段全 echo(>20)→ 視為整頁已是 target,不逐筆 retry', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    const match = String(url).match(/[?&]q=([^&]*)/);
+    const q = match ? decodeURIComponent(match[1]) : '';
+    const sourceParts = q.split(SEP);
+    // 任何 fetch 都 echo(整頁已是 target 的情境)
+    return { ok: true, json: async () => [[[sourceParts.join(SEP), q]]] };
+  };
+
+  try {
+    const inputs = Array.from({ length: 25 }, (_, i) => `Paragraph number ${i}`);
+    const { translations } = await translateGoogleBatch(inputs);
+
+    // 原 bug:1 initial + 25 retry = 26 次。修後只剩 initial(可能因 URL 長度切 1-2 批)
+    expect(fetchCalls.length).toBeLessThanOrEqual(2);
+    // echo 值即正解,維持原文
+    expect(translations).toEqual(inputs);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('2-8: 3 段全 echo(≤20)→ 仍逐筆 retry(safety net 行為不變),retry 間有 delay', async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    callCount++;
+    const match = String(url).match(/[?&]q=([^&]*)/);
+    const q = match ? decodeURIComponent(match[1]) : '';
+    if (callCount === 1) {
+      return { ok: true, json: async () => [[[q, q]]] }; // initial 全 echo
+    }
+    return { ok: true, json: async () => [[[`[ZH] ${q}`, q]]] }; // retry 真翻
+  };
+
+  try {
+    const inputs = ['Alpha', 'Beta', 'Gamma'];
+    const t0 = Date.now();
+    const { translations } = await translateGoogleBatch(inputs);
+    const elapsed = Date.now() - t0;
+
+    expect(fetchCalls.length).toBe(4); // 1 initial + 3 retry
+    expect(translations).toEqual(['[ZH] Alpha', '[ZH] Beta', '[ZH] Gamma']);
+    // 3 筆 retry 之間 2 段 delay(150ms × 2)→ 至少 250ms(留 margin 防 timer 抖動)
+    expect(elapsed).toBeGreaterThanOrEqual(250);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('2-8: 25 段但僅部分 echo → 不觸發 skip(非全 echo),echo 段仍被 retry 救回', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    const match = String(url).match(/[?&]q=([^&]*)/);
+    const q = match ? decodeURIComponent(match[1]) : '';
+    const sourceParts = q.split(SEP);
+    if (sourceParts.length > 1) {
+      // initial batch:只 echo "Echo target",其他正常翻
+      return {
+        ok: true,
+        json: async () => [[[sourceParts.map(s => (s === 'Echo target' ? s : `[ZH] ${s}`)).join(SEP), q]]],
+      };
+    }
+    return { ok: true, json: async () => [[[`[ZH] ${q}`, q]]] }; // retry 真翻
+  };
+
+  try {
+    const inputs = [...Array.from({ length: 24 }, (_, i) => `Sentence ${i}`), 'Echo target'];
+    const { translations } = await translateGoogleBatch(inputs);
+
+    expect(translations[24]).toBe('[ZH] Echo target'); // retry 救回
+    expect(translations[0]).toBe('[ZH] Sentence 0');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

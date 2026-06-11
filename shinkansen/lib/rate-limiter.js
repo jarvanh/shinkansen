@@ -225,6 +225,22 @@ export class RateLimiter {
     }
 
     // TPM 檢查
+    // v1.10.46(批次 2-1):estTokens 單獨就 >= tpmCap 時(使用者設了極小的 tpmOverride,
+    // 或單批估算特大),「等視窗釋放」永遠湊不出足夠空間——視窗全空仍是 0 + est > cap
+    // → 回 WINDOW_MS + 5 → 60 秒後重算結果相同 → acquire 無限等待不報錯。
+    // 改成:等視窗清空即放行(超量讓 API 端 429 把關,fetchWithRetry 有退避兜底),
+    // 放行前記一條 warn 讓使用者在 Log 分頁看得到原因。
+    if (estTokens >= this.tpmCap) {
+      if (this.tokens.length > 0) {
+        const releaseAt = this.tokens[this.tokens.length - 1].t + WINDOW_MS;
+        wait = Math.max(wait, releaseAt - now + 5);
+      } else {
+        debugLog('warn', 'rate-limit', 'estTokens exceeds tpmCap — releasing with empty window', {
+          estTokens, tpmCap: this.tpmCap,
+        });
+      }
+      return wait;
+    }
     const currentTok = this.currentTokenSum();
     if (currentTok + estTokens > this.tpmCap) {
       const needToRelease = currentTok + estTokens - this.tpmCap;

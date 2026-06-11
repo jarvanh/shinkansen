@@ -34,6 +34,9 @@
       STATE.abortController = null;
     }
     SK.cancelRescan();
+    // v1.10.46(批次 2-4):SPA 換頁時 abort in-flight 的 rescan 批次——舊頁 rescan 的
+    // 晚到回應不得注入新頁(translateUnitsByProvider 統一掛的 rescan signal 在此失效)
+    SK.abortRescanRuns?.();
     stopSpaObserver();
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
@@ -1166,7 +1169,7 @@
    */
   function pickRescanToast({ done, failedCount, pageUsage, totalRequested, isTinyRescan }) {
     if (failedCount > 0) {
-      return { type: 'error', msg: `新內容翻譯部分失敗:${failedCount} / ${totalRequested} 段` };
+      return { type: 'error', msg: SK.t('toast.rescanPartialFailed', { failed: failedCount, total: totalRequested }) };
     }
     // v1.9.27:tiny rescan(1-2 unit 且 < 200 char)走靜默路徑。X / Threads / Reddit
     // 邊滑邊 lazy mount link card / OG preview / 推文 metadata 一直觸發迷你 rescan,
@@ -1180,7 +1183,7 @@
     // pageUsage.cacheHits === 0 才是真正「全新翻 N 段」場景,保留 success toast 通知。
     const hasAnyCacheHit = pageUsage && pageUsage.cacheHits > 0 && done > 0;
     if (hasAnyCacheHit) return { type: 'silent' };
-    return { type: 'success', msg: `已翻譯 ${done} 段新內容` };
+    return { type: 'success', msg: SK.t('toast.rescanDone', { done }) };
   }
   SK._pickRescanToast = pickRescanToast;
 

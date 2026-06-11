@@ -13,11 +13,45 @@
 //   - cache key blockType / fontSize 桶位(W3-iter2)
 //   - 段落級 retry UI(W5)
 
+import { TRANSLATABLE_TYPES } from './block-types.js';
+
 // 跟 content.js 共用相同 chunk size，行為一致(rate limiter / token cost / cache 命中規則一致)
 export const DOC_CHUNK_SIZE = 20;
 
-// SPEC §17.4.4：這幾種 block type 送翻；其他(formula / table / figure / page-number) 不送
-const TRANSLATABLE_TYPES = new Set(['paragraph', 'heading', 'list-item', 'caption', 'footnote']);
+/**
+ * 文章術語表的輸入取樣:按 reading order 收 translatable block 的 plainText,
+ * 累計達 maxChars 截斷。給 index.js extractGlossaryForDoc 用(抽出來可 unit 測)。
+ *
+ * 邊界:acc 含 join('\n') 分隔符預算(+1),可以超過 maxChars——所以剩餘空間用
+ * `room = maxChars - acc` 算且 room <= 0 直接停,不可用 `t.slice(0, maxChars - acc)`
+ * (負值 slice 會變成「整塊只去尾字元」,預算直接吹破)
+ *
+ * @param {LayoutDoc} doc
+ * @param {number}    maxChars
+ * @returns {string[]} parts — caller 自行 join('\n')
+ */
+export function collectGlossaryInputParts(doc, maxChars) {
+  const parts = [];
+  let acc = 0;
+  for (const page of doc.pages) {
+    for (const b of page.blocks) {
+      if (!TRANSLATABLE_TYPES.has(b.type)) continue;
+      const t = b.plainText && b.plainText.trim();
+      if (!t) continue;
+      const room = maxChars - acc;
+      if (room <= 0) break;
+      if (t.length > room) {
+        parts.push(t.slice(0, room));
+        acc = maxChars;
+        break;
+      }
+      parts.push(t);
+      acc += t.length + 1; // +1 = join('\n') 分隔符預算
+    }
+    if (acc >= maxChars) break;
+  }
+  return parts;
+}
 
 /**
  * 翻譯整份 layout doc，結果寫回每個 block。
@@ -58,7 +92,11 @@ export async function translateDocument(doc, options = {}) {
   let translatedBlocks = 0;
   let failedBlocks = 0;
   let cacheHits = 0;
+  // raw 與 billed 分開累計:raw(inputTokens)是對帳 Google 帳單時看 cache 折扣
+  // 幅度的分母,billed 是折扣後實際計費 token。混寫會讓「inputTokens vs
+  // billedInputTokens 差距」維度永遠歸零
   let cumulativeInputTokens = 0;
+  let cumulativeBilledInputTokens = 0;
   let cumulativeOutputTokens = 0;
   let cumulativeCostUSD = 0;
   const batchTimes = [];
@@ -128,9 +166,12 @@ export async function translateDocument(doc, options = {}) {
     }
 
     const usage = response.usage || {};
-    cumulativeInputTokens += usage.billedInputTokens || usage.inputTokens || 0;
-    cumulativeOutputTokens += usage.outputTokens || 0;
-    cumulativeCostUSD += usage.billedCostUSD || usage.costUSD || 0;
+    // `??` 而非 `||`:billedInputTokens === 0(全 cache hit / 全免費)是合法值,
+    // `||` 會 fallback 到另一邊,語意相反
+    cumulativeInputTokens += usage.inputTokens ?? usage.billedInputTokens ?? 0;
+    cumulativeBilledInputTokens += usage.billedInputTokens ?? usage.inputTokens ?? 0;
+    cumulativeOutputTokens += usage.outputTokens ?? 0;
+    cumulativeCostUSD += usage.billedCostUSD ?? usage.costUSD ?? 0;
     cacheHits += usage.cacheHits || 0;
     console.log('[Shinkansen] chunk done', {
       chunkStart: start,
@@ -177,6 +218,7 @@ export async function translateDocument(doc, options = {}) {
     failedBlocks,
     cacheHits,
     cumulativeInputTokens,
+    cumulativeBilledInputTokens,
     cumulativeOutputTokens,
     cumulativeCostUSD: Number(cumulativeCostUSD.toFixed(6)),
     durationMs,
@@ -195,7 +237,7 @@ export async function translateDocument(doc, options = {}) {
         inputTokens: cumulativeInputTokens,
         outputTokens: cumulativeOutputTokens,
         cachedTokens: 0,
-        billedInputTokens: cumulativeInputTokens,
+        billedInputTokens: cumulativeBilledInputTokens,
         billedCostUSD: cumulativeCostUSD,
         segments: totalBlocks,
         cacheHits,
@@ -216,6 +258,7 @@ export async function translateDocument(doc, options = {}) {
     failedBlocks,
     cacheHits,
     cumulativeInputTokens,
+    cumulativeBilledInputTokens,
     cumulativeOutputTokens,
     cumulativeCostUSD,
     durationMs,
@@ -300,11 +343,12 @@ export async function translateSingleBlock(block, options = {}) {
       payload: {
         url: 'pdf://retry',
         title: `(retry ${block.blockId})`,
-        inputTokens: usage.billedInputTokens || usage.inputTokens || 0,
-        outputTokens: usage.outputTokens || 0,
+        // raw / billed 分開記(同 translateDocument);`??` 而非 `||`,billed===0 合法
+        inputTokens: usage.inputTokens ?? usage.billedInputTokens ?? 0,
+        outputTokens: usage.outputTokens ?? 0,
         cachedTokens: 0,
-        billedInputTokens: usage.billedInputTokens || 0,
-        billedCostUSD: usage.billedCostUSD || 0,
+        billedInputTokens: usage.billedInputTokens ?? usage.inputTokens ?? 0,
+        billedCostUSD: usage.billedCostUSD ?? 0,
         segments: 1,
         cacheHits: usage.cacheHits || 0,
         durationMs: Date.now() - startTime,
@@ -574,7 +618,8 @@ export function markdownToSegments(text) {
  * @property {number} totalBlocks
  * @property {number} translatedBlocks
  * @property {number} failedBlocks
- * @property {number} cumulativeInputTokens
+ * @property {number} cumulativeInputTokens        raw input tokens(折扣前)
+ * @property {number} cumulativeBilledInputTokens  billed input tokens(cache 折扣後)
  * @property {number} cumulativeOutputTokens
  * @property {number} cumulativeCostUSD
  * @property {boolean} cancelled

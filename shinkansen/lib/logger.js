@@ -132,7 +132,10 @@ function sanitize(data) {
   if (data == null) return undefined;
   try {
     const s = JSON.stringify(data);
-    if (s.length > 3000) return JSON.parse(s.slice(0, 3000) + '…(截斷)');
+    // v1.10.46(批次 2-7):截斷後不可再 JSON.parse——切到 3000 字的 JSON 字串幾乎必
+    // 非法,parse throw → 走 catch 回 String(data) = "[object Object]",大 payload 在
+    // Log 分頁全部無資訊。改回傳 preview 物件,保留可讀前段 + 原始長度。
+    if (s.length > 3000) return { _truncated: true, originalLength: s.length, preview: s.slice(0, 3000) };
     return JSON.parse(s);
   } catch {
     return String(data);

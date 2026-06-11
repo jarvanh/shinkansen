@@ -2,10 +2,10 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <!-- iOS Safari popup sheet / popover 需要 viewport meta:沒有時 WebKit 用
-       ~980px 桌面虛擬 viewport,固定 280px 的 body 會縮在左邊。放大策略見
-       popup.css 的 body.runtime-ios(zoom)註解。桌面瀏覽器的 extension popup
-       一律忽略 viewport meta,加了無副作用 -->
+  <!-- iOS Safari popup sheet / popover 需要 viewport meta：沒有時 WebKit 用
+       ~980px 桌面虛擬 viewport，固定 280px 的 body 會縮在左邊。放大策略見
+       popup.css 的 body.runtime-ios（zoom）註解。桌面瀏覽器的 extension popup
+       一律忽略 viewport meta，加了無副作用 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Shinkansen</title>
   <link rel="stylesheet" href="popup.css">
@@ -20,7 +20,7 @@
     <!-- v1.6.5: 剛升級的歡迎條(CWS 自動更新後顯示一次性綠色 banner) -->
     <div id="welcome-banner" class="welcome-banner" hidden>
       <strong id="welcome-banner-title">🎉 已升級</strong>
-      <p class="welcome-banner-subtitle" data-i18n="popup.banner.welcomeBullets">本版新增:</p>
+      <p class="welcome-banner-subtitle" data-i18n="popup.banner.welcomeBullets">本版新增：</p>
       <ul id="welcome-bullets" class="welcome-bullets"></ul>
       <button id="welcome-banner-dismiss" class="welcome-banner-dismiss" type="button" data-i18n="popup.banner.welcomeDismiss">知道了</button>
     </div>
@@ -69,13 +69,13 @@
       <input type="checkbox" id="yt-subtitle-toggle">
     </div>
 
-    <!-- commit 5a:只在 Drive 影片 viewer 顯示(drive.google.com/file/) -->
+    <!-- commit 5a：只在 Drive 影片 viewer 顯示（drive.google.com/file/） -->
     <div class="row" id="drive-subtitle-row" hidden>
       <label for="drive-subtitle-toggle" data-i18n="popup.label.driveSubtitle">Drive 影片字幕翻譯</label>
       <input type="checkbox" id="drive-subtitle-toggle">
     </div>
 
-    <!-- commit 5c:雙語對照 toggle(YouTube 影片 + Drive 影片頁顯示) -->
+    <!-- commit 5c：雙語對照 toggle（YouTube 影片 + Drive 影片頁顯示） -->
     <div class="row" id="bilingual-row" hidden>
       <label for="bilingual-toggle" data-i18n="popup.label.bilingual">字幕雙語對照</label>
       <input type="checkbox" id="bilingual-toggle">
@@ -104,20 +104,20 @@
     </div>
 
     <div class="cache-row">
-      <span id="cache-info" class="cache-info" data-i18n="popup.cache.loading">快取:讀取中⋯</span>
+      <span id="cache-info" class="cache-info" data-i18n="popup.cache.loading">快取：讀取中⋯</span>
       <button id="clear-cache-btn" class="link small" data-i18n="popup.cache.clear">清除快取</button>
       <span id="clear-cache-confirm" class="clear-cache-confirm" hidden>
-        <span data-i18n="popup.cache.confirm">確定清除?</span>
+        <span data-i18n="popup.cache.confirm">確定清除？</span>
         <button id="clear-cache-yes" class="link small clear-cache-danger" data-i18n="popup.cache.confirmYes">是</button>
         <button id="clear-cache-no" class="link small" data-i18n="popup.cache.confirmNo">否</button>
       </span>
     </div>
 
     <div class="cache-row">
-      <span id="usage-info" class="cache-info" data-i18n="popup.usage.loading">累計費用:讀取中⋯</span>
+      <span id="usage-info" class="cache-info" data-i18n="popup.usage.loading">累計費用：讀取中⋯</span>
     </div>
 
-    <div id="status" class="status" data-i18n="popup.status.ready">狀態:就緒</div>
+    <div id="status" class="status" data-i18n="popup.status.ready">狀態：就緒</div>
   </main>
 
   <footer>

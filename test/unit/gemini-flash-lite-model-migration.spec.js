@@ -7,12 +7,19 @@
 // 自動改寫;沒舊 ID 就 no-op。本 spec 鎖:
 //   (1) geminiConfig.model / glossary.model / ytSubtitle.model 各自改寫
 //   (2) translatePresets 內 gemini engine slot 改寫,非 gemini slot 不動
-//   (3) pricing object key 從 OLD rename 成 NEW(value 保留)
+//   (3) modelPricingOverrides key 從 OLD rename 成 NEW(value 保留)
+//       v1.10.46 批次 5-4 修正:原 migration 誤檢查 syncSaved.pricing——pricing 的
+//       shape 是 {inputPerMTok, outputPerMTok, cachedDiscount},key 永遠不是 model ID
+//       (dead code);model ID 為 key 的計價覆蓋實際存 modelPricingOverrides
+//       (model-pricing.js getPricingForModel 讀的那份)。本 spec 原本也照抄了錯誤
+//       假設,一併改正。
 //   (4) 空 saved / 無舊 ID → 不寫 storage(empty patch 短路)
 //   (5) syncSaved 物件本身也被原地改寫,讓 caller 後續 merge 看得到新值
 //
 // SANITY 紀錄(已驗證):暫時把 migration 內所有 patch[*] = ... 註解掉後,
 // 測試 1/2/3 全 fail,還原後 pass。
+// SANITY 紀錄(批次 5-4,已驗證,2026-06-11):暫時把 modelPricingOverrides 區塊改回
+// 檢查 syncSaved.pricing → 「modelPricingOverrides key rename」case fail → 還原 → pass。
 import { test, expect } from '@playwright/test';
 
 let syncStore = {};
@@ -93,32 +100,40 @@ test('migration: translatePresets 內 gemini slot 改寫,非 gemini slot 不動'
   expect(presets[2].model).toBe(OLD);                       // 非 gemini engine 不動
 });
 
-test('migration: pricing key rename OLD → NEW(value 保留)', async () => {
+test('migration: modelPricingOverrides key rename OLD → NEW(value 保留,其他 model 不動)', async () => {
   const saved = {
-    pricing: {
+    modelPricingOverrides: {
       [OLD]: { inputPerMTok: 0.10, outputPerMTok: 0.30 },
       'gemini-3-pro': { inputPerMTok: 1.25, outputPerMTok: 5.00 },
     },
   };
   await migrateGeminiFlashLiteModelIfNeeded(saved);
   expect(setCalls.length).toBe(1);
-  const pricing = setCalls[0].pricing;
-  expect(pricing[NEW]).toEqual({ inputPerMTok: 0.10, outputPerMTok: 0.30 });
-  expect(pricing[OLD]).toBeUndefined();
-  expect(pricing['gemini-3-pro']).toEqual({ inputPerMTok: 1.25, outputPerMTok: 5.00 });
+  const overrides = setCalls[0].modelPricingOverrides;
+  expect(overrides[NEW]).toEqual({ inputPerMTok: 0.10, outputPerMTok: 0.30 });
+  expect(overrides[OLD]).toBeUndefined();
+  expect(overrides['gemini-3-pro']).toEqual({ inputPerMTok: 1.25, outputPerMTok: 5.00 });
 });
 
-test('migration: pricing 已含 NEW key 時不覆蓋,只刪 OLD', async () => {
+test('migration: modelPricingOverrides 已含 NEW key 時不覆蓋,只刪 OLD', async () => {
   const saved = {
-    pricing: {
+    modelPricingOverrides: {
       [OLD]: { inputPerMTok: 0.99, outputPerMTok: 0.99 },
       [NEW]: { inputPerMTok: 0.10, outputPerMTok: 0.30 },
     },
   };
   await migrateGeminiFlashLiteModelIfNeeded(saved);
-  const pricing = setCalls[0].pricing;
-  expect(pricing[NEW]).toEqual({ inputPerMTok: 0.10, outputPerMTok: 0.30 }); // 保留原 NEW
-  expect(pricing[OLD]).toBeUndefined();
+  const overrides = setCalls[0].modelPricingOverrides;
+  expect(overrides[NEW]).toEqual({ inputPerMTok: 0.10, outputPerMTok: 0.30 }); // 保留原 NEW
+  expect(overrides[OLD]).toBeUndefined();
+});
+
+test('migration: pricing(非 model-keyed shape)有 OLD 字樣以外的正常欄位 → 不動 pricing', async () => {
+  // pricing 真實 shape:{inputPerMTok, outputPerMTok, cachedDiscount}。migration 不該碰它
+  const saved = { pricing: { inputPerMTok: 0.10, outputPerMTok: 0.40, cachedDiscount: 0.9 } };
+  await migrateGeminiFlashLiteModelIfNeeded(saved);
+  expect(setCalls.length).toBe(0);
+  expect(saved.pricing).toEqual({ inputPerMTok: 0.10, outputPerMTok: 0.40, cachedDiscount: 0.9 });
 });
 
 test('migration: 空 saved / 無舊 ID → 不寫 storage', async () => {
@@ -126,5 +141,6 @@ test('migration: 空 saved / 無舊 ID → 不寫 storage', async () => {
   await migrateGeminiFlashLiteModelIfNeeded({});
   await migrateGeminiFlashLiteModelIfNeeded({ geminiConfig: { model: NEW } });
   await migrateGeminiFlashLiteModelIfNeeded({ translatePresets: [{ engine: 'gemini', model: NEW }] });
+  await migrateGeminiFlashLiteModelIfNeeded({ modelPricingOverrides: { [NEW]: { inputPerMTok: 0.1 } } });
   expect(setCalls.length).toBe(0);
 });

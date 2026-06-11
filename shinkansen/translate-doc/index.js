@@ -6,9 +6,10 @@
 
 import { parsePdf, preflightFile, renderPageToCanvas, closeDocument, PdfParseError } from './pdf-engine.js';
 import { analyzeLayout } from './layout-analyzer.js';
-import { translateDocument, segmentsToMarkdown, markdownToSegments } from './translate.js';
+import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts } from './translate.js';
+import { TRANSLATABLE_TYPES } from './block-types.js';
 import { renderReader, buildPlainTextDump } from './reader.js';
-import { downloadBilingualPdf } from './pdf-renderer.js';
+import { downloadBilingualPdf, buildBilingualPdf } from './pdf-renderer.js';
 import { formatMoney } from '../lib/format.js';
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 
@@ -37,6 +38,10 @@ const stages = {
 };
 
 let parseAbortController = null;
+// 解析 generation token:每次 handleFile / 取消都 ++。in-flight 的 handleFile 在每個
+// await resume 點比對自己抓的 gen,不相等代表已被取消(或被新一輪上傳取代)→ 丟棄結果,
+// 不寫 module state、不 showStage('result') 蓋掉取消後的 upload 畫面
+let parseGeneration = 0;
 let translateAbortController = null;
 let currentDoc = null;       // analyzeLayout 輸出
 let currentPdfDoc = null;    // PDF.js PDFDocumentProxy（記得 destroy）
@@ -139,14 +144,23 @@ async function handleFile(file) {
   // 切新檔前釋放舊 pdfDoc(避免 PDF.js Worker 累積)
   releaseCurrentDoc();
 
+  // generation token + AbortController:取消時 abort 真的停掉 parsePdf page loop,
+  // gen 比對讓已 resume 的舊輪丟棄結果(不蓋掉取消後的 upload 畫面 / 不寫壞 state)
+  const myGen = ++parseGeneration;
+  parseAbortController = new AbortController();
+  const parseSignal = parseAbortController.signal;
+
   showStage('parsing');
   setParsingDetail(t('doc.parsing.detail.fileContent'));
 
+  let rawDoc = null;
   try {
     // W6：讀一次 file.arrayBuffer() cache 起來，給後續 pdf-renderer 重組譯文 PDF 用
     // (parsePdf 內也讀一次，但 PDF.js 內部消費掉，不能 reuse；這裡多 read 一次)
-    currentOriginalArrayBuffer = await file.arrayBuffer();
-    const rawDoc = await parsePdf(file, (progress) => {
+    const buf = await file.arrayBuffer();
+    if (myGen !== parseGeneration) return; // 已取消:不寫 state
+    currentOriginalArrayBuffer = buf;
+    rawDoc = await parsePdf(file, (progress) => {
       switch (progress.stage) {
         case 'reading':
           setParsingDetail(t('doc.parsing.detail.fileContent'));
@@ -160,7 +174,12 @@ async function handleFile(file) {
         default:
           break;
       }
-    });
+    }, { signal: parseSignal });
+    if (myGen !== parseGeneration) {
+      // parse 完成前被取消(abort 沒攔到的窗口):丟棄結果並釋放剛開的 pdfDoc
+      closeDocument(rawDoc.pdfDoc);
+      return;
+    }
 
     setParsingDetail(t('doc.parsing.detail.layout'));
     const doc = analyzeLayout(rawDoc);
@@ -199,7 +218,7 @@ async function handleFile(file) {
         let count = 0;
         for (const page of currentDoc.pages) {
           for (const block of page.blocks) {
-            if (TRANSLATABLE_TYPES_SET.has(block.type) && block.plainText && block.plainText.trim()) {
+            if (TRANSLATABLE_TYPES.has(block.type) && block.plainText && block.plainText.trim()) {
               block.translation = block.plainText;
               block.translationStatus = 'done';
               count++;
@@ -207,6 +226,13 @@ async function handleFile(file) {
           }
         }
         return { translatableCount: count };
+      },
+      // regression 用:直接回傳譯文 PDF bytes(Array)。spec 端拿去用 PDF.js
+      // render 驗 pixel(例:mask 不可蓋掉 block 間的圖片 / 向量圖形)
+      buildTranslatedPdfBytes: async () => {
+        if (!currentDoc || !currentOriginalArrayBuffer) return null;
+        const { bytes } = await buildBilingualPdf(currentOriginalArrayBuffer, currentDoc, {});
+        return Array.from(bytes);
       },
       generateAndVerifyPdf: async () => {
         if (!currentDoc || !currentOriginalArrayBuffer) return null;
@@ -394,7 +420,7 @@ async function handleFile(file) {
         // 另外 flag「heading bbox 太緊」風險:blockH < fontSize_translation × 1.4
         // 即使 1 行也容易 ascender 截斷(對應 Jimmy 截圖「標題上半截被切」)
         function computeOverflowFor(block) {
-          if (!TRANSLATABLE_TYPES_SET.has(block.type)) return null;
+          if (!TRANSLATABLE_TYPES.has(block.type)) return null;
           const txt = block.plainText || '';
           if (!txt.trim()) return null;
           const [x0, y0, x1, y1] = block.bbox;
@@ -491,7 +517,7 @@ async function handleFile(file) {
         let translatableCount = 0;
         for (const page of currentDoc.pages) {
           for (const block of page.blocks) {
-            if (TRANSLATABLE_TYPES_SET.has(block.type) && block.plainText && block.plainText.trim()) {
+            if (TRANSLATABLE_TYPES.has(block.type) && block.plainText && block.plainText.trim()) {
               block.translation = block.plainText;
               block.translationStatus = 'done';
               translatableCount++;
@@ -612,7 +638,7 @@ async function handleFile(file) {
         }
         const actualOverflowList = [];
         for (const ba of blockAnalysis) {
-          if (!TRANSLATABLE_TYPES_SET.has(ba.type)) continue;
+          if (!TRANSLATABLE_TYPES.has(ba.type)) continue;
           const layoutBlock = currentDoc.pages[ba.pageIndex].blocks.find((b) => b.blockId === ba.blockId);
           if (!layoutBlock) continue;
           const layoutPage = currentDoc.pages[ba.pageIndex];
@@ -713,13 +739,24 @@ async function handleFile(file) {
 
     showStage('result');
   } catch (err) {
+    // 取消觸發的中止:cancel handler 已清 state + 回 upload,這裡靜默收尾即可
+    // (不彈「解析失敗」error)。aborted code 來自 parsePdf 的 signal 檢查
+    if (myGen !== parseGeneration || (err instanceof PdfParseError && err.code === 'aborted')) {
+      if (rawDoc && rawDoc.pdfDoc && rawDoc.pdfDoc !== currentPdfDoc) closeDocument(rawDoc.pdfDoc);
+      return;
+    }
     if (err instanceof PdfParseError) {
       showError(err.message);
     } else {
       console.error('[Shinkansen] PDF 解析失敗', err);
       showError(t('doc.parsing.fail', { error: (err && err.message) || String(err) }));
     }
+    // analyzeLayout / 後續 UI 段 throw 時 rawDoc.pdfDoc 還沒掛上 currentPdfDoc,
+    // releaseCurrentDoc 摸不到它 → 這裡補 destroy(已掛上的交給 releaseCurrentDoc)
+    if (rawDoc && rawDoc.pdfDoc && rawDoc.pdfDoc !== currentPdfDoc) closeDocument(rawDoc.pdfDoc);
     releaseCurrentDoc();
+  } finally {
+    if (myGen === parseGeneration) parseAbortController = null;
   }
 }
 
@@ -1007,6 +1044,8 @@ function bindResultUI() {
     showStage('upload');
   });
   $('cancel-btn').addEventListener('click', () => {
+    // ++gen 讓 in-flight handleFile resume 後丟棄結果;abort 真的停掉 parsePdf page loop
+    parseGeneration++;
     if (parseAbortController) {
       parseAbortController.abort();
       parseAbortController = null;
@@ -1027,7 +1066,6 @@ function bindTranslatingUI() {
   });
 }
 
-const TRANSLATABLE_TYPES_SET = new Set(['paragraph', 'heading', 'list-item', 'caption', 'footnote']);
 const GLOSSARY_INPUT_MAX_CHARS = 60_000;
 
 // 結構面診斷:純從 layout doc 推 reader / pdf-renderer 注入後的版面正確性。
@@ -1057,7 +1095,7 @@ function computeStructureDiagnostics(doc) {
       if (x0 < -BBOX_OUTSIDE_TOL || y0 < -BBOX_OUTSIDE_TOL || x1 > pageW + BBOX_OUTSIDE_TOL || y1 > pageH + BBOX_OUTSIDE_TOL) {
         issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'bbox-outside-page', detail: `[${x0.toFixed(1)},${y0.toFixed(1)},${x1.toFixed(1)},${y1.toFixed(1)}] page=${pageW.toFixed(0)}x${pageH.toFixed(0)}` });
       }
-      if (TRANSLATABLE_TYPES_SET.has(block.type)) {
+      if (TRANSLATABLE_TYPES.has(block.type)) {
         if (!block.plainText || !block.plainText.trim()) {
           issues.push({ pageIndex: page.pageIndex, blockId: block.blockId, code: 'empty-plain-text', detail: block.type });
         }
@@ -1088,24 +1126,10 @@ function computeStructureDiagnostics(doc) {
 }
 
 // 對整份 PDF 送 EXTRACT_GLOSSARY 拿 [{source, target}] 對照表(術語表一致化)
+// 取樣邏輯抽到 translate.js collectGlossaryInputParts(可 unit 測;原 inline 版有
+// slice(0, 負值) 邊界 bug:acc 含 join 分隔符預算可超過 MAX,後續 block 算出負 room)
 async function extractGlossaryForDoc(doc) {
-  const parts = [];
-  let acc = 0;
-  for (const page of doc.pages) {
-    for (const b of page.blocks) {
-      if (!TRANSLATABLE_TYPES_SET.has(b.type)) continue;
-      const t = b.plainText && b.plainText.trim();
-      if (!t) continue;
-      if (acc + t.length > GLOSSARY_INPUT_MAX_CHARS) {
-        parts.push(t.slice(0, GLOSSARY_INPUT_MAX_CHARS - acc));
-        acc = GLOSSARY_INPUT_MAX_CHARS;
-        break;
-      }
-      parts.push(t);
-      acc += t.length + 1;
-    }
-    if (acc >= GLOSSARY_INPUT_MAX_CHARS) break;
-  }
+  const parts = collectGlossaryInputParts(doc, GLOSSARY_INPUT_MAX_CHARS);
   const compressedText = parts.join('\n');
   if (compressedText.length < 200) {
     console.log('[Shinkansen] glossary skipped (text too short)', { chars: compressedText.length });
@@ -1286,7 +1310,7 @@ async function clearCurrentDocCache() {
   const segTexts = [];
   for (const page of currentDoc.pages) {
     for (const block of page.blocks) {
-      if (!TRANSLATABLE_TYPES_SET.has(block.type)) continue;
+      if (!TRANSLATABLE_TYPES.has(block.type)) continue;
       const t = block.plainText && block.plainText.trim();
       if (!t) continue;
       segTexts.push({ block, text: block.plainText });
@@ -1486,7 +1510,7 @@ function countCurrentFailedBlocks() {
   let n = 0;
   for (const page of currentDoc.pages) {
     for (const block of page.blocks) {
-      if (TRANSLATABLE_TYPES_SET.has(block.type) && block.translationStatus === 'failed') n++;
+      if (TRANSLATABLE_TYPES.has(block.type) && block.translationStatus === 'failed') n++;
     }
   }
   return n;
@@ -1645,7 +1669,7 @@ function openEditor() {
 
     let translatableInPage = 0;
     for (const block of page.blocks) {
-      if (!TRANSLATABLE_TYPES_SET.has(block.type)) continue;
+      if (!TRANSLATABLE_TYPES.has(block.type)) continue;
       if (!block.plainText || !block.plainText.trim()) continue;
       translatableInPage++;
 
@@ -2079,6 +2103,7 @@ async function startTranslate() {
       translatedBlocks: 0,
       failedBlocks: 0,
       cumulativeInputTokens: 0,
+      cumulativeBilledInputTokens: 0,
       cumulativeOutputTokens: 0,
       cumulativeCostUSD: 0,
       cancelled: false,

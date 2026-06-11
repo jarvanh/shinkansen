@@ -68,15 +68,45 @@ test('catch 區塊辨識 AbortError 並走網路錯誤 retry path', () => {
   ).toMatch(/err\.name\s*===\s*['"]AbortError['"]/);
 });
 
-test('clearTimeout(abortTimer) 在 fetch 成功與失敗兩路徑都被呼叫(避免 leak)', () => {
+// ── v1.10.46(批次 2-2):timeout 涵蓋範圍延伸到 body 讀完 ──
+//
+// 原本 fetch resolve(headers 到)即 clearTimeout,但 body 讀取(resp.json())在
+// 連線中途吊住時可無限 pending → 該批永久卡住無錯誤。重構後:body 在 timer 涵蓋下
+// 以 resp.text() 讀完,成功路徑回傳重建的 Response;timer 統一在 try/finally 清。
+//
+// SANITY 紀錄(已驗證,2026-06-11):暫時把 `bodyText = await resp.text()` 改回
+// 「直接 return resp」(等效回到舊行為,body 不在 timer 涵蓋內)→「body 在 timer
+// 涵蓋下讀完」case fail → 還原 → pass。
+
+test('clearTimeout(abortTimer) 走 try/finally 統一清(每輪 continue/return/throw 都涵蓋)', () => {
   const fnStart = SRC.indexOf('async function fetchWithRetry');
-  const fnBody = SRC.slice(fnStart, fnStart + 2000);
-  // 至少 2 次 clearTimeout:catch 內(fetch throw)+ try 結束後(fetch 成功)
-  const matches = fnBody.match(/clearTimeout\s*\(\s*abortTimer\s*\)/g) || [];
+  const fnBody = SRC.slice(fnStart, fnStart + 6000);
   expect(
-    matches.length,
-    `fetchWithRetry 內 \`clearTimeout(abortTimer)\` 應出現 ≥ 2 次(成功 + 失敗兩路徑各一);實際 ${matches.length}`,
-  ).toBeGreaterThanOrEqual(2);
+    fnBody,
+    'fetchWithRetry 缺 `finally { clearTimeout(abortTimer); }` 結構',
+  ).toMatch(/finally\s*\{\s*clearTimeout\s*\(\s*abortTimer\s*\)\s*;?\s*\}/);
+});
+
+test('2-2: body 在 timer 涵蓋下讀完(resp.text() 在 fetchWithRetry 內、clearTimeout 之前)', () => {
+  const fnStart = SRC.indexOf('async function fetchWithRetry');
+  const fnBody = SRC.slice(fnStart, fnStart + 6000);
+  expect(
+    fnBody,
+    'fetchWithRetry 成功路徑缺 `await resp.text()`(body 讀取不在 abortTimer 涵蓋內,中途吊住會無限 pending)',
+  ).toMatch(/bodyText\s*=\s*await\s+resp\.text\s*\(\s*\)/);
+  expect(
+    fnBody,
+    'fetchWithRetry 缺以 body 文字重建 Response 回傳(呼叫端 resp.json()/clone() 行為不變)',
+  ).toMatch(/new\s+Response\s*\(\s*bodyText/);
+});
+
+test('2-2: body 讀取逾時走網路錯誤 retry path(AbortError 辨識 + retry)', () => {
+  const fnStart = SRC.indexOf('async function fetchWithRetry');
+  const fnBody = SRC.slice(fnStart, fnStart + 6000);
+  expect(
+    fnBody,
+    'fetchWithRetry body 讀取 catch 缺逾時辨識(gemini body read timeout)',
+  ).toMatch(/gemini body read timeout/);
 });
 
 // ── translateBatchStream(streaming 路徑)同樣套 15s headers timeout ──

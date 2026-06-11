@@ -44,6 +44,7 @@
 // bold block,drawTranslatedOverlay 對 bold block 用 boldFont 寫
 
 import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
+import { TRANSLATABLE_TYPES } from './block-types.js';
 
 const FONT_PATH_REGULAR = 'lib/vendor/fonts/NotoSansTC-Regular.ttf';
 const FONT_PATH_BOLD = 'lib/vendor/fonts/NotoSansTC-Bold.ttf';
@@ -172,8 +173,6 @@ export async function downloadBilingualPdf(originalArrayBuffer, layoutDoc, optio
 
 // ----- 譯文頁 layout 渲染 -----
 
-const TRANSLATABLE_TYPES = new Set(['paragraph', 'heading', 'list-item', 'caption', 'footnote']);
-
 // W7:italic 用 pdf-lib drawText `matrix` 做 12° skew transform(業界標準做法,
 // CSS font-synthesis-style 預設 14°、FontForge -10°~-15°,折衷 12°)。matrix 走
 // PDF text rendering matrix 規格,skew x 軸:[1, 0, tan(12°), 1, tx, ty]
@@ -267,10 +266,24 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
         borderWidth: 0,
       });
     } else {
-      // non-cell-block:mask = expandBoxToCoverItems(...,clamp 到 block.bbox)+
-      // padBottom = fontSize × 0.3(蓋 link underline / 標點 / ascent 殘影)。
+      // non-cell-block:mask 基底 = 原 block.bbox ∪ 譯文實際畫字範圍,再
+      // expandBoxToCoverItems(clamp 到 block.bbox)+ padBottom = fontSize × 0.3
+      // (蓋 link underline / 標點 / ascent 殘影)。
+      // 不可用整個 fit.finalBox 當基底:fit-to-box 擴 box 後 finalBox 可能一路
+      // 伸到下一個 text block 上緣 / 頁底,但 layout blocks 全來自 text run,
+      // block 之間的圖片 / 向量圖形不是阻擋物——以 finalBox 起算會把它們整片蓋白。
+      // 只蓋「原文所在區」+「譯文實際會畫到的區」,擴 box 多出來沒畫字的區域不蓋。
       // 非 cell-block 通常不在表格內,padBottom 不會蓋表格邊線
-      const maskBox = expandBoxToCoverItems(fit.finalBox, block, items);
+      const drawn = computeDrawnExtent(fit, fontRegular, fontBold);
+      const f = fit.finalBox;
+      const [bx0, by0, bx1, by1] = block.bbox;
+      const baseBox = {
+        x0: Math.min(bx0, f.x0),
+        y0: Math.min(by0, f.y0),
+        x1: Math.max(bx1, Math.min(f.x1, f.x0 + drawn.w)),
+        y1: Math.max(by1, Math.min(f.y1, f.y0 + drawn.h)),
+      };
+      const maskBox = expandBoxToCoverItems(baseBox, block, items);
       const padBottom = Math.max(2, (block.fontSize || 12) * 0.3);
       const { x0: mx0, y0: my0, x1: mx1, y1: my1 } = maskBox;
       const pdfMaskBottom = pageH - (my1 + padBottom);
@@ -338,6 +351,26 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
     }
   }
   return translatedLinkRects;
+}
+
+// 譯文實際畫字範圍(供 mask 限縮用):寬 = 最寬行的 piece 寬總和,高 = 同 tryFit
+// 的 requiredH 公式(首行 visual ratio + 其餘行 lineHeight)。fit.lines 可能因
+// drawText loop 的 box 底截斷而少畫,caller 對 finalBox 取 min 兜底
+function computeDrawnExtent(fit, fontRegular, fontBold) {
+  const { fontSize, lineHeight, lines } = fit;
+  let maxW = 0;
+  for (const line of lines) {
+    let w = 0;
+    for (const p of line.pieces) {
+      const font = p.isBold ? fontBold : fontRegular;
+      try { w += font.widthOfTextAtSize(p.text, fontSize); }
+      catch { w += p.text.length * fontSize * 0.5; }
+    }
+    if (w > maxW) maxW = w;
+  }
+  const visualRatio = lines.length === 1 ? SINGLE_LINE_VISUAL_RATIO : FIRST_LINE_VISUAL_RATIO;
+  const h = lines.length > 0 ? fontSize * visualRatio + (lines.length - 1) * lineHeight : 0;
+  return { w: maxW, h };
 }
 
 // fit-to-box(港 BabelDOC `_find_optimal_scale_and_layout` 演算法到 JS):
@@ -693,11 +726,24 @@ export function wrapSegmentsToWidth(segments, fontRegular, fontBold, fontSize, m
     catch { return c.text.length * fontSize * 0.5; }
   }
 
+  // 1.5) 單一 chunk 自己就寬過 maxWidth(長 URL / 料號等 ASCII 連續串)→ 退化成
+  // 逐字元 chunks 再走一般 wrap:整條塞同一行會畫超出 box.x1,水平溢出疊到右側
+  // 原文 / 相鄰 block。逐字元後同 style 字元在行內仍會被 mergeChunksToPieces 合回
+  // 同一 piece,不影響渲染結構
+  const sizedChunks = [];
+  for (const c of chunks) {
+    if (!c.isWS && c.text.length > 1 && widthOf(c) > maxWidth) {
+      for (const ch of c.text) sizedChunks.push({ ...c, text: ch });
+    } else {
+      sizedChunks.push(c);
+    }
+  }
+
   // 2) wrap chunks 成 lines(lineChunks: chunks[],尚未合併成 pieces)
   const lineChunks = [];
   let current = [];
   let currentWidth = 0;
-  for (const c of chunks) {
+  for (const c of sizedChunks) {
     const w = widthOf(c);
     if (current.length === 0 && c.isWS) continue; // 跳新行開頭的純空白
     if (currentWidth + w > maxWidth && current.length > 0) {

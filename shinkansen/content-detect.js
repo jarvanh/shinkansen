@@ -1225,6 +1225,10 @@
 
       if (stats) stats.includedBySelector = (stats.includedBySelector || 0) + 1;
       results.push({ kind: 'element', el });
+      // v1.10.46: 全檔唯一漏 seen.add 的收集入口——少這行同 el 會再被後續補抓 pass
+      // (leaf-content-div 等)雙收,下游 text-hash dedup 歸同 entry 後 broadcast 對
+      // 同 el 注入兩次,第二次被 echo 判定誤判 → _revertEcho 沖回原文
+      seen.add(el);
     });
 
     // v1.10.28: inline 格式化元素 prose 補抓。
@@ -1320,6 +1324,11 @@
     // :has() 支援：Chrome 105+ / Firefox 121+ / Safari 15.4+，皆已是 stable 多年。
     scopeRoot.querySelectorAll('div:not(:has(*)), span:not(:has(*))').forEach(d => {
       if (seen.has(d)) return;
+      // v1.10.46: 容器已被 walker fragment 抽取(文字 run 已各自成 unit)→ 不得再整顆
+      // 收成 element unit。fragment 只標 fragmentExtracted 不進 seen(容器可能還有其他
+      // run),這裡漏查會產生「同 el fragment+element 雙 unit」→ 同 text dedup 歸同
+      // entry → broadcast 雙注入 → 第二次被 echo 判定沖回原文
+      if (fragmentExtracted.has(d)) return;
       if (d.hasAttribute('data-shinkansen-translated')) return;
       // d.children.length > 0 過濾已由 :not(:has(*)) selector 取代，移除
       if (hasBlockAncestor(d)) return;
@@ -1503,7 +1512,9 @@
     if (title) parts.push(title);
 
     for (const unit of units) {
-      const el = unit.kind === 'fragment' ? unit.parent : unit.el;
+      // v1.10.46: fragment unit 沒有 parent 欄位(shape 是 {kind,el,startNode,endNode}),
+      // 一律取 unit.el — 之前讀 unit.parent 永遠 undefined,fragment 全被 continue 跳過
+      const el = unit.el;
       if (!el) continue;
       const tag = el.tagName;
 

@@ -61,7 +61,6 @@
     'popup.status.subtitleToggleFailed': '狀態：無法切換字幕翻譯，請重新整理頁面',
     'popup.status.bilingualToggleFailed': '狀態：無法切換雙語對照',
     'popup.status.captionSizeFailed': '狀態：無法調整字幕大小',
-    'popup.status.unknownError': '未知錯誤',
     'popup.shortcut.value': '{shortcut} 快速鍵切換翻譯',
     'popup.shortcut.iosTouch': '四指輕點切換翻譯',
     'popup.shortcut.unset': '未設定快捷鍵',
@@ -91,16 +90,27 @@
     'toast.subtitleRestored': '已還原原文字幕',
     'toast.subtitleNotAvailable': '本影片未提供 CC 字幕，無法翻譯字幕',
     'toast.modeChanged': '顯示模式已切換為「{desc}」，請按快速鍵重新翻譯以套用',
+    'toast.done': '翻譯完成（{total} 段）',
+    'toast.doneTruncated': '翻譯完成（{total} 段，另有 {truncated} 段因頁面過長被略過）',
+    'toast.donePartial': '已翻譯前 {total} 段（共 {all} 段）',
+    'toast.allCacheHit': '全部快取命中 · 本次未計費',
+    'toast.translateRemaining': '翻譯剩餘段落',
+    'toast.budgetWarningDetail': '翻譯仍可正常使用，但請留意用量。每日計數於太平洋時間午夜重置（約台灣時間下午 3 點）',
+    'toast.googleDone': 'Google 翻譯完成（{total} 段）',
+    'toast.googleDoneTruncated': 'Google 翻譯完成（{total} 段，另有 {truncated} 段因頁面過長被略過）',
+    'toast.googleFreeDetail': '{chars} 字元 · 免費',
+    'toast.rescanPartialFailed': '新內容翻譯部分失敗：{failed} / {total} 段',
+    'toast.rescanDone': '已翻譯 {done} 段新內容',
+    'toast.updateNoticeLink': 'v{version} 可下載 — 點此前往',
+    'toast.welcomeNotice.html': '<strong>已升級至 v{version}</strong> — 點工具列圖示看新功能',
+    'toast.elapsedSec': '{s} 秒',
+    'toast.elapsedMinSec': '{m} 分 {s} 秒',
+    'toast.autoTranslateLabel': '自動翻譯',
+    'toast.close': '關閉',
+    'toast.dismissToday': '今天不再提示',
+    'error.batchTimeout': '批次逾時（{s}s）',
 
     // ── lang 名稱（toast 動態插入「此頁面已是X」用）──────
-    'lang.zh-TW': '繁體中文',
-    'lang.zh-CN': '简体中文',
-    'lang.en': '英文',
-    'lang.ja': '日文',
-    'lang.ko': '韓文',
-    'lang.es': '西班牙文',
-    'lang.fr': '法文',
-    'lang.de': '德文',
 
     // ── options 共用 ─────────────────────────────────────
     'options.tab.settings': '一般設定',
@@ -112,7 +122,6 @@
     'options.tab.usage': '用量紀錄',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Shinkansen 設定',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">專案主頁</a>，功能介紹與使用說明請參考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新紀錄</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': '儲存設定',
@@ -271,11 +280,6 @@
     'options.gemini.pricing.flashLite.builtin': '內建 $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '內建 $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': '內建 $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Flash Lite {field} 覆蓋',
-    'options.gemini.pricing.flashAria': 'Flash {field} 覆蓋',
-    'options.gemini.pricing.proAria': 'Pro {field} 覆蓋',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
     'options.gemini.pricing.cachedDiscountHint.html': '三欄依序為 <strong>input / output 單價</strong>(USD/M tokens)與 <strong>cache 命中折扣</strong>(%，例：90 = 命中部分省 90%)。Gemini 2.5 起 implicit cache 預設 90% off',
 
     'options.gemini.partial.heading': '節省模式',
@@ -328,12 +332,12 @@
     'options.gemini.resetAllDone': '欄位已重設，請按「儲存設定」生效',
 
     // ── options Gemini cost-hint(動態 yt-prompt-cost-hint) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate 不會送 prompt</strong>，這兩個 toggle 對 Google MT 不適用。',
-    'options.gemini.cost.noPrice.html': '<strong>無法估算費用</strong>：請在對應的計價欄位設定 input 單價（USD / 1M tokens）。',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate 不會送 prompt</strong>，這兩個 toggle 對 Google MT 不適用',
+    'options.gemini.cost.noPrice.html': '<strong>無法估算費用</strong>：請在對應的計價欄位設定 input 單價（USD / 1M tokens）',
     'options.gemini.cost.estimateHeader.html': '<strong>token 開銷估算</strong>（以目前模型 <code>{model}</code> 計，input ${inputPrice}/1M tokens、30 分鐘影片約 60 批）：',
     'options.gemini.cost.estimateGlossary.html': '• 套用「固定術語表」（{count} 條）→ 每批 prompt +{tok} token，全片約 {usd}（cache 命中後 ~{usdCache}）',
     'options.gemini.cost.estimateForbidden.html': '• 套用「禁用詞清單」（{count} 條）→ 每批 prompt +{tok} token，全片約 {usd}（cache 命中後 ~{usdCache}）',
-    'options.gemini.cost.estimateFooter.html': '※ token 為粗估，實際以 Gemini tokenizer 為準。Gemini implicit cache 命中需 prompt prefix ≥1024 token 且穩定，命中部分 25% 計費。',
+    'options.gemini.cost.estimateFooter.html': '※ token 為粗估，實際以 Gemini tokenizer 為準。Gemini implicit cache 命中需 prompt prefix ≥1024 token 且穩定，命中部分 {pct}% 計費',
 
     // ── options 術語表分頁 ───────────────────────────────
     'options.glossary.fixed.heading': '固定術語表',
@@ -571,7 +575,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary：型別錯誤，已略過',
     'options.import.warningTransDocTemp': 'translateDoc.temperature：超出 0-2 範圍，已略過',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — PDF 文件翻譯 reader)──────────────────
     // index.html
@@ -691,7 +694,6 @@
     'doc.edit.btn.cancel': '取消',
     'doc.edit.btn.save': '儲存並重新產生文件',
     'doc.edit.find.placeholder': '搜尋譯文',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': '已取代 {n} 處',
     'doc.edit.find.btn.prev.title': '上一個 (Shift+Enter)',
     'doc.edit.find.btn.next.title': '下一個 (Enter)',
@@ -832,7 +834,6 @@
     'popup.status.subtitleToggleFailed': '状态：无法切换字幕翻译，请刷新页面',
     'popup.status.bilingualToggleFailed': '状态：无法切换双语对照',
     'popup.status.captionSizeFailed': '状态：无法调整字幕大小',
-    'popup.status.unknownError': '未知错误',
     'popup.shortcut.value': '{shortcut} 快捷键切换翻译',
     'popup.shortcut.iosTouch': '四指轻点切换翻译',
     'popup.shortcut.unset': '未设置快捷键',
@@ -862,16 +863,27 @@
     'toast.subtitleRestored': '已还原原文字幕',
     'toast.subtitleNotAvailable': '本视频未提供 CC 字幕，无法翻译字幕',
     'toast.modeChanged': '显示模式已切换为「{desc}」，请按快捷键重新翻译以应用',
+    'toast.done': '翻译完成（{total} 段）',
+    'toast.doneTruncated': '翻译完成（{total} 段，另有 {truncated} 段因页面过长被略过）',
+    'toast.donePartial': '已翻译前 {total} 段（共 {all} 段）',
+    'toast.allCacheHit': '全部缓存命中 · 本次未计费',
+    'toast.translateRemaining': '翻译剩余段落',
+    'toast.budgetWarningDetail': '翻译仍可正常使用，但请留意用量。每日计数于太平洋时间午夜重置（约北京时间下午 3 点）',
+    'toast.googleDone': 'Google 翻译完成（{total} 段）',
+    'toast.googleDoneTruncated': 'Google 翻译完成（{total} 段，另有 {truncated} 段因页面过长被略过）',
+    'toast.googleFreeDetail': '{chars} 字符 · 免费',
+    'toast.rescanPartialFailed': '新内容翻译部分失败：{failed} / {total} 段',
+    'toast.rescanDone': '已翻译 {done} 段新内容',
+    'toast.updateNoticeLink': 'v{version} 可下载 — 点此前往',
+    'toast.welcomeNotice.html': '<strong>已升级至 v{version}</strong> — 点工具栏图标看新功能',
+    'toast.elapsedSec': '{s} 秒',
+    'toast.elapsedMinSec': '{m} 分 {s} 秒',
+    'toast.autoTranslateLabel': '自动翻译',
+    'toast.close': '关闭',
+    'toast.dismissToday': '今天不再提示',
+    'error.batchTimeout': '批次超时（{s}s）',
 
     // ── lang 名稱 ──────────────────────────────────────────
-    'lang.zh-TW': '繁体中文',
-    'lang.zh-CN': '简体中文',
-    'lang.en': '英文',
-    'lang.ja': '日文',
-    'lang.ko': '韩文',
-    'lang.es': '西班牙文',
-    'lang.fr': '法文',
-    'lang.de': '德文',
 
     // ── options 共用 ─────────────────────────────────────
     'options.tab.settings': '常规设置',
@@ -883,7 +895,6 @@
     'options.tab.usage': '用量记录',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Shinkansen 设置',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW" target="_blank" rel="noopener">项目主页</a>，功能介绍与使用说明请参考 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html" target="_blank" rel="noopener">更新记录</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': '保存设置',
@@ -1042,11 +1053,6 @@
     'options.gemini.pricing.flashLite.builtin': '内置 $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '内置 $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': '内置 $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Flash Lite {field} 覆盖',
-    'options.gemini.pricing.flashAria': 'Flash {field} 覆盖',
-    'options.gemini.pricing.proAria': 'Pro {field} 覆盖',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
     'options.gemini.pricing.cachedDiscountHint.html': '三栏依次为 <strong>input / output 单价</strong>(USD/M tokens)与 <strong>cache 命中折扣</strong>(%，例：90 = 命中部分省 90%)。Gemini 2.5 起 implicit cache 默认 90% off',
 
     'options.gemini.partial.heading': '节省模式',
@@ -1099,12 +1105,12 @@
     'options.gemini.resetAllDone': '字段已重置，请按「保存设置」生效',
 
     // ── options Gemini cost-hint(动态 yt-prompt-cost-hint) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate 不会发送 prompt</strong>，这两个 toggle 对 Google MT 不适用。',
-    'options.gemini.cost.noPrice.html': '<strong>无法估算费用</strong>：请在对应的计价字段设置 input 单价（USD / 1M tokens）。',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate 不会发送 prompt</strong>，这两个 toggle 对 Google MT 不适用',
+    'options.gemini.cost.noPrice.html': '<strong>无法估算费用</strong>：请在对应的计价字段设置 input 单价（USD / 1M tokens）',
     'options.gemini.cost.estimateHeader.html': '<strong>token 开销估算</strong>（以当前模型 <code>{model}</code> 计，input ${inputPrice}/1M tokens、30 分钟视频约 60 批）：',
     'options.gemini.cost.estimateGlossary.html': '• 应用「固定术语表」（{count} 条）→ 每批 prompt +{tok} token，全片约 {usd}（cache 命中后 ~{usdCache}）',
     'options.gemini.cost.estimateForbidden.html': '• 应用「禁用词清单」（{count} 条）→ 每批 prompt +{tok} token，全片约 {usd}（cache 命中后 ~{usdCache}）',
-    'options.gemini.cost.estimateFooter.html': '※ token 为粗估，实际以 Gemini tokenizer 为准。Gemini implicit cache 命中需 prompt prefix ≥1024 token 且稳定，命中部分 25% 计费。',
+    'options.gemini.cost.estimateFooter.html': '※ token 为粗估，实际以 Gemini tokenizer 为准。Gemini implicit cache 命中需 prompt prefix ≥1024 token 且稳定，命中部分 {pct}% 计费',
 
     // ── options 术语表分页 ───────────────────────────────
     'options.glossary.fixed.heading': '固定术语表',
@@ -1342,7 +1348,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary：类型错误，已略过',
     'options.import.warningTransDocTemp': 'translateDoc.temperature：超出 0-2 范围，已略过',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — PDF 文档翻译 reader)──────────────────
     'doc.title': '翻译文档 — Shinkansen',
@@ -1461,7 +1466,6 @@
     'doc.edit.btn.cancel': '取消',
     'doc.edit.btn.save': '保存并重新生成文档',
     'doc.edit.find.placeholder': '搜索译文',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': '已替换 {n} 处',
     'doc.edit.find.btn.prev.title': '上一个 (Shift+Enter)',
     'doc.edit.find.btn.next.title': '下一个 (Enter)',
@@ -1601,7 +1605,6 @@
     'popup.status.subtitleToggleFailed': 'Status: cannot toggle subtitle translation, please reload page',
     'popup.status.bilingualToggleFailed': 'Status: cannot toggle bilingual mode',
     'popup.status.captionSizeFailed': 'Status: cannot change caption size',
-    'popup.status.unknownError': 'Unknown error',
     'popup.shortcut.value': '{shortcut} to toggle translation',
     'popup.shortcut.iosTouch': 'Four-finger tap to toggle translation',
     'popup.shortcut.unset': 'No shortcut set',
@@ -1631,16 +1634,27 @@
     'toast.subtitleRestored': 'Original subtitles restored',
     'toast.subtitleNotAvailable': 'This video has no CC subtitles available',
     'toast.modeChanged': 'Display mode switched to "{desc}", press shortcut to re-translate to apply',
+    'toast.done': 'Translation complete ({total} segments)',
+    'toast.doneTruncated': 'Translation complete ({total} segments; {truncated} more skipped because the page is too long)',
+    'toast.donePartial': 'Translated first {total} segments (of {all})',
+    'toast.allCacheHit': 'All cache hits · nothing billed this run',
+    'toast.translateRemaining': 'Translate the rest',
+    'toast.budgetWarningDetail': 'Translation still works; just watch your usage. The daily counter resets at midnight Pacific Time',
+    'toast.googleDone': 'Google translation complete ({total} segments)',
+    'toast.googleDoneTruncated': 'Google translation complete ({total} segments; {truncated} more skipped because the page is too long)',
+    'toast.googleFreeDetail': '{chars} characters · free',
+    'toast.rescanPartialFailed': 'New content translation partially failed: {failed} / {total} segments',
+    'toast.rescanDone': 'Translated {done} new segments',
+    'toast.updateNoticeLink': 'v{version} available — click to open',
+    'toast.welcomeNotice.html': '<strong>Upgraded to v{version}</strong> — click the toolbar icon to see what\'s new',
+    'toast.elapsedSec': '{s} s',
+    'toast.elapsedMinSec': '{m} min {s} s',
+    'toast.autoTranslateLabel': 'Auto-translate',
+    'toast.close': 'Close',
+    'toast.dismissToday': 'Don\'t remind me again today',
+    'error.batchTimeout': 'Batch timed out ({s}s)',
 
     // ── lang names ────────────────────────────────────────
-    'lang.zh-TW': 'Traditional Chinese',
-    'lang.zh-CN': 'Simplified Chinese',
-    'lang.en': 'English',
-    'lang.ja': 'Japanese',
-    'lang.ko': 'Korean',
-    'lang.es': 'Spanish',
-    'lang.fr': 'French',
-    'lang.de': 'German',
 
     // ── options shared ───────────────────────────────────
     'options.tab.settings': 'General',
@@ -1652,7 +1666,6 @@
     'options.tab.usage': 'Usage history',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Shinkansen settings',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=en" target="_blank" rel="noopener">Project home</a>. For features and usage, see the <a href="https://github.com/jimmysu0309/shinkansen/blob/main/README.en.md" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Release notes</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Save settings',
@@ -1811,11 +1824,6 @@
     'options.gemini.pricing.flashLite.builtin': 'Built-in $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Built-in $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': 'Built-in $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Flash Lite {field} override',
-    'options.gemini.pricing.flashAria': 'Flash {field} override',
-    'options.gemini.pricing.proAria': 'Pro {field} override',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
     'options.gemini.pricing.cachedDiscountHint.html': 'The three columns are <strong>input / output price</strong> (USD/M tokens) and <strong>cache-hit discount</strong> (%, e.g. 90 = cached portion saves 90%). Gemini 2.5+ implicit cache defaults to 90% off',
 
     'options.gemini.partial.heading': 'Save mode',
@@ -1868,12 +1876,12 @@
     'options.gemini.resetAllDone': 'Fields reset, click "Save settings" to apply',
 
     // ── options Gemini cost-hint (dynamic yt-prompt-cost-hint) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate sends no prompt</strong>; these two toggles do not apply to Google MT.',
-    'options.gemini.cost.noPrice.html': '<strong>Cannot estimate cost</strong>: please set the input unit price (USD / 1M tokens) in the corresponding pricing field.',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate sends no prompt</strong>; these two toggles do not apply to Google MT',
+    'options.gemini.cost.noPrice.html': '<strong>Cannot estimate cost</strong>: please set the input unit price (USD / 1M tokens) in the corresponding pricing field',
     'options.gemini.cost.estimateHeader.html': '<strong>Token cost estimate</strong> (using current model <code>{model}</code>, input ${inputPrice}/1M tokens, ~60 batches per 30-min video):',
     'options.gemini.cost.estimateGlossary.html': '• Applying "Fixed glossary" ({count} entries) → +{tok} token per batch prompt, ~{usd} per video (~{usdCache} after cache hit)',
     'options.gemini.cost.estimateForbidden.html': '• Applying "Forbidden terms" ({count} entries) → +{tok} token per batch prompt, ~{usd} per video (~{usdCache} after cache hit)',
-    'options.gemini.cost.estimateFooter.html': '※ Token is a rough estimate; actual count uses Gemini tokenizer. Gemini implicit cache hit requires a stable prompt prefix ≥1024 tokens; the matched portion is billed at 25%.',
+    'options.gemini.cost.estimateFooter.html': '※ Token is a rough estimate; actual count uses Gemini tokenizer. Gemini implicit cache hit requires a stable prompt prefix ≥1024 tokens; the matched portion is billed at {pct}%',
 
     // ── options glossary tab ─────────────────────────────
     'options.glossary.fixed.heading': 'Fixed glossary',
@@ -2111,7 +2119,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary: type error, skipped',
     'options.import.warningTransDocTemp': 'translateDoc.temperature: out of 0-2 range, skipped',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — PDF document translation reader)──────────
     'doc.title': 'Translate Document — Shinkansen',
@@ -2230,7 +2237,6 @@
     'doc.edit.btn.cancel': 'Cancel',
     'doc.edit.btn.save': 'Save and regenerate',
     'doc.edit.find.placeholder': 'Search translation',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': 'Replaced {n}',
     'doc.edit.find.btn.prev.title': 'Previous (Shift+Enter)',
     'doc.edit.find.btn.next.title': 'Next (Enter)',
@@ -2370,7 +2376,6 @@
     'popup.status.subtitleToggleFailed': 'ステータス：字幕翻訳を切り替えできません。ページを再読み込みしてください',
     'popup.status.bilingualToggleFailed': 'ステータス：対訳表示を切り替えできません',
     'popup.status.captionSizeFailed': 'ステータス：字幕サイズを変更できません',
-    'popup.status.unknownError': '不明なエラー',
     'popup.shortcut.value': '{shortcut} で翻訳を切り替え',
     'popup.shortcut.iosTouch': '4 本指タップで翻訳を切り替え',
     'popup.shortcut.unset': 'ショートカット未設定',
@@ -2400,16 +2405,27 @@
     'toast.subtitleRestored': '字幕の原文を復元しました',
     'toast.subtitleNotAvailable': 'この動画には CC 字幕が提供されていません',
     'toast.modeChanged': '表示モードを「{desc}」に変更しました。ショートカットで再翻訳して反映してください',
+    'toast.done': '翻訳完了（{total} 段落）',
+    'toast.doneTruncated': '翻訳完了（{total} 段落、ほか {truncated} 段落はページが長すぎるためスキップ）',
+    'toast.donePartial': '先頭 {total} 段落を翻訳済み（全 {all} 段落）',
+    'toast.allCacheHit': 'すべてキャッシュヒット · 今回は課金なし',
+    'toast.translateRemaining': '残りを翻訳',
+    'toast.budgetWarningDetail': '翻訳は引き続き利用できますが、使用量にご注意ください。日次カウントは太平洋時間の午前 0 時にリセットされます',
+    'toast.googleDone': 'Google 翻訳完了（{total} 段落）',
+    'toast.googleDoneTruncated': 'Google 翻訳完了（{total} 段落、ほか {truncated} 段落はページが長すぎるためスキップ）',
+    'toast.googleFreeDetail': '{chars} 文字 · 無料',
+    'toast.rescanPartialFailed': '新しいコンテンツの翻訳が一部失敗：{failed} / {total} 段落',
+    'toast.rescanDone': '新しいコンテンツ {done} 段落を翻訳しました',
+    'toast.updateNoticeLink': 'v{version} が利用可能 — ここをクリック',
+    'toast.welcomeNotice.html': '<strong>v{version} にアップグレードしました</strong> — ツールバーアイコンで新機能を確認',
+    'toast.elapsedSec': '{s} 秒',
+    'toast.elapsedMinSec': '{m} 分 {s} 秒',
+    'toast.autoTranslateLabel': '自動翻訳',
+    'toast.close': '閉じる',
+    'toast.dismissToday': '今日は再表示しない',
+    'error.batchTimeout': 'バッチがタイムアウトしました（{s} 秒）',
 
     // ── lang 名称（toast 動的挿入「このページは既に X」用）──────
-    'lang.zh-TW': '繁体字中国語',
-    'lang.zh-CN': '簡体字中国語',
-    'lang.en': '英語',
-    'lang.ja': '日本語',
-    'lang.ko': '韓国語',
-    'lang.es': 'スペイン語',
-    'lang.fr': 'フランス語',
-    'lang.de': 'ドイツ語',
 
     // ── options 共通 ─────────────────────────────────────
     'options.tab.settings': '一般設定',
@@ -2421,7 +2437,6 @@
     'options.tab.usage': '使用量履歴',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Shinkansen 設定',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ja" target="_blank" rel="noopener">プロジェクトサイト</a>、機能紹介と使い方は <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">リリースノート</a> · <span id="options-version" class="options-version"></span> をご覧ください',
 
     'options.action.save': '設定を保存',
@@ -2580,11 +2595,6 @@
     'options.gemini.pricing.flashLite.builtin': '組み込み $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '組み込み $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': '組み込み $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Flash Lite {field} 上書き',
-    'options.gemini.pricing.flashAria': 'Flash {field} 上書き',
-    'options.gemini.pricing.proAria': 'Pro {field} 上書き',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
     'options.gemini.pricing.cachedDiscountHint.html': '3 つの列は順に <strong>input / output 単価</strong>（USD/M tokens）と <strong>cache ヒット割引</strong>（%、例：90 = ヒット部分は 90% 節約）。Gemini 2.5 以降、implicit cache はデフォルト 90% off',
 
     'options.gemini.partial.heading': '節約モード',
@@ -2637,12 +2647,12 @@
     'options.gemini.resetAllDone': 'フィールドをリセットしました。「設定を保存」を押して反映してください',
 
     // ── options Gemini cost-hint(動的 yt-prompt-cost-hint) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate はプロンプトを送信しません</strong>。これら 2 つのトグルは Google MT には適用されません。',
-    'options.gemini.cost.noPrice.html': '<strong>コスト推定不可</strong>：対応する料金フィールドで input 単価（USD / 1M tokens）を設定してください。',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate はプロンプトを送信しません</strong>。これら 2 つのトグルは Google MT には適用されません',
+    'options.gemini.cost.noPrice.html': '<strong>コスト推定不可</strong>：対応する料金フィールドで input 単価（USD / 1M tokens）を設定してください',
     'options.gemini.cost.estimateHeader.html': '<strong>token コスト推定</strong>（現在のモデル <code>{model}</code> 基準、input ${inputPrice}/1M tokens、30 分動画で約 60 バッチ）：',
     'options.gemini.cost.estimateGlossary.html': '• 「固定用語集」適用（{count} 件）→ 1 バッチあたり prompt +{tok} token、全動画で約 {usd}（cache ヒット後 ~{usdCache}）',
     'options.gemini.cost.estimateForbidden.html': '• 「禁止語リスト」適用（{count} 件）→ 1 バッチあたり prompt +{tok} token、全動画で約 {usd}（cache ヒット後 ~{usdCache}）',
-    'options.gemini.cost.estimateFooter.html': '※ token は概算で、実際は Gemini tokenizer に依存します。Gemini implicit cache のヒットには prompt prefix が ≥1024 token かつ安定している必要があり、ヒット部分は 25% で課金されます。',
+    'options.gemini.cost.estimateFooter.html': '※ token は概算で、実際は Gemini tokenizer に依存します。Gemini implicit cache のヒットには prompt prefix が ≥1024 token かつ安定している必要があり、ヒット部分は {pct}% で課金されます',
 
     // ── options 用語集タブ ───────────────────────────────
     'options.glossary.fixed.heading': '固定用語集',
@@ -2880,7 +2890,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary：型エラー、スキップしました',
     'options.import.warningTransDocTemp': 'translateDoc.temperature：0–2 範囲外、スキップしました',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — PDF 文書翻訳 reader)──────────────────
     'doc.title': '文書を翻訳 — Shinkansen',
@@ -2999,7 +3008,6 @@
     'doc.edit.btn.cancel': 'キャンセル',
     'doc.edit.btn.save': '保存して再生成',
     'doc.edit.find.placeholder': '訳文を検索',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': '{n} 箇所置換しました',
     'doc.edit.find.btn.prev.title': '前へ (Shift+Enter)',
     'doc.edit.find.btn.next.title': '次へ (Enter)',
@@ -3139,7 +3147,6 @@
     'popup.status.subtitleToggleFailed': '상태: 자막 번역을 전환할 수 없습니다. 페이지를 새로고침하세요',
     'popup.status.bilingualToggleFailed': '상태: 대역 표시를 전환할 수 없음',
     'popup.status.captionSizeFailed': '상태: 자막 크기를 변경할 수 없음',
-    'popup.status.unknownError': '알 수 없는 오류',
     'popup.shortcut.value': '{shortcut} 번역 전환',
     'popup.shortcut.iosTouch': '네 손가락 탭으로 번역 전환',
     'popup.shortcut.unset': '단축키 미설정',
@@ -3169,16 +3176,27 @@
     'toast.subtitleRestored': '원문 자막 복원됨',
     'toast.subtitleNotAvailable': '이 영상에는 CC 자막이 제공되지 않습니다',
     'toast.modeChanged': '표시 모드가 "{desc}"(으)로 변경되었습니다. 단축키로 다시 번역하여 적용하세요',
+    'toast.done': '번역 완료 ({total}개 단락)',
+    'toast.doneTruncated': '번역 완료 ({total}개 단락, 페이지가 너무 길어 {truncated}개 단락은 건너뜀)',
+    'toast.donePartial': '앞 {total}개 단락 번역됨 (전체 {all}개)',
+    'toast.allCacheHit': '모두 캐시 적중 · 이번에는 과금 없음',
+    'toast.translateRemaining': '나머지 번역',
+    'toast.budgetWarningDetail': '번역은 계속 사용할 수 있지만 사용량에 유의하세요. 일일 카운트는 태평양 시간 자정에 재설정됩니다',
+    'toast.googleDone': 'Google 번역 완료 ({total}개 단락)',
+    'toast.googleDoneTruncated': 'Google 번역 완료 ({total}개 단락, 페이지가 너무 길어 {truncated}개 단락은 건너뜀)',
+    'toast.googleFreeDetail': '{chars}자 · 무료',
+    'toast.rescanPartialFailed': '새 콘텐츠 번역 일부 실패: {failed} / {total} 단락',
+    'toast.rescanDone': '새 콘텐츠 {done}개 단락 번역됨',
+    'toast.updateNoticeLink': 'v{version} 다운로드 가능 — 여기를 클릭',
+    'toast.welcomeNotice.html': '<strong>v{version}(으)로 업그레이드됨</strong> — 툴바 아이콘에서 새 기능 확인',
+    'toast.elapsedSec': '{s}초',
+    'toast.elapsedMinSec': '{m}분 {s}초',
+    'toast.autoTranslateLabel': '자동 번역',
+    'toast.close': '닫기',
+    'toast.dismissToday': '오늘은 다시 표시하지 않음',
+    'error.batchTimeout': '배치 시간 초과 ({s}초)',
 
     // ── lang 이름 (toast 동적 삽입 "이 페이지는 이미 X" 용) ──────
-    'lang.zh-TW': '번체 중국어',
-    'lang.zh-CN': '간체 중국어',
-    'lang.en': '영어',
-    'lang.ja': '일본어',
-    'lang.ko': '한국어',
-    'lang.es': '스페인어',
-    'lang.fr': '프랑스어',
-    'lang.de': '독일어',
 
     // ── options 공용 ─────────────────────────────────────
     'options.tab.settings': '일반 설정',
@@ -3190,7 +3208,6 @@
     'options.tab.usage': '사용 기록',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Shinkansen 설정',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=ko" target="_blank" rel="noopener">프로젝트 홈페이지</a>, 기능 소개와 사용 방법은 <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">릴리스 노트</a> · <span id="options-version" class="options-version"></span>를 참조하세요',
 
     'options.action.save': '설정 저장',
@@ -3349,11 +3366,6 @@
     'options.gemini.pricing.flashLite.builtin': '내장 $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': '내장 $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': '내장 $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Flash Lite {field} 덮어쓰기',
-    'options.gemini.pricing.flashAria': 'Flash {field} 덮어쓰기',
-    'options.gemini.pricing.proAria': 'Pro {field} 덮어쓰기',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
     'options.gemini.pricing.cachedDiscountHint.html': '세 열은 차례대로 <strong>input / output 단가</strong>(USD/M tokens)와 <strong>cache 적중 할인</strong>(%, 예: 90 = 적중 부분 90% 절약)입니다. Gemini 2.5부터 implicit cache 기본 90% off',
 
     'options.gemini.partial.heading': '절약 모드',
@@ -3406,12 +3418,12 @@
     'options.gemini.resetAllDone': '필드가 재설정되었습니다. "설정 저장"을 눌러 적용하세요',
 
     // ── options Gemini cost-hint(동적 yt-prompt-cost-hint) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate는 prompt를 보내지 않습니다</strong>. 이 두 토글은 Google MT에 적용되지 않습니다.',
-    'options.gemini.cost.noPrice.html': '<strong>비용 추정 불가</strong>: 해당 가격 필드에서 input 단가 (USD / 1M tokens)를 설정하세요.',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate는 prompt를 보내지 않습니다</strong>. 이 두 토글은 Google MT에 적용되지 않습니다',
+    'options.gemini.cost.noPrice.html': '<strong>비용 추정 불가</strong>: 해당 가격 필드에서 input 단가 (USD / 1M tokens)를 설정하세요',
     'options.gemini.cost.estimateHeader.html': '<strong>token 비용 추정</strong> (현재 모델 <code>{model}</code> 기준, input ${inputPrice}/1M tokens, 30분 동영상 약 60 배치):',
     'options.gemini.cost.estimateGlossary.html': '• "고정 용어집" 적용 ({count}개) → 배치당 prompt +{tok} token, 전체 동영상 약 {usd} (cache 적중 후 ~{usdCache})',
     'options.gemini.cost.estimateForbidden.html': '• "금지어 목록" 적용 ({count}개) → 배치당 prompt +{tok} token, 전체 동영상 약 {usd} (cache 적중 후 ~{usdCache})',
-    'options.gemini.cost.estimateFooter.html': '※ token은 대략적인 추정이며 실제는 Gemini tokenizer를 따릅니다. Gemini implicit cache 적중에는 prompt prefix가 ≥1024 token이고 안정적이어야 하며, 적중 부분은 25%로 과금됩니다.',
+    'options.gemini.cost.estimateFooter.html': '※ token은 대략적인 추정이며 실제는 Gemini tokenizer를 따릅니다. Gemini implicit cache 적중에는 prompt prefix가 ≥1024 token이고 안정적이어야 하며, 적중 부분은 {pct}%로 과금됩니다',
 
     // ── options 용어집 탭 ───────────────────────────────
     'options.glossary.fixed.heading': '고정 용어집',
@@ -3649,7 +3661,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary: 타입 오류, 건너뛰어짐',
     'options.import.warningTransDocTemp': 'translateDoc.temperature: 0–2 범위 초과, 건너뛰어짐',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — PDF 문서 번역 reader)──────────────────
     'doc.title': '문서 번역 — Shinkansen',
@@ -3768,7 +3779,6 @@
     'doc.edit.btn.cancel': '취소',
     'doc.edit.btn.save': '저장 후 재생성',
     'doc.edit.find.placeholder': '번역 검색',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': '{n} 항목 바뀜',
     'doc.edit.find.btn.prev.title': '이전 (Shift+Enter)',
     'doc.edit.find.btn.next.title': '다음 (Enter)',
@@ -3907,7 +3917,6 @@
     'popup.status.subtitleToggleFailed': 'Estado: no se pueden alternar los subtítulos, recarga la página',
     'popup.status.bilingualToggleFailed': 'Estado: no se puede alternar el modo bilingüe',
     'popup.status.captionSizeFailed': 'Estado: no se puede cambiar el tamaño de subtítulos',
-    'popup.status.unknownError': 'Error desconocido',
     'popup.shortcut.value': '{shortcut} para alternar la traducción',
     'popup.shortcut.iosTouch': 'Toque con cuatro dedos para alternar la traducción',
     'popup.shortcut.unset': 'Sin atajo asignado',
@@ -3937,16 +3946,27 @@
     'toast.subtitleRestored': 'Subtítulos originales restaurados',
     'toast.subtitleNotAvailable': 'Este vídeo no tiene subtítulos CC disponibles',
     'toast.modeChanged': 'Modo de visualización cambiado a "{desc}", pulsa el atajo para volver a traducir y aplicarlo',
+    'toast.done': 'Traducción completada ({total} segmentos)',
+    'toast.doneTruncated': 'Traducción completada ({total} segmentos; {truncated} más omitidos porque la página es demasiado larga)',
+    'toast.donePartial': 'Traducidos los primeros {total} segmentos (de {all})',
+    'toast.allCacheHit': 'Todo desde caché · nada facturado esta vez',
+    'toast.translateRemaining': 'Traducir el resto',
+    'toast.budgetWarningDetail': 'La traducción sigue funcionando; vigila tu uso. El contador diario se restablece a medianoche, hora del Pacífico',
+    'toast.googleDone': 'Traducción de Google completada ({total} segmentos)',
+    'toast.googleDoneTruncated': 'Traducción de Google completada ({total} segmentos; {truncated} más omitidos porque la página es demasiado larga)',
+    'toast.googleFreeDetail': '{chars} caracteres · gratis',
+    'toast.rescanPartialFailed': 'Traducción del contenido nuevo parcialmente fallida: {failed} / {total} segmentos',
+    'toast.rescanDone': '{done} segmentos nuevos traducidos',
+    'toast.updateNoticeLink': 'v{version} disponible — haz clic aquí',
+    'toast.welcomeNotice.html': '<strong>Actualizado a v{version}</strong> — haz clic en el icono de la barra de herramientas para ver las novedades',
+    'toast.elapsedSec': '{s} s',
+    'toast.elapsedMinSec': '{m} min {s} s',
+    'toast.autoTranslateLabel': 'Traducción automática',
+    'toast.close': 'Cerrar',
+    'toast.dismissToday': 'No recordar más por hoy',
+    'error.batchTimeout': 'El lote agotó el tiempo ({s} s)',
 
     // ── nombre de idioma (inserción dinámica en toast "Esta página ya está en X") ──────
-    'lang.zh-TW': 'chino tradicional',
-    'lang.zh-CN': 'chino simplificado',
-    'lang.en': 'inglés',
-    'lang.ja': 'japonés',
-    'lang.ko': 'coreano',
-    'lang.es': 'español',
-    'lang.fr': 'francés',
-    'lang.de': 'alemán',
 
     // ── options común ─────────────────────────────────────
     'options.tab.settings': 'General',
@@ -3958,7 +3978,6 @@
     'options.tab.usage': 'Historial de uso',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Ajustes de Shinkansen',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=es" target="_blank" rel="noopener">Página del proyecto</a>; para descripción de funciones e instrucciones de uso consulta el <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notas de la versión</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Guardar ajustes',
@@ -4117,11 +4136,6 @@
     'options.gemini.pricing.flashLite.builtin': 'Integrado $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Integrado $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': 'Integrado $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Sobrescribir Flash Lite {field}',
-    'options.gemini.pricing.flashAria': 'Sobrescribir Flash {field}',
-    'options.gemini.pricing.proAria': 'Sobrescribir Pro {field}',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
     'options.gemini.pricing.cachedDiscountHint.html': 'Las tres columnas son <strong>precio input / output</strong> (USD/M tokens) y <strong>descuento de cache hit</strong> (%, ej.: 90 = la parte cacheada ahorra 90%). Desde Gemini 2.5, la implicit cache es por defecto 90% off',
 
     'options.gemini.partial.heading': 'Modo ahorro',
@@ -4174,12 +4188,12 @@
     'options.gemini.resetAllDone': 'Campos restablecidos, pulsa "Guardar ajustes" para aplicar',
 
     // ── options Gemini cost-hint (yt-prompt-cost-hint dinámico) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate no envía prompt</strong>; estos dos toggles no se aplican a Google MT.',
-    'options.gemini.cost.noPrice.html': '<strong>No se puede estimar el coste</strong>: configura el precio de input (USD / 1M tokens) en el campo correspondiente.',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate no envía prompt</strong>; estos dos toggles no se aplican a Google MT',
+    'options.gemini.cost.noPrice.html': '<strong>No se puede estimar el coste</strong>: configura el precio de input (USD / 1M tokens) en el campo correspondiente',
     'options.gemini.cost.estimateHeader.html': '<strong>Estimación de coste de tokens</strong> (basado en el modelo actual <code>{model}</code>, input ${inputPrice}/1M tokens; un vídeo de 30 minutos ~60 lotes):',
     'options.gemini.cost.estimateGlossary.html': '• Aplicar "glosario fijo" ({count} entradas) → +{tok} tokens por lote en el prompt, ~{usd} para todo el vídeo (tras cache hit ~{usdCache})',
     'options.gemini.cost.estimateForbidden.html': '• Aplicar "lista de prohibidas" ({count} entradas) → +{tok} tokens por lote en el prompt, ~{usd} para todo el vídeo (tras cache hit ~{usdCache})',
-    'options.gemini.cost.estimateFooter.html': '※ Los tokens son una estimación aproximada; el cálculo real lo hace el tokenizer de Gemini. Para un acierto de implicit cache de Gemini, el prefijo del prompt debe ser ≥1024 tokens y estable; la parte acertada se factura al 25%.',
+    'options.gemini.cost.estimateFooter.html': '※ Los tokens son una estimación aproximada; el cálculo real lo hace el tokenizer de Gemini. Para un acierto de implicit cache de Gemini, el prefijo del prompt debe ser ≥1024 tokens y estable; la parte acertada se factura al {pct}%',
 
     // ── options pestaña glosario ───────────────────────────────
     'options.glossary.fixed.heading': 'Glosario fijo',
@@ -4417,7 +4431,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary: error de tipo, omitido',
     'options.import.warningTransDocTemp': 'translateDoc.temperature: fuera del rango 0–2, omitido',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — Lector de traducción de PDF)──────────
     'doc.title': 'Traducir Documento — Shinkansen',
@@ -4536,7 +4549,6 @@
     'doc.edit.btn.cancel': 'Cancelar',
     'doc.edit.btn.save': 'Guardar y regenerar',
     'doc.edit.find.placeholder': 'Buscar traducción',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': '{n} reemplazado(s)',
     'doc.edit.find.btn.prev.title': 'Anterior (Shift+Enter)',
     'doc.edit.find.btn.next.title': 'Siguiente (Enter)',
@@ -4675,7 +4687,6 @@
     'popup.status.subtitleToggleFailed': 'État : impossible de basculer les sous-titres, rechargez la page',
     'popup.status.bilingualToggleFailed': 'État : impossible de basculer le mode bilingue',
     'popup.status.captionSizeFailed': 'État : impossible de modifier la taille des sous-titres',
-    'popup.status.unknownError': 'Erreur inconnue',
     'popup.shortcut.value': '{shortcut} pour basculer la traduction',
     'popup.shortcut.iosTouch': 'Touchez avec quatre doigts pour basculer la traduction',
     'popup.shortcut.unset': 'Aucun raccourci défini',
@@ -4705,16 +4716,27 @@
     'toast.subtitleRestored': 'Sous-titres originaux restaurés',
     'toast.subtitleNotAvailable': 'Cette vidéo n\'a pas de sous-titres CC disponibles',
     'toast.modeChanged': 'Mode d\'affichage changé en « {desc} », appuyez sur le raccourci pour retraduire et appliquer',
+    'toast.done': 'Traduction terminée ({total} segments)',
+    'toast.doneTruncated': 'Traduction terminée ({total} segments ; {truncated} de plus ignorés car la page est trop longue)',
+    'toast.donePartial': 'Premiers {total} segments traduits (sur {all})',
+    'toast.allCacheHit': 'Tout depuis le cache · rien de facturé cette fois',
+    'toast.translateRemaining': 'Traduire le reste',
+    'toast.budgetWarningDetail': 'La traduction reste utilisable ; surveillez votre consommation. Le compteur quotidien est réinitialisé à minuit, heure du Pacifique',
+    'toast.googleDone': 'Traduction Google terminée ({total} segments)',
+    'toast.googleDoneTruncated': 'Traduction Google terminée ({total} segments ; {truncated} de plus ignorés car la page est trop longue)',
+    'toast.googleFreeDetail': '{chars} caractères · gratuit',
+    'toast.rescanPartialFailed': 'Traduction du nouveau contenu partiellement échouée : {failed} / {total} segments',
+    'toast.rescanDone': '{done} nouveaux segments traduits',
+    'toast.updateNoticeLink': 'v{version} disponible — cliquez ici',
+    'toast.welcomeNotice.html': '<strong>Mis à jour vers v{version}</strong> — cliquez sur l\'icône de la barre d\'outils pour voir les nouveautés',
+    'toast.elapsedSec': '{s} s',
+    'toast.elapsedMinSec': '{m} min {s} s',
+    'toast.autoTranslateLabel': 'Traduction automatique',
+    'toast.close': 'Fermer',
+    'toast.dismissToday': 'Ne plus rappeler aujourd\'hui',
+    'error.batchTimeout': 'Délai du lot dépassé ({s} s)',
 
     // ── nom de langue (insertion dynamique « Cette page est déjà en X » dans le toast) ──────
-    'lang.zh-TW': 'chinois traditionnel',
-    'lang.zh-CN': 'chinois simplifié',
-    'lang.en': 'anglais',
-    'lang.ja': 'japonais',
-    'lang.ko': 'coréen',
-    'lang.es': 'espagnol',
-    'lang.fr': 'français',
-    'lang.de': 'allemand',
 
     // ── options commun ─────────────────────────────────────
     'options.tab.settings': 'Général',
@@ -4726,7 +4748,6 @@
     'options.tab.usage': 'Historique d\'utilisation',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Paramètres de Shinkansen',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=fr" target="_blank" rel="noopener">Page du projet</a> ; pour la présentation des fonctionnalités et le mode d\'emploi, consultez le <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Notes de version</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Enregistrer les paramètres',
@@ -4885,11 +4906,6 @@
     'options.gemini.pricing.flashLite.builtin': 'Intégré $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Intégré $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': 'Intégré $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Surcharger Flash Lite {field}',
-    'options.gemini.pricing.flashAria': 'Surcharger Flash {field}',
-    'options.gemini.pricing.proAria': 'Surcharger Pro {field}',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
     'options.gemini.pricing.cachedDiscountHint.html': 'Les trois colonnes sont, dans l\'ordre, <strong>tarif input / output</strong> (USD/M tokens) et <strong>remise sur cache hit</strong> (%, ex. : 90 = la portion en cache économise 90%). Depuis Gemini 2.5, l\'implicit cache est par défaut à 90% off',
 
     'options.gemini.partial.heading': 'Mode économie',
@@ -4942,12 +4958,12 @@
     'options.gemini.resetAllDone': 'Champs réinitialisés, cliquez sur « Enregistrer les paramètres » pour appliquer',
 
     // ── options Gemini cost-hint (yt-prompt-cost-hint dynamique) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate n\'envoie pas de prompt</strong> ; ces deux toggles ne s\'appliquent pas à Google MT.',
-    'options.gemini.cost.noPrice.html': '<strong>Estimation de coût impossible</strong> : configurez le tarif d\'input (USD / 1M tokens) dans le champ correspondant.',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate n\'envoie pas de prompt</strong> ; ces deux toggles ne s\'appliquent pas à Google MT',
+    'options.gemini.cost.noPrice.html': '<strong>Estimation de coût impossible</strong> : configurez le tarif d\'input (USD / 1M tokens) dans le champ correspondant',
     'options.gemini.cost.estimateHeader.html': '<strong>Estimation du coût en tokens</strong> (basée sur le modèle actuel <code>{model}</code>, input ${inputPrice}/1M tokens, vidéo de 30 min ≈ 60 lots) :',
     'options.gemini.cost.estimateGlossary.html': '• Application du « glossaire fixe » ({count} entrées) → +{tok} tokens par lot dans le prompt, ≈ {usd} pour la vidéo entière (après cache hit ≈ {usdCache})',
     'options.gemini.cost.estimateForbidden.html': '• Application de la « liste de mots interdits » ({count} entrées) → +{tok} tokens par lot dans le prompt, ≈ {usd} pour la vidéo entière (après cache hit ≈ {usdCache})',
-    'options.gemini.cost.estimateFooter.html': '※ Les tokens sont des estimations approximatives, le calcul réel dépend du tokenizer Gemini. Le hit du implicit cache de Gemini nécessite un préfixe de prompt ≥ 1024 tokens et stable ; la partie hit est facturée à 25 %.',
+    'options.gemini.cost.estimateFooter.html': '※ Les tokens sont des estimations approximatives, le calcul réel dépend du tokenizer Gemini. Le hit du implicit cache de Gemini nécessite un préfixe de prompt ≥ 1024 tokens et stable ; la partie hit est facturée à {pct} %',
 
     // ── options onglet glossaire ───────────────────────────────
     'options.glossary.fixed.heading': 'Glossaire fixe',
@@ -5185,7 +5201,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary : erreur de type, ignoré',
     'options.import.warningTransDocTemp': 'translateDoc.temperature : hors de la plage 0–2, ignoré',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — Lecteur de traduction PDF)──────────────
     'doc.title': 'Traduire le document — Shinkansen',
@@ -5304,7 +5319,6 @@
     'doc.edit.btn.cancel': 'Annuler',
     'doc.edit.btn.save': 'Enregistrer et régénérer',
     'doc.edit.find.placeholder': 'Rechercher dans la traduction',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': '{n} remplacement(s)',
     'doc.edit.find.btn.prev.title': 'Précédent (Shift+Entrée)',
     'doc.edit.find.btn.next.title': 'Suivant (Entrée)',
@@ -5443,7 +5457,6 @@
     'popup.status.subtitleToggleFailed': 'Status: Untertitel-Übersetzung kann nicht umgeschaltet werden, bitte Seite neu laden',
     'popup.status.bilingualToggleFailed': 'Status: Zweisprachiger Modus kann nicht umgeschaltet werden',
     'popup.status.captionSizeFailed': 'Status: Untertitelgröße kann nicht geändert werden',
-    'popup.status.unknownError': 'Unbekannter Fehler',
     'popup.shortcut.value': '{shortcut} zum Umschalten der Übersetzung',
     'popup.shortcut.iosTouch': 'Vier-Finger-Tipp zum Umschalten der Übersetzung',
     'popup.shortcut.unset': 'Kein Tastenkürzel festgelegt',
@@ -5473,16 +5486,27 @@
     'toast.subtitleRestored': 'Original-Untertitel wiederhergestellt',
     'toast.subtitleNotAvailable': 'Für dieses Video sind keine CC-Untertitel verfügbar',
     'toast.modeChanged': 'Anzeigemodus geändert zu „{desc}", drücke das Tastenkürzel zum erneuten Übersetzen',
+    'toast.done': 'Übersetzung abgeschlossen ({total} Segmente)',
+    'toast.doneTruncated': 'Übersetzung abgeschlossen ({total} Segmente; {truncated} weitere übersprungen, da die Seite zu lang ist)',
+    'toast.donePartial': 'Erste {total} Segmente übersetzt (von {all})',
+    'toast.allCacheHit': 'Alles aus dem Cache · diesmal nichts berechnet',
+    'toast.translateRemaining': 'Rest übersetzen',
+    'toast.budgetWarningDetail': 'Die Übersetzung funktioniert weiterhin; achte auf deinen Verbrauch. Der Tageszähler wird um Mitternacht Pacific Time zurückgesetzt',
+    'toast.googleDone': 'Google-Übersetzung abgeschlossen ({total} Segmente)',
+    'toast.googleDoneTruncated': 'Google-Übersetzung abgeschlossen ({total} Segmente; {truncated} weitere übersprungen, da die Seite zu lang ist)',
+    'toast.googleFreeDetail': '{chars} Zeichen · kostenlos',
+    'toast.rescanPartialFailed': 'Übersetzung neuer Inhalte teilweise fehlgeschlagen: {failed} / {total} Segmente',
+    'toast.rescanDone': '{done} neue Segmente übersetzt',
+    'toast.updateNoticeLink': 'v{version} verfügbar — hier klicken',
+    'toast.welcomeNotice.html': '<strong>Auf v{version} aktualisiert</strong> — klicke auf das Toolbar-Symbol für die Neuerungen',
+    'toast.elapsedSec': '{s} s',
+    'toast.elapsedMinSec': '{m} min {s} s',
+    'toast.autoTranslateLabel': 'Automatische Übersetzung',
+    'toast.close': 'Schließen',
+    'toast.dismissToday': 'Heute nicht mehr erinnern',
+    'error.batchTimeout': 'Batch-Zeitüberschreitung ({s} s)',
 
     // ── Sprachname (dynamisch in toast „Diese Seite ist bereits auf X" eingefügt) ──────
-    'lang.zh-TW': 'Traditionelles Chinesisch',
-    'lang.zh-CN': 'Vereinfachtes Chinesisch',
-    'lang.en': 'Englisch',
-    'lang.ja': 'Japanisch',
-    'lang.ko': 'Koreanisch',
-    'lang.es': 'Spanisch',
-    'lang.fr': 'Französisch',
-    'lang.de': 'Deutsch',
 
     // ── options allgemein ─────────────────────────────────────
     'options.tab.settings': 'Allgemein',
@@ -5494,7 +5518,6 @@
     'options.tab.usage': 'Nutzungsverlauf',
     'options.tab.log': 'Debug',
 
-    'options.title': 'Shinkansen-Einstellungen',
     'options.intro.html': '<a href="https://jimmysu0309.github.io/shinkansen/?lang=de" target="_blank" rel="noopener">Projektseite</a>; Funktionsbeschreibung und Anleitung siehe <a href="https://github.com/jimmysu0309/shinkansen#readme" target="_blank" rel="noopener">README</a> · <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html" target="_blank" rel="noopener">Versionshinweise</a> · <span id="options-version" class="options-version"></span>',
 
     'options.action.save': 'Einstellungen speichern',
@@ -5653,12 +5676,7 @@
     'options.gemini.pricing.flashLite.builtin': 'Eingebaut $0.25 / $1.50',
     'options.gemini.pricing.flash.builtin': 'Eingebaut $0.50 / $3.00',
     'options.gemini.pricing.pro.builtin': 'Eingebaut $1.50 / $9.00',
-    'options.gemini.pricing.flashLiteAria': 'Flash Lite {field} überschreiben',
-    'options.gemini.pricing.flashAria': 'Flash {field} überschreiben',
-    'options.gemini.pricing.proAria': 'Pro {field} überschreiben',
     'options.gemini.pricing.cachedDiscountHint.html': 'Die drei Spalten sind <strong>Input- / Output-Preis</strong> (USD/M Tokens) und <strong>Cache-Hit-Rabatt</strong> (%, z. B. 90 = der gecachte Anteil spart 90%). Ab Gemini 2.5 hat Implicit Cache standardmäßig 90% off',
-    'options.gemini.pricing.fieldInput': 'input',
-    'options.gemini.pricing.fieldOutput': 'output',
 
     'options.gemini.partial.heading': 'Sparmodus',
     'options.gemini.partial.toggle': 'Nur den Anfang des Artikels übersetzen',
@@ -5710,12 +5728,12 @@
     'options.gemini.resetAllDone': 'Felder zurückgesetzt, klicke „Einstellungen speichern", um sie zu übernehmen',
 
     // ── options Gemini cost-hint (dynamisches yt-prompt-cost-hint) ─
-    'options.gemini.cost.googleHint.html': '<strong>Google Translate sendet keinen Prompt</strong>; diese beiden Toggles gelten nicht für Google MT.',
-    'options.gemini.cost.noPrice.html': '<strong>Kostenschätzung nicht möglich</strong>: Bitte den Input-Preis (USD / 1M Tokens) im entsprechenden Preisfeld festlegen.',
+    'options.gemini.cost.googleHint.html': '<strong>Google Translate sendet keinen Prompt</strong>; diese beiden Toggles gelten nicht für Google MT',
+    'options.gemini.cost.noPrice.html': '<strong>Kostenschätzung nicht möglich</strong>: Bitte den Input-Preis (USD / 1M Tokens) im entsprechenden Preisfeld festlegen',
     'options.gemini.cost.estimateHeader.html': '<strong>Token-Kostenschätzung</strong> (basierend auf aktuellem Modell <code>{model}</code>, Input ${inputPrice}/1M Tokens, 30-min-Video ca. 60 Batches):',
     'options.gemini.cost.estimateGlossary.html': '• „Festes Glossar" anwenden ({count} Einträge) → +{tok} Tokens pro Batch im Prompt, ca. {usd} für das ganze Video (nach Cache Hit ~{usdCache})',
     'options.gemini.cost.estimateForbidden.html': '• „Verbotene-Wörter-Liste" anwenden ({count} Einträge) → +{tok} Tokens pro Batch im Prompt, ca. {usd} für das ganze Video (nach Cache Hit ~{usdCache})',
-    'options.gemini.cost.estimateFooter.html': '※ Tokens sind grobe Schätzungen, die tatsächliche Berechnung erfolgt durch den Gemini-Tokenizer. Ein Treffer im Gemini Implicit Cache erfordert ein Prompt-Präfix von ≥ 1024 Tokens, das stabil ist; der getroffene Anteil wird zu 25 % berechnet.',
+    'options.gemini.cost.estimateFooter.html': '※ Tokens sind grobe Schätzungen, die tatsächliche Berechnung erfolgt durch den Gemini-Tokenizer. Ein Treffer im Gemini Implicit Cache erfordert ein Prompt-Präfix von ≥ 1024 Tokens, das stabil ist; der getroffene Anteil wird zu {pct} % berechnet',
 
     // ── options Glossar-Reiter ───────────────────────────────
     'options.glossary.fixed.heading': 'Festes Glossar',
@@ -5953,7 +5971,6 @@
     'options.import.warningTransDocApply': 'translateDoc.applyGlossary: Typfehler, übersprungen',
     'options.import.warningTransDocTemp': 'translateDoc.temperature: außerhalb 0–2, übersprungen',
 
-    'options.footerEgg': 'No coding skills were harmed in the making of this shit.',
 
     // ── doc(translate-doc/* — PDF-Dokument-Übersetzungs-Reader)──────
     'doc.title': 'Dokument übersetzen — Shinkansen',
@@ -6072,7 +6089,6 @@
     'doc.edit.btn.cancel': 'Abbrechen',
     'doc.edit.btn.save': 'Speichern und neu erstellen',
     'doc.edit.find.placeholder': 'Übersetzung durchsuchen',
-    'doc.edit.find.count': '{current} / {total}',
     'doc.edit.find.replaceCount': '{n} ersetzt',
     'doc.edit.find.btn.prev.title': 'Zurück (Shift+Enter)',
     'doc.edit.find.btn.next.title': 'Weiter (Enter)',

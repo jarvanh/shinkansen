@@ -381,6 +381,14 @@ export function isPromptUnchangedFromDefault(saved, defaultPrompt) {
   return _normalizePromptForComparison(saved) === _normalizePromptForComparison(defaultPrompt);
 }
 
+// v1.10.46:options.js prompt textarea 同步用的「等於任一 target effective default 即未客製」
+// 判定,原本寫在 options.js _syncPromptTextareaToTarget,下沉到這裡跟 _isAnyTargetDefault
+// 同檔維護(單一資料源)。getEffectiveFn 傳 getEffectiveSystemPrompt 等 factory。
+export function isPromptUnchangedFromAnyTargetDefault(saved, getEffectiveFn) {
+  if (!saved || !saved.trim()) return true;
+  return TARGET_LANGUAGES.some((t) => isPromptUnchangedFromDefault(saved, getEffectiveFn(t, '')));
+}
+
 // P1 (v1.8.59) hotfix:用 target language 寫的「task reinforcement」,append 到 universal
 // prompt 末尾。對應 Gemini Flash 已知 issue:「英文 prompt 內 append target language 命令」
 // 對短輸入服從度不穩(內文 batch 對,但短標題 LLM 自由發揮 echo 原文)。研究結論是
@@ -398,22 +406,41 @@ const TARGET_LANGUAGE_REINFORCEMENT = {
   'de':    'Übersetzen Sie den Eingabetext ins Deutsche. Die Ausgabe muss auf Deutsch sein, unabhängig von der Quellsprache.',
 };
 
-function _appendReinforcement(prompt, targetLang, userOverride, defaultPrompt) {
+function _appendReinforcement(prompt, targetLang, userOverride, defaultPrompt, universalTemplate) {
   // 只對「未客製 + 非 zh-TW target」append:
   //   客製化 prompt 不動(尊重使用者改的版本);zh-TW 走原 DEFAULT 已含完整繁中規則。
   if (targetLang === 'zh-TW') return prompt;
-  if (!isPromptUnchangedFromDefault(userOverride, defaultPrompt)) return prompt;
+  if (!_isAnyTargetDefault(userOverride, defaultPrompt, universalTemplate)) return prompt;
   const r = TARGET_LANGUAGE_REINFORCEMENT[targetLang];
   return r ? `${prompt}\n\n${r}` : prompt;
 }
 
+// v1.10.46:「未客製」判定擴大為「等於任一 target 的 effective default」(單一資料源,
+// 原邏輯在 options.js _syncPromptTextareaToTarget 的 TARGET_LANGUAGES.some,下沉到這裡)。
+// Why:options.js 儲存設定時把 textarea 字面值(= 當前 target 注入語言 label 後的 universal
+// prompt,SYSTEM/DOC 還含 reinforcement 尾段)寫進 storage——只比對 zh-TW DEFAULT 會把這種
+// saved 誤判成「使用者客製」,之後切 target 永遠翻成舊語言(直到重開 options 再存)。
+function _isAnyTargetDefault(userOverride, defaultPrompt, universalTemplate) {
+  if (isPromptUnchangedFromDefault(userOverride, defaultPrompt)) return true;
+  const norm = _normalizePromptForComparison(userOverride);
+  for (const t of TARGET_LANGUAGES) {
+    if (t === 'zh-TW') continue;  // zh-TW 走 defaultPrompt,上面比過了
+    const candidate = universalTemplate.replaceAll('{targetLanguage}', LANG_LABELS[t] || LANG_LABELS.en);
+    if (norm === _normalizePromptForComparison(candidate)) return true;
+    // SYSTEM / DOC 的 effective default 末尾還有 target language reinforcement,一併比對
+    const r = TARGET_LANGUAGE_REINFORCEMENT[t];
+    if (r && norm === _normalizePromptForComparison(`${candidate}\n\n${r}`)) return true;
+  }
+  return false;
+}
+
 // effective prompt factory:
-//   userOverride 為空 / normalize 後等於舊版預設 → 視為「未客製化」,走 target 對應預設
-//   非空且 normalize 後非舊版預設              → 直接用 saved(尊重使用者客製化)
+//   userOverride 為空 / normalize 後等於任一 target 的 effective default → 視為「未客製化」,
+//   走 target 對應預設;否則直接用 saved(尊重使用者客製化)
 // 這個設計自動處理舊使用者升級——saved 經 normalize 後等於當前 DEFAULT_*_PROMPT 視為未客製,
 // target 切換立刻反映,不需 storage 層 migration(零寫入,零風險)。
 function _buildEffective(targetLang, userOverride, defaultPrompt, universalTemplate) {
-  const treatedAsUnchanged = isPromptUnchangedFromDefault(userOverride, defaultPrompt);
+  const treatedAsUnchanged = _isAnyTargetDefault(userOverride, defaultPrompt, universalTemplate);
   if (treatedAsUnchanged) {
     if (targetLang === 'zh-TW') return defaultPrompt;
     // replaceAll(不是 replace)── universal prompt 內可能含多個 {targetLanguage} 占位
@@ -425,11 +452,11 @@ function _buildEffective(targetLang, userOverride, defaultPrompt, universalTempl
 
 export function getEffectiveSystemPrompt(targetLang, userOverride) {
   const prompt = _buildEffective(targetLang, userOverride, DEFAULT_SYSTEM_PROMPT, UNIVERSAL_SYSTEM_PROMPT);
-  return _appendReinforcement(prompt, targetLang, userOverride, DEFAULT_SYSTEM_PROMPT);
+  return _appendReinforcement(prompt, targetLang, userOverride, DEFAULT_SYSTEM_PROMPT, UNIVERSAL_SYSTEM_PROMPT);
 }
 export function getEffectiveDocSystemPrompt(targetLang, userOverride) {
   const prompt = _buildEffective(targetLang, userOverride, DEFAULT_DOC_SYSTEM_PROMPT, UNIVERSAL_DOC_SYSTEM_PROMPT);
-  return _appendReinforcement(prompt, targetLang, userOverride, DEFAULT_DOC_SYSTEM_PROMPT);
+  return _appendReinforcement(prompt, targetLang, userOverride, DEFAULT_DOC_SYSTEM_PROMPT, UNIVERSAL_DOC_SYSTEM_PROMPT);
 }
 export function getEffectiveGlossaryPrompt(targetLang, userOverride) {
   return _buildEffective(targetLang, userOverride, DEFAULT_GLOSSARY_PROMPT, UNIVERSAL_GLOSSARY_PROMPT);
@@ -792,13 +819,18 @@ export async function migrateGeminiFlashLiteModelIfNeeded(syncSaved) {
     });
     if (touched) patch.translatePresets = updated;
   }
-  if (syncSaved.pricing && Object.prototype.hasOwnProperty.call(syncSaved.pricing, OLD)) {
-    const mergedPricing = { ...syncSaved.pricing };
-    if (!Object.prototype.hasOwnProperty.call(mergedPricing, NEW)) {
-      mergedPricing[NEW] = mergedPricing[OLD];
+  // 批次 5-4（v1.10.46）：model ID 為 key 的計價覆蓋存在 modelPricingOverrides
+  //（model-pricing.js getPricingForModel 讀的那份）。原本誤檢查 syncSaved.pricing——
+  // pricing 的 shape 是 {inputPerMTok, outputPerMTok, cachedDiscount}，key 永遠不是
+  // model ID（dead code）→ 舊版設過 preview ID 計價覆蓋的使用者升級後覆蓋默默失效。
+  if (syncSaved.modelPricingOverrides
+      && Object.prototype.hasOwnProperty.call(syncSaved.modelPricingOverrides, OLD)) {
+    const mergedOverrides = { ...syncSaved.modelPricingOverrides };
+    if (!Object.prototype.hasOwnProperty.call(mergedOverrides, NEW)) {
+      mergedOverrides[NEW] = mergedOverrides[OLD];
     }
-    delete mergedPricing[OLD];
-    patch.pricing = mergedPricing;
+    delete mergedOverrides[OLD];
+    patch.modelPricingOverrides = mergedOverrides;
   }
 
   if (Object.keys(patch).length === 0) return;
@@ -817,8 +849,14 @@ let _settingsCacheListenerBound = false;
 function _bindSettingsCacheInvalidator() {
   if (_settingsCacheListenerBound) return;
   _settingsCacheListenerBound = true;
-  // sync 改動（設定頁存設定）或 local 改動（apiKey）都要 invalidate
-  browser.storage.onChanged.addListener(() => {
+  // sync 改動（設定頁存設定）或 local 的 API key 改動才 invalidate。
+  // v1.10.46(批次 2-6):過濾掉與 settings 無關的 local 高頻寫入——翻譯期間 logger
+  // persistLog(yt_debug_log)與 tc_* 快取 flush 都寫 storage.local,原本任何變動都
+  // invalidate → cache 在翻譯熱路徑的實際命中率近零(v1.8.14 的初衷整個失效)。
+  // getSettings 的資料來源只有:sync 全部 key + local 的 apiKey / customProviderApiKey。
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' && !(area === 'local' && changes
+      && (API_KEY_STORAGE_KEY in changes || CUSTOM_PROVIDER_API_KEY in changes))) return;
     _settingsCachePromise = null;
   });
 }

@@ -274,7 +274,8 @@
   welcomeNoticeDismiss.addEventListener('click', (e) => { e.preventDefault(); dismissWelcomeNotice(); });
   const toastTimerEl = shadow.getElementById('timer');
   const toastFillEl = shadow.getElementById('fill');
-  shadow.getElementById('close').addEventListener('click', () => SK.hideToast());
+  const toastCloseBtn = shadow.getElementById('close');
+  toastCloseBtn.addEventListener('click', () => SK.hideToast());
   let toastTickHandle = null;
   let toastStartTime = 0;
   let toastHideHandle = null;
@@ -289,9 +290,9 @@
 
   SK.formatElapsed = function formatElapsed(ms) {
     const s = Math.floor(ms / 1000);
-    if (s < 60) return s + ' 秒';
+    if (s < 60) return SK.t('toast.elapsedSec', { s });
     const m = Math.floor(s / 60);
-    return m + ' 分 ' + (s % 60) + ' 秒';
+    return SK.t('toast.elapsedMinSec', { m, s: s % 60 });
   };
 
   SK.formatTokens = function formatTokens(n) {
@@ -326,6 +327,10 @@
   SK.showToast = function showToast(kind, msg, opts = {}) {
     // v1.6.8: master switch 關閉時完全不顯示（不渲染 DOM、不發訊息）
     if (!SK.shouldShowToast()) return;
+    // tooltip 走 dict——模板在模組載入時建立（當時 uiLanguage 尚未就緒），改成每次顯示時刷新
+    toastCloseBtn.title = SK.t('toast.close');
+    updateNoticeDismiss.title = SK.t('toast.dismissToday');
+    welcomeNoticeDismiss.title = SK.t('toast.dismissToday');
     if (toastHideHandle) {
       clearTimeout(toastHideHandle);
       toastHideHandle = null;
@@ -359,7 +364,7 @@
 
     // v1.6.1: 更新提示——僅在 success toast 且呼叫端有判斷今日尚未顯示時傳入
     if (opts.updateNotice && opts.updateNotice.version && opts.updateNotice.releaseUrl) {
-      updateNoticeLink.textContent = `v${opts.updateNotice.version} 可下載 — 點此前往`;
+      updateNoticeLink.textContent = SK.t('toast.updateNoticeLink', { version: opts.updateNotice.version });
       updateNoticeLink.href = opts.updateNotice.releaseUrl;
       updateNoticeEl.hidden = false;
     } else {
@@ -370,7 +375,7 @@
     if (opts.welcomeNotice && opts.welcomeNotice.version) {
       // AMO source review: 靜態 template，內嵌的 version 來自 manifest 自己的 version 欄位
       // （本 extension 寫進 storage 後再讀回），格式為 semver 字串（已被 manifest 驗證），無 user input。
-      welcomeNoticeMsg.innerHTML = `<strong>已升級至 v${opts.welcomeNotice.version}</strong> — 點工具列圖示看新功能`;
+      welcomeNoticeMsg.innerHTML = SK.t('toast.welcomeNotice.html', { version: opts.welcomeNotice.version });
       welcomeNoticeEl.hidden = false;
     } else {
       welcomeNoticeEl.hidden = true;
@@ -387,7 +392,7 @@
     if (opts.startTimer) {
       toastStartTime = Date.now();
       clearInterval(toastTickHandle);
-      toastTimerEl.textContent = '0 秒';
+      toastTimerEl.textContent = SK.t('toast.elapsedSec', { s: 0 });
       toastTickHandle = setInterval(() => {
         toastTimerEl.textContent = SK.formatElapsed(Date.now() - toastStartTime);
       }, 500);

@@ -88,6 +88,25 @@ test.describe('W7 wrapSegmentsToWidth', () => {
     expect(firstLineText.endsWith(',')).toBe(true);
   });
 
+  // §27 批次 4-5:單一 chunk 自己就寬過 maxWidth(長 URL / 料號等 ASCII 連續串)
+  // 必須退化逐字元斷行;舊行為整條塞同一行,畫超出 box.x1 水平溢出。
+  // SANITY(已驗證):暫時拿掉 wrapSegmentsToWidth 的 sizedChunks 逐字元退化
+  // (直接用 chunks)→ 「每行寬不得超過 maxWidth」斷言 fail(單行寬 500);還原 → pass
+  test('超寬單一 ASCII chunk 退化逐字元斷行,不水平溢出', () => {
+    const fontReg = makeFont(0.5);
+    const fontBold = makeFont(0.5);
+    // 100 字元無空白 ASCII 串,fontSize 10 → 整條寬 500,maxWidth 100
+    const segments = [{ text: 'A'.repeat(100), isBold: false, isItalic: false, linkUrl: null }];
+    const lines = wrapSegmentsToWidth(segments, fontReg, fontBold, 10, 100);
+    expect(lines.length).toBeGreaterThanOrEqual(5);
+    for (const l of lines) {
+      const w = l.pieces.reduce((s, p) => s + p.text.length * 10 * 0.5, 0);
+      expect(w).toBeLessThanOrEqual(100);
+    }
+    const total = lines.map((l) => l.pieces.map((p) => p.text).join('')).join('');
+    expect(total).toBe('A'.repeat(100));
+  });
+
   test('空 segments 回空陣列', () => {
     const fontReg = makeFont(0.5);
     const fontBold = makeFont(0.5);
