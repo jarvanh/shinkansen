@@ -467,7 +467,7 @@
         const cacheHit = response?.usage?.cacheHits || 0;
         const apiCalls = job.texts.length - cacheHit;
         SK.sendLog('info', 'translate', `batch ${batchIdx + 1}/${jobs.length} done`, { elapsed, cacheHits: cacheHit, apiCalls });
-        if (!response?.ok) throw new Error(response?.error || SK.t('common.errorUnknown'));
+        if (!response?.ok) throw new Error(SK.i18n.bgErrorMessage(response) || SK.t('common.errorUnknown'));
         const translations = response.result;
         if (response.usage) {
           pageUsage.inputTokens += response.usage.inputTokens || 0;
@@ -703,7 +703,7 @@
           SK.sendLog('error', 'translate', `batch 1/${jobs.length} stream FAILED`, { elapsed, error: message.payload.error });
           browser.runtime.onMessage.removeListener(onMessage);
           firstChunkResolve(false);
-          doneReject(new Error(message.payload.error || 'streaming failed'));
+          doneReject(new Error(SK.i18n.bgErrorMessage(message.payload) || 'streaming failed'));
         } else if (message.type === 'STREAMING_ABORTED') {
           SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream aborted`, { streamId });
           browser.runtime.onMessage.removeListener(onMessage);
@@ -1509,7 +1509,7 @@
           type: 'TRANSLATE_BATCH_GOOGLE',
           payload: { texts: job.texts },
         }, BATCH_TIMEOUT_MS);
-        if (!response?.ok) throw new Error(response?.error || SK.t('common.errorUnknown'));
+        if (!response?.ok) throw new Error(SK.i18n.bgErrorMessage(response) || SK.t('common.errorUnknown'));
         totalChars += response.usage?.chars || 0;
         totalCacheHits += response.usage?.cacheHits || 0;
         const translations = response.result;

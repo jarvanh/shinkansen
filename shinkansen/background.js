@@ -18,6 +18,7 @@ import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/upda
 import { shouldLogInit as _shouldLogRateLimitInit } from './lib/rate-limit-init-log-dedup.js'; // v1.8.60
 import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 import { refreshExchangeRate, getCachedRate, isCacheFresh } from './lib/exchange-rate.js'; // v1.8.41
+import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
 
@@ -629,7 +630,7 @@ const messageHandlers = {
         debugLog('error', 'system', 'TRANSLATE_BATCH_STREAM uncaught', { streamId, error: err?.message || String(err) });
         browser.tabs.sendMessage(tabId, {
           type: 'STREAMING_ERROR',
-          payload: { streamId, error: err?.message || String(err), atSegment: 0 },
+          payload: { streamId, ...errorFields(err), atSegment: 0 },
         }).catch(() => {});
       });
       return { started: true };
@@ -668,7 +669,7 @@ const messageHandlers = {
         debugLog('error', 'system', 'TRANSLATE_SUBTITLE_BATCH_STREAM uncaught', { streamId, error: err?.message || String(err) });
         browser.tabs.sendMessage(tabId, {
           type: 'STREAMING_ERROR',
-          payload: { streamId, error: err?.message || String(err), atSegment: 0 },
+          payload: { streamId, ...errorFields(err), atSegment: 0 },
         }).catch(() => {});
       });
       return { started: true };
@@ -1205,6 +1206,19 @@ const messageHandlers = {
   },
 };
 
+// 錯誤 i18n 協定（lib/bg-error.js）：err 帶 skCode 時把 errorCode / errorParams
+// 一併放進 response / STREAMING_ERROR payload，UI 端（content / translate-doc）
+// 用 lib/i18n.js bgErrorMessage() 查 dict 組訊息；error 維持原字串當 fallback。
+// 四個 STREAMING_ERROR 發送點 + dispatcher catch 都走這裡，避免欄位組裝 drift。
+function errorFields(err) {
+  const fields = { error: err?.message || String(err) };
+  if (err?.skCode) {
+    fields.errorCode = err.skCode;
+    if (err.skParams) fields.errorParams = err.skParams;
+  }
+  return fields;
+}
+
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const type = message?.type;
   const entry = messageHandlers[type];
@@ -1215,7 +1229,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then((result) => sendResponse({ ok: true, ...(result && typeof result === 'object' ? result : {}) }))
       .catch((err) => {
         debugLog('error', 'system', `${type} failed`, { error: err?.message || String(err) });
-        sendResponse({ ok: false, error: err?.message || String(err) });
+        sendResponse({ ok: false, ...errorFields(err) });
       });
     return true; // 保留 sendResponse 通道
   } else {
@@ -1292,7 +1306,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   if (!settings.apiKey) {
     browser.tabs.sendMessage(tabId, {
       type: 'STREAMING_ERROR',
-      payload: { streamId, error: '尚未設定 Gemini API Key，請至設定頁填入。', atSegment: 0 },
+      payload: { streamId, ...errorFields(codedError('apiKeyMissing', null, '尚未設定 Gemini API Key，請至設定頁填入。')), atSegment: 0 },
     }).catch(() => {});
     return;
   }
@@ -1478,7 +1492,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
       debugLog('error', 'api', 'streaming translateBatch failed', { streamId, error: err?.message || String(err) });
       browser.tabs.sendMessage(tabId, {
         type: 'STREAMING_ERROR',
-        payload: { streamId, error: err?.message || String(err), atSegment: 0 },
+        payload: { streamId, ...errorFields(err), atSegment: 0 },
       }).catch(() => {});
     }
   } finally {
@@ -1491,7 +1505,7 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
 async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOverride = null, cacheTag = '', applyFixedGlossary = true, applyForbiddenTerms = true) {
   const settings = await getSettings();
   if (!settings.apiKey) {
-    throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
+    throw codedError('apiKeyMissing', null, '尚未設定 Gemini API Key，請至設定頁填入。');
   }
   const texts = payload.texts;
   const glossary = payload.glossary || null;  // v0.69: 可選的術語對照表
@@ -1816,7 +1830,7 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   // v1.8.41 對齊：Model 也允許為空（llama.cpp / Ollama 啟動時鎖 model,adapter 不送
   // model 欄位讓 server 用啟動 model)— lib/openai-compat.js translateChunk 本來就支援，
   // 之前在這裡提早擋下會讓 local server 配置失敗（空 model 行為應跟 adapter 一致)。
-  if (!cp.baseUrl) throw new Error('尚未設定自訂 Provider 的 Base URL。');
+  if (!cp.baseUrl) throw codedError('baseUrlMissing', null, '尚未設定自訂 Provider 的 Base URL。');
 
   const texts = payload.texts;
   const glossary = payload.glossary || null;
@@ -2030,7 +2044,7 @@ async function handleExtractGlossary(payload, sender) {
   debugLog('info', 'glossary', 'glossary extraction start', { inputHash: payload.inputHash, chars: payload.compressedText?.length });
   const settings = await getSettings();
   if (!settings.apiKey) {
-    throw new Error('尚未設定 Gemini API Key，請至設定頁填入。');
+    throw codedError('apiKeyMissing', null, '尚未設定 Gemini API Key，請至設定頁填入。');
   }
   const { compressedText, inputHash } = payload;
 

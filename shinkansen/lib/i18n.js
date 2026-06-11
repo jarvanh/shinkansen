@@ -109,6 +109,24 @@
     'toast.close': '關閉',
     'toast.dismissToday': '今天不再提示',
     'error.batchTimeout': '批次逾時（{s}s）',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': '尚未設定 Gemini API Key，請至設定頁填入',
+    'error.bg.baseUrlMissing': '尚未設定自訂 Provider 的 Base URL',
+    'error.bg.network': '網路錯誤：{msg}',
+    'error.bg.timeout': '網路錯誤：逾時（{ms}ms）',
+    'error.bg.readTimeout': '網路錯誤：回應讀取逾時（{ms}ms）',
+    'error.bg.dailyQuota': '今日 Gemini API 配額已用盡（RPD 達上限），請明天再試或升級付費層級',
+    'error.bg.http429': 'HTTP 429（{dim}）',
+    'error.bg.badResponse': 'Gemini API 回應格式異常（非 JSON）：HTTP {status}。回應前 200 字元：{preview}',
+    'error.bg.blocked': 'Gemini 拒絕處理此請求（promptFeedback.blockReason: {reason}）。可能是安全過濾器誤判，請嘗試縮短段落或調整內容',
+    'error.bg.emptySafety': '內容被 Gemini 安全過濾器擋下。可能是原文含有敏感內容，請嘗試跳過此段落',
+    'error.bg.emptyRecitation': 'Gemini 偵測到輸出與已知作品高度重複（recitation filter），請嘗試縮短段落',
+    'error.bg.emptyMaxTokens': '輸出超過 maxOutputTokens 上限。請到設定頁提高上限，或減少每批段落數',
+    'error.bg.emptyOther': 'Gemini 回傳空內容（finishReason: OTHER），原因不明。請稍後重試',
+    'error.bg.emptyContent': 'Gemini 回傳空內容（finishReason: {reason}）',
+    'error.bg.customBadResponse': '自訂 Provider 回應格式異常（非 JSON）：HTTP {status}。前 200 字：{preview}',
+    'error.bg.customEmptyContent': '自訂 Provider 回傳空內容（finish_reason: {reason}）',
+    'error.bg.gtTimeout': 'Google Translate 逾時（{ms}ms）',
 
     // ── lang 名稱（toast 動態插入「此頁面已是X」用）──────
 
@@ -882,6 +900,24 @@
     'toast.close': '关闭',
     'toast.dismissToday': '今天不再提示',
     'error.batchTimeout': '批次超时（{s}s）',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': '尚未设置 Gemini API Key，请至设置页填入',
+    'error.bg.baseUrlMissing': '尚未设置自定义 Provider 的 Base URL',
+    'error.bg.network': '网络错误：{msg}',
+    'error.bg.timeout': '网络错误：超时（{ms}ms）',
+    'error.bg.readTimeout': '网络错误：响应读取超时（{ms}ms）',
+    'error.bg.dailyQuota': '今日 Gemini API 配额已用尽（RPD 达上限），请明天再试或升级付费层级',
+    'error.bg.http429': 'HTTP 429（{dim}）',
+    'error.bg.badResponse': 'Gemini API 响应格式异常（非 JSON）：HTTP {status}。响应前 200 字符：{preview}',
+    'error.bg.blocked': 'Gemini 拒绝处理此请求（promptFeedback.blockReason: {reason}）。可能是安全过滤器误判，请尝试缩短段落或调整内容',
+    'error.bg.emptySafety': '内容被 Gemini 安全过滤器拦下。可能是原文含有敏感内容，请尝试跳过此段落',
+    'error.bg.emptyRecitation': 'Gemini 检测到输出与已知作品高度重复（recitation filter），请尝试缩短段落',
+    'error.bg.emptyMaxTokens': '输出超过 maxOutputTokens 上限。请到设置页提高上限，或减少每批段落数',
+    'error.bg.emptyOther': 'Gemini 返回空内容（finishReason: OTHER），原因不明。请稍后重试',
+    'error.bg.emptyContent': 'Gemini 返回空内容（finishReason: {reason}）',
+    'error.bg.customBadResponse': '自定义 Provider 响应格式异常（非 JSON）：HTTP {status}。前 200 字：{preview}',
+    'error.bg.customEmptyContent': '自定义 Provider 返回空内容（finish_reason: {reason}）',
+    'error.bg.gtTimeout': 'Google Translate 超时（{ms}ms）',
 
     // ── lang 名稱 ──────────────────────────────────────────
 
@@ -1653,6 +1689,24 @@
     'toast.close': 'Close',
     'toast.dismissToday': 'Don\'t remind me again today',
     'error.batchTimeout': 'Batch timed out ({s}s)',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': 'Gemini API Key not set. Please enter it on the options page',
+    'error.bg.baseUrlMissing': 'Custom provider Base URL not set',
+    'error.bg.network': 'Network error: {msg}',
+    'error.bg.timeout': 'Network error: timed out ({ms}ms)',
+    'error.bg.readTimeout': 'Network error: response read timed out ({ms}ms)',
+    'error.bg.dailyQuota': 'Daily Gemini API quota exhausted (RPD limit reached). Please try again tomorrow or upgrade your paid tier',
+    'error.bg.http429': 'HTTP 429 ({dim})',
+    'error.bg.badResponse': 'Unexpected Gemini API response (not JSON): HTTP {status}. First 200 chars: {preview}',
+    'error.bg.blocked': 'Gemini refused this request (promptFeedback.blockReason: {reason}). Possibly a safety-filter false positive — try shorter paragraphs or adjust the content',
+    'error.bg.emptySafety': 'Content blocked by the Gemini safety filter. The original text may contain sensitive content — try skipping this paragraph',
+    'error.bg.emptyRecitation': 'Gemini detected output highly similar to known works (recitation filter) — try shorter paragraphs',
+    'error.bg.emptyMaxTokens': 'Output exceeded the maxOutputTokens limit. Raise the limit on the options page or reduce paragraphs per batch',
+    'error.bg.emptyOther': 'Gemini returned empty content (finishReason: OTHER), reason unknown. Please retry later',
+    'error.bg.emptyContent': 'Gemini returned empty content (finishReason: {reason})',
+    'error.bg.customBadResponse': 'Unexpected custom provider response (not JSON): HTTP {status}. First 200 chars: {preview}',
+    'error.bg.customEmptyContent': 'Custom provider returned empty content (finish_reason: {reason})',
+    'error.bg.gtTimeout': 'Google Translate timed out ({ms}ms)',
 
     // ── lang names ────────────────────────────────────────
 
@@ -2424,6 +2478,24 @@
     'toast.close': '閉じる',
     'toast.dismissToday': '今日は再表示しない',
     'error.batchTimeout': 'バッチがタイムアウトしました（{s} 秒）',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': 'Gemini API Key が未設定です。設定ページで入力してください',
+    'error.bg.baseUrlMissing': 'カスタム Provider の Base URL が未設定です',
+    'error.bg.network': 'ネットワークエラー：{msg}',
+    'error.bg.timeout': 'ネットワークエラー：タイムアウト（{ms}ms）',
+    'error.bg.readTimeout': 'ネットワークエラー：レスポンス読み取りタイムアウト（{ms}ms）',
+    'error.bg.dailyQuota': '本日の Gemini API 割り当てを使い切りました（RPD 上限）。明日再試行するか、有料プランへのアップグレードをご検討ください',
+    'error.bg.http429': 'HTTP 429（{dim}）',
+    'error.bg.badResponse': 'Gemini API のレスポンス形式が異常です（非 JSON）：HTTP {status}。先頭 200 文字：{preview}',
+    'error.bg.blocked': 'Gemini がこのリクエストを拒否しました（promptFeedback.blockReason: {reason}）。安全フィルターの誤判定の可能性があります。段落を短くするか内容を調整してください',
+    'error.bg.emptySafety': 'コンテンツが Gemini の安全フィルターでブロックされました。原文に機微な内容が含まれている可能性があります。この段落をスキップしてみてください',
+    'error.bg.emptyRecitation': 'Gemini が既知の作品と高度に重複する出力を検出しました（recitation filter）。段落を短くしてみてください',
+    'error.bg.emptyMaxTokens': '出力が maxOutputTokens の上限を超えました。設定ページで上限を上げるか、バッチあたりの段落数を減らしてください',
+    'error.bg.emptyOther': 'Gemini が空のコンテンツを返しました（finishReason: OTHER）。原因不明です。後ほど再試行してください',
+    'error.bg.emptyContent': 'Gemini が空のコンテンツを返しました（finishReason: {reason}）',
+    'error.bg.customBadResponse': 'カスタム Provider のレスポンス形式が異常です（非 JSON）：HTTP {status}。先頭 200 文字：{preview}',
+    'error.bg.customEmptyContent': 'カスタム Provider が空のコンテンツを返しました（finish_reason: {reason}）',
+    'error.bg.gtTimeout': 'Google Translate がタイムアウトしました（{ms}ms）',
 
     // ── lang 名称（toast 動的挿入「このページは既に X」用）──────
 
@@ -3195,6 +3267,24 @@
     'toast.close': '닫기',
     'toast.dismissToday': '오늘은 다시 표시하지 않음',
     'error.batchTimeout': '배치 시간 초과 ({s}초)',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': 'Gemini API Key가 설정되지 않았습니다. 설정 페이지에서 입력해 주세요',
+    'error.bg.baseUrlMissing': '사용자 지정 Provider의 Base URL이 설정되지 않았습니다',
+    'error.bg.network': '네트워크 오류: {msg}',
+    'error.bg.timeout': '네트워크 오류: 시간 초과 ({ms}ms)',
+    'error.bg.readTimeout': '네트워크 오류: 응답 읽기 시간 초과 ({ms}ms)',
+    'error.bg.dailyQuota': '오늘의 Gemini API 할당량을 모두 사용했습니다 (RPD 상한 도달). 내일 다시 시도하거나 유료 등급으로 업그레이드해 주세요',
+    'error.bg.http429': 'HTTP 429 ({dim})',
+    'error.bg.badResponse': 'Gemini API 응답 형식 이상 (비 JSON): HTTP {status}. 처음 200자: {preview}',
+    'error.bg.blocked': 'Gemini가 이 요청을 거부했습니다 (promptFeedback.blockReason: {reason}). 안전 필터 오판일 수 있으니 단락을 줄이거나 내용을 조정해 보세요',
+    'error.bg.emptySafety': '콘텐츠가 Gemini 안전 필터에 차단되었습니다. 원문에 민감한 내용이 포함되었을 수 있으니 이 단락을 건너뛰어 보세요',
+    'error.bg.emptyRecitation': 'Gemini가 기존 저작물과 고도로 중복되는 출력을 감지했습니다 (recitation filter). 단락을 줄여 보세요',
+    'error.bg.emptyMaxTokens': '출력이 maxOutputTokens 상한을 초과했습니다. 설정 페이지에서 상한을 높이거나 배치당 단락 수를 줄여 주세요',
+    'error.bg.emptyOther': 'Gemini가 빈 콘텐츠를 반환했습니다 (finishReason: OTHER). 원인 불명입니다. 잠시 후 다시 시도해 주세요',
+    'error.bg.emptyContent': 'Gemini가 빈 콘텐츠를 반환했습니다 (finishReason: {reason})',
+    'error.bg.customBadResponse': '사용자 지정 Provider 응답 형식 이상 (비 JSON): HTTP {status}. 처음 200자: {preview}',
+    'error.bg.customEmptyContent': '사용자 지정 Provider가 빈 콘텐츠를 반환했습니다 (finish_reason: {reason})',
+    'error.bg.gtTimeout': 'Google Translate 시간 초과 ({ms}ms)',
 
     // ── lang 이름 (toast 동적 삽입 "이 페이지는 이미 X" 용) ──────
 
@@ -3965,6 +4055,24 @@
     'toast.close': 'Cerrar',
     'toast.dismissToday': 'No recordar más por hoy',
     'error.batchTimeout': 'El lote agotó el tiempo ({s} s)',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': 'Gemini API Key sin configurar. Introdúcela en la página de opciones',
+    'error.bg.baseUrlMissing': 'Base URL del proveedor personalizado sin configurar',
+    'error.bg.network': 'Error de red: {msg}',
+    'error.bg.timeout': 'Error de red: tiempo agotado ({ms} ms)',
+    'error.bg.readTimeout': 'Error de red: tiempo de lectura de la respuesta agotado ({ms} ms)',
+    'error.bg.dailyQuota': 'Cuota diaria de la API de Gemini agotada (límite RPD alcanzado). Inténtalo mañana o mejora tu nivel de pago',
+    'error.bg.http429': 'HTTP 429 ({dim})',
+    'error.bg.badResponse': 'Respuesta anómala de la API de Gemini (no JSON): HTTP {status}. Primeros 200 caracteres: {preview}',
+    'error.bg.blocked': 'Gemini rechazó esta solicitud (promptFeedback.blockReason: {reason}). Puede ser un falso positivo del filtro de seguridad; prueba con párrafos más cortos o ajusta el contenido',
+    'error.bg.emptySafety': 'Contenido bloqueado por el filtro de seguridad de Gemini. El texto original puede contener contenido sensible; prueba a omitir este párrafo',
+    'error.bg.emptyRecitation': 'Gemini detectó una salida muy similar a obras conocidas (recitation filter); prueba con párrafos más cortos',
+    'error.bg.emptyMaxTokens': 'La salida superó el límite de maxOutputTokens. Sube el límite en la página de opciones o reduce los párrafos por lote',
+    'error.bg.emptyOther': 'Gemini devolvió contenido vacío (finishReason: OTHER), causa desconocida. Inténtalo más tarde',
+    'error.bg.emptyContent': 'Gemini devolvió contenido vacío (finishReason: {reason})',
+    'error.bg.customBadResponse': 'Respuesta anómala del proveedor personalizado (no JSON): HTTP {status}. Primeros 200 caracteres: {preview}',
+    'error.bg.customEmptyContent': 'El proveedor personalizado devolvió contenido vacío (finish_reason: {reason})',
+    'error.bg.gtTimeout': 'Google Translate agotó el tiempo ({ms} ms)',
 
     // ── nombre de idioma (inserción dinámica en toast "Esta página ya está en X") ──────
 
@@ -4735,6 +4843,24 @@
     'toast.close': 'Fermer',
     'toast.dismissToday': 'Ne plus rappeler aujourd\'hui',
     'error.batchTimeout': 'Délai du lot dépassé ({s} s)',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': 'Gemini API Key non configurée. Saisissez-la dans la page d’options',
+    'error.bg.baseUrlMissing': 'Base URL du fournisseur personnalisé non configurée',
+    'error.bg.network': 'Erreur réseau : {msg}',
+    'error.bg.timeout': 'Erreur réseau : délai dépassé ({ms} ms)',
+    'error.bg.readTimeout': 'Erreur réseau : délai de lecture de la réponse dépassé ({ms} ms)',
+    'error.bg.dailyQuota': 'Quota quotidien de l’API Gemini épuisé (limite RPD atteinte). Réessayez demain ou passez à un niveau payant',
+    'error.bg.http429': 'HTTP 429 ({dim})',
+    'error.bg.badResponse': 'Réponse anormale de l’API Gemini (non JSON) : HTTP {status}. 200 premiers caractères : {preview}',
+    'error.bg.blocked': 'Gemini a refusé cette requête (promptFeedback.blockReason: {reason}). Possible faux positif du filtre de sécurité ; essayez des paragraphes plus courts ou ajustez le contenu',
+    'error.bg.emptySafety': 'Contenu bloqué par le filtre de sécurité de Gemini. Le texte original peut contenir du contenu sensible ; essayez d’ignorer ce paragraphe',
+    'error.bg.emptyRecitation': 'Gemini a détecté une sortie très similaire à des œuvres connues (recitation filter) ; essayez des paragraphes plus courts',
+    'error.bg.emptyMaxTokens': 'La sortie a dépassé la limite maxOutputTokens. Augmentez la limite dans la page d’options ou réduisez le nombre de paragraphes par lot',
+    'error.bg.emptyOther': 'Gemini a renvoyé un contenu vide (finishReason: OTHER), cause inconnue. Réessayez plus tard',
+    'error.bg.emptyContent': 'Gemini a renvoyé un contenu vide (finishReason: {reason})',
+    'error.bg.customBadResponse': 'Réponse anormale du fournisseur personnalisé (non JSON) : HTTP {status}. 200 premiers caractères : {preview}',
+    'error.bg.customEmptyContent': 'Le fournisseur personnalisé a renvoyé un contenu vide (finish_reason: {reason})',
+    'error.bg.gtTimeout': 'Google Translate : délai dépassé ({ms} ms)',
 
     // ── nom de langue (insertion dynamique « Cette page est déjà en X » dans le toast) ──────
 
@@ -5505,6 +5631,24 @@
     'toast.close': 'Schließen',
     'toast.dismissToday': 'Heute nicht mehr erinnern',
     'error.batchTimeout': 'Batch-Zeitüberschreitung ({s} s)',
+    // ── 背景端錯誤（error code 協定，lib/bg-error.js；bgErrorMessage() 以 'error.bg.' + code 動態查，非字面引用）──
+    'error.bg.apiKeyMissing': 'Gemini API Key nicht gesetzt. Bitte auf der Einstellungsseite eintragen',
+    'error.bg.baseUrlMissing': 'Base URL des benutzerdefinierten Providers nicht gesetzt',
+    'error.bg.network': 'Netzwerkfehler: {msg}',
+    'error.bg.timeout': 'Netzwerkfehler: Zeitüberschreitung ({ms} ms)',
+    'error.bg.readTimeout': 'Netzwerkfehler: Zeitüberschreitung beim Lesen der Antwort ({ms} ms)',
+    'error.bg.dailyQuota': 'Tägliches Gemini-API-Kontingent aufgebraucht (RPD-Limit erreicht). Bitte morgen erneut versuchen oder auf eine Bezahlstufe upgraden',
+    'error.bg.http429': 'HTTP 429 ({dim})',
+    'error.bg.badResponse': 'Unerwartete Gemini-API-Antwort (kein JSON): HTTP {status}. Erste 200 Zeichen: {preview}',
+    'error.bg.blocked': 'Gemini hat diese Anfrage abgelehnt (promptFeedback.blockReason: {reason}). Möglicherweise ein Fehlalarm des Sicherheitsfilters – kürzere Absätze versuchen oder Inhalt anpassen',
+    'error.bg.emptySafety': 'Inhalt vom Gemini-Sicherheitsfilter blockiert. Der Originaltext enthält möglicherweise sensible Inhalte – diesen Absatz überspringen',
+    'error.bg.emptyRecitation': 'Gemini hat eine stark mit bekannten Werken übereinstimmende Ausgabe erkannt (recitation filter) – kürzere Absätze versuchen',
+    'error.bg.emptyMaxTokens': 'Ausgabe überschreitet das maxOutputTokens-Limit. Limit auf der Einstellungsseite erhöhen oder Absätze pro Batch reduzieren',
+    'error.bg.emptyOther': 'Gemini hat leeren Inhalt zurückgegeben (finishReason: OTHER), Ursache unbekannt. Bitte später erneut versuchen',
+    'error.bg.emptyContent': 'Gemini hat leeren Inhalt zurückgegeben (finishReason: {reason})',
+    'error.bg.customBadResponse': 'Unerwartete Antwort des benutzerdefinierten Providers (kein JSON): HTTP {status}. Erste 200 Zeichen: {preview}',
+    'error.bg.customEmptyContent': 'Benutzerdefinierter Provider hat leeren Inhalt zurückgegeben (finish_reason: {reason})',
+    'error.bg.gtTimeout': 'Google Translate: Zeitüberschreitung ({ms} ms)',
 
     // ── Sprachname (dynamisch in toast „Diese Seite ist bereits auf X" eingefügt) ──────
 
@@ -6250,6 +6394,28 @@
     return 'zh-TW';
   }
 
+  // bgErrorMessage：背景端錯誤的本地化（error code 協定，lib/bg-error.js；SPEC-PRIVATE §27）。
+  // service worker 載不了本檔也不知 uiLanguage，所以背景把錯誤帶結構化 errorCode（+ errorParams）
+  // 過協定（response / STREAMING_ERROR payload），由 UI 端在這裡查 'error.bg.' + code 組訊息。
+  // fallback 順序（向下相容，別讓未知錯誤變空白）：
+  //   1. 沒帶 errorCode（API 原文 ground truth 直傳 / 內部錯誤 / 舊版背景）→ 原字串原樣顯示
+  //   2. 有 code 但 dict 缺 key（版本 drift）→ 原字串原樣顯示
+  // 接受 sendResponse 物件與 STREAMING_ERROR payload 兩種來源（欄位同名）。
+  function bgErrorMessage(payload, target) {
+    const raw = (payload && payload.error != null) ? String(payload.error) : '';
+    const code = payload && payload.errorCode;
+    if (!code) return raw;
+    const key = 'error.bg.' + code;
+    const lang = getUiLanguage(target || _readCurrentTarget());
+    const tables = [TABLES[lang], TABLES[FALLBACK_LANG], TABLES['zh-TW']];
+    for (const tbl of tables) {
+      if (tbl && Object.prototype.hasOwnProperty.call(tbl, key)) {
+        return _interp(tbl[key], (payload && payload.errorParams) || undefined);
+      }
+    }
+    return raw;
+  }
+
   // applyI18n:掃 rootNode 內 [data-i18n] / [data-i18n-html] / [data-i18n-attr-*] 元素並注入翻譯
   // - data-i18n="key":textContent
   // - data-i18n-html="key":innerHTML(只用於信任的 dict 內含 HTML 字串)
@@ -6327,6 +6493,7 @@
 
   const api = {
     t,
+    bgErrorMessage,
     applyI18n,
     getUiLanguage,
     subscribeUiLanguageChange,

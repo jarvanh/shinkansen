@@ -23,6 +23,7 @@ import { DELIMITER, SEP_RE, MARKER_COMPACT, MARKER_STRONG, packChunks, buildEffe
 // v1.6.18: thinking 控制 mapping（各家 provider 的 thinking schema 不同，統一成
 // thinkingLevel 'auto/off/low/medium/high' + extraBodyJson 進階透傳）
 import { buildThinkingPayload } from './openai-compat-thinking.js';
+import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 
 const MAX_BACKOFF_MS = 8000;
 // v1.10.46(批次 2-1):429 Retry-After 等待上限(同 lib/gemini.js)。provider 可能回
@@ -66,7 +67,11 @@ async function fetchWithRetry(url, headers, body, { maxRetries = 3, timeoutMs = 
         const isTimeout = err.name === 'AbortError';
         const errMsg = isTimeout ? `逾時(${timeoutMs}ms)` : err.message;
         await debugLog('error', 'api', isTimeout ? 'openai-compat fetch timeout' : 'openai-compat fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? timeoutMs : undefined });
-        if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+        if (attempt >= maxRetries) {
+          throw isTimeout
+            ? codedError('timeout', { ms: timeoutMs }, '網路錯誤：' + errMsg)
+            : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
+        }
         await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
         attempt += 1;
         continue;
@@ -94,7 +99,11 @@ async function fetchWithRetry(url, headers, body, { maxRetries = 3, timeoutMs = 
           const isTimeout = err.name === 'AbortError';
           const errMsg = isTimeout ? `回應讀取逾時(${timeoutMs}ms)` : err.message;
           await debugLog('error', 'api', isTimeout ? 'openai-compat body read timeout' : 'openai-compat body read error', { error: err.message, attempt });
-          if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+          if (attempt >= maxRetries) {
+            throw isTimeout
+              ? codedError('readTimeout', { ms: timeoutMs }, '網路錯誤：' + errMsg)
+              : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
+          }
           await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
           attempt += 1;
           continue;
@@ -138,7 +147,7 @@ async function fetchWithRetry(url, headers, body, { maxRetries = 3, timeoutMs = 
  *   "http://localhost:11434/v1"             → ".../chat/completions"（Ollama）
  */
 function resolveChatCompletionsUrl(baseUrl) {
-  if (!baseUrl) throw new Error('customProvider.baseUrl 未設定');
+  if (!baseUrl) throw codedError('baseUrlMissing', null, 'customProvider.baseUrl 未設定');
   const trimmed = String(baseUrl).trim().replace(/\/+$/, '');
   if (/\/chat\/completions$/.test(trimmed)) return trimmed;
   return trimmed + '/chat/completions';
@@ -257,7 +266,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     await debugLog('error', 'api', 'openai-compat response not JSON', {
       status: resp.status, elapsed: ms, parseError: parseErr.message, rawPreview,
     });
-    throw new Error(`自訂 Provider 回應格式異常（非 JSON）：HTTP ${resp.status}。${rawPreview ? '前 200 字：' + rawPreview : ''}`);
+    throw codedError('customBadResponse', { status: resp.status, preview: rawPreview || 'N/A' },
+      `自訂 Provider 回應格式異常（非 JSON）：HTTP ${resp.status}。${rawPreview ? '前 200 字：' + rawPreview : ''}`);
   }
   const ms = Date.now() - t0;
 
@@ -275,7 +285,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     await debugLog('error', 'api', 'openai-compat empty content', {
       elapsed: ms, finishReason, choicesLength: json?.choices?.length || 0,
     });
-    throw new Error(`自訂 Provider 回傳空內容（finish_reason: ${finishReason}）。`);
+    throw codedError('customEmptyContent', { reason: finishReason },
+      `自訂 Provider 回傳空內容（finish_reason: ${finishReason}）。`);
   }
 
   // 抽 usage（OpenAI / OpenRouter 標準結構）

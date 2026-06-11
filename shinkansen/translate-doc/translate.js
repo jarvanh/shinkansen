@@ -15,6 +15,15 @@
 
 import { TRANSLATABLE_TYPES } from './block-types.js';
 
+// 背景端錯誤的本地化（error code 協定，lib/bg-error.js）。lib/i18n.js 由 index.html
+// <script src> 載入 attach 到 window.__SK.i18n；還沒載入（init race）或沒帶 code 的
+// 錯誤 fallback 原字串原樣顯示
+const bgErrMsg = (response) => {
+  const i18n = window.__SK?.i18n;
+  if (i18n && typeof i18n.bgErrorMessage === 'function') return i18n.bgErrorMessage(response);
+  return (response && response.error) || '';
+};
+
 // 跟 content.js 共用相同 chunk size，行為一致(rate limiter / token cost / cache 命中規則一致)
 export const DOC_CHUNK_SIZE = 20;
 
@@ -154,7 +163,7 @@ export async function translateDocument(doc, options = {}) {
 
     if (!response || !Array.isArray(response.result)) {
       // background handler 拋了(API key 缺 / Gemini 回 error 等)
-      const msg = (response && response.error) || 'no response';
+      const msg = bgErrMsg(response) || 'no response';
       chunk.forEach((b) => {
         b.translationStatus = 'failed';
         b.translationError = msg;
@@ -328,7 +337,7 @@ export async function translateSingleBlock(block, options = {}) {
   }
 
   if (!response || !Array.isArray(response.result) || response.result.length === 0) {
-    const msg = (response && response.error) || 'no response';
+    const msg = bgErrMsg(response) || 'no response';
     block.translationStatus = 'failed';
     block.translationError = msg;
     console.warn('[Shinkansen] retry response 異常', block.blockId, msg);

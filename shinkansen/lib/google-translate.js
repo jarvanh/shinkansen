@@ -4,6 +4,7 @@
 // 注意：Google 可能隨時更動此端點，屬灰色地帶，不建議作為唯一翻譯引擎。
 
 import { debugLog } from './logger.js';
+import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 
 // U+2063 INVISIBLE SEPARATOR × 3：翻譯過程中幾乎不會被 MT 引擎改動，用作批次分隔符。
 const SEP = '\n\u2063\u2063\u2063\n';
@@ -192,7 +193,7 @@ async function _fetchTranslate(text, tl) {
     data = await resp.json();
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error(`Google Translate 逾時(${FETCH_TIMEOUT_MS}ms)`);
+      throw codedError('gtTimeout', { ms: FETCH_TIMEOUT_MS }, `Google Translate 逾時(${FETCH_TIMEOUT_MS}ms)`);
     }
     throw err;
   } finally {

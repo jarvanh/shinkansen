@@ -2015,7 +2015,7 @@
     const elapsed = Date.now() - _t0Window;
     if (batchApiMsRef) batchApiMsRef[batchIdx] = elapsed;
 
-    if (!res?.ok) throw new Error(res?.error || 'ASR translation failed');
+    if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || 'ASR translation failed');
     _logWindowUsage(subSegs.length, res.usage);
 
     const rawText = res.result?.[0] || '';
@@ -2197,7 +2197,7 @@
       }).then(res => {
         const elapsed = Date.now() - _t0;
         _batchApiMs[b] = elapsed;
-        if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
+        if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || SK.t('common.errorUnknown'));
         _logWindowUsage(batchUnits.length, res.usage);
         // v1.10.39(code review 2026-06-09 M8):防 res.ok=true 但 res.result 缺失時
         // res.result[j] 直接 throw(對齊非 ASR 主路徑 _injectBatchResult 的 res.result || [])
@@ -2572,7 +2572,7 @@
           }).then(res => {
             const elapsed = Date.now() - _t0;
             _batchApiMs[b] = elapsed;
-            if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
+            if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || SK.t('common.errorUnknown'));
             _logWindowUsage(batchUnits.length, res.usage);
             _injectBatchResult(batchUnits, res.result || [], b, elapsed);
           });
@@ -2647,7 +2647,7 @@
               _clearIdleWatchdog();
               browser.runtime.onMessage.removeListener(onMessage);
               firstChunkResolve(false);
-              doneReject(new Error(message.payload.error || 'streaming failed'));
+              doneReject(new Error(SK.i18n.bgErrorMessage(message.payload) || 'streaming failed'));
             } else if (message.type === 'STREAMING_ABORTED') {
               _clearIdleWatchdog();
               browser.runtime.onMessage.removeListener(onMessage);
@@ -3211,7 +3211,7 @@
         type: _onTheFlyMsgType,
         payload: { texts, glossary: null },
       });
-      if (!res?.ok) throw new Error(res?.error || '翻譯失敗');
+      if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || SK.t('common.errorUnknown'));
       // v1.8.20: await 後再次檢查 active——stop 在 await 期間發生時放棄寫入，
       // 否則寫進已被 stopYouTubeTranslation 重置的新 captionMap 污染下個 session。
       if (!SK.YT.active) {

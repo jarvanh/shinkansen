@@ -11,8 +11,10 @@
 //   - SPEC.md 標頭與「已實作」段
 //   - CHANGELOG.md 頂部 v 條目
 //   - README.md「目前版本」段
+//   - README.en.md「Current version」段（v1.10.46 後補:之前沒驗,英文版從
+//     v1.10.35 一路漏 bump 十幾版才被文件 review 抓到——missing layer 補洞）
 //   - docs/index.html GitHub 下載按鈕（URL path / filename / 副標 v 三處）
-// CLAUDE.md §1「版本 bump 同步清單」7 項中,有 forcing 機制保護的從 1 項擴到 6 項
+// CLAUDE.md §1「版本 bump 同步清單」8 項中,有 forcing 機制保護的從 1 項擴到 7 項
 // （剩下「測試流程說明.md」是純文件、不易自動驗;Chrome Web Store 副標由 cron 自動同步,
 // 不在本檔範圍）。
 import fs from 'node:fs';
@@ -21,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { test, expect } from './fixtures/extension.js';
 import { getShinkansenEvaluator } from './regression/helpers/run-inject.js';
 
-const EXPECTED_VERSION = '1.10.46';
+const EXPECTED_VERSION = '1.10.47';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,6 +102,17 @@ test('README.md 同步檢查 (目前版本段)', async () => {
     `[DRIFT] README.md 缺「v${EXPECTED_VERSION} — 完整功能清單」段。\n` +
     `提醒:bump 時必須更新 README.md「目前版本」段落版本號。`,
   ).toContain(`v${EXPECTED_VERSION} — 完整功能清單`);
+});
+
+// ── 4.5 README.en.md「Current version」段 ──
+test('README.en.md 同步檢查 (Current version 段)', async () => {
+  test.skip(isDevTail, devTailSkipMsg);
+  const readmeEn = readRepoFile('README.en.md');
+  expect(
+    readmeEn,
+    `[DRIFT] README.en.md 缺「v${EXPECTED_VERSION} — full feature list」段。\n` +
+    `提醒:bump 時必須同步更新 README.en.md「Current version」段落版本號（CLAUDE.md §16.1 多語檔同步）。`,
+  ).toContain(`v${EXPECTED_VERSION} — full feature list`);
 });
 
 // ── 5. docs/index.html GitHub 下載按鈕副標版本號 ──

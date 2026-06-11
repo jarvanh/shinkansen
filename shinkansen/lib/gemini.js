@@ -6,6 +6,7 @@ import { debugLog } from './logger.js';
 // v1.5.7: DELIMITER / packChunks / buildEffectiveSystemInstruction 抽到共用模組，
 // 與 lib/openai-compat.js 共用同一份「翻譯 batch 構建」邏輯。
 import { DELIMITER, SEP_RE, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
+import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 
 const MAX_BACKOFF_MS = 8000;
 // v1.10.46(批次 2-1):429 Retry-After 等待上限。provider 可能回數百秒的 Retry-After,
@@ -18,12 +19,24 @@ export class DailyQuotaExceededError extends Error {
   constructor(message) {
     super(message);
     this.name = 'DailyQuotaExceededError';
+    // 錯誤 i18n 協定（lib/bg-error.js）：content 端查 error.bg.dailyQuota 組訊息
+    this.skCode = 'dailyQuota';
+    this.skParams = null;
   }
 }
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+// 空內容 finishReason → error code（error.bg.* dict key 尾段）。
+// non-streaming / streaming 兩條路徑共用，沒列出的 finishReason 走 'emptyContent'（帶 {reason}）。
+const EMPTY_REASON_CODES = {
+  SAFETY: 'emptySafety',
+  RECITATION: 'emptyRecitation',
+  MAX_TOKENS: 'emptyMaxTokens',
+  OTHER: 'emptyOther',
+};
 
 /**
  * v1.6.12:依模型決定 thinkingConfig。Gemini 3+ 改用 thinkingLevel(舊
@@ -152,7 +165,11 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
         const isTimeout = err.name === 'AbortError';
         const errMsg = isTimeout ? `逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
         await debugLog('error', 'api', isTimeout ? 'gemini fetch timeout' : 'gemini fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? FETCH_TIMEOUT_MS : undefined });
-        if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+        if (attempt >= maxRetries) {
+          throw isTimeout
+            ? codedError('timeout', { ms: FETCH_TIMEOUT_MS }, '網路錯誤：' + errMsg)
+            : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
+        }
         await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
         attempt += 1;
         continue;
@@ -180,7 +197,11 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
           const isTimeout = err.name === 'AbortError';
           const errMsg = isTimeout ? `回應讀取逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
           await debugLog('error', 'api', isTimeout ? 'gemini body read timeout' : 'gemini body read error', { error: err.message, attempt });
-          if (attempt >= maxRetries) throw new Error('網路錯誤：' + errMsg);
+          if (attempt >= maxRetries) {
+            throw isTimeout
+              ? codedError('readTimeout', { ms: FETCH_TIMEOUT_MS }, '網路錯誤：' + errMsg)
+              : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
+          }
           await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
           attempt += 1;
           continue;
@@ -208,8 +229,11 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
       }
 
       if (attempt >= maxRetries) {
-        const msg = bodyJson?.error?.message || `HTTP 429(${dim || '未知維度'})`;
-        throw new Error(msg);
+        // API 自帶 error.message（英文，ground truth）原樣傳遞不掛 code；
+        // 沒帶才用 http429 code 讓 content 端組「HTTP 429({dim})」
+        const apiMsg = bodyJson?.error?.message;
+        if (apiMsg) throw new Error(apiMsg);
+        throw codedError('http429', { dim: dim || 'unknown' }, `HTTP 429(${dim || '未知維度'})`);
       }
 
       const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
@@ -556,7 +580,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     await debugLog('error', 'api', 'gemini response body is not JSON', {
       status: resp.status, elapsed: ms, parseError: parseErr.message, rawPreview,
     });
-    throw new Error(`Gemini API 回應格式異常（非 JSON）：HTTP ${resp.status}。${rawPreview ? '回應前 200 字元：' + rawPreview : ''}`);
+    throw codedError('badResponse', { status: resp.status, preview: rawPreview || 'N/A' },
+      `Gemini API 回應格式異常（非 JSON）：HTTP ${resp.status}。${rawPreview ? '回應前 200 字元：' + rawPreview : ''}`);
   }
   const ms = Date.now() - t0;
 
@@ -576,7 +601,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   const blockReason = json?.promptFeedback?.blockReason;
   if (blockReason) {
     await debugLog('error', 'api', 'gemini prompt blocked', { blockReason, elapsed: ms });
-    throw new Error(`Gemini 拒絕處理此請求（promptFeedback.blockReason: ${blockReason}）。可能是安全過濾器誤判，請嘗試縮短段落或調整內容。`);
+    throw codedError('blocked', { reason: blockReason },
+      `Gemini 拒絕處理此請求（promptFeedback.blockReason: ${blockReason}）。可能是安全過濾器誤判，請嘗試縮短段落或調整內容。`);
   }
 
   // 檢查 candidates 為空或無文字輸出
@@ -595,7 +621,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     };
     const friendlyMsg = reasonMessages[finishReason]
       || `Gemini 回傳空內容（finishReason: ${finishReason}）。`;
-    throw new Error(friendlyMsg);
+    throw codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason }, friendlyMsg);
   }
 
   // finishReason 異常警告（有文字但不是正常結束）
@@ -879,7 +905,8 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   });
 
   if (blockReason) {
-    throw new Error(`Gemini 拒絕處理此請求(promptFeedback.blockReason: ${blockReason})`);
+    throw codedError('blocked', { reason: blockReason },
+      `Gemini 拒絕處理此請求(promptFeedback.blockReason: ${blockReason})`);
   }
 
   if (allText.length === 0) {
@@ -889,7 +916,8 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
       MAX_TOKENS: '輸出超過 maxOutputTokens 上限',
       OTHER: 'Gemini 回傳空內容(finishReason: OTHER)',
     };
-    throw new Error(reasonMsg[finishReason] || `Gemini 回傳空內容(finishReason: ${finishReason})`);
+    throw codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason },
+      reasonMsg[finishReason] || `Gemini 回傳空內容(finishReason: ${finishReason})`);
   }
 
   // 計算對齊後的譯文 array(跟 non-streaming 一致),hadMismatch 留給呼叫端決定如何處理
