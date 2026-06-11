@@ -489,6 +489,39 @@
         return;
       }
 
+      // v1.10.48: Layer A3.5 — A3 配對失敗時的「純文字 nodeValue mutate」fallback。
+      // 觸發結構:譯文無法同構重現 source 的 inline 序列。典型 case 是 dropcap
+      // 首字下沉段:source = TEXT("F") + SPAN.smallcaps("iending …") + TEXT(rest),
+      // 單字從字母中間被切開;CJK 譯文沒有「首字母」可對應 → LLM 要嘛丟掉佔位符
+      // (deserialize ok=false)、要嘛把首字併進 span(譯文序列 2 項 vs source 3 項,
+      // A3 對齊 fail)。同結構在非 framework 站走 single 的 plainTextFallback 原地
+      // 替換;framework branch 原本直接掉進 dual visible(原文保留 + 譯文 sibling),
+      // 使用者看起來就是「這段沒翻到」。
+      // 修法:slots 全為 styling-only inline(paired Element shell,非 <a>、非
+      // atomic、非 reuseNode)時,剝掉佔位符 → 以 slots=[] 重走 nodeValue mutate
+      // (整段譯文塞第一個 text node、其餘 text node 清空)。只動 nodeValue 不動
+      // 元素結構,fiber-safe 程度同 Layer A1,視覺等同 single 原地替換(§15)。
+      // Trade-off:styling inline(smallcaps / strong / em)的樣式覆蓋範圍丟失,
+      // 換取譯文完整 + 單語呈現。<a> / BUTTON(reuseNode)/ atomic 流不進此層:
+      // flatten 會清空連結文字 / click target / 未送翻的 atomic 內容 → 維持 dual
+      // visible 保功能。
+      if (slots && slots.length > 0 && SK.stripStrayPlaceholderMarkers
+          && slots.every(s => s && s.nodeType === Node.ELEMENT_NODE
+            && !s.atomic && !s.reuseNode && s.tagName !== 'A')) {
+        const plainTranslation = SK.stripStrayPlaceholderMarkers(translation).trim();
+        if (plainTranslation && SK.tryInjectNodeValueMutate?.(unit.el, plainTranslation, [])) {
+          if (_preText != null && (unit.el.textContent || '').trim() === _preText) {
+            _revertEcho(unit.el); return;
+          }
+          unit.el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
+          unit.el.setAttribute('data-shinkansen-translated', '1');
+          SK._recordTranslatedByText?.(unit.el, unit.el.innerHTML);
+          SK.sendLog('info', 'inject', 'A3.5 plain-text nv-mutate fallback (styling-only slots)',
+            { text: (unit.el.textContent || '').substring(0, 60) });
+          return;
+        }
+      }
+
       // fallback: dual visible(layer 1-8 path)
       // 確保 dual wrapper style 已注入(translatePage 入口在 single mode 下沒 ensure)
       SK.ensureDualWrapperStyle?.();
