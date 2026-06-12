@@ -28,6 +28,17 @@
     }
   };
 
+  // v1.10.49: nv-mutate 元素的純文字譯文紀錄(WeakMap el → plain translation)。
+  // Content Guard 在 framework「同內容重 render」把 backup text node 整批換新時
+  // (Medium 劃線 highlight hydration 實測場景),用它直接重套譯文,不重打 API
+  // (見 content-spa.js runContentGuardNvMutate)。restorePage 不需清:guard 以
+  // STATE.nodeValueMutateBackup 為迭代來源,backup 項清掉後本表殘項只是等 GC 的孤兒。
+  function recordNvMutateTranslation(el, translation) {
+    if (!el || !translation) return;
+    if (!STATE.nvMutateTranslation) STATE.nvMutateTranslation = new WeakMap();
+    STATE.nvMutateTranslation.set(el, translation);
+  }
+
   // 注入時對 el 套 locale-aware 樣式:
   //   1. lang attribute 設為 STATE.targetLanguage(讓瀏覽器選對 CJK 字形變體)
   //   2. CJK target(ja / ko / zh-TW / zh-CN)時 prepend locale 字體到 inline fontFamily
@@ -452,6 +463,15 @@
       // dedup 限縮在此 branch 內不影響其他合法雙段 inject(outer fragment + inner
       // element 等場景,SPEC §15 path)。
       if (unit.el.hasAttribute) {
+        // v1.10.49: 元素「自己」已帶任一翻譯標記 → 不重複注入。原本只查祖先 +
+        // 後代,漏掉自己:第一輪 A1/A3/A3.5 全 fail 掉 dual visible(元素只標
+        // data-shinkansen-dual-source,detect 層刻意不擋 dual-source),SPA rescan
+        // 重抓同元素再翻一次,LLM 非決定性這輪產出可對齊的譯文 → mutate 寫入 →
+        // 「原地中文 + 下方另一份不同中文 wrapper」雙重譯文(2026-06-12 Medium
+        // figcaption 實測:兩輪 API 譯文不同,間隔 6.6s)。
+        if (unit.el.hasAttribute('data-shinkansen-translated')
+            || unit.el.hasAttribute('data-shinkansen-dual-source')
+            || unit.el.hasAttribute('data-shinkansen-nodevalue-mutated')) return;
         let anc = unit.el.parentElement;
         while (anc && anc !== document.body) {
           if (anc.hasAttribute && (
@@ -486,6 +506,13 @@
         // unmount/remount 全新 element 時 spaByTextReuse 用 innerHTML
         // 還原譯文（新 element 還沒被 React 互動過,innerHTML 寫入安全）。
         SK._recordTranslatedByText?.(unit.el, unit.el.innerHTML);
+        // v1.10.49: 記錄純文字譯文,供 Content Guard 在「framework 同內容重
+        // render 把 backup node 整批換新」時直接重套(免 API,見 content-spa.js
+        // runContentGuardNvMutate)
+        recordNvMutateTranslation(unit.el,
+          slots && slots.length > 0 && SK.stripStrayPlaceholderMarkers
+            ? SK.stripStrayPlaceholderMarkers(translation).trim()
+            : translation);
         return;
       }
 
@@ -507,15 +534,37 @@
       // visible 保功能。
       if (slots && slots.length > 0 && SK.stripStrayPlaceholderMarkers
           && slots.every(s => s && s.nodeType === Node.ELEMENT_NODE
-            && !s.atomic && !s.reuseNode && s.tagName !== 'A')) {
+            && !s.atomic && !s.reuseNode)) {
         const plainTranslation = SK.stripStrayPlaceholderMarkers(translation).trim();
-        if (plainTranslation && SK.tryInjectNodeValueMutate?.(unit.el, plainTranslation, [])) {
+        // v1.10.49: <a> slot 原本一律擋在 A3.5 之外(flatten 清空連結文字 = 資訊
+        // 遺失)。收窄版放行:當「el 內所有 <a> 的可見文字都逐字出現在譯文中」
+        //(prompt 要求專有名詞保留英文原文,Medium 文章內文連結幾乎都是歌名/
+        // 人名/作品名,此條件極常成立)時,flatten 唯一損失是「可點擊性」——文字
+        // 內容零遺失,跟非 framework 站 plainTextFallback 的退化等價(§15 single
+        // 原地替換優先)。另要求第一個可見 text node 不在 <a> 內,避免整段譯文
+        // 塞進連結變成全段可點。任一條件不成立 → 維持 dual visible 保連結功能。
+        // 對應 2026-06-12 Medium 劃線段落實測:MARK[A[歌名]] 結構 + LLM 丟佔位
+        // 符 → deserialize fail → 原 gate 擋下 → 5 段掉 dual(原文+譯文並列)。
+        let a35AnchorsOk = true;
+        if (unit.el.querySelector && unit.el.querySelector('a')) {
+          for (const a of unit.el.querySelectorAll('a')) {
+            const aText = (a.textContent || '').trim();
+            if (aText && !plainTranslation.includes(aText)) { a35AnchorsOk = false; break; }
+          }
+          if (a35AnchorsOk) {
+            const tns0 = SK.collectVisibleTextNodes?.(unit.el) || [];
+            a35AnchorsOk = tns0.length > 0
+              && !(tns0[0].parentElement && tns0[0].parentElement.closest('a'));
+          }
+        }
+        if (plainTranslation && a35AnchorsOk && SK.tryInjectNodeValueMutate?.(unit.el, plainTranslation, [])) {
           if (_preText != null && (unit.el.textContent || '').trim() === _preText) {
             _revertEcho(unit.el); return;
           }
           unit.el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
           unit.el.setAttribute('data-shinkansen-translated', '1');
           SK._recordTranslatedByText?.(unit.el, unit.el.innerHTML);
+          recordNvMutateTranslation(unit.el, plainTranslation);
           SK.sendLog('info', 'inject', 'A3.5 plain-text nv-mutate fallback (styling-only slots)',
             { text: (unit.el.textContent || '').substring(0, 60) });
           return;
@@ -1415,6 +1464,15 @@
       let segOk = true;
       // 追蹤最近一個有內容的 text segment mutation（用於吸收 CJK 語序重排溢出文字）
       let lastProseMutationIdx = -1;
+      // v1.10.49: 開頭溢出文字 — 譯文在「第一個 inline 之前」產生 source 沒有的
+      // 文字,前面沒有 prose mutation 可往前吸,暫存後「往後」塞進下一個 mutation
+      //（優先塞進下一個 inline 的內部首個 text mutation,保持視覺順序)。
+      // 典型場景:source = [A(Bob Dylan), " and ", A(The Beatles), ", 1960s (...)"]
+      // 開頭沒 text;LLM 語序重排譯成「1960 年代的 ⟦0⟧..⟦/0⟧ 與 ⟦1⟧..⟦/1⟧（...)」
+      // → tgt 開頭多一個 text segment,原本直接 segOk=false 掉 dual visible
+      //（2026-06-12 Medium figcaption 實測)。trade-off:塞進 inline 內部的文字
+      // 會吃到該 inline 的樣式(連結底線等),換取 single 原地替換不掉 dual。
+      let pendingLeadText = '';
       for (let i = 0; i < srcSegs.length; i++) {
         const ss = srcSegs[i];
         const ts = tgtSegs[i];
@@ -1423,7 +1481,13 @@
           if (ss.tag !== ts.tag) { segOk = false; break; }
           const inner = [];
           const innerOk = collectA3Mutations(ss.node, ts.node, inner);
-          if (innerOk) for (const m of inner) segMutations.push(m);
+          if (innerOk) {
+            if (pendingLeadText && inner.length > 0) {
+              inner[0].newValue = pendingLeadText + inner[0].newValue;
+              pendingLeadText = '';
+            }
+            for (const m of inner) segMutations.push(m);
+          }
           continue;
         }
         // text segment（可空）
@@ -1438,7 +1502,9 @@
             segMutations[lastProseMutationIdx].newValue += overflow;
             continue;
           }
-          segOk = false; break;
+          // 前面沒有 prose mutation（開頭溢出）→ 暫存往後塞
+          pendingLeadText += ts.map(t => (t.node.nodeValue || '')).join('');
+          continue;
         }
         // v1.9.31:Google MT 把短 metadata 連接詞(" by " / " - " / " via " /
         // " at "等)跟前段主文一起翻譯,deserialize 後該 text segment 在 tgt 消失。
@@ -1465,6 +1531,12 @@
               newValue: preserveWsTextMutate(ss[j].node.nodeValue || '', ts[j].node.nodeValue || ''),
             });
           }
+          if (pendingLeadText) {
+            // 開頭溢出文字沒能塞進前面的 inline(內部對齊 fail)→ 塞本 text segment 開頭
+            const firstIdx = segMutations.length - ss.length;
+            segMutations[firstIdx].newValue = pendingLeadText + segMutations[firstIdx].newValue;
+            pendingLeadText = '';
+          }
           lastProseMutationIdx = segMutations.length - 1;
         } else {
           // src N vs tgt M（N != M）— Google MT 對含 \n / IMG emoji / 多段 prose 的
@@ -1482,13 +1554,17 @@
           const tgtJoined = ts
             .map(t => (t.node.nodeValue || '').replace(/^\s+|\s+$/g, ''))
             .join(sep);
-          segMutations.push({ node: ss[0].node, newValue: srcLead + tgtJoined + srcTrail });
+          segMutations.push({ node: ss[0].node, newValue: pendingLeadText + srcLead + tgtJoined + srcTrail });
+          pendingLeadText = '';
           for (let j = 1; j < ss.length; j++) {
             segMutations.push({ node: ss[j].node, newValue: '' });
           }
           lastProseMutationIdx = segMutations.length - ss.length;
         }
       }
+      // 開頭溢出文字到結尾都沒地方塞(後續 inline 內部對齊全 fail 且無 text
+      // segment)→ 不可丟字,整段視為配對失敗走 dual fallback
+      if (pendingLeadText) segOk = false;
       if (segOk) {
         for (const m of segMutations) mutations.push(m);
         return true;

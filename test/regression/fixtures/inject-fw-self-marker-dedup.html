@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>fixture: inject-fw-self-marker-dedup</title>
+</head>
+<body>
+  <!--
+    v1.10.49 framework-managed 分支「元素自身標記」dedup。
+
+    結構特徵:含 <a> 的一般段落。
+    Bug 時序(同一元素被翻譯兩次):
+      1. 第一輪譯文丟佔位符且連結文字不在譯文內 → A3 fail、A3.5 gate fail →
+         injectDual fallback(元素標 data-shinkansen-dual-source、wrapper 在下)
+      2. detect 層刻意不擋 dual-source(dual 模式由 injectDual 內部去重),
+         SPA rescan 重抓同元素再翻一次;LLM 非決定性這輪產出可對齊譯文
+      3. framework 分支的 dedup 只查「祖先 + 後代」標記,漏查元素自己 →
+         第二輪 mutate 寫入 → 「原地中文 + 下方另一份不同中文 wrapper」雙重譯文
+    修法:dedup 補查 unit.el 自身的三種標記(translated / dual-source /
+    nodevalue-mutated),任一存在直接 return。
+  -->
+  <article>
+    <p id="target">Quarterly results from <a href="https://example.com/n">Northwind Labs</a> exceeded expectations this year.</p>
+  </article>
+</body>
+</html>

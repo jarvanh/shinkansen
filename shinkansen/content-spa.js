@@ -575,6 +575,7 @@
     if (STATE.translationCache && STATE.translationCache.size > 0) {
       runContentGuardDual(false);
     }
+    runContentGuardNvMutate(false);
     let restored = 0;
     // v1.8.14: 優先走 IO subset(viewport 附近的 entry),沒 IO 時 fallback 全表
     const candidates = guardVisibleSet
@@ -602,6 +603,83 @@
       SK.sendLog('info', 'guard', `Content guard restored ${restored} overwritten nodes`);
     }
   }
+
+  // v1.10.49: nv-mutate 元素巡檢 — detectAndUnmarkExpandedNodeValueMutate Path E
+  // 的週期性補位。A4 是 observer batch 反應式:framework 還原譯文的 mutation 若落
+  // 在注入期間 / debounce 視窗外被漏看(2026-06-12 Medium 劃線 highlight hydration
+  // 實測:5 段 nv-mutate 元素被 React 整批換新 text node 還原成英文,attribute 留
+  // 在元素上,A4 沒收到 batch → 永遠卡「標 translated 但顯示原文」),需要跟
+  // innerHTML guard / dual wrapper guard 同等級的 1s sweep 兜底。
+  // 只處理「backup node 全部 detach」(framework 整批換新)——connected 但值變了
+  // 的場景留給 A4 Path B(batch 內有 characterData 事件,且 sweep 搶先重寫會跟
+  // X show-more 展開重翻打架,把完整原文蓋回截斷版譯文)。
+  // 兩條修復路徑(以「重 render 後的內容」分流):
+  //   1. 同內容重 render(current textContent === STATE.originalText)→ 直接把
+  //      STATE.nvMutateTranslation 記錄的純文字譯文重套(SK.tryInjectNodeValueMutate
+  //      slots=[]),零 API、冪等,sweep 每秒一次直到贏過 framework 的 hydration 波
+  //      (§15「reapply on detach+reattach」戰術)。unmark→rescan→重打 API 在
+  //      hydration 波內會反覆被還原直到重試上限耗盡,實測救不回來。
+  //   2. 內容已變(X show-more 展開等)→ unmark + rescan 重翻(不可重套舊譯文,
+  //      會把新內容蓋掉)。
+  // 每元素干預上限 8 次:防 framework 持續重 render 的無限 ping-pong(重套免
+  // API 成本低,上限放寬到足以撐過 Medium hydration 多波重 render)。
+  const nvGuardInterveneCount = new WeakMap();
+  function runContentGuardNvMutate(ignoreViewport) {
+    if (!STATE.nodeValueMutateBackup || STATE.nodeValueMutateBackup.size === 0) return 0;
+    let reapplied = 0;
+    let unmarked = 0;
+    for (const [el, backup] of STATE.nodeValueMutateBackup) {
+      if (!el || !el.isConnected) continue;
+      if (!backup || backup.length === 0) continue;
+      // 任一 backup node 還連著 → 不是「整批換新」場景,交給 A4
+      if (!backup.every(entry => !entry?.node?.isConnected)) continue;
+      if (!ignoreViewport) {
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
+      }
+      const n = nvGuardInterveneCount.get(el) || 0;
+      if (n >= 8) continue;
+      nvGuardInterveneCount.set(el, n + 1);
+
+      const origText = STATE.originalText?.get?.(el);
+      const savedTranslation = STATE.nvMutateTranslation?.get?.(el);
+      const curText = (el.textContent || '').trim();
+      if (origText && savedTranslation && curText === origText) {
+        // 路徑 1:同內容重 render → 重套譯文。先清 stale backup 讓
+        // tryInjectNodeValueMutate 以「現在的英文 node」重建 backup。
+        STATE.nodeValueMutateBackup.delete(el);
+        if (SK.tryInjectNodeValueMutate?.(el, savedTranslation, [])) {
+          el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
+          el.setAttribute('data-shinkansen-translated', '1');
+          reapplied++;
+          continue;
+        }
+        // 重套失敗(結構特殊)→ fall through 走 unmark 路徑
+      }
+      // 路徑 2:內容已變 / 無譯文紀錄 → unmark + rescan 重翻
+      el.removeAttribute('data-shinkansen-nodevalue-mutated');
+      el.removeAttribute('data-shinkansen-translated');
+      STATE.nodeValueMutateBackup.delete(el);
+      STATE.originalText?.delete?.(el);
+      STATE.originalHTML?.delete?.(el);
+      // 清 seenTexts entry(元素現在顯示原文)讓 rescan 能重翻
+      const txt = (el.innerText || '').trim();
+      if (txt) spaObserverSeenTexts.delete(txt);
+      unmarked++;
+    }
+    if (reapplied > 0 || unmarked > 0) {
+      SK.sendLog('info', 'guard',
+        `Content guard nv-mutate: ${reapplied} reapplied, ${unmarked} unmarked for retranslation`);
+    }
+    if (unmarked > 0) {
+      setTimeout(() => {
+        if (!STATE.translated) return;
+        triggerSpaObserverRescan();
+      }, 100);
+    }
+    return reapplied + unmarked;
+  }
+  SK._testRunContentGuardNvMutate = function() { return runContentGuardNvMutate(true); };
 
   /**
    * v1.5.0: 雙語模式 Content Guard——遍歷 STATE.translationCache，
@@ -927,7 +1005,49 @@
         trigger = 'attr-stripped';
       }
 
+      // Path (E) v1.10.49: 整批 text node 被 framework 換新 — React 重 render
+      // 子樹時用「新的」text node 物件呈現原文(典型:Medium 劃線 highlight
+      // hydration 把段落子節點換成 <mark> 包裹的新 text node),當初 mutate 的
+      // node 全部 detach。Path B 對 !isConnected entry 直接 skip 看不到差異,
+      // element ref 沒變所以 attribute 也沒被 strip(Path D 不觸發),元素永遠卡
+      // 在「標 translated 但顯示英文原文」(2026-06-12 Medium Outkast 段實測,
+      // 含 3 個 <mark> 劃線)。判準取保守的「全部 detach」:部分 detach 的混合
+      // 場景交由 Path B/C 的值比對處理,避免誤殺 X show-more 部分重建。
+      if (!trigger) {
+        const backupE = STATE.nodeValueMutateBackup.get(el);
+        if (backupE && backupE.length > 0 &&
+            backupE.every(entry => !entry?.node?.isConnected)) {
+          trigger = 'nodes-replaced';
+        }
+      }
+
       if (!trigger) continue;
+
+      // v1.10.49: unmark 前先試「重套譯文」——framework 同內容重 render(backup
+      // node 全 detach + 現在的 textContent 仍等於原文)時,直接把記錄的純文字
+      // 譯文套回新 node(零 API)。Medium 劃線 highlight hydration 實測:hydration
+      // 多波重 render,unmark→rescan→重打 API 的循環在波內反覆被還原直到重試
+      // 上限耗盡,留下「標 translated 但顯示英文」;重套是冪等操作,跟 guard 的
+      // 1s sweep(runContentGuardNvMutate)同款,sweep 到 framework 收手為止。
+      // 內容已變(X show-more 等)不重套——curText !== origText 自然走 unmark。
+      {
+        const _b = STATE.nodeValueMutateBackup.get(el);
+        const _allDetached = _b && _b.length > 0 && _b.every(e2 => !e2?.node?.isConnected);
+        const _saved = STATE.nvMutateTranslation?.get?.(el);
+        const _cur = (el.textContent || '').trim();
+        const _n = nvGuardInterveneCount.get(el) || 0;
+        if (_allDetached && _saved && _cur === origText && _n < 8) {
+          nvGuardInterveneCount.set(el, _n + 1);
+          STATE.nodeValueMutateBackup.delete(el);
+          if (SK.tryInjectNodeValueMutate?.(el, _saved, [])) {
+            el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
+            el.setAttribute('data-shinkansen-translated', '1');
+            SK.sendLog?.('info', 'spa', `detect-expanded-nv-mutate: reapplied translation (was ${trigger})`);
+            continue;
+          }
+          // 重套失敗 → fall through 走原 unmark 路徑(backup 已刪,下方還原迴圈自然跳過)
+        }
+      }
 
       // 還原 backup text node 為原文,確保 collectParagraphs 收到乾淨的 source text。
       // Selective restore:只還原仍持 translatedValue 的 node。如果 framework
