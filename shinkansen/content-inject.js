@@ -372,11 +372,21 @@
     var origLang = STATE.originalLang.get(el);
     if (origLang === null) el.removeAttribute('lang');
     else if (origLang != null) el.setAttribute('lang', origLang);
-    el.removeAttribute('data-shinkansen-translated');
     el.removeAttribute('data-shinkansen-nodevalue-mutated');
     var origFont = STATE.originalFontFamily.get(el);
     if (origFont != null) el.style.fontFamily = origFont;
-    SK.sendLog('warn', 'inject', 'echo detected: translation identical to source, not marking translated',
+    // v1.10.50: echo = 模型判定「譯文即原文」(典型:品牌名/專有名詞短段)。DOM 已還原
+    // 為原文,但必須標 data-shinkansen-translated 視為已處理——否則 rescanTick /
+    // spaObserverRescan 每輪把同段重收進候選重送 API,模型再 echo、再不標,純燒 token
+    //(DF probe 實測:同兩段 20s 內 3 連打)。標記走既有 translated 屬性而非新屬性,
+    // 讓所有候選過濾點(collectParagraphs / prescan IO selector / spaByTextReuse)
+    // 單一資料源生效;restorePage / SPA reset 照常清標記,使用者清快取重翻(必經
+    // restore toggle)仍會重送這些段。
+    el.setAttribute('data-shinkansen-translated', '1');
+    // by-text reuse 也記一筆(value = 原文 innerHTML):SPA virtualization 同文字段
+    // remount 成新元素時直接 reuse,不再進 API 候選。
+    SK._recordTranslatedByText?.(el, el.innerHTML);
+    SK.sendLog('warn', 'inject', 'echo detected: translation identical to source, marked translated (rescan will not re-send)',
       { text: (el.textContent || '').substring(0, 80) });
   }
 

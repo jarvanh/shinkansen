@@ -337,9 +337,8 @@
   // ─── translateUnits ──────────────────────────────────
 
   SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode } = {}) {
-    const total = units.length;
     const tu_entry = Date.now();
-    const serialized = units.map(unit => {
+    let serialized = units.map(unit => {
       if (unit.kind === 'fragment') {
         return SK.serializeFragmentWithPlaceholders(unit);
       }
@@ -352,6 +351,29 @@
       }
       return SK.serializeWithPlaceholders(el);
     });
+    // ─── 空字串 unit 防護（v1.10.50，協定層通則）──────────────
+    // 候選元素序列化後可能是空字串（典型：textContent 全來自 HARD_EXCLUDE 子樹的
+    // <li><script>，isCandidateText 看 textContent 通過、serializer 卻全數排除）。
+    // 空段送 LLM 沒有任何可譯內容，模型會自由發揮編出無關長文注入回頁面，且
+    // cache key = sha1('') 是固定值，幻覺譯文會跨頁汙染所有空段。一律送 API 前
+    // 丟棄：不送、不注入、不標 translated（元素維持原樣）。
+    // 本 guard 驗「協定層不送空 payload」這一層；偵測端另有 hardExcludeInflated
+    // REJECT（content-detect.js）在收集時就擋，雙層各自獨立（工作流原則 §3）。
+    {
+      const _preFilter = units.length;
+      const _kept = [];
+      for (let i = 0; i < serialized.length; i++) {
+        if ((serialized[i].text || '').trim()) _kept.push(i);
+      }
+      if (_kept.length < _preFilter) {
+        units = _kept.map(i => units[i]);
+        serialized = _kept.map(i => serialized[i]);
+        SK.sendLog('warn', 'translate', 'empty-text units dropped before API', {
+          dropped: _preFilter - _kept.length, kept: _kept.length,
+        });
+      }
+    }
+    const total = units.length;
     const texts = serialized.map(s => s.text);
     const slotsList = serialized.map(s => s.slots);
     SK.sendLog('info', 'translate', 'milestone:tu_serialize_done', { t: Date.now() - tu_entry, units: total });

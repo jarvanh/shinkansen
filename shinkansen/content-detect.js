@@ -1044,12 +1044,16 @@
           if (SK.BLOCK_TAGS_SET.has(el.tagName)) structurallySkippedBlocks.add(el);
           return NodeFilter.FILTER_SKIP;
         }
-        // NOSCRIPT fallback 膨脹 textContent:P > [IMG, NOSCRIPT] 結構中
-        // NOSCRIPT 的 <img> tag 被 textContent 當文字讀入(163+ 字),
-        // 導致 isCandidateText 誤判通過 → Gemini 收到 HTML 原始碼 → 幻覺。
-        // 用 innerText 看真實可見文字;只在有 NOSCRIPT 時才觸發(避免全路徑 reflow)。
-        if (el.querySelector('noscript') && (el.innerText || '').trim().length < 2) {
-          if (stats) stats.noscriptInflated = (stats.noscriptInflated || 0) + 1;
+        // HARD_EXCLUDE 文字載體子樹膨脹 textContent（結構通則，v1.10.50 由 NOSCRIPT
+        // 窄修通則化）：SCRIPT / STYLE / NOSCRIPT / TEXTAREA 的內部文字會被 textContent
+        // 讀入，但 walker 對這些子樹一律 REJECT、serializer 也不會輸出它們——
+        // 導致「isCandidateText 看 textContent 誤判通過、序列化後卻是空字串」的
+        // 不一致：空段送 LLM 會誘發幻覺譯文（實測 <li><script>cookie JS</script></li>
+        // 結構，flash 對空段自由發揮編出整段無關長文，並以 sha1('') cache key 跨頁汙染）。
+        // 用 innerText 看真實可見文字；只在有這類子樹時才觸發（避免全路徑 reflow）。
+        if (el.querySelector('script, style, noscript, textarea') &&
+            (el.innerText || '').trim().length < 2) {
+          if (stats) stats.hardExcludeInflated = (stats.hardExcludeInflated || 0) + 1;
           return NodeFilter.FILTER_REJECT;
         }
         if (!isCandidateText(el)) {
