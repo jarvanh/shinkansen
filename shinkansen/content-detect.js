@@ -554,6 +554,68 @@
     return fragments;
   }
 
+  // v1.10.53: 把「純文字 + 多個 <br>、無 block 子孫」的超長 Case B 區塊,按段落邊界切成
+  // 多個 fragment unit。段落邊界 = 連續 ≥2 個 <br>(中間夾的純空白 text node 視為分隔符的
+  // 一部分);單一 <br> 視為段落內換行,留在 fragment 內(序列化時掃 startNode..endNode 會
+  // 帶到它,轉成  → \n)。分隔用的 BR 群不納入任何 fragment,注入後留在原位 → 段落
+  // 間距保留。回傳的 {kind:'fragment', el, startNode, endNode} 沿用 injectFragmentTranslation
+  // 注入(同一 el 多 fragment 共存是 Case A 既有行為)。
+  // 結構通則(§8):描述「雙 <br> = 段落分隔」的 DOM 結構特徵,不綁站點 / class。
+  function splitBrBlock(el) {
+    const fragments = [];
+    const children = Array.from(el.childNodes);
+    const isBr = (n) => n && n.nodeType === Node.ELEMENT_NODE && n.tagName === 'BR';
+    const isWs = (n) => n && n.nodeType === Node.TEXT_NODE && !(n.nodeValue || '').trim();
+    const _target = SK.STATE?.targetLanguage || 'zh-TW';
+
+    let runStart = null;
+    let runEnd = null;
+
+    const flush = () => {
+      if (!runStart) return;
+      let text = '';
+      let n = runStart;
+      while (n) { text += n.textContent || ''; if (n === runEnd) break; n = n.nextSibling; }
+      const trimmed = text.trim();
+      // 已是 target 語言 / 無可翻字元的段落跳過(對齊 extractInlineFragments 的 flushRun 過濾)
+      if (trimmed.length >= 2 &&
+          !SK.isAlreadyInTarget(trimmed, _target) &&
+          /[A-Za-zÀ-ÿЀ-ӿ㐀-鿿0-9]/.test(text)) {
+        fragments.push({ kind: 'fragment', el, startNode: runStart, endNode: runEnd });
+      }
+      runStart = null;
+      runEnd = null;
+    };
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (isBr(child)) {
+        // 往後看(跳過純空白)是否還有 BR → 連續 ≥2 = 段落邊界
+        let j = i + 1;
+        let brCount = 1;
+        while (j < children.length && (isBr(children[j]) || isWs(children[j]))) {
+          if (isBr(children[j])) brCount++;
+          j++;
+        }
+        if (brCount >= 2) {
+          flush();        // 結束當前段;整個 BR 群當分隔符,不納入任何 fragment
+          i = j - 1;      // for 的 i++ 會再 +1,跳過整個 BR(含夾縫空白)群
+          continue;
+        }
+        // 單一 <br>:段落內換行,不主動移動 runEnd——只要前後有意義節點,flush 的
+        // startNode..endNode 掃描自然會帶到它
+        continue;
+      }
+      if (isWs(child)) continue;  // 純空白 text node:同理不主動開 run
+      // 有意義節點(非空 text / inline 元素)
+      if (!runStart) runStart = child;
+      runEnd = child;
+    }
+    flush();
+    return fragments;
+  }
+  SK._splitBrBlock = splitBrBlock;  // 測試 seam
+
   // ─── collectParagraphs ────────────────────────────────
 
   SK.collectParagraphs = function collectParagraphs(root, stats) {
@@ -745,9 +807,30 @@
               directTextLength(el) >= 20 &&
               isCandidateText(el)
             ) {
-              results.push({ kind: 'element', el });
-              seen.add(el);
-              if (stats) stats.containerWithBr = (stats.containerWithBr || 0) + 1;
+              // v1.10.53: 超長區塊先嘗試按 <br><br> 段落邊界切成多個 fragment(平行批次 +
+              // 避免單一 2 萬字 streaming segment「無法結束」)。切不出 ≥2 段(無段落邊界 /
+              // 過濾後不足)才退回原本「整塊當單一 element 單元」行為。
+              let splitFrags = null;
+              if ((el.textContent || '').trim().length > SK.BR_BLOCK_SPLIT_CHARS) {
+                const fr = splitBrBlock(el);
+                if (fr.length >= 2) splitFrags = fr;
+              }
+              if (splitFrags) {
+                fragmentExtracted.add(el);
+                // 趁全頁未翻譯先 snapshot 容器原文,確保 RESTORE 拿到乾淨原文(同 Case A v1.10.45)
+                SK.snapshotOnce?.(el);
+                for (const f of splitFrags) {
+                  results.push(f);
+                  seen.add(f.startNode);
+                  let _n = f.startNode;
+                  while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+                  if (stats) stats.containerWithBrSplit = (stats.containerWithBrSplit || 0) + 1;
+                }
+              } else {
+                results.push({ kind: 'element', el });
+                seen.add(el);
+                if (stats) stats.containerWithBr = (stats.containerWithBr || 0) + 1;
+              }
             } else if (
               // Case C (v1.4.19)：container 有直接文字 + inline 元素（如 <a>），
               // 無 block 子孫、無 BR → 抽 inline fragment

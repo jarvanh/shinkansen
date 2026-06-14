@@ -385,6 +385,14 @@ if (window.__shinkansen_loaded) {
   SK.BATCH0_UNITS = 25;
   SK.BATCH0_CHARS = 3700;
 
+  // v1.10.53: Case B 超長區塊(純文字 + 多個 <br>、無 block 子孫)切分門檻。
+  // 「整篇文章塞在一個 <div> 用 <br><br> 分段」(Christie's 拍品專文等)原本整塊當單一
+  // element 單元 → 變成 2 萬字單一 streaming segment,Gemini flash/flash-lite 串流極慢
+  // 甚至 stall「無法結束」。文字超過此值且能按段落切出 ≥2 段時,改切成多個 fragment 平行翻。
+  // 取 DEFAULT_CHARS_PER_BATCH:超過單批 char 上限的單元本來就無法併批、只能自己一批,
+  // 切分後反而能塞回正常批次平行吞吐。
+  SK.BR_BLOCK_SPLIT_CHARS = 3500;
+
   // SPA 動態載入常數
   SK.SPA_OBSERVER_DEBOUNCE_MS = 1000;
   // maxWait:即使 mutation 連續來 debounce 持續被 reset,從第一次 arm 起算最多

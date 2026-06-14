@@ -588,6 +588,29 @@
       // 不影響真正在某處 await + try/catch 接到 reject 的路徑。
       donePromise.catch(() => {});
 
+      // v1.10.53: streaming idle watchdog —— 網頁路徑補上 YT _runBatch0Streaming 同款守衛
+      // (v1.10.46 只加在字幕路徑,網頁主翻譯路徑漏掉,正是 Christie's 拍品專文「最後一段
+      // 無法結束」的成因之一)。first_chunk 之後 `await stream.donePromise` 沒有任何 timeout:
+      // Gemini 中途 stall(flash-lite 在長 segment runaway / 靜默)或 SW 中途死亡時,
+      // STREAMING_DONE / ERROR 永不到 → donePromise 永久 pending → 整頁卡在「翻譯中」結束不了。
+      // 每收到本 stream 任何訊息重置計時;逾時 → 通知 SW abort(止血 + 省 token)+ reject
+      // donePromise 讓呼叫端走既有 mid-failure non-streaming fallback。
+      // 20s:健康串流 chunk 間距 < 1s,20s 無動靜視為卡死。SK._streamIdleTimeoutMs 為
+      // regression spec 縮短逾時的 override seam(與 YT 共用同一 seam)。
+      const STREAM_IDLE_TIMEOUT_MS = 20000;
+      let _idleTimer = null;
+      const _resetIdleWatchdog = () => {
+        clearTimeout(_idleTimer);
+        _idleTimer = setTimeout(() => {
+          try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {}
+          SK.sendLog('warn', 'translate', `batch 1/${jobs.length} streaming idle watchdog fired (stall / SW dead mid-stream?)`, { streamId });
+          SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId } }).catch(() => {});
+          firstChunkResolve(false);
+          doneReject(new Error('streaming idle timeout'));
+        }, SK._streamIdleTimeoutMs || STREAM_IDLE_TIMEOUT_MS);
+      };
+      const _clearIdleWatchdog = () => { clearTimeout(_idleTimer); _idleTimer = null; };
+
       // v1.8.0 instrumentation：第一個 segment inject 時間（對應使用者首字延遲）
       let firstSegmentInjectedT = null;
       // v1.9.29-DEV instrument(Finding 4 streaming inject 段拆解):量 firstChunk → first inject 2.5s gap 內部組成
@@ -597,6 +620,7 @@
       // v1.8.0: abort 傳播 — 使用者按 Option+S 取消 → 通知 SW 中斷 streaming + 清理 listener
       const abortHandler = () => {
         SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream abort triggered`, { streamId });
+        _clearIdleWatchdog();
         SK.safeSendMessage({ type: 'STREAMING_ABORT', payload: { streamId } }).catch(() => {});
         // 解開 main 流程的 await(SW 端會回傳 STREAMING_ABORTED 但本地 listener 已移除，
         // 為防卡死直接在這裡 resolve)
@@ -618,6 +642,7 @@
 
       const onMessage = (message) => {
         if (!message || message.payload?.streamId !== streamId) return;
+        _resetIdleWatchdog(); // 本 stream 有任何動靜 = SW 還活著、串流還在進
         if (message.type === 'STREAMING_FIRST_CHUNK') {
           firstChunkResolve(true);
         } else if (message.type === 'STREAMING_SEGMENT') {
@@ -702,6 +727,7 @@
           // segment 0 可能已被 streaming 注入合併譯文（A 已 sanitize),retry 會用乾淨版本覆蓋。
           if (message.payload.hadMismatch) {
             SK.sendLog('warn', 'translate', `batch 1/${jobs.length} stream DONE with hadMismatch, triggering retry`, { elapsed, totalSegments: message.payload.totalSegments });
+            _clearIdleWatchdog();
             browser.runtime.onMessage.removeListener(onMessage);
             firstChunkResolve(true);
             doneReject(new Error('streaming hadMismatch'));
@@ -717,23 +743,27 @@
           // 純 cache hit,SPA rescan toast 一律跳「已翻 N 段新內容」誤導使用者以為又花了 token。
           pageUsage.cacheHits += usage.cacheHits || 0;
           SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream done`, { elapsed, totalSegments: message.payload.totalSegments, hadMismatch: false });
+          _clearIdleWatchdog();
           browser.runtime.onMessage.removeListener(onMessage);
           firstChunkResolve(true);  // 防 first_chunk 漏訊息卡死主流程
           doneResolve({ ok: true });
         } else if (message.type === 'STREAMING_ERROR') {
           const elapsed = Date.now() - t0;
           SK.sendLog('error', 'translate', `batch 1/${jobs.length} stream FAILED`, { elapsed, error: message.payload.error });
+          _clearIdleWatchdog();
           browser.runtime.onMessage.removeListener(onMessage);
           firstChunkResolve(false);
           doneReject(new Error(SK.i18n.bgErrorMessage(message.payload) || 'streaming failed'));
         } else if (message.type === 'STREAMING_ABORTED') {
           SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream aborted`, { streamId });
+          _clearIdleWatchdog();
           browser.runtime.onMessage.removeListener(onMessage);
           firstChunkResolve(false);
           doneResolve({ ok: false, aborted: true });
         }
       };
       browser.runtime.onMessage.addListener(onMessage);
+      _resetIdleWatchdog(); // listener 掛上即開始計時(涵蓋 first_chunk 已到但 SEGMENT 永不到的情境)
 
       // 觸發 streaming(SW 內 fire-and-forget,sendMessage 立刻 resolve)
       SK.safeSendMessage({
@@ -741,11 +771,13 @@
         payload: { texts: job.texts, glossary: glossary || null, modelOverride: modelOverride || null, streamId },
       }).then((resp) => {
         if (!resp?.started) {
+          _clearIdleWatchdog();
           browser.runtime.onMessage.removeListener(onMessage);
           firstChunkResolve(false);
           doneReject(new Error(resp?.error || 'streaming failed to start'));
         }
       }).catch((err) => {
+        _clearIdleWatchdog();
         browser.runtime.onMessage.removeListener(onMessage);
         firstChunkResolve(false);
         doneReject(err);
@@ -757,7 +789,7 @@
         new Promise((r) => setTimeout(() => r({ kind: 'timeout' }), FIRST_CHUNK_TIMEOUT_MS)),
       ]);
 
-      return { firstChunkOrTimeout, donePromise, streamId, cleanup: () => { try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {} } };
+      return { firstChunkOrTimeout, donePromise, streamId, cleanup: () => { _clearIdleWatchdog(); try { browser.runtime.onMessage.removeListener(onMessage); } catch (_) {} } };
     };
 
     // v1.8.0: streaming 適用範圍——僅 Gemini 文章翻譯路徑。OpenAI-compat / 其他 engine 仍走 v1.7.x 序列 batch 0 路徑。
