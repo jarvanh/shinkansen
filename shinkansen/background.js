@@ -997,6 +997,16 @@ const messageHandlers = {
       browser.tabs.sendMessage(tabId, { type: 'TRANSLATE_PRESET', payload: { slot: 2 } }).catch(() => {});
     },
   },
+  // iOS 四指長按（content-touch.js）→ 轉發 TRANSLATE_PRESET slot 1（次要預設，預設
+  // Flash Lite）。跟四指 tap 同一條 background → all frames broadcast 派送，只差 slot
+  FOUR_FINGER_LONGPRESS: {
+    async: false,
+    handler: (_, sender) => {
+      const tabId = sender?.tab?.id;
+      if (tabId == null) return;
+      browser.tabs.sendMessage(tabId, { type: 'TRANSLATE_PRESET', payload: { slot: 1 } }).catch(() => {});
+    },
+  },
   // v1.4.11 跨 tab sticky 翻譯（v1.4.12 起 value = preset slot number）
   STICKY_QUERY: {
     async: true,

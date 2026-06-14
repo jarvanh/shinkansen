@@ -1,28 +1,38 @@
-// content-touch.js — 四指 tap 觸發翻譯 toggle（iOS / iPadOS Safari 專用）
+// content-touch.js — 四指手勢觸發翻譯（iOS / iPadOS Safari 專用）
 //
 // 設計（SPEC-PRIVATE §26.1）：
-// - 四指輕點 = Alt+S 完整 toggle：未翻譯 → 翻譯；翻譯中或已翻譯 → 中止並還原原文
-// - 不另開單向分支：偵測到手勢後送 FOUR_FINGER_TAP 給 background，由 background
-//   轉發 TRANSLATE_PRESET slot 2（跟 commands onCommand 的 Alt+S 完全同一條路徑，
-//   含 all_frames broadcast 行為——避免「手勢」跟「快速鍵」兩條 path drift）
-// - 「tap」判定：四指同時落下、任一指移動 < MOVE_TOLERANCE_PX、全部抬起且
-//   歷時 < TAP_MAX_MS。四指 swipe / pinch（iPadOS 系統多工手勢）會因移動量
-//   超過容差被取消，不誤觸發
-// - 本檔列在 manifest 全平台載入（維持 manifest 單一來源 + Playwright 可測）,
+// - 四指「快點」= Alt+S 完整 toggle（主要預設 slot 2）：未翻譯 → 翻譯；翻譯中或
+//   已翻譯 → 中止並還原原文。送 FOUR_FINGER_TAP 給 background → TRANSLATE_PRESET
+//   slot 2（跟 commands onCommand 的 Alt+S 完全同一條路徑，含 all_frames broadcast）
+// - 四指「長按」= 次要預設 slot 1（預設 Flash Lite）：四指同時壓住、不移動且持續
+//   達 LONGPRESS_MS → 送 FOUR_FINGER_LONGPRESS → background → TRANSLATE_PRESET slot 1。
+//   長按在門檻當下即由計時器觸發（不等抬起），翻譯進度 toast 即視覺回饋；不依賴
+//   navigator.vibrate（iOS Safari 不支援震動 API）
+// - 快點 / 長按以「壓住時長」單一門檻區分：抬起時計時器尚未觸發 = 快點（slot 2）；
+//   壓住達門檻計時器先觸發 = 長按（slot 1）。主要動作（快點）在抬起當下即觸發、零
+//   延遲——這正是選「長按」而非「雙擊」做次要預設的原因（雙擊會逼快點等消歧窗）
+// - 任一指移動 < MOVE_TOLERANCE_PX 才算合格；四指 swipe / pinch（iPadOS 系統多工
+//   手勢）移動量超過容差被取消，第五指落下（五指 pinch）也取消，皆不誤觸發
+// - 本檔列在 manifest 全平台載入（維持 manifest 單一來源 + Playwright 可測），
 //   但 handler 開頭以 IS_IOS_BUILD gate 早退：桌面 build（Chrome / Firefox /
 //   macOS Safari）為 no-op，只有 safari-build-ios.sh override 的 iOS build 啟用。
-//   桌面觸控螢幕（Windows touch laptop 等）不啟用——四指 tap 在各桌面 OS 另有
+//   桌面觸控螢幕（Windows touch laptop 等）不啟用——四指手勢在各桌面 OS 另有
 //   系統手勢語意，誤觸發風險高
 // - 不加 options 開關（avoid redundant toggle 原則，§26.1）
 (function (SK) {
   'use strict';
   if (!SK) return;
 
-  const TAP_MAX_MS = 500;        // 落下到全部抬起的最長歷時，超過視為長按 / 手勢
+  const LONGPRESS_MS = 600;      // 四指壓住達此毫秒數 = 長按 → slot 1；之前抬起 = 快點 → slot 2
   const MOVE_TOLERANCE_PX = 30;  // 任一指移動超過此距離視為 swipe / pinch，取消
 
-  // 進行中的四指手勢：{ t0, pts: Map<identifier, {x, y}> };null = 無候選手勢
+  // 進行中的四指手勢：{ t0, pts: Map<identifier,{x,y}>, timer, longPressFired }
+  // null = 無候選手勢
   let gesture = null;
+
+  function clearGestureTimer() {
+    if (gesture && gesture.timer) { clearTimeout(gesture.timer); gesture.timer = null; }
+  }
 
   function isEnabled() {
     // IS_IOS_BUILD 由 lib/distribution-cs.js 寫入（iOS build override 為 true）。
@@ -35,9 +45,20 @@
     if (e.touches.length === 4) {
       const pts = new Map();
       for (const t of e.touches) pts.set(t.identifier, { x: t.clientX, y: t.clientY });
-      gesture = { t0: Date.now(), pts };
+      clearGestureTimer();
+      gesture = { t0: Date.now(), pts, timer: null, longPressFired: false };
+      // 四指壓住達門檻仍未抬起 / 未超移動容差 → 長按 → slot 1。touchmove / 第五指 /
+      // 全抬起都會清掉此計時器，所以計時器觸發時必然四指仍合格壓著。
+      gesture.timer = setTimeout(() => {
+        if (!gesture || gesture.longPressFired) return;
+        gesture.longPressFired = true;
+        gesture.timer = null;
+        SK.sendLog('info', 'system', 'four-finger long-press detected', { ms: LONGPRESS_MS });
+        SK.safeSendMessage({ type: 'FOUR_FINGER_LONGPRESS' }).catch(() => {});
+      }, LONGPRESS_MS);
     } else if (e.touches.length > 4) {
-      // 第五指落下 → 不是四指 tap（iPadOS 五指 pinch 等系統手勢）
+      // 第五指落下 → 不是四指手勢（iPadOS 五指 pinch 等系統手勢）
+      clearGestureTimer();
       gesture = null;
     }
   }, { passive: true, capture: true });
@@ -48,6 +69,7 @@
       const start = gesture.pts.get(t.identifier);
       if (!start) continue;
       if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > MOVE_TOLERANCE_PX) {
+        clearGestureTimer();
         gesture = null; // swipe / pinch，取消候選
         return;
       }
@@ -57,14 +79,18 @@
   window.addEventListener('touchend', (e) => {
     if (!gesture) return;
     if (e.touches.length > 0) return; // 還有指頭沒抬起，等下一個 touchend
+    clearGestureTimer();
+    const fired = gesture.longPressFired;
     const elapsed = Date.now() - gesture.t0;
     gesture = null;
-    if (elapsed > TAP_MAX_MS) return;
+    if (fired) return;                    // 長按已由計時器送出 slot 1，抬起不再送 slot 2
+    if (elapsed >= LONGPRESS_MS) return;  // 理論上計時器已先觸發；防禦性早退
     SK.sendLog('info', 'system', 'four-finger tap detected', { elapsedMs: elapsed });
     SK.safeSendMessage({ type: 'FOUR_FINGER_TAP' }).catch(() => {});
   }, { passive: true, capture: true });
 
   window.addEventListener('touchcancel', () => {
+    clearGestureTimer();
     gesture = null;
   }, { passive: true, capture: true });
 

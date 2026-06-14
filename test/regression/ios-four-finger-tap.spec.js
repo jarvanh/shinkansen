@@ -1,20 +1,27 @@
-// Regression: iOS 四指 tap 觸發翻譯 toggle(content-touch.js,SPEC-PRIVATE §26.1)
+// Regression: iOS 四指手勢觸發翻譯(content-touch.js,SPEC-PRIVATE §26.1)
 //
-// 行為:四指同時輕點(tap)= Alt+S 完整 toggle。手勢偵測在 content-touch.js
-// (isolated world),命中後送 FOUR_FINGER_TAP 給 background,由 background 轉發
-// TRANSLATE_PRESET slot 2(跟 commands onCommand 的 Alt+S 同一條派送路徑)。
+// 行為:
+//   - 四指「快點」(壓住 < LONGPRESS_MS 即抬起)= Alt+S 完整 toggle(主要預設 slot 2)。
+//     送 FOUR_FINGER_TAP → background → TRANSLATE_PRESET slot 2。
+//   - 四指「長按」(四指壓住達 LONGPRESS_MS 仍未抬起 / 未移動)= 次要預設 slot 1
+//     (預設 Flash Lite)。計時器在門檻當下送 FOUR_FINGER_LONGPRESS → background →
+//     TRANSLATE_PRESET slot 1,抬起時不再額外送 slot 2(longPressFired guard)。
 //
 // 本 spec 鎖的訊號層次(CLAUDE.md 工作流原則 3):
-//   驗「synthetic TouchEvent → content-touch 手勢判定 → background FOUR_FINGER_TAP
-//   relay → TRANSLATE_PRESET onMessage → handleTranslatePreset → SK.translatePage」
-//   整條跨 isolated world + service worker 的真實訊息路徑,以及 IS_IOS_BUILD gate、
-//   swipe / 五指 / 長按三種不該觸發的手勢分支。
+//   驗「synthetic TouchEvent → content-touch 手勢判定(快點 vs 長按單一門檻) →
+//   background FOUR_FINGER_TAP / FOUR_FINGER_LONGPRESS relay → TRANSLATE_PRESET
+//   onMessage → handleTranslatePreset → SK.translatePage」整條跨 isolated world +
+//   service worker 的真實訊息路徑,以及 IS_IOS_BUILD gate、swipe / 五指兩種不該觸發
+//   的手勢分支、長按不重複觸發 slot 2 的 guard。
 //   不驗:真實 iOS Safari 的 touch 事件派發行為與 iPadOS 系統手勢搶占(Playwright
 //   Chromium 無法模擬,Phase 3 真機驗收)、translatePage 後續翻譯流程(其他 spec 鎖)。
 //
 // SANITY CHECK 紀錄(已驗證,2026-06-05):
 //   暫時把 content-touch.js 的 isEnabled() 改成永遠回 false → 「四指 tap →
 //   translatePage(slot 2)」case fail(0 call),還原後全綠。
+// SANITY CHECK 紀錄(長按,已驗證,2026-06-14):
+//   暫時把 content-touch.js touchstart 的 gesture.timer setTimeout 整段拿掉 →
+//   「四指長按 → slot 1」case fail(0 call),還原後全綠。
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
@@ -130,14 +137,17 @@ test('五指落下 → 不觸發(讓位 iPadOS 系統手勢)', async ({ context,
   expect(calls.length, '五指手勢不該觸發翻譯').toBe(0);
 });
 
-test('長按超過 TAP_MAX_MS → 不觸發', async ({ context, localServer }) => {
+test('四指長按達門檻 → 走 TRANSLATE_PRESET slot 1 → translatePage 恰 1 次(不重複送 slot 2)', async ({ context, localServer }) => {
   const { page, evaluate } = await setupPage(context, localServer, { iosBuild: true });
 
+  // 四指壓住不抬起,等過 LONGPRESS_MS(600)讓計時器觸發長按
   await page.evaluate(`window.__touch('touchstart', window.__mkTouches(4))`);
-  await page.waitForTimeout(700); // > TAP_MAX_MS 500
+  await page.waitForTimeout(750); // > LONGPRESS_MS 600
+  // 計時器應已送出 slot 1;此時才抬起,longPressFired guard 應擋住 slot 2
   await page.evaluate(`window.__touch('touchend', [])`);
 
-  await page.waitForTimeout(800);
-  const calls = await evaluate(`window.__tapCalls`);
-  expect(calls.length, '長按不該觸發翻譯').toBe(0);
+  const calls = await readCalls(page, evaluate, 1);
+  expect(calls.length, '長按應觸發恰好 1 次(抬起不重複送 slot 2)').toBe(1);
+  expect(calls[0].slot, '應走次要預設 slot 1(預設 Flash Lite)').toBe(1);
+  expect(calls[0].google, 'DEFAULT preset slot 1 是 gemini,不該走 translatePageGoogle').toBeUndefined();
 });
