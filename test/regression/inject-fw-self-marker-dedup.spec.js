@@ -2,7 +2,9 @@
 // 不同中文 wrapper」雙重譯文 bug)
 //
 // Fixture: test/regression/fixtures/inject-fw-self-marker-dedup.html
-// 結構:含 <a> 的一般段落,被翻譯兩次(模擬 SPA rescan 重抓)。
+// 結構:以 <a> 開頭的段落,被翻譯兩次(模擬 SPA rescan 重抓)。v1.10.52 後
+// A3.5 anchor gate 放寬,prose 內文連結走 flatten single;要讓第一輪仍掉 dual
+// 須用「以 <a> 開頭」結構(第一個可見 text node 在 <a> 內 → gate 不放行)。
 // Bug:第一輪掉 dual fallback(元素只標 data-shinkansen-dual-source;detect 層
 // 刻意不擋 dual-source),rescan 重翻同元素,framework 分支 dedup 只查祖先 +
 // 後代、漏查元素自己 → 第二輪 mutate 寫入 → 雙重譯文(兩輪 API 譯文還不同)。
@@ -15,11 +17,12 @@ import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator, runTestInject } from './helpers/run-inject.js';
 
 const FIXTURE = 'inject-fw-self-marker-dedup';
-const ORIGINAL_TEXT = 'Quarterly results from Northwind Labs exceeded expectations this year.';
-// 第一輪:丟佔位符 + 連結文字不在譯文內 → A3 fail、A3.5 anchor gate fail → dual
+const ORIGINAL_TEXT = 'Northwind Labs posted quarterly results that exceeded expectations this year.';
+// 第一輪:丟佔位符 → A3 fail;段落以 <a> 開頭(第一個可見 text node 在 <a> 內)
+// → A3.5 anchor gate fail → dual
 const TRANSLATION_ROUND1 = '本年度業績全面超出預期。';
 // 第二輪(模擬 rescan 重翻,LLM 非決定性產出可對齊譯文)→ 沒有 self dedup 時會 mutate
-const TRANSLATION_ROUND2 = '來自 ⟦0⟧Northwind Labs⟦/0⟧ 的季度業績超出了今年的預期。';
+const TRANSLATION_ROUND2 = '⟦0⟧Northwind Labs⟦/0⟧ 公布的季度業績超出了今年的預期。';
 
 test('framework 分支: 元素已標 dual-source 時第二輪 inject 必須 no-op(不疊雙重譯文)', async ({
   context,

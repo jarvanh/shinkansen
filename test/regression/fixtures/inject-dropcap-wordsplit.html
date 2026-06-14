@@ -26,8 +26,10 @@
     reuseNode)時,剝掉佔位符走純文字 nodeValue mutate(整段譯文塞第一個
     text node、其餘清空)。只動 nodeValue,fiber-safe 同 Layer A1。
 
-    #target-link 是 guard 對照組:含 <a> slot 的段落不可走 A3.5(flatten
-    會清空連結文字),必須維持 dual visible fallback。
+    #target-link 是 prose 內文連結段(framework-managed + inline <a>,連結文字
+    被翻成中文):v1.10.52 起 anchor gate 放寬(只看「第一個可見 text node 不在
+    <a> 內」)→ 也走 A3.5 flatten single 原地替換,<a> 留空殼(可點擊性損失為 §15
+    取捨)。真實案例 theatlantic.com Next.js 文章內文段。
   -->
   <article>
     <p id="target-dropped" class="article-paragraph article-dropcap">F<span class="smallcaps">inding a way</span> forward took longer than expected, but the journey itself became the reward for everyone involved.</p>

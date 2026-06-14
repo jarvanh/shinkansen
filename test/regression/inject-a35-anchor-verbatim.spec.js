@@ -6,14 +6,17 @@
 // Bug:LLM 丟佔位符 → deserialize ok=false → A3 無法對齊;A3.5 原 gate 對含
 // <a> slot 一律讓路 → framework 分支掉 dual visible。但連結文字(專有名詞)
 // 幾乎都逐字保留在譯文內,flatten 唯一損失是可點擊性。
-// 修法(content-inject.js A3.5 gate):「el 內所有 <a> 文字逐字出現在譯文 +
-// 第一個可見 text node 不在 <a> 內」→ 放行 flatten;否則維持 dual。
+// 修法(content-inject.js A3.5 anchor gate):第一個可見 text node 不在 <a> 內
+// → 放行 flatten;否則(段落以 <a> 開頭,整段譯文會塞進連結)維持 dual。
+//   v1.10.49 原本「額外」要求連結文字逐字在譯文中才放行,v1.10.52 移除此要求
+//   (prose 內文連結文字會被翻成中文 → 強制逐字不合理,真實案例 theatlantic.com,
+//   見 inject-dropcap-wordsplit.spec.js 第 3 條)。第 1 條 #target-verbatim 連結文字
+//   逐字保留只是其中一種會放行的情形,改動後仍 single(本 spec 不受 v1.10.52 影響)。
 //
-// 反向 guard(連結文字不在譯文 → 維持 dual)由 inject-dropcap-wordsplit.spec.js
-// 第 3 條覆蓋(TRANSLATION_LINK_DROPPED 不含 "full report")。
+// 守門對照組:第 2 條 #target-linkstart(以 <a> 開頭)→ 維持 dual。
 //
-// SANITY 紀錄(已驗證):暫時把 a35AnchorsOk 強制 = false(恢復舊「一律擋」
-// 行為)→ 第 1 條 spec fail(nvMutated=false + wrapper 出現)→ 還原 → 全 pass。
+// SANITY 紀錄(已驗證):暫時把 a35AnchorsOk 強制 = false(恢復「一律擋」行為)
+// → 第 1 條 spec fail(nvMutated=false + wrapper 出現)→ 還原 → 全 pass。
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator, runTestInject } from './helpers/run-inject.js';
 

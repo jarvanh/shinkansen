@@ -12,16 +12,21 @@
 // framework-managed 分支(isFrameworkManaged=true)原本兩種都直接 fallback
 // dual visible:原文保留 + 譯文 sibling wrapper,使用者看起來「沒翻到」。
 //
-// 修法(content-inject.js Layer A3.5,結構性通則):slots 全為 styling-only
-// inline(paired Element shell,非 <a> / atomic / reuseNode)時,
+// 修法(content-inject.js Layer A3.5,結構性通則):slots 全為非 atomic / 非
+// reuseNode 的 inline Element shell(styling-only SPAN / strong / em,或純 <a>)時,
 // stripStrayPlaceholderMarkers 剝掉佔位符 → 以 slots=[] 重走 nodeValue
 // mutate。只動 text node nodeValue 不動元素結構,fiber-safe 同 Layer A1,
 // 視覺等同 single 原地替換(§15)。
 //
-// SANITY 紀錄(已驗證):暫時把 content-inject.js Layer A3.5 整段 if block
-// 用 `if (false &&` 關閉 → 前兩條 spec fail(textContent 仍含英文 +
-// shinkansen-translation wrapper 出現,nv-mutated attr 沒設),guard 對照組
-// 仍 pass → 還原 → 3 條全 pass。
+// 第 3 條(#target-link)v1.10.52 更新:prose 內文連結段(含 <a>,連結文字被翻成
+// 中文)原本 v1.10.49 anchor gate 要求「連結文字逐字在譯文」否則維持 dual,真實
+// 案例 theatlantic.com 踩到 → 掉 dual 違反 §15。放寬後只保留「第一個可見 text node
+// 不在 <a> 內」守門 → 此段也走 flatten single(<a> 留空殼,可點擊性損失為 §15 取捨)。
+//
+// SANITY 紀錄(已驗證):
+//   - 全 A3.5 block 關(`if (false &&`):3 條全 fail(英文殘留 + wrapper 出現)→ 還原 → pass。
+//   - 只把 anchor gate 強制 `a35AnchorsOk = false`:第 3 條 fail(掉 dual)、前兩條(無 <a>)
+//     仍 pass → 還原 → 3 條全 pass。(專測 v1.10.52 gate 放寬)
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator, runTestInject } from './helpers/run-inject.js';
 
@@ -109,23 +114,40 @@ test('dropcap word-split + LLM 佔位符序列不同構 → A3.5 純文字 nodeV
   await page.close();
 });
 
-test('guard:含 <a> slot 的段落 A3 失敗時不走 A3.5(flatten 會吃掉連結文字)→ 維持 dual fallback', async ({
+test('prose 內文連結段 + 連結文字被翻(非逐字)→ A3.5 flatten 原地替換(不掉 dual,連結變空殼)', async ({
   context,
   localServer,
 }) => {
+  // 真實案例:theatlantic.com Next.js 文章內文段(framework-managed + inline <a>)。
+  // LLM 偶發掉佔位符 + 連結文字翻成中文(full report → 完整報告)→ v1.10.49 舊 gate
+  // 因「anchor text 不在譯文」掉 dual(使用者回報「譯文變新段落顯示在下方」)。
+  // v1.10.52 放寬 anchor gate:第一個可見 text node 不在 <a> 內(此 fixture「Read the」
+  // 在 <a> 外)即放行 flatten → single 原地替換,§15 優先。
   const { page, evaluate } = await setupPage(context, localServer);
+
+  // 抓 inject 前 <a> ref,驗 flatten 後元素結構仍在(fiber-safe,只清 text node)
+  await page.evaluate(() => {
+    window.__probeLink = document.querySelector('#target-link a');
+  });
 
   await runTestInject(evaluate, '#target-link', TRANSLATION_LINK_DROPPED);
 
   const r = await probeTarget(page, '#target-link');
-  // 連結文字必須還在(沒被 A3.5 清空)
-  const linkText = await page.evaluate(
-    () => document.querySelector('#target-link a')?.textContent || ''
-  );
-  expect(linkText.length > 0, '<a> 連結文字不可被清空').toBe(true);
-  expect(r.nvMutated, '不應走 nodeValue mutate(A3.5 對 <a> slot 必須讓路)').toBe(false);
-  expect(r.wrapperPresent, '應 fallback dual visible(wrapper sibling)').toBe(true);
-  expect(r.dualSource, '應標 data-shinkansen-dual-source').toBe(true);
+  const linkProbe = await page.evaluate(() => {
+    const a = document.querySelector('#target-link a');
+    return { present: !!a, text: a ? a.textContent : null, sameRef: a === window.__probeLink };
+  });
+
+  expect(r.isChinese, '段落應為中文譯文').toBe(true);
+  expect(r.hasEnglishWords, '英文原文不應殘留(原地替換,非 dual 並列)').toBe(false);
+  expect(r.wrapperPresent, '不應出現 dual wrapper').toBe(false);
+  expect(r.dualSource, '不應標 data-shinkansen-dual-source').toBe(false);
+  expect(r.nvMutated, '應走 A3.5 flatten(nodeValue mutate)').toBe(true);
+  expect(r.translated, '應標 data-shinkansen-translated').toBe(true);
+  // 接受的取捨:<a> 元素留為空殼(fiber-safe,結構不動),但連結文字被清空 → 不可點。
+  expect(linkProbe.present, '<a> 元素結構應保留(只清 text node)').toBe(true);
+  expect(linkProbe.sameRef, '<a> 物件 ref 應保留(fiber identity)').toBe(true);
+  expect((linkProbe.text || '').trim(), '<a> 文字被 flatten 清空(可點擊性損失,§15 取捨)').toBe('');
 
   await page.close();
 });

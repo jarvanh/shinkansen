@@ -539,33 +539,44 @@
       // (整段譯文塞第一個 text node、其餘 text node 清空)。只動 nodeValue 不動
       // 元素結構,fiber-safe 程度同 Layer A1,視覺等同 single 原地替換(§15)。
       // Trade-off:styling inline(smallcaps / strong / em)的樣式覆蓋範圍丟失,
-      // 換取譯文完整 + 單語呈現。<a> / BUTTON(reuseNode)/ atomic 流不進此層:
-      // flatten 會清空連結文字 / click target / 未送翻的 atomic 內容 → 維持 dual
-      // visible 保功能。
+      // 換取譯文完整 + 單語呈現。BUTTON(reuseNode)/ atomic(inline code / footnote
+      // sup / IMG emoji)流不進此層:flatten 會清空 click target / 未送翻的 atomic
+      // 內容 → gate 的 `!atomic && !reuseNode` 擋下,維持 dual visible 保功能。
+      // 純 <a>(isPreservableInline shell,非 reuseNode)會流入,處理見下方 anchor gate。
       if (slots && slots.length > 0 && SK.stripStrayPlaceholderMarkers
           && slots.every(s => s && s.nodeType === Node.ELEMENT_NODE
             && !s.atomic && !s.reuseNode)) {
         const plainTranslation = SK.stripStrayPlaceholderMarkers(translation).trim();
-        // v1.10.49: <a> slot 原本一律擋在 A3.5 之外(flatten 清空連結文字 = 資訊
-        // 遺失)。收窄版放行:當「el 內所有 <a> 的可見文字都逐字出現在譯文中」
-        //(prompt 要求專有名詞保留英文原文,Medium 文章內文連結幾乎都是歌名/
-        // 人名/作品名,此條件極常成立)時,flatten 唯一損失是「可點擊性」——文字
-        // 內容零遺失,跟非 framework 站 plainTextFallback 的退化等價(§15 single
-        // 原地替換優先)。另要求第一個可見 text node 不在 <a> 內,避免整段譯文
-        // 塞進連結變成全段可點。任一條件不成立 → 維持 dual visible 保連結功能。
-        // 對應 2026-06-12 Medium 劃線段落實測:MARK[A[歌名]] 結構 + LLM 丟佔位
-        // 符 → deserialize fail → 原 gate 擋下 → 5 段掉 dual(原文+譯文並列)。
+        // anchor gate(v1.10.52 放寬):framework-managed 段落 A3 同構配對失敗後,
+        // 是否放行純文字 flatten。
+        //
+        // v1.10.49 原本額外要求「el 內所有 <a> 可見文字逐字出現在譯文中」才放行,
+        // 否則維持 dual。但 prose 文章內文連結的 anchor text 會被翻成中文(prompt
+        // 只對專有名詞 / 作品名保留英文,一般敘述性連結文字照翻):
+        //   source: Read the ⟦0⟧full report⟦/0⟧ for more details
+        //   LLM 掉佔位符回: 閱讀完整報告以了解更多研究結果細節。  (full report → 完整報告)
+        // 英文 anchor text 不在中文譯文 → 舊 gate fail → 整段掉 dual visible(原文 +
+        // 譯文並列),違反 §15 single 原地替換(真實案例:theatlantic.com Next.js
+        // 文章內文段,使用者回報「譯文沒注入原文、變新段落顯示在下方」)。
+        //
+        // 放寬後:不再要求 anchor text 在譯文中。理由——flatten 走 nodeValue mutate
+        // (整段譯文塞第一個 text node、其餘清空),<a> 留為空殼,譯文已含翻譯後的
+        // 連結文字 → 內容零遺失,唯一損失是連結「可點擊性」。這跟非 framework 站
+        // plainTextFallback「ok=false 一律 flatten(連結整顆消失)」的退化等價甚至更輕,
+        // §15 single 原地替換優先。掉佔位符極罕見(<0.2%),正常 ok=true 路徑 A3 會
+        // 保留連結 inline 結構(可點),不受影響。
+        //
+        // 唯一保留的結構守門:第一個可見 text node 不在 <a> 內。
+        //   1. 避免整段譯文塞進連結 → 全段變可點(degenerate)。
+        //   2. 同時保證「段落有連結以外的 prose 文字」——純連結載體段落(整段就是
+        //      一個 <a>)第一個 text node 在 <a> 內 → 不放行 → 維持 dual,避免內容
+        //      載體被 flatten 清空。
+        // 此守門非站點特判,是「inline 連結內嵌於 prose」vs「整段即連結」的結構區分(§8)。
         let a35AnchorsOk = true;
         if (unit.el.querySelector && unit.el.querySelector('a')) {
-          for (const a of unit.el.querySelectorAll('a')) {
-            const aText = (a.textContent || '').trim();
-            if (aText && !plainTranslation.includes(aText)) { a35AnchorsOk = false; break; }
-          }
-          if (a35AnchorsOk) {
-            const tns0 = SK.collectVisibleTextNodes?.(unit.el) || [];
-            a35AnchorsOk = tns0.length > 0
-              && !(tns0[0].parentElement && tns0[0].parentElement.closest('a'));
-          }
+          const tns0 = SK.collectVisibleTextNodes?.(unit.el) || [];
+          a35AnchorsOk = tns0.length > 0
+            && !(tns0[0].parentElement && tns0[0].parentElement.closest('a'));
         }
         if (plainTranslation && a35AnchorsOk && SK.tryInjectNodeValueMutate?.(unit.el, plainTranslation, [])) {
           if (_preText != null && (unit.el.textContent || '').trim() === _preText) {
@@ -575,7 +586,7 @@
           unit.el.setAttribute('data-shinkansen-translated', '1');
           SK._recordTranslatedByText?.(unit.el, unit.el.innerHTML);
           recordNvMutateTranslation(unit.el, plainTranslation);
-          SK.sendLog('info', 'inject', 'A3.5 plain-text nv-mutate fallback (styling-only slots)',
+          SK.sendLog('info', 'inject', 'A3.5 plain-text nv-mutate fallback (styling-only / prose-link slots)',
             { text: (unit.el.textContent || '').substring(0, 60) });
           return;
         }
