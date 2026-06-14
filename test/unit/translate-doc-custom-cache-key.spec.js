@@ -8,9 +8,16 @@
 //   3. 同次修改把 fixedGlossary + articleGlossary override 邏輯抽成 shared helper，
 //      避免 Gemini / custom provider 兩條 path 再次分叉。
 //
+// v1.10.53 更新:v1.10.46「cache key 單一資料源收斂」把 suffix 組裝抽成共用
+//   buildCacheKeySuffix(temperature 改以 docTemperature 參數傳入、handleTranslateCustom
+//   只負責在 cacheTag==='_oc_doc' 時把 cp.temperature 餵進去)。本測試原本 grep
+//   handleTranslateCustom 內聯的 cp.temperature 寫法,重構後對不上 → 改驗新的兩段事實:
+//   (a) handleTranslateCustom 在 _oc_doc 時把 cp.temperature 當 docTemperature 傳入;
+//   (b) buildCacheKeySuffix 把 docTemperature 以 _t<temp> 併進 suffix。功能不變。
+//
 // SANITY 紀錄(已驗證):
-//   - 移除 `_oc_doc` 的 `_t${cp.temperature.toFixed(2)}` 後，第 1 條會 fail。
-//   - 把 handleTranslate / handleTranslateCustom 改回各自內嵌 glossary merge 後，
+//   - 移除 buildCacheKeySuffix 的 `_t' + docTemperature.toFixed(2)` 後,第 1 條會 fail。
+//   - 把 handleTranslate / handleTranslateCustom 改回各自內嵌 glossary merge 後,
 //     第 2 條會 fail。
 
 import { test, expect } from '@playwright/test';
@@ -35,10 +42,15 @@ function extractFunctionBody(src, startMarkerRe) {
 
 test('background.js: handleTranslateCustom 對 _oc_doc cache key 納入 temperature', () => {
   const src = fs.readFileSync('shinkansen/background.js', 'utf8');
-  const body = extractFunctionBody(src, /async\s+function\s+handleTranslateCustom\s*\(/);
-  expect(body, 'handleTranslateCustom 不存在或結構變了').toBeTruthy();
-  expect(body).toMatch(/cacheTag\s*===\s*['_"]_oc_doc['_"]\s*&&[\s\S]*cp\.temperature/);
-  expect(body).toMatch(/suffix\s*\+=\s*['_"]_t['_"]\s*\+\s*cp\.temperature\.toFixed\(2\)/);
+  // (a) handleTranslateCustom 在 _oc_doc 時把 cp.temperature 當 docTemperature 餵進共用 builder
+  const custom = extractFunctionBody(src, /async\s+function\s+handleTranslateCustom\s*\(/);
+  expect(custom, 'handleTranslateCustom 不存在或結構變了').toBeTruthy();
+  expect(custom).toMatch(/docTemperature\s*:\s*cacheTag\s*===\s*['"]_oc_doc['"]\s*\?\s*cp\.temperature/);
+  // (b) 共用的 buildCacheKeySuffix 把 docTemperature 以 _t<temp> 併進 suffix
+  // （buildCacheKeySuffix 用解構參數 ({...}),extractFunctionBody 的「第一個 { = body」假設
+  //   會抓到參數列而非 body,故此段直接對整檔 grep——_t + docTemperature.toFixed 全檔僅此一處）
+  expect(src).toMatch(/function\s+buildCacheKeySuffix\s*\(/);
+  expect(src).toMatch(/suffix\s*\+=\s*['"]_t['"]\s*\+\s*docTemperature\.toFixed\(2\)/);
 });
 
 test('background.js: Gemini / custom 兩條翻譯 path 共用 glossary helper', () => {

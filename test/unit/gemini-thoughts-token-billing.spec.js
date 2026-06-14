@@ -31,14 +31,11 @@ let fetchCalls = [];
 let fetchResponses = [];
 
 function pushResponse(text, usageMetadata) {
-  fetchResponses.push({
-    ok: true,
-    status: 200,
-    json: async () => ({
-      candidates: [{ content: { parts: [{ text }] }, finishReason: 'STOP' }],
-      usageMetadata,
-    }),
-  });
+  // v1.10.53: 回真實 Response(gemini.js fetchWithRetry v1.10.46 起 await resp.text() 重建)
+  fetchResponses.push(new Response(JSON.stringify({
+    candidates: [{ content: { parts: [{ text }] }, finishReason: 'STOP' }],
+    usageMetadata,
+  }), { status: 200, headers: { 'content-type': 'application/json' } }));
 }
 
 globalThis.fetch = async (_url, options) => {

@@ -17,14 +17,13 @@ globalThis.chrome = {
 };
 
 let nextResponseUsage = null;
-globalThis.fetch = async (_url, _options) => ({
-  ok: true,
-  status: 200,
-  json: async () => ({
+globalThis.fetch = async (_url, _options) => (
+  // v1.10.53: 回真實 Response(openai-compat.js 成功路徑 await resp.text() 重建,缺 .text() 會炸)
+  new Response(JSON.stringify({
     choices: [{ message: { content: '翻譯結果' }, finish_reason: 'stop' }],
     usage: nextResponseUsage,
-  }),
-});
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+);
 
 const { translateBatch } = await import('../../shinkansen/lib/openai-compat.js');
 

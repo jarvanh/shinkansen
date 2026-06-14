@@ -29,14 +29,11 @@ globalThis.chrome = {
 let capturedBodies = [];
 globalThis.fetch = async (_url, options) => {
   capturedBodies.push(JSON.parse(options.body));
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({
-      candidates: [{ content: { parts: [{ text: '翻譯結果' }] } }],
-      usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50 },
-    }),
-  };
+  // v1.10.53: 回真實 Response(gemini.js fetchWithRetry v1.10.46 起 await resp.text() 重建)
+  return new Response(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: '翻譯結果' }] } }],
+    usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 50 },
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
 };
 
 const { translateBatch } = await import('../../shinkansen/lib/gemini.js');

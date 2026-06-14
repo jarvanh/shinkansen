@@ -35,14 +35,11 @@ globalThis.fetch = async (_url, options) => {
   const sepCount = (lastUserMessage.match(/<<<SHINKANSEN_SEP>>>/g) || []).length;
   const segCount = sepCount + 1;
   const respText = Array.from({ length: segCount }, (_, i) => `段譯${i + 1}`).join('\n<<<SHINKANSEN_SEP>>>\n');
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({
-      choices: [{ message: { content: respText }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 50, completion_tokens: 30 },
-    }),
-  };
+  // v1.10.53: 回真實 Response(openai-compat.js 成功路徑 await resp.text() 重建,缺 .text() 會炸)
+  return new Response(JSON.stringify({
+    choices: [{ message: { content: respText }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 50, completion_tokens: 30 },
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
 };
 
 const { translateBatch } = await import('../../shinkansen/lib/openai-compat.js');

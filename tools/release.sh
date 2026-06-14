@@ -1,6 +1,9 @@
 #!/bin/bash
 # 用法: ./tools/release.sh "改了什麼"
 #       SKIP_SAFARI=1 ./tools/release.sh "改了什麼"   # 緊急只發 Chrome / Firefox
+#       SKIP_TESTS=1  ./tools/release.sh "改了什麼"   # 緊急跳過 full test gate(release 後須補跑)
+#
+# 預設一律先跑 full test gate(npm run test:all)——全綠才 build / commit / push。
 #
 # 一次 build 產出三條 release artifact:
 #   - Chrome / Firefox       : commit + tag + push,GitHub Actions 自動建 Release zip
@@ -20,6 +23,21 @@ cd "$(dirname "$0")/.."
 
 VERSION=$(grep '"version"' shinkansen/manifest.json | head -1 | sed 's/[^0-9.]//g')
 MSG="${1:-v${VERSION}}"
+
+# v1.10.53: full test gate forcing function。CLAUDE.md §9「bump 那輪 full npm test 必綠才能
+# release」先前只是規則、沒寫進任何自動環節(release.sh 不跑 test、CI 不跑 test、無 git hook),
+# 全靠跑 release 的人記得手動跑 npm run test:all 並看它綠——結果 v1.10.46 引入的 stale fetch
+# mock 測試債連紅 6 個版本(v1.10.46→52)沒被任何環節擋下。改成 release.sh 強制先跑到全綠
+# (set -e:紅就在 build / commit / push 之前 abort,不留半 release)。
+# 緊急(例如已知唯一紅燈是環境問題)可 SKIP_TESTS=1 繞過,但會印警告、且 release 後須補跑。
+if [ "${SKIP_TESTS:-0}" = "1" ]; then
+  echo "⚠️  SKIP_TESTS=1 — 跳過 full test gate。僅限緊急,release 後請務必補跑 npm run test:all。"
+else
+  echo "==> Full test gate(npm run test:all)——全綠才繼續 build / commit / push..."
+  npm run test:all
+  echo "✓ full test gate 全綠"
+  echo ""
+fi
 
 # Safari build 必先過(syncs Resources + bumps pbxproj MARKETING_VERSION /
 # CURRENT_PROJECT_VERSION + 產 .pkg)。pbxproj 變更會由下面 git add -A 一起 commit,

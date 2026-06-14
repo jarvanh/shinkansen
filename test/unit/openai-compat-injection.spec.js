@@ -25,14 +25,11 @@ globalThis.fetch = async (url, options) => {
     headers: options?.headers || {},
     body: JSON.parse(options?.body || '{}'),
   });
-  return {
-    ok: true,
-    status: 200,
-    json: async () => ({
-      choices: [{ message: { content: '翻譯結果' }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 100, completion_tokens: 50 },
-    }),
-  };
+  // v1.10.53: 回真實 Response(openai-compat.js 成功路徑 await resp.text() 重建,缺 .text() 會炸)
+  return new Response(JSON.stringify({
+    choices: [{ message: { content: '翻譯結果' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 100, completion_tokens: 50 },
+  }), { status: 200, headers: { 'content-type': 'application/json' } });
 };
 
 const { translateBatch } = await import('../../shinkansen/lib/openai-compat.js');
