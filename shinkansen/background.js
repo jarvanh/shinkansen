@@ -19,6 +19,31 @@ import { shouldLogInit as _shouldLogRateLimitInit } from './lib/rate-limit-init-
 import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 import { refreshExchangeRate, getCachedRate, isCacheFresh } from './lib/exchange-rate.js'; // v1.8.41
 import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
+import { saveToInstapaper, buildInstapaperPayload } from './lib/instapaper.js'; // 送到 Instapaper（Alt+I 快捷鍵路徑）
+
+// instapaper-keys.js（gitignored）的 consumer 金鑰載入。
+// 不能用 dynamic import()：MV3 service worker 禁止 dynamic import（實測 throw
+// "import() is disallowed on ServiceWorkerGlobalScope"），這正是「popup 送得出去、
+// 快捷鍵一定失敗」的根因——SW 載不到金鑰 → saveToInstapaper 回 CONFIG。
+// 改用 fetch 自家檔案原始碼（SW 可 fetch 自己打包的資源）+ regex 抽兩個 hex 金鑰
+//（檔案格式由我們自己的模板控制）。缺檔（fresh clone / CI）→ fetch 失敗 catch →
+// 金鑰留空 → 功能停用。載入後掛 globalThis.__SK，lib/instapaper.js 的
+// getInstapaperConsumerKeys() 自會讀到。
+let _instapaperKeysLoaded = false;
+async function ensureInstapaperKeys() {
+  if (_instapaperKeysLoaded) return;
+  _instapaperKeysLoaded = true;
+  try {
+    const url = browser.runtime.getURL('lib/instapaper-keys.js');
+    const text = await (await fetch(url)).text();
+    const ck = text.match(/consumerKey\s*:\s*['"]([^'"]+)['"]/);
+    const cs = text.match(/consumerSecret\s*:\s*['"]([^'"]+)['"]/);
+    if (ck && cs) {
+      globalThis.__SK = globalThis.__SK || {};
+      globalThis.__SK.INSTAPAPER_KEYS = { consumerKey: ck[1], consumerSecret: cs[1] };
+    }
+  } catch (_) { /* 無金鑰檔 → 功能停用 */ }
+}
 
 debugLog('info', 'system', 'service worker started', { version: browser.runtime.getManifest().version });
 
@@ -2232,6 +2257,11 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
 //   storage 內仍維持 slot 1/2/3 編號，故 command id 0 → slot 2 mapping 寫死。
 const COMMAND_ID_TO_SLOT = { 0: 2, 1: 1, 3: 3 };
 browser.commands.onCommand.addListener(async (command) => {
+  // 送到 Instapaper（Alt+I）：走背景 OAuth + fetch，回饋走 content toast。
+  if (command === 'send-to-instapaper') {
+    handleSendToInstapaperCommand().catch(() => {});
+    return;
+  }
   const match = command.match(/^translate-preset-(\d+)$/);
   if (!match) return;
   const cmdNum = Number(match[1]);
@@ -2246,6 +2276,47 @@ browser.commands.onCommand.addListener(async (command) => {
   // uncaught promise rejection 污染 background.js 的錯誤面板。
   browser.tabs.sendMessage(tab.id, { type: 'TRANSLATE_PRESET', payload: { slot } }).catch(() => {});
 });
+
+// 送到 Instapaper 快捷鍵處理：取 active tab → 擷取頁面 HTML → OAuth 簽章 + fetch。
+// 回饋透過 INSTAPAPER_TOAST 訊息派給 content（快捷鍵無 popup）。
+async function handleSendToInstapaperCommand() {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
+  const toast = (status) =>
+    browser.tabs.sendMessage(tab.id, { type: 'INSTAPAPER_TOAST', status }).catch(() => {});
+
+  // enable gate：未啟用或未連結 → 提示後 no-op
+  const { instapaperEnabled = false, instapaperToken, instapaperTokenSecret } =
+    await browser.storage.sync.get(['instapaperEnabled', 'instapaperToken', 'instapaperTokenSecret']);
+  if (instapaperEnabled !== true || !instapaperToken || !instapaperTokenSecret) {
+    toast('not-enabled');
+    return;
+  }
+
+  await ensureInstapaperKeys();
+  toast('sending');
+  let page;
+  try {
+    page = await browser.tabs.sendMessage(tab.id, { type: 'EXTRACT_PAGE_HTML' });
+  } catch (_) {
+    // content script 沒注入的頁（chrome:// 等）→ 無法擷取也無法 toast，直接放棄
+    return;
+  }
+  if (!page?.ok || !page.url) { toast('failed'); return; }
+
+  try {
+    const payload = buildInstapaperPayload({ url: page.url, html: page.html, title: page.title });
+    const r = await saveToInstapaper({
+      token: instapaperToken, tokenSecret: instapaperTokenSecret, payload,
+    });
+    if (r.ok) toast('sent');
+    else if (r.error === 'AUTH') toast('failed-auth');
+    else if (r.error === 'NETWORK') toast('failed-network');
+    else toast('failed');
+  } catch (_) {
+    toast('failed');
+  }
+}
 
 // ─── 安裝/更新事件 ─────────────────────────────────────────
 // W7：一次性清 tc_* 翻譯 cache(PDF inline marker 協定變動 → 舊 sha1 全部失效)。

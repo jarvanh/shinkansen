@@ -857,4 +857,73 @@ if (window.__shinkansen_loaded) {
       return null;
     }
   };
+
+  // ─── 送到 Instapaper:擷取當前頁面完整 HTML ──────────────
+  // 把使用者眼前這頁（single mode 已就地換成譯文的 DOM）clone 後剝除技術性節點
+  // 與擴充自己注入的 UI chrome，序列化成乾淨 HTML 送 Instapaper Full API 的 content
+  // 參數，由 Instapaper 端 readability 抽正文。回 { url, title, html }。
+  //
+  // 純函式（吃 doc 參數）方便 regression spec 在 isolated world 直接驗。
+  // 剝除清單:
+  //   - 技術性:script / style / noscript / template / link
+  //   - 媒體嵌入:iframe / video / audio / object / embed（見下方「為何剝媒體嵌入」）
+  //   - 擴充 UI:#shinkansen-toast-host（toast shadow host）、#shinkansen-dual-style（dual 模式注入樣式）
+  //   - 保留 <shinkansen-translation> wrapper（dual 模式譯文本體，是要送的內容）
+  // 用 outerHTML（HTML 序列化）而非 XMLSerializer:後者會塞 xmlns 與把 void element
+  // 改成 XML 自閉合，對下游 reader 是噪音；outerHTML 產出的是乾淨 HTML5。
+  //
+  // 為何剝媒體嵌入（iframe / video 等）:下游 reader（Instapaper）的正文抽取器會把
+  // 影片嵌入「升級」成整篇主要內容——實測 Christie's 文章頁內嵌 Brightcove 播放器
+  // iframe 時，Instapaper 抽到的是播放器 UI（字幕設定對話框 + 影片檔名當標題），整篇
+  // 19K 字文章被丟掉。一般無影片頁面不受影響（譯文正常送達），只有含影片嵌入的頁面
+  // 會被綁架。剝掉媒體嵌入只留文字正文是結構性通則（非站點特判），讓 reader 抽到文章。
+  SK.STRIP_FOR_EXTRACT = 'script, style, noscript, template, link, iframe, video, audio, object, embed, #shinkansen-toast-host, #shinkansen-dual-style';
+
+  // 挑「譯文標題」送下游 reader。
+  // 為何不用 document.title:single mode 譯文是就地替換 body DOM,**不動 <head><title>**
+  //（也不動 og:title 等 meta）→ document.title 永遠是原文標題。實測送到 Instapaper 標題
+  // 全是未翻譯原文。譯文標題真正所在是頁面主標題 <h1>（已就地翻成譯文)。
+  // 優先序:main / article 內的 <h1> → 第一個 <h1> → 退回 document.title（沒 h1 時）。
+  SK.pickExtractTitle = function pickExtractTitle(doc) {
+    doc = doc || document;
+    const h1 = doc.querySelector('main h1') || doc.querySelector('article h1') || doc.querySelector('h1');
+    const h1text = h1 && h1.textContent ? h1.textContent.replace(/\s+/g, ' ').trim() : '';
+    if (h1text) return h1text;
+    return doc.title || '';
+  };
+
+  SK.extractPageHtml = function extractPageHtml(doc) {
+    doc = doc || document;
+    const root = doc.documentElement;
+    if (!root) return { url: '', title: '', html: '' };
+    const clone = root.cloneNode(true);
+    clone.querySelectorAll(SK.STRIP_FOR_EXTRACT).forEach((el) => el.remove());
+    const title = SK.pickExtractTitle(doc);
+    // 移除 content 內與標題重複的主標題 <h1>:下游 reader（Instapaper）會用 title 參數
+    // 另外渲染一行標題,若 body 又留同字的主 <h1> 就會出現「重複標題」。只移除「正規化
+    // 後文字 === title」的那個主 h1（用 pickExtractTitle 的同優先序定位）,其他 h1 不動。
+    try {
+      const dupH1 = clone.querySelector('main h1') || clone.querySelector('article h1') || clone.querySelector('h1');
+      if (dupH1) {
+        const t = (dupH1.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t && t === title) dupH1.remove();
+      }
+    } catch (_) { /* 移除失敗不影響其餘擷取 */ }
+    // 同步把 clone 的 <head><title> 改成譯文標題,讓下游 reader 即使從 content 的
+    // <title> 抽標題（而非用 title 參數）也拿到譯文版,雙保險。
+    try {
+      let titleEl = clone.querySelector('title');
+      if (!titleEl) {
+        const head = clone.querySelector('head');
+        if (head) { titleEl = doc.createElement('title'); head.insertBefore(titleEl, head.firstChild); }
+      }
+      if (titleEl && title) titleEl.textContent = title;
+    } catch (_) { /* 改 <title> 失敗不影響 title 參數 */ }
+    const html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    return {
+      url: (doc.location && doc.location.href) || '',
+      title,
+      html,
+    };
+  };
 }

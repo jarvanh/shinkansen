@@ -55,3 +55,6 @@ safari-app/**/xcuserdata/
 safari-app/Shinkansen/Shinkansen Extension/Resources/
 safari-app/Shinkansen-iOS/Shinkansen/Shinkansen Extension/Resources/
 safari-app/shinkansen-ios-*.ipa
+
+# Instapaper Full API 憑證(app 層,不進 public repo)
+shinkansen/lib/instapaper-keys.js

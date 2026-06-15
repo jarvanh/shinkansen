@@ -8,6 +8,7 @@ import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilena
 import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 import { isTouchScreenDevice } from '../lib/platform.js';
+import { instapaperXAuth, hasInstapaperConsumerKeys } from '../lib/instapaper.js'; // 送到 Instapaper
 
 // 向下相容：舊程式碼大量使用 DEFAULTS，保留別名避免大範圍搜尋取代
 const DEFAULTS = DEFAULT_SETTINGS;
@@ -165,6 +166,10 @@ async function load() {
   $('toastAutoHide').checked = s.toastAutoHide !== false;
   // v1.6.8: Toast master switch
   $('showProgressToast').checked = s.showProgressToast !== false;
+
+  // 送到 Instapaper：enable 開關 + 連結狀態（已連結時顯示帳號 + 解除連結）
+  $('instapaperEnabled').checked = s.instapaperEnabled === true;
+  renderInstapaperLinkState(saved);
 
   // v1.0.21: 頁面層級繁中偵測開關
 
@@ -1033,6 +1038,8 @@ async function _saveImpl() {
       const v = Number($('auto-translate-slot')?.value);
       return [1, 2, 3].includes(v) ? v : 2;
     })(),
+    // 送到 Instapaper enable/disable 開關（email/密碼/權杖不在此存，連結流程另寫 storage.sync）
+    instapaperEnabled: $('instapaperEnabled')?.checked === true,
     // v1.6.14: per-model 計價覆蓋（Google 改價時使用者自填）。
     // v1.9.2: cachedDiscount 獨立欄位,可單獨覆蓋(只填折扣不填價格也合法)。
     //   input/output 兩欄都是合法數字才寫入 input/output entry,任一欄空白 → 走內建表;
@@ -1538,6 +1545,81 @@ $('test-api-key').addEventListener('click', async () => {
       },
     }),
   });
+});
+
+// ── 送到 Instapaper：連結 / 解除連結 ──────────────────────
+// 連結走 instapaperXAuth（email + 密碼 → OAuth token），成功後只存 token /
+// tokenSecret / username 到 storage.sync，密碼欄即時清空（用完即丟）。
+// xAuth fetch 由 options 頁直接發（extension origin，host_permissions 已含
+// instapaper.com）——對齊 popup 路徑，避開 iOS 背景 event page 掛起。
+function renderInstapaperLinkState(saved) {
+  const linked = !!(saved && saved.instapaperToken && saved.instapaperUsername);
+  const form = $('instapaper-link-form');
+  const linkedBox = $('instapaper-linked');
+  if (form) form.hidden = linked;
+  if (linkedBox) linkedBox.hidden = !linked;
+  if (linked) $('instapaper-linked-user').textContent = saved.instapaperUsername;
+}
+
+function instapaperErrorText(error) {
+  switch (error) {
+    case 'AUTH': return _t('options.instapaper.errAuth');
+    case 'CONFIG': return _t('options.instapaper.errConfig');
+    case 'NETWORK': return _t('options.instapaper.errNetwork');
+    default: return _t('options.instapaper.errHttp');
+  }
+}
+
+$('instapaper-connect')?.addEventListener('click', async () => {
+  const btn = $('instapaper-connect');
+  const resultEl = $('instapaper-connect-result');
+  const email = $('instapaper-email').value.trim();
+  const password = $('instapaper-password').value;
+  resultEl.hidden = false;
+  if (!hasInstapaperConsumerKeys()) {
+    resultEl.dataset.state = 'fail';
+    resultEl.textContent = '✗ ' + _t('options.instapaper.errConfig');
+    return;
+  }
+  if (!email || !password) {
+    resultEl.dataset.state = 'fail';
+    resultEl.textContent = '✗ ' + _t('options.instapaper.needCredentials');
+    return;
+  }
+  btn.disabled = true;
+  btn.dataset.state = 'loading';
+  resultEl.dataset.state = 'loading';
+  resultEl.textContent = _t('options.instapaper.connecting');
+  try {
+    const r = await instapaperXAuth({ email, password });
+    if (r.ok) {
+      await browser.storage.sync.set({
+        instapaperToken: r.token,
+        instapaperTokenSecret: r.tokenSecret,
+        instapaperUsername: email,
+      });
+      $('instapaper-password').value = ''; // 密碼用完即丟，不存
+      resultEl.dataset.state = 'ok';
+      resultEl.textContent = '✓ ' + _t('options.instapaper.connectOk');
+      renderInstapaperLinkState({ instapaperToken: r.token, instapaperUsername: email });
+    } else {
+      resultEl.dataset.state = 'fail';
+      resultEl.textContent = '✗ ' + instapaperErrorText(r.error);
+    }
+  } catch (err) {
+    resultEl.dataset.state = 'fail';
+    resultEl.textContent = '✗ ' + (err?.message || String(err));
+  } finally {
+    btn.disabled = false;
+    btn.dataset.state = '';
+  }
+});
+
+$('instapaper-unlink')?.addEventListener('click', async () => {
+  await browser.storage.sync.remove(['instapaperToken', 'instapaperTokenSecret', 'instapaperUsername']);
+  renderInstapaperLinkState({});
+  const resultEl = $('instapaper-connect-result');
+  if (resultEl) resultEl.hidden = true;
 });
 
 // Tier 變更 → 自動更新 RPM/TPM/RPD 顯示

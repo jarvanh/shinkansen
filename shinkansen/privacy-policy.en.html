@@ -156,6 +156,11 @@
     <p>API call counts and token usage are recorded in your local browser's IndexedDB to power the usage charts on the settings page. This data never leaves your browser.</p>
   </section>
 
+  <section>
+    <h3>Instapaper link credentials (optional feature)</h3>
+    <p>If you enable "Send to Instapaper" and link your account, Shinkansen stores an Instapaper access token (OAuth token) and your account email in <code>storage.sync</code>. Your Instapaper password is only used at link time to exchange for the token, then discarded — it is never stored. The token is used solely to send page content to Instapaper when you trigger it.</p>
+  </section>
+
   <h2>4. Data Sent to Third Parties</h2>
   <p>Shinkansen's outbound network connections are limited to the following, and are only initiated when the corresponding feature is used:</p>
 
@@ -189,10 +194,15 @@
         <td>Fetch USD↔TWD exchange rate (to display API costs in TWD)</td>
         <td>No user data</td>
       </tr>
+      <tr>
+        <td><code>www.instapaper.com</code></td>
+        <td>Send to Instapaper (optional, user-initiated)</td>
+        <td>Your Instapaper access token, and the content, URL, and title of the current (translated) page</td>
+      </tr>
     </tbody>
   </table>
 
-  <p>Data sent to the two Google endpoints (Gemini and Google Translate) is governed by <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a> and the <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Gemini API Terms of Service</a>. When using a custom provider, your data is governed by that provider's own privacy policy and terms of service. Please read the relevant terms before use.</p>
+  <p>Data sent to the two Google endpoints (Gemini and Google Translate) is governed by <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a> and the <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Gemini API Terms of Service</a>. When using a custom provider, your data is governed by that provider's own privacy policy and terms of service. When the Instapaper integration is enabled, page content is sent to Instapaper's own endpoint only when you actively click "Send to Instapaper" or press its keyboard shortcut, and is governed by Instapaper's own privacy policy. Please read the relevant terms before use.</p>
 
   <h2>5. What We Don't Do</h2>
   <p>Shinkansen does not:</p>
@@ -216,6 +226,11 @@
   <section>
     <h3><code>generativelanguage.googleapis.com</code> / <code>translate.googleapis.com</code></h3>
     <p>Network access to the Gemini API and Google Translate endpoints, declared explicitly. Declaring the permission alone does not initiate any connection — that only happens when you use the corresponding translation path.</p>
+  </section>
+
+  <section>
+    <h3><code>www.instapaper.com</code></h3>
+    <p>Network access to the Instapaper Full API endpoint, for the optional "Send to Instapaper" feature. No connection is made unless the feature is enabled and your account is linked.</p>
   </section>
 
   <section>

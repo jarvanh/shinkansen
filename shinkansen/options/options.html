@@ -80,6 +80,42 @@
       </label>
     </section>
 
+    <!-- 送到 Instapaper：把翻譯後的整頁存進使用者自己的 Instapaper 帳號 -->
+    <section id="instapaper-section">
+      <h2 data-i18n="options.instapaper.heading">Instapaper</h2>
+      <label class="toggle">
+        <input type="checkbox" id="instapaperEnabled">
+        <span data-i18n="options.instapaper.enable">啟用「送到 Instapaper」</span>
+        <small class="muted" data-i18n="options.instapaper.enableHint">啟用後，工具列視窗會出現「送到 Instapaper」按鈕，也可用快速鍵 Alt+I，把目前（翻譯後）的整頁存到你的 Instapaper</small>
+      </label>
+
+      <!-- 未連結：email + 密碼 + 連結按鈕 -->
+      <div id="instapaper-link-form">
+        <label>
+          <span data-i18n="options.instapaper.emailLabel">Instapaper 帳號 Email</span>
+          <input type="email" id="instapaper-email" autocomplete="username" data-i18n-attr-placeholder="options.instapaper.emailPlaceholder" placeholder="you@example.com">
+        </label>
+        <label>
+          <span data-i18n="options.instapaper.passwordLabel">Instapaper 密碼</span>
+          <div class="api-key-row">
+            <input type="password" id="instapaper-password" autocomplete="current-password" data-i18n-attr-placeholder="options.instapaper.passwordPlaceholder" placeholder="輸入密碼以連結帳號">
+            <button type="button" id="instapaper-connect" class="ghost-btn" data-i18n="options.instapaper.connect">連結</button>
+          </div>
+          <div id="instapaper-connect-result" class="api-test-result" hidden></div>
+        </label>
+        <small class="muted" data-i18n="options.instapaper.desc">透過 Instapaper Full API（xAuth）連結。密碼只用於換取一組存取權杖，用完即丟、不會儲存；權杖僅存在本機 chrome.storage.sync，內容只在你主動觸發時送往 Instapaper 自有端點。沒有設定 Instapaper 密碼的帳號，可在 Instapaper 設定頁先設一組</small>
+      </div>
+
+      <!-- 已連結：顯示帳號 + 解除連結 -->
+      <div id="instapaper-linked" hidden>
+        <p class="muted instapaper-linked-line">
+          <span data-i18n="options.instapaper.linkedPrefix">已連結：</span>
+          <strong id="instapaper-linked-user"></strong>
+          <button type="button" id="instapaper-unlink" class="ghost-btn" data-i18n="options.instapaper.unlink">解除連結</button>
+        </p>
+      </div>
+    </section>
+
     <section>
       <h2 data-i18n="options.preset.heading">翻譯快速鍵</h2>
       <!-- 桌面 Chrome / Firefox 版說明（⌥ Option 或 ⌃ Control）。CSS 依 body.runtime-* 顯示 -->
@@ -1169,6 +1205,9 @@
   <script src="../lib/vendor/chart.min.js"></script>
   <script src="../lib/i18n.js"></script>
   <script src="../lib/shortcut-utils.js"></script>
+  <!-- instapaper-keys.js（gitignored，consumer 金鑰）：classic script 早於 options.js
+       module 執行，把金鑰掛上 globalThis.__SK；fresh clone 無此檔時 404 無害，功能停用 -->
+  <script src="../lib/instapaper-keys.js"></script>
   <script type="module" src="options.js"></script>
 </body>
 </html>

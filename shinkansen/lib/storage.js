@@ -666,6 +666,10 @@ export const DEFAULT_SETTINGS = {
   // Why：Safari（含 iOS / iPadOS）沒有瀏覽器層快速鍵設定入口，自訂鍵走 content script
   // 層攔截；桌面（Chrome / Firefox / macOS Safari）manifest 預設鍵仍並存有效。
   customShortcuts: { 2: null, 1: null, 3: null },
+  // 送到 Instapaper:enable/disable 開關。預設關——避免沒申請金鑰 / 沒連結的
+  // 使用者看到無作用按鈕。連結後寫入的 token / tokenSecret / username 不放
+  // DEFAULT_SETTINGS（連結時才寫 storage.sync,密碼用完即丟不存,見 lib/instapaper.js）。
+  instapaperEnabled: false,
   // v1.5.6: 中國用語黑名單。使用者自訂時整個陣列覆蓋（不做 per-entry merge）。
   // 內容會以 <forbidden_terms_blacklist> 區塊注入到 systemInstruction 末端，
   // 且修改清單後快取 key 會帶 _b<hash> 後綴讓既有快取自動失效。

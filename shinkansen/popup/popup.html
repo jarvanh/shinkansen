@@ -33,6 +33,8 @@
 
     <button id="translate-btn" class="primary" data-i18n="popup.action.translate">翻譯本頁</button>
     <button id="edit-btn" class="secondary" hidden data-i18n="popup.action.editStart">編輯譯文</button>
+    <!-- 送到 Instapaper：只有 instapaperEnabled && 已連結 才由 popup.js 顯示 -->
+    <button id="send-to-instapaper-btn" class="secondary" hidden type="button" data-i18n="popup.action.sendToInstapaper">送到 Instapaper</button>
 
     <!-- v1.5.0: 顯示模式切換(單語覆蓋 / 雙語對照) -->
     <div class="display-mode-row">
@@ -130,6 +132,9 @@
   <!-- shortcut-utils.js（UMD，window.__SKShortcuts）：popup 用 macifyCommandShortcut
        把 built-in 快速鍵字串在 Mac 上顯示成 ⌥S。普通 script 早於 popup.js module 載入。 -->
   <script src="../lib/shortcut-utils.js"></script>
+  <!-- instapaper-keys.js（gitignored，consumer 金鑰）：classic script 早於 popup.js
+       module 執行，掛上 globalThis.__SK；fresh clone 無此檔時 404 無害，功能停用 -->
+  <script src="../lib/instapaper-keys.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

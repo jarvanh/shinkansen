@@ -1942,6 +1942,32 @@
       sendResponse({ ok: true, translated: STATE.translated, editing: editModeActive });
       return true;
     }
+    // 送到 Instapaper:擷取當前頁面完整 HTML（含已就地替換的譯文）。
+    // popup 按鈕路徑與 Alt+I 快捷鍵（background onCommand）都透過此 action 拿 payload，
+    // 再由 popup / background 做 OAuth 簽章 + fetch（content 不持有 consumer secret）。
+    if (msg?.type === 'EXTRACT_PAGE_HTML') {
+      try {
+        sendResponse({ ok: true, ...SK.extractPageHtml(document) });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message });
+      }
+      return true;
+    }
+    // 送到 Instapaper 快捷鍵（Alt+I）路徑的回饋：background 做完 OAuth + fetch 後
+    // broadcast 狀態，由 content 用 toast 顯示（快捷鍵無 popup，回饋走 content toast）。
+    if (msg?.type === 'INSTAPAPER_TOAST') {
+      const MAP = {
+        sending:          { kind: 'loading', key: 'instapaper.sending' },
+        sent:             { kind: 'success', key: 'instapaper.sent' },
+        'not-enabled':    { kind: 'error',   key: 'instapaper.notEnabled' },
+        'failed-auth':    { kind: 'error',   key: 'instapaper.failedAuth' },
+        'failed-network': { kind: 'error',   key: 'instapaper.failedNetwork' },
+        failed:           { kind: 'error',   key: 'instapaper.failed' },
+      };
+      const e = MAP[msg.status] || MAP.failed;
+      try { SK.showToast(e.kind, SK.t(e.key), e.kind === 'loading' ? {} : { autoHideMs: 4000 }); } catch (_) {}
+      return;
+    }
     // v1.2.12: YouTube 字幕翻譯開關（popup toggle 用）
     if (msg?.type === 'GET_SUBTITLE_STATE') {
       sendResponse({ ok: true, active: SK.YT?.active ?? false });

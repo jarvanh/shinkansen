@@ -9,6 +9,7 @@ import { isWorthNotifying } from '../lib/update-check.js';
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 import { isTouchScreenDevice } from '../lib/platform.js';
 import { pickPopupSlot, presetsRequireGemini, TARGET_LANGUAGES, DEFAULT_SETTINGS } from '../lib/storage.js';
+import { saveToInstapaper, buildInstapaperPayload } from '../lib/instapaper.js'; // 送到 Instapaper
 
 // iOS build（SPEC-PRIVATE §26）。build 屬性 vs 平台屬性分離見 lib/platform.js：
 //   - body.runtime-ios（build 屬性，不論 host OS）：CSS 隱藏「翻譯文件」入口
@@ -326,6 +327,13 @@ async function init() {
     $('glossary-toggle').checked = gc?.enabled ?? false;
   } catch { /* 讀取失敗時維持預設 checked */ }
 
+  // 送到 Instapaper：只有「已啟用且已連結」才顯示按鈕
+  try {
+    const { instapaperEnabled = false, instapaperToken } =
+      await browser.storage.sync.get(['instapaperEnabled', 'instapaperToken']);
+    $('send-to-instapaper-btn').hidden = !(instapaperEnabled === true && !!instapaperToken);
+  } catch { /* 讀取失敗維持 hidden */ }
+
   // v1.2.12: YouTube 字幕 toggle — 只在 YouTube 影片頁才顯示
   // v1.4.13: toggle 語意從「當前 active 狀態」改為「ytSubtitle.autoTranslate 設定值」，
   // 讓使用者一打開 popup 就看到預設 ON（DEFAULT_SETTINGS.ytSubtitle.autoTranslate=true），
@@ -527,6 +535,46 @@ $('translate-doc-btn').addEventListener('click', async () => {
   const url = browser.runtime.getURL('translate-doc/index.html');
   await browser.tabs.create({ url });
   window.close();
+});
+
+// ── 送到 Instapaper ──────────────────────────────────────
+// 在 popup 直接做 OAuth 簽章 + fetch（避開 iOS 背景 event page 掛起）：
+// 向 content 取目前頁面 HTML（含已就地替換的譯文）→ saveToInstapaper。
+function instapaperErrText(error) {
+  switch (error) {
+    case 'AUTH': return t('instapaper.failedAuth');
+    case 'NETWORK': return t('instapaper.failedNetwork');
+    default: return t('instapaper.failed');
+  }
+}
+
+$('send-to-instapaper-btn').addEventListener('click', async () => {
+  const btn = $('send-to-instapaper-btn');
+  btn.disabled = true;
+  statusEl.style.color = '#86868b';
+  statusEl.textContent = t('instapaper.sending');
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error('no active tab');
+    const page = await browser.tabs.sendMessage(tab.id, { type: 'EXTRACT_PAGE_HTML' });
+    if (!page?.ok || !page.url) throw new Error(page?.error || 'extract failed');
+    const { instapaperToken, instapaperTokenSecret } =
+      await browser.storage.sync.get(['instapaperToken', 'instapaperTokenSecret']);
+    const payload = buildInstapaperPayload({ url: page.url, html: page.html, title: page.title });
+    const r = await saveToInstapaper({ token: instapaperToken, tokenSecret: instapaperTokenSecret, payload });
+    if (r.ok) {
+      statusEl.textContent = t('instapaper.sent');
+      statusEl.style.color = '#34c759';
+    } else {
+      statusEl.textContent = instapaperErrText(r.error);
+      statusEl.style.color = '#ff3b30';
+    }
+  } catch (_) {
+    statusEl.textContent = t('instapaper.failed');
+    statusEl.style.color = '#ff3b30';
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // v1.6.23:popup 開著時 reactive sync ytSubtitle.autoTranslate（設定頁同步寫 storage 後立即反映）

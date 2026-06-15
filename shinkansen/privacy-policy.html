@@ -156,6 +156,11 @@
     <p>API 呼叫次數與 token 用量記錄在瀏覽器本機的 IndexedDB 中，用於在設定頁面顯示用量圖表。這些資料不會離開您的瀏覽器。</p>
   </section>
 
+  <section>
+    <h3>Instapaper 連結憑證（選用功能）</h3>
+    <p>若您啟用「送到 Instapaper」並完成帳號連結，Shinkansen 會在 <code>storage.sync</code> 儲存一組 Instapaper 存取權杖（OAuth token）與您的帳號 Email；您的 Instapaper 密碼只在連結當下用於換取權杖，用完即丟、不會儲存。這組權杖僅用於在您主動觸發時把頁面內容送往 Instapaper。</p>
+  </section>
+
   <h2>4. 傳送到第三方的資料</h2>
   <p>Shinkansen 對外網路連線範圍如下，並僅在功能需要時才發起：</p>
 
@@ -189,10 +194,15 @@
         <td>取得美元↔台幣即時匯率（用於以台幣顯示 API 成本）</td>
         <td>無使用者資料</td>
       </tr>
+      <tr>
+        <td><code>www.instapaper.com</code></td>
+        <td>送到 Instapaper（選用，使用者主動觸發）</td>
+        <td>您的 Instapaper 存取權杖、目前（翻譯後）頁面的內容、網址與標題</td>
+      </tr>
     </tbody>
   </table>
 
-  <p>Gemini 與 Google Translate 兩條 Google 端點的資料處理受 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google 隱私權政策</a>與 <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Gemini API 服務條款</a>規範。使用自訂 Provider 路徑時，您的資料受該 Provider 自身的隱私權政策與服務條款規範。建議您在使用前閱讀相關條款。</p>
+  <p>Gemini 與 Google Translate 兩條 Google 端點的資料處理受 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google 隱私權政策</a>與 <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Gemini API 服務條款</a>規範。使用自訂 Provider 路徑時，您的資料受該 Provider 自身的隱私權政策與服務條款規範。啟用 Instapaper 整合時，頁面內容只在您主動點按「送到 Instapaper」或按下對應快速鍵時送往 Instapaper 自有端點，資料處理受 Instapaper 自身的隱私權政策規範。建議您在使用前閱讀相關條款。</p>
 
   <h2>5. 我們不做的事</h2>
   <p>Shinkansen 不會：</p>
@@ -216,6 +226,11 @@
   <section>
     <h3><code>generativelanguage.googleapis.com</code> / <code>translate.googleapis.com</code></h3>
     <p>分別宣告對 Gemini API 與 Google Translate 端點的網路存取權限。即使對應翻譯路徑沒被使用，宣告權限本身不會發起任何連線。</p>
+  </section>
+
+  <section>
+    <h3><code>www.instapaper.com</code></h3>
+    <p>宣告對 Instapaper Full API 端點的網路存取權限，供選用的「送到 Instapaper」功能使用。未啟用或未連結帳號時不會發起任何連線。</p>
   </section>
 
   <section>
