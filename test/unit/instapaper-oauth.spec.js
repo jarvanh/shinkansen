@@ -139,6 +139,7 @@ test('parseTokenResponse 正常解析 + 缺欄位回 null', () => {
 test('buildInstapaperPayload：url 必填、title/content 防呆', () => {
   expect(() => buildInstapaperPayload({})).toThrow();
   expect(buildInstapaperPayload({ url: 'https://e.com' })).toEqual({ url: 'https://e.com' });
+  // 不設 is_private_from_source（影片綁架真因是 frame 廣播，已修 content.js;留住 source URL）
   expect(buildInstapaperPayload({ url: 'https://e.com', html: '<p>x</p>', title: 'T' }))
     .toEqual({ url: 'https://e.com', title: 'T', content: '<p>x</p>' });
   // 空 title / html 不帶
@@ -197,6 +198,7 @@ test('saveToInstapaper：200/201 → ok、403 → AUTH、500 → HTTP、throw �
   expect(r.status).toBe(201);
   expect(captured.url).toBe(INSTAPAPER_ADD_URL);
   expect(captured.opts.body).toContain('content=');
+  expect(captured.opts.body).not.toContain('is_private_from_source');
 
   expect(await save(async () => mockRes({ status: 200, json: [{}] }))).toMatchObject({ ok: true, status: 200 });
   expect(await save(async () => mockRes({ status: 403 }))).toMatchObject({ ok: false, error: 'AUTH' });

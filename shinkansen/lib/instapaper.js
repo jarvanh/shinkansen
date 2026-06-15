@@ -157,6 +157,16 @@ export function parseTokenResponse(text) {
 }
 
 // 組 bookmarks/add 的 payload。url 必填;title / content 空值不帶。
+//
+// 為何**不**設 is_private_from_source（2026-06-15 實測結論）:
+// 「影片綁架」的真正元兇是 EXTRACT_PAGE_HTML 廣播到所有 frame、被內嵌 youtube iframe
+// frame 搶答（修在 content.js top-frame guard），不是 Instapaper re-crawl。實測「帶
+// content + 不帶 is_private_from_source」送公開頁（readtrung 譯文）→ Instapaper 確實
+// 用了我們的 content（存的是乾淨譯文、無影片），且**保留原始 source URL 連結**。
+// 反之設 is_private_from_source 會讓 bookmark 變 private、url 變 instapaper://private-content
+// （失去原文連結）——既然不必要就不設,留住 source URL 對使用者較好。
+// 殘留風險:官方文件稱 content 對「可爬頁面」是 fallback;實測 stable 但無法保證 Instapaper
+// 不會延遲 re-crawl 覆蓋。若日後發現 bookmark 延遲變回原文 / 影片,再加回 is_private_from_source。
 export function buildInstapaperPayload({ url, html, title }) {
   if (!url || typeof url !== 'string') {
     throw new Error('buildInstapaperPayload: url is required');

@@ -17,6 +17,12 @@
 
 ## 條目
 
+### 送 Instapaper — EXTRACT_PAGE_HTML 只由最上層 frame 回應(2026-06-15)
+- **症狀**:含內嵌 youtube(或任何 iframe)的頁面送 Instapaper,存下來變成「影片」而非主文。實機 readtrung 驗到:送出的 content 是 youtube-nocookie iframe frame 回的「影片嵌入頁」(347 字、標題=影片名)。
+- **根因**:content script `all_frames: true` → 內嵌 iframe 也跑 content script;popup / background 用 `browser.tabs.sendMessage(tabId, {type:'EXTRACT_PAGE_HTML'})` **未指定 frameId** → 廣播到所有 frame → iframe frame 先回應就回它自己的文件。
+- **修在**:`shinkansen/content.js` EXTRACT_PAGE_HTML handler 加 `if (window.top !== window) return false;`(非頂層 frame 不回應)。
+- **為什麼 path B**:重現需「真實多 frame 頁面 + `browser.tabs.sendMessage` 廣播 + 哪個 frame 先回應的時序」。Playwright regression harness 走 `evaluate` 直呼 `window.__SK.extractPageHtml(document)`(單一頂層 frame)、`getShinkansenEvaluator` 只接頂層 isolated world,測不到「跨 frame 廣播搶答」。已用實機 cage(temp hook 真送 + Read bookmark)驗證修法生效(bookmark 2020084398 = 乾淨譯文、無影片)。
+
 <!-- iOS host app 設定畫面回填 extension 真值（反向 push extApiKey/extModel,v1.10.43）清空紀錄
   （2026-06-09,Jimmy 真機驗收完成）:
   - 症狀:host app「API Key 與預設模型設定」畫面進入時只讀 host 自己寫過的 hostApiKey/hostModel

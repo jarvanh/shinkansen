@@ -1946,6 +1946,12 @@
     // popup 按鈕路徑與 Alt+I 快捷鍵（background onCommand）都透過此 action 拿 payload，
     // 再由 popup / background 做 OAuth 簽章 + fetch（content 不持有 consumer secret）。
     if (msg?.type === 'EXTRACT_PAGE_HTML') {
+      // 只有最上層 frame 回應。content script 以 all_frames 注入,頁內嵌入的 youtube /
+      // 廣告 iframe 也跑同一個 listener;browser.tabs.sendMessage 未指定 frameId 會廣播到
+      // 所有 frame,某個 iframe（youtube 嵌入頁）先回應就會把「影片嵌入頁的文件」當主文
+      // 送出 → Instapaper 存成影片（readtrung 實測:youtube-nocookie iframe frame 回了
+      // 它自己的影片頁,347 字 = 影片標題,整篇文章被換掉）。非頂層 frame 不回應。
+      if (window.top !== window) return false;
       try {
         sendResponse({ ok: true, ...SK.extractPageHtml(document) });
       } catch (err) {

@@ -1,4 +1,9 @@
-// Regression: extract-page-html（對應「送到 Instapaper」功能新增的頁面擷取純函式）
+// Regression: extract-page-html（送 Instapaper 的 legacy fallback 路徑）
+//
+// v1.10.55 起送 Instapaper 主路徑改用 Readability（見 extract-readability-instapaper.spec.js）;
+// 本 spec 鎖 SK.extractPageHtmlLegacy —— Readability 抽不到（罕見結構 / 未載入）時的
+// fallback「整頁 documentElement strip」。fallback 仍須乾淨（無腳本 / 媒體 / UI 噪音）
+// 且完整（正文 + dual wrapper），並保留舊的去重標題 / 譯文標題行為。
 //
 // Fixture: test/regression/fixtures/extract-page-html.html
 // 結構特徵（通用，不綁站點）:
@@ -37,7 +42,7 @@ test('extract-page-html: 剝除腳本 / UI chrome，保留正文與譯文 wrappe
 
   const { evaluate } = await getShinkansenEvaluator(page);
   const result = JSON.parse(await evaluate(`
-    JSON.stringify(window.__SK.extractPageHtml(document))
+    JSON.stringify(window.__SK.extractPageHtmlLegacy(document))
   `));
 
   // 標題取「譯文標題」= 已就地翻譯的 <h1>，而非 <head><title>（single mode 不動 title）。

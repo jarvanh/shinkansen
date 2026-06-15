@@ -892,7 +892,102 @@ if (window.__shinkansen_loaded) {
     return doc.title || '';
   };
 
+  // 用 vendored Readability（lib/readability.js）在「譯文 DOM 的 clone」上抽乾淨正文，
+  // 取代舊「整頁 documentElement strip」。舊法把整頁 SPA 噪音 + 影片嵌入 facade 一起送
+  // Instapaper，下游 readability 會被影片塊綁架（見 PLAN-send-to-instapaper.md）。
+  // Readability 跑 clone、不動 live 譯文頁（§15）；抽完套 JRead 驗證過的硬化薄層。
+  // 標題仍取譯文主 <h1>（pickExtractTitle）:single mode 不動 <head><title>，Readability
+  // 預設偏好 <title> 會拿到未翻譯原文，故主用 h1、Readability title 只當 fallback。
+  // Readability 抽不到（罕見結構 / 未載入）時退回 legacy 整頁 strip，至少有內容可送。
   SK.extractPageHtml = function extractPageHtml(doc) {
+    doc = doc || document;
+    const url = (doc.location && doc.location.href) || '';
+    const Rdb = (typeof Readability !== 'undefined') ? Readability
+      : (typeof window !== 'undefined' && window.Readability) ? window.Readability : null;
+    if (!Rdb) return SK.extractPageHtmlLegacy(doc);
+    let parsed = null;
+    try {
+      const clone = doc.cloneNode(true);
+      // 先剝我方注入的 UI host，避免被 Readability 當內容評分
+      clone.querySelectorAll('#shinkansen-toast-host, #shinkansen-dual-style').forEach((el) => el.remove());
+      // 先剝媒體嵌入（再跑 Readability）:Readability 的 videos regex 會「保留」youtube
+      // 等影片 iframe 當內容,而譯文是中文(字元數遠少於英文)→ 整篇正文的字數分數驟降,
+      // 一個被保留的影片 iframe 就可能反超整篇文章被選成 article（實測譯文 readtrung
+      // 被內嵌 youtube 影片塊綁架成 347 字)。嵌入對下游 reader 本來就要剝（§3 媒體嵌入
+      // 會綁架正文）,提前到 Readability 之前剝掉,讓評分只在真正的文字內容間比。
+      // 結構性通則:剝通用嵌入 tag（非站點 class）。
+      clone.querySelectorAll('iframe, video, audio, object, embed, lite-youtube').forEach((el) => el.remove());
+      parsed = new Rdb(clone, { charThreshold: 200 }).parse();
+    } catch (_) { parsed = null; }
+    if (!parsed || !parsed.content) return SK.extractPageHtmlLegacy(doc);
+    const title = (SK.pickExtractTitle(doc) || parsed.title || doc.title || "")
+      .replace(/\s+/g, ' ').trim();
+    const body = SK.hardenExtractedHtml(parsed.content, title, doc);
+    const html = '<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>'
+      + SK.escapeHtmlText(title) + '</title></head><body>' + body + '</body></html>';
+    return { url, title, html };
+  };
+
+  // 把 Readability 輸出的正文 HTML 再硬化一層，對齊 JRead extractReaderPayload 已驗證的
+  // 下游修法（下游 reader 會 re-sanitize / re-parse，這些殘留會壞掉呈現）:
+  //   1. 剝媒體嵌入（iframe/video/...）：防影片塊在下游 re-parse 時再次綁架正文
+  //   2. 去重主標題：下游用 title 欄位另渲染主標，body 內同文 heading 會重複
+  //   3. 段落 div→p：下游砍 inline style 後，靠 margin 撐間距的 leaf div 會擠在一起
+  //   4. 空殼修剪：剝節點後留下的空殼在下游渲染成空 bullet
+  SK.hardenExtractedHtml = function hardenExtractedHtml(htmlString, title, doc) {
+    doc = doc || document;
+    const root = doc.createElement('div');
+    root.innerHTML = String(htmlString || '');
+    // 0. 剝註解節點（Readability 會保留 HTML 註解，是下游噪音，且可能含原站嵌入殘留）
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null);
+    const comments = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) comments.push(n);
+    comments.forEach((c) => c.remove());
+    // 1. 剝媒體嵌入
+    root.querySelectorAll('iframe, video, audio, object, embed, canvas').forEach((el) => el.remove());
+    // 2. 去重主標題（折疊空白 + 大小寫後與 title 全文相等的 h1-h6）
+    const fold = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const ft = fold(title);
+    if (ft) {
+      root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((h) => {
+        if (fold(h.textContent) === ft) h.remove();
+      });
+    }
+    // 3. 段落 div → p（只含 text / inline 子節點的 leaf div，轉 p 不違反 HTML 規則）
+    const INLINE = new Set(['A', 'SPAN', 'STRONG', 'EM', 'B', 'I', 'U', 'S', 'SUB', 'SUP',
+      'MARK', 'SMALL', 'CODE', 'BR', 'WBR', 'ABBR', 'TIME', 'CITE', 'Q', 'LABEL']);
+    Array.from(root.querySelectorAll('div')).forEach((div) => {
+      const onlyInline = Array.from(div.childNodes).every((n) =>
+        n.nodeType === 3 || (n.nodeType === 1 && INLINE.has(n.tagName)));
+      if (onlyInline && (div.textContent || '').trim()) {
+        const p = doc.createElement('p');
+        while (div.firstChild) p.appendChild(div.firstChild);
+        div.replaceWith(p);
+      }
+    });
+    // 4. 空殼修剪（post-order：沒有非空白文字、也沒有媒體子孫的元素整個移除，逐層塌）
+    const KEEP = new Set(['TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TD', 'TH', 'CAPTION',
+      'COLGROUP', 'COL', 'BR', 'HR', 'WBR', 'IMG', 'PICTURE', 'SOURCE', 'TRACK', 'SVG']);
+    const MEDIA_SEL = 'img, picture, svg';
+    (function prune(node) {
+      Array.from(node.children).forEach(prune);
+      if (node === root) return;
+      if (KEEP.has(node.tagName)) return;
+      if ((node.textContent || '').trim()) return;
+      if (node.querySelector(MEDIA_SEL)) return;
+      node.remove();
+    })(root);
+    return root.innerHTML;
+  };
+
+  SK.escapeHtmlText = function escapeHtmlText(s) {
+    return String(s || '').replace(/[&<>"]/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  };
+
+  // legacy fallback：舊「整頁 documentElement strip」。Readability 抽不到時用，確保至少
+  // 有內容可送（雖可能含較多噪音）。STRIP_FOR_EXTRACT / pickExtractTitle 仍為此服務。
+  SK.extractPageHtmlLegacy = function extractPageHtmlLegacy(doc) {
     doc = doc || document;
     const root = doc.documentElement;
     if (!root) return { url: '', title: '', html: '' };
