@@ -616,6 +616,44 @@
   }
   SK._splitBrBlock = splitBrBlock;  // 測試 seam
 
+  // v1.10.56: 給「被主 walker 接受的 block 段落」(P / TD / BLOCKQUOTE…)找出真正帶
+  // <br><br> 段落結構的容器。Case B(splitBrBlock)只跑在非-block CONTAINER_TAGS(DIV…),
+  // 但 paulgraham.com 這類老站把整篇文章塞在單一 block <p> 裡、再包一層 <font> inline
+  // wrapper,<br><br> 全在 <font> 內 → 主 walker 把整顆 <p> 當單一 ~2 萬字 unit,
+  // thinking 模型 streaming『最後一段無法結束』/ 非串流 retry fetch timeout 整段 FAIL。
+  // 此 helper 沿「唯一具意義 element 子、無直接可翻文字」的 inline wrapper 鏈下探(最多 3 層),
+  // 找到自身帶直接 <br> 子的容器回傳;找不到回 null。
+  // 結構通則(§8):描述「block 段落內容其實由內層 inline wrapper 用 <br><br> 分段」的 DOM
+  // 巢狀特徵,不綁站點 / class / tag 身份(font 只是常見 carrier,span / b 同理)。
+  function findBrSplitTarget(el) {
+    let cur = el;
+    for (let depth = 0; depth < 4; depth++) {
+      if (hasBrChild(cur)) return cur;
+      // 收集 cur 的「具意義」子:非空 text(直接可翻文字)或非 BR element
+      let onlyChild = null;
+      let hasDirectText = false;
+      let multiple = false;
+      for (const c of cur.childNodes) {
+        if (c.nodeType === Node.TEXT_NODE) {
+          if ((c.nodeValue || '').trim().length >= 2) hasDirectText = true;
+          continue;
+        }
+        if (c.nodeType !== Node.ELEMENT_NODE) continue;
+        if (c.tagName === 'BR') continue;
+        if (onlyChild) { multiple = true; break; }
+        onlyChild = c;
+      }
+      // 有直接文字 / 多個 element 子 / 沒可下探的子 → 不是「單一 inline wrapper 包整段」結構
+      if (hasDirectText || multiple || !onlyChild) return null;
+      // 只穿越非-block inline wrapper(font / span / b / i…);遇 block 子(內層 P / DIV…)停手,
+      // 那種結構會由各自的 walker 路徑分別收集,不該在這裡硬切。
+      if (SK.BLOCK_TAGS_SET.has(onlyChild.tagName) || SK.CONTAINER_TAGS.has(onlyChild.tagName)) return null;
+      cur = onlyChild;
+    }
+    return null;
+  }
+  SK._findBrSplitTarget = findBrSplitTarget;  // 測試 seam
+
   // ─── collectParagraphs ────────────────────────────────
 
   SK.collectParagraphs = function collectParagraphs(root, stats) {
@@ -1162,6 +1200,31 @@
     });
     let node;
     while ((node = walker.nextNode())) {
+      // v1.10.56: 被接受的 block 段落若超長且內部由 <br><br> 分段(可能再包一層 <font>/<span>
+      // inline wrapper),切成多個 fragment——對齊 Case B(splitBrBlock)路徑,避免單一
+      // ~2 萬字 unit 讓 thinking 模型 streaming『最後一段無法結束』。paulgraham.com/boss.html
+      // 整篇塞在單一 <p><font>…<br><br>…</font></p> 是真實 case。結構通則(§8),不綁站點。
+      if ((node.textContent || '').trim().length > SK.BR_BLOCK_SPLIT_CHARS) {
+        const brTarget = findBrSplitTarget(node);
+        if (brTarget) {
+          const splitFrags = splitBrBlock(brTarget);
+          if (splitFrags.length >= 2) {
+            // 趁全頁未翻譯先 snapshot 容器原文,確保 RESTORE 拿到乾淨原文(同 Case A/B v1.10.45)
+            SK.snapshotOnce?.(brTarget);
+            for (const f of splitFrags) {
+              results.push(f);
+              seen.add(f.startNode);
+              let _n = f.startNode;
+              while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
+              if (stats) stats.blockBrSplit = (stats.blockBrSplit || 0) + 1;
+            }
+            // node 與內層 wrapper 都標記,避免 walker 後續訪問 wrapper 時 Case B 重複收集
+            seen.add(node);
+            if (brTarget !== node) { seen.add(brTarget); fragmentExtracted.add(brTarget); }
+            continue;
+          }
+        }
+      }
       results.push({ kind: 'element', el: node });
       seen.add(node);
     }
