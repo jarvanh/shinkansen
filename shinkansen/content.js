@@ -60,7 +60,7 @@
       const info = SK._spaDebug ? SK._spaDebug() : null;
       respond({ ok: true, spa: info });
     } else if (action === 'RESTORE') {
-      if (STATE.translated) {
+      if (SK.isPageTranslated()) {
         restorePage();
         respond({ ok: true, restored: true });
       } else {
@@ -78,7 +78,8 @@
       // YT 頁多附 yt 子物件(精簡版供「一鍵全看」),完整 raw / captionMap 內容仍走 GET_YT_DEBUG
       const out = {
         ok: true,
-        translated: STATE.translated,
+        translated: STATE.translated,             // 記憶體 raw flag(供 drift 偵測對照)
+        pageTranslated: SK.isPageTranslated?.(),   // v1.10.57: DOM 裁決源(單一真相)
         translating: STATE.translating,
         segmentCount: STATE.originalHTML.size,
       };
@@ -1451,6 +1452,25 @@
   // ─── restorePage ─────────────────────────────────────
 
   function restorePage() {
+    // v1.10.57: 殭屍頁保底 —— DOM 有 marker 但所有還原資料 Map 已空,代表頁面顯示著
+    // 我們已無素材還原的孤兒譯文(Part B 後 SPA nav 不該再產生此狀態,留作其他未知路徑的
+    // belt-and-suspenders)。innerHTML 還原無素材可用,唯一乾淨回到原文的方式是重載頁面。
+    const _noRestoreData = STATE.originalHTML.size === 0
+      && (!STATE.translationCache || STATE.translationCache.size === 0)
+      && (!STATE.nodeValueMutateBackup || STATE.nodeValueMutateBackup.size === 0);
+    if (_noRestoreData && SK.isPageTranslated()) {
+      SK.sendLog?.('warn', 'system', 'restorePage: markers present but no restore data, reloading to original');
+      // reload 前先清 marker,避免重載前的瞬間 isPageTranslated 仍判為已翻譯
+      document.querySelectorAll('[data-shinkansen-translated], [data-shinkansen-nodevalue-mutated]')
+        .forEach((el) => {
+          el.removeAttribute('data-shinkansen-translated');
+          el.removeAttribute('data-shinkansen-nodevalue-mutated');
+        });
+      STATE.translated = false;
+      SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+      location.reload();
+      return;
+    }
     if (editModeActive) toggleEditMode(false);
     SK.cancelRescan();
     // v1.10.46(批次 2-4):還原時 abort in-flight 的 rescan 批次,擋掉晚到回應再注入
@@ -1883,11 +1903,9 @@
   // v1.4.12: 依 preset slot 觸發對應 engine + model 翻譯。
   // 行為：閒置 → 啟動對應 preset；翻譯中 → abort；已翻譯 → restorePage（任一 slot）。
   async function handleTranslatePreset(slot) {
-    // 已翻譯：任意 preset 快速鍵皆取消翻譯（統一還原）
-    if (STATE.translated) {
-      restorePage();
-      return;
-    }
+    // v1.10.57: 翻譯中判斷必須在「已翻譯」之前 —— 已翻譯改以 DOM marker 為準
+    // (SK.isPageTranslated),而翻譯途中譯文是逐段注入的,marker 會提前出現,
+    // 若先判 isPageTranslated 會把「翻譯中按鍵取消」誤導成 restorePage。
     // 翻譯中：abort（立即還原原文，不等 in-flight 批次）
     // v1.10.20: controller 已 aborted = 上一輪取消收尾中 → 放行往下開新一輪
     // （translatePage / translatePageGoogle 入口會同步接管 run state）
@@ -1896,6 +1914,11 @@
         abortInProgressTranslation();
         return;
       }
+    }
+    // 已翻譯（以 DOM 注入痕跡為準，不信 STATE.translated）：任意 preset 快速鍵皆還原
+    if (SK.isPageTranslated()) {
+      restorePage();
+      return;
     }
     // 閒置：讀 preset 定義。若 storage 還沒寫入（例如從 v1.4.11 升級第一次按快捷鍵）
     // 就 fallback 到 SK.DEFAULT_PRESETS，避免「按鍵無反應」。
@@ -1939,7 +1962,9 @@
       return true;
     }
     if (msg?.type === 'GET_STATE') {
-      sendResponse({ ok: true, translated: STATE.translated, editing: editModeActive });
+      // v1.10.57: popup / icon 顯示狀態以 DOM 注入痕跡為準,不信記憶體 STATE.translated
+      // (SPA 子頁導航殘留 marker 時 STATE.translated 會說謊)。
+      sendResponse({ ok: true, translated: SK.isPageTranslated(), editing: editModeActive });
       return true;
     }
     // 送到 Instapaper:擷取當前頁面完整 HTML（含已就地替換的譯文）。

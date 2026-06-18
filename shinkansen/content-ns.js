@@ -115,6 +115,18 @@ if (window.__shinkansen_loaded) {
     originalFontFamily: new Map(), // el → string
   };
 
+  // v1.10.57:「這頁是否已翻譯」單一裁決源 —— 以 DOM 注入痕跡為準,不信記憶體
+  // STATE.translated boolean。SPA 子頁導航時 resetForSpaNavigation 會把 STATE.translated
+  // 歸零,但站點保留的舊節點(header / nav / 共用區塊)仍掛 marker + 顯示譯文,造成
+  // 「STATE 說沒翻、畫面是譯文」的殭屍狀態 → popup / icon 顯示錯、toggle 走錯動作。
+  // 此函式涵蓋三種注入痕跡:single(data-shinkansen-translated)、dual(shinkansen-translation
+  // wrapper)、framework-managed nodeValue mutate(data-shinkansen-nodevalue-mutated)。
+  SK.TRANSLATED_MARKER_SELECTOR =
+    '[data-shinkansen-translated], shinkansen-translation, [data-shinkansen-nodevalue-mutated]';
+  SK.isPageTranslated = function isPageTranslated() {
+    return !!document.querySelector(SK.TRANSLATED_MARKER_SELECTOR);
+  };
+
   // v1.4.12: content script 在 storage.sync.translatePresets 尚未寫入時的 fallback
   // （例如從 v1.4.11 升級但使用者還未開過設定頁 / onInstalled 沒觸發）。
   // 內容必須與 lib/storage.js DEFAULT_SETTINGS.translatePresets 保持一致。

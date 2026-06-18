@@ -6,7 +6,8 @@
 //              - slot 2: Gemini Flash (gemini-3-flash-preview)
 //              - slot 3: Google Translate (no modelOverride)
 //   行為 (b) 翻譯中：呼叫任一 slot 都 abort（`STATE.abortController.abort()`）
-//   行為 (c) 已翻譯：呼叫任一 slot 都 restorePage（`STATE.translated` 翻 false）
+//   行為 (c) 已翻譯（v1.10.57 起以 DOM marker / SK.isPageTranslated 為裁決源，非
+//            STATE.translated 旗標）：呼叫任一 slot 都 restorePage（STATE.translated 翻 false）
 //
 // 策略：不走 chrome.commands 真實鍵盤路徑（Playwright 無法模擬 extension 快速鍵），
 // 改直接呼叫 `window.__SK.handleTranslatePreset(slot)`——這是 content.js 把真實
@@ -133,6 +134,11 @@ test('preset-hotkey-behavior: translated + any slot → restorePage（STATE.tran
   await page.waitForSelector('#target', { timeout: 10_000 });
 
   const { evaluate } = await setupEvaluatorAndStubs(page);
+
+  // v1.10.57: 「已翻譯」的裁決源改為 DOM 注入痕跡(SK.isPageTranslated),不再是
+  // STATE.translated 旗標。真實已翻譯頁面必有 marker —— 用 testInject 注入真譯文
+  // (同時填 STATE.originalHTML 供 restorePage 還原),才能正確走 toggle → restore 分支。
+  await evaluate(`window.__shinkansen.testInject(document.querySelector('#target'), '譯文測試')`);
 
   // 把 STATE 擺成「已翻譯」
   await evaluate(`

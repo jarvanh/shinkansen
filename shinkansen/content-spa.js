@@ -38,16 +38,52 @@
     // 晚到回應不得注入新頁(translateUnitsByProvider 統一掛的 rescan signal 在此失效)
     SK.abortRescanRuns?.();
     stopSpaObserver();
+    // v1.10.57: SPA 子頁導航時站點常保留部分舊節點(header / nav / 共用區塊)。這些節點仍
+    // 掛 marker + 顯示譯文,但下面馬上要 clear originalHTML/translatedHTML → 還原資料消失
+    // → 孤兒譯文。隨後 sticky 續翻時 collectParagraphs 看到的是譯文(isAlreadyInTarget 全跳)
+    // → 空翻 → STATE.translated 永遠回不來 → popup / icon 與畫面永久不一致(殭屍狀態,
+    // 「已翻譯頁面點 url 延伸子孫 url」實測重現)。解法:clear 之前先把仍 connected 的注入
+    // 節點還原回原文,讓續翻看到原文正常翻;已翻過的舊內容重翻走 cache hit(近乎零成本),
+    // 只有子頁真新內容才打 API。single / dual / nodeValue mutate 三種注入痕跡都要清。
+    let _spaStripped = 0;
+    STATE.originalHTML.forEach((originalHTML, el) => {
+      if (!el.isConnected) return;
+      // AMO source review: originalHTML 來自本 extension 翻譯前自存的原始 DOM 字串,純還原用。
+      el.innerHTML = originalHTML;
+      el.removeAttribute('data-shinkansen-translated');
+      SK.restoreLocaleStyling?.(el);
+      _spaStripped++;
+    });
+    // dual wrapper(同時清 data-shinkansen-dual-source attribute)
+    if (STATE.translatedMode === 'dual' || (STATE.translationCache && STATE.translationCache.size > 0)) {
+      SK.removeDualWrappers?.();
+    }
+    // framework-managed nodeValue mutate:還原仍 connected 的 text node + 清 marker
+    if (STATE.nodeValueMutateBackup && STATE.nodeValueMutateBackup.size > 0) {
+      STATE.nodeValueMutateBackup.forEach((backup, el) => {
+        backup.forEach(({ node, originalValue }) => {
+          if (node && node.isConnected) { try { node.nodeValue = originalValue; } catch (_) {} }
+        });
+        try {
+          el.removeAttribute('data-shinkansen-nodevalue-mutated');
+          SK.restoreLocaleStyling?.(el);
+        } catch (_) {}
+      });
+    }
     STATE.originalHTML.clear();
     STATE.translatedHTML.clear();
     STATE.translatedHTMLByText?.clear?.();
     STATE.originalText?.clear?.();
+    STATE.translationCache?.clear?.();
+    STATE.nodeValueMutateBackup?.clear?.();
+    STATE.originalLang?.clear?.();
+    STATE.originalFontFamily?.clear?.();
     STATE.cache.clear();
     STATE.translated = false;
     STATE._glossaryPromise = null;
     SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     SK.hideToast();
-    SK.sendLog('info', 'spa', 'SPA navigation detected, state reset', { url: location.href, stickyTranslate: STATE.stickyTranslate });
+    SK.sendLog('info', 'spa', 'SPA navigation detected, state reset', { url: location.href, stickyTranslate: STATE.stickyTranslate, strippedConnected: _spaStripped });
   }
 
   // ─── 自動翻譯網站名單比對 ────────────────────────────
