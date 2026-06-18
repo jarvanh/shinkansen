@@ -13,6 +13,9 @@ const MAX_BACKOFF_MS = 8000;
 // MV3 SW 等不到那麼久(30 秒 idle 即可能被回收),無上限等待等於永久卡批次。
 // cap 在 30 秒,等完仍 429 就走 maxRetries 放棄路徑回報錯誤。
 const RETRY_AFTER_CAP_MS = 30_000;
+// 「送到 Instapaper」摘要的輸入字元上限。摘要不需要全文,截斷把最壞 token 成本鎖死
+//(CLAUDE.md §4):flash-lite 下 ~12K 字元(~3-4K token)足夠抓主旨,每次摘要遠低於 $0.001。
+const MAX_SUMMARY_INPUT_CHARS = 12_000;
 
 /** 自訂錯誤:RPD 每日配額用盡,不應該被重試。 */
 export class DailyQuotaExceededError extends Error {
@@ -427,6 +430,106 @@ export async function extractGlossary(compressedText, settings) {
   });
 
   return { glossary, usage };
+}
+
+/**
+ * 為「送到 Instapaper」產生文章摘要(3-4 句,目標語言)。
+ *
+ * 設計:固定走 Gemini Flash Lite(最便宜),與使用者主翻譯引擎無關——只要有 Gemini
+ * key 就能摘要(主引擎可以是 Google 翻譯 / openai-compat)。best-effort:任何失敗
+ *(無 key / 無 model / 逾時 / API 錯誤 / 空回應)一律回 { summary: '' },由呼叫端
+ * 降級為「不附摘要照常送出」,絕不讓摘要害書籤送不出去。
+ *
+ * 跨語摘要:text 可能是已翻譯頁的目標語言文字,也可能是未翻譯頁的原文。prompt 統一
+ * 要求「用 {targetLangLabel} 輸出」,兩種情況都對(flash-lite 跨語摘要沒問題)。
+ *
+ * @param {object} args
+ * @param {string} args.text 文章純文字
+ * @param {string} args.targetLangLabel 目標語言英文 label(storage.LANG_LABELS),注入 prompt
+ * @param {string} args.apiKey Gemini API key
+ * @param {string} args.model 摘要模型(預設由呼叫端帶 flash-lite)
+ * @param {string} [args.serviceTier]
+ * @param {number} [args.fetchTimeoutMs=15000]
+ * @returns {Promise<{ summary: string, usage: { inputTokens:number, outputTokens:number, cachedTokens:number }, _diag?: string }>}
+ */
+export async function summarizeArticle({ text, targetLangLabel, apiKey, model, serviceTier, fetchTimeoutMs = 15_000 }) {
+  const emptyUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+  const clean = (text || '').trim();
+  if (!clean || !apiKey || !model) {
+    return { summary: '', usage: emptyUsage, _diag: 'missing text/apiKey/model' };
+  }
+  const input = clean.length > MAX_SUMMARY_INPUT_CHARS ? clean.slice(0, MAX_SUMMARY_INPUT_CHARS) : clean;
+  const lang = (targetLangLabel || '').trim() || 'the same language as the article';
+
+  // 純文字、無 markdown、無 bullet——Instapaper description 只吃純文字,顯示在項目底下。
+  const systemInstruction =
+    `You are a concise summarizer. Read the article the user provides and write a summary of 3 to 4 sentences in ${lang}. ` +
+    `Capture the article's main point and key takeaways. ` +
+    `Output ONLY the summary as a single plain-text paragraph — no preamble, no title, no markdown, no bullet points, no surrounding quotation marks.`;
+
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: input }] }],
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+    generationConfig: {
+      temperature: 1.0,
+      // Gemini 3 不送 topP/topK(見 buildSamplingFields)。
+      ...buildSamplingFields(model),
+      maxOutputTokens: 1024,
+      thinkingConfig: pickThinkingConfig(model),
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
+  };
+  if (serviceTier && serviceTier !== 'DEFAULT') {
+    body.service_tier = serviceTier.toLowerCase();
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  await debugLog('info', 'summary', 'instapaper summary request', { model, chars: input.length, targetLang: lang });
+
+  const t0 = Date.now();
+  // best-effort:直接 fetch + AbortController,不重試(對齊 extractGlossary)。
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), fetchTimeoutMs);
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(abortTimer);
+    const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';
+    await debugLog('error', 'summary', `instapaper summary failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
+    return { summary: '', usage: emptyUsage, _diag: `${reason}: ${err.message}` };
+  }
+  let json;
+  try {
+    json = await resp.json();
+  } catch (parseErr) {
+    await debugLog('error', 'summary', 'instapaper summary body parse failed', { status: resp.status, error: parseErr.message });
+    return { summary: '', usage: emptyUsage, _diag: `resp.json() failed: ${parseErr.message}` };
+  } finally {
+    clearTimeout(abortTimer);
+  }
+
+  const usage = parseGeminiUsage(json?.usageMetadata);
+  if (!resp.ok) {
+    const errMsg = json?.error?.message || `HTTP ${resp.status}`;
+    await debugLog('error', 'summary', 'instapaper summary failed (API)', { status: resp.status, error: errMsg });
+    return { summary: '', usage, _diag: `API error ${resp.status}: ${errMsg}` };
+  }
+
+  const rawText = (json?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+  await debugLog('info', 'summary', 'instapaper summary done', { elapsed: Date.now() - t0, usage, chars: rawText.length });
+  return { summary: rawText, usage };
 }
 
 // v1.5.7: buildEffectiveSystemInstruction 已移至 lib/system-instruction.js（兩個 adapter 共用）。

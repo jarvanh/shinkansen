@@ -169,6 +169,8 @@ async function load() {
 
   // 送到 Instapaper：enable 開關 + 連結狀態（已連結時顯示帳號 + 解除連結）
   $('instapaperEnabled').checked = s.instapaperEnabled === true;
+  // 摘要開關預設開（!== false）：既有使用者沒此 key 時也視為開
+  $('instapaperSummaryEnabled').checked = s.instapaperSummaryEnabled !== false;
   renderInstapaperLinkState(saved);
 
   // v1.0.21: 頁面層級繁中偵測開關
@@ -1040,6 +1042,8 @@ async function _saveImpl() {
     })(),
     // 送到 Instapaper enable/disable 開關（email/密碼/權杖不在此存，連結流程另寫 storage.sync）
     instapaperEnabled: $('instapaperEnabled')?.checked === true,
+    // 送出時附文章摘要（用翻譯目標語言、Gemini Flash Lite）。預設開
+    instapaperSummaryEnabled: $('instapaperSummaryEnabled')?.checked !== false,
     // v1.6.14: per-model 計價覆蓋（Google 改價時使用者自填）。
     // v1.9.2: cachedDiscount 獨立欄位,可單獨覆蓋(只填折扣不填價格也合法)。
     //   input/output 兩欄都是合法數字才寫入 input/output entry,任一欄空白 → 走內建表;

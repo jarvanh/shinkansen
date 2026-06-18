@@ -3,10 +3,10 @@
 
 import { browser } from './lib/compat.js';
 import { IS_IOS_BUILD } from './lib/distribution.js'; // Phase 2: host app 設定橋接只在 iOS build 走 native messaging
-import { translateBatch, extractGlossary, translateBatchStream } from './lib/gemini.js';
+import { translateBatch, extractGlossary, translateBatchStream, summarizeArticle } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
-import { getSettings, getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt } from './lib/storage.js';
+import { getSettings, getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt, LANG_LABELS } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
 import { RateLimiter } from './lib/rate-limiter.js';
@@ -1239,6 +1239,13 @@ const messageHandlers = {
       return { ok: false, error: 'fetch failed', ...cached };
     },
   },
+  // 「送到 Instapaper」摘要:popup 送出前要 description 走這條(Alt+I 路徑則由
+  // handleSendToInstapaperCommand 直接呼叫同一個 helper,單一資料源不 drift)。
+  // best-effort:回 { summary: '' } 代表不附摘要,popup 照常送書籤。
+  SUMMARIZE_FOR_INSTAPAPER: {
+    async: true,
+    handler: async (payload, sender) => ({ summary: await generateInstapaperSummary(payload?.text, sender) }),
+  },
 };
 
 // 錯誤 i18n 協定（lib/bg-error.js）：err 帶 skCode 時把 errorCode / errorParams
@@ -2277,7 +2284,70 @@ browser.commands.onCommand.addListener(async (command) => {
   browser.tabs.sendMessage(tab.id, { type: 'TRANSLATE_PRESET', payload: { slot } }).catch(() => {});
 });
 
-// 送到 Instapaper 快捷鍵處理：取 active tab → 擷取頁面 HTML → OAuth 簽章 + fetch。
+// 「送到 Instapaper」摘要固定走 Gemini Flash Lite(最便宜),與使用者主翻譯引擎無關
+//(CLAUDE.md §17:不可用 2.5 系列)。
+const INSTAPAPER_SUMMARY_MODEL = 'gemini-3.1-flash-lite';
+
+// 產生 Instapaper 摘要(popup 與 Alt+I 兩條路徑共用,單一資料源)。
+// gate:instapaperSummaryEnabled 開 + 有 Gemini API key + 有文字。任一不滿足或摘要呼叫
+// 失敗,一律回 ''(呼叫端降級為「不附摘要照常送書籤」,摘要是加值不擋送出)。
+// usage 進 usage-db(source='instapaper-summary'),與主翻譯 / 術語表一致供帳單對帳。
+async function generateInstapaperSummary(text, sender) {
+  if (!text || typeof text !== 'string' || !text.trim()) return '';
+  let settings;
+  try { settings = await getSettings(); } catch (_) { return ''; }
+  if (settings.instapaperSummaryEnabled !== true) return '';
+  const apiKey = settings.apiKey;
+  if (!apiKey) return ''; // 無有效 Gemini key → 不摘要(需求:有 key 才用 flash-lite)
+
+  const targetLangLabel = LANG_LABELS[settings.targetLanguage] || '';
+  try {
+    const { summary, usage } = await summarizeArticle({
+      text,
+      targetLangLabel,
+      apiKey,
+      model: INSTAPAPER_SUMMARY_MODEL,
+      serviceTier: settings.geminiConfig?.serviceTier,
+    });
+
+    // 記用量(對齊 handleExtractGlossary 的記帳:source 分流、cache 折扣換算 billed)
+    if (usage && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
+      const pricing = getPricingForModel(INSTAPAPER_SUMMARY_MODEL, settings) || settings.pricing;
+      const cachedRate = pricingToCachedRate(pricing) ?? 0.10;
+      const cachedSavedRatio = 1 - cachedRate;
+      const billedInputTokens = Math.max(
+        0,
+        Math.round(usage.inputTokens - (usage.cachedTokens || 0) * cachedSavedRatio),
+      );
+      const billedCostUSD = computeBilledCostUSD(
+        usage.inputTokens, usage.cachedTokens || 0, usage.outputTokens, pricing, cachedRate,
+      );
+      try {
+        await usageDB.logTranslation({
+          url: sender?.tab?.url || '',
+          title: sender?.tab?.title || '',
+          engine: 'gemini',
+          model: INSTAPAPER_SUMMARY_MODEL,
+          inputTokens: usage.inputTokens || 0,
+          outputTokens: usage.outputTokens || 0,
+          cachedTokens: usage.cachedTokens || 0,
+          billedInputTokens,
+          billedCostUSD,
+          segments: 0,
+          cacheHits: 0,
+          durationMs: 0,
+          timestamp: Date.now(),
+          source: 'instapaper-summary',
+        });
+      } catch (_) { /* 記帳失敗不影響摘要回傳 */ }
+    }
+    return (summary || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+// 送到 Instapaper 快捷鍵處理：取 active tab → 擷取頁面 HTML → 摘要 → OAuth 簽章 + fetch。
 // 回饋透過 INSTAPAPER_TOAST 訊息派給 content（快捷鍵無 popup）。
 async function handleSendToInstapaperCommand() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -2286,8 +2356,8 @@ async function handleSendToInstapaperCommand() {
     browser.tabs.sendMessage(tab.id, { type: 'INSTAPAPER_TOAST', status }).catch(() => {});
 
   // enable gate：未啟用或未連結 → 提示後 no-op
-  const { instapaperEnabled = false, instapaperToken, instapaperTokenSecret } =
-    await browser.storage.sync.get(['instapaperEnabled', 'instapaperToken', 'instapaperTokenSecret']);
+  const { instapaperEnabled = false, instapaperToken, instapaperTokenSecret, instapaperSummaryEnabled = true } =
+    await browser.storage.sync.get(['instapaperEnabled', 'instapaperToken', 'instapaperTokenSecret', 'instapaperSummaryEnabled']);
   if (instapaperEnabled !== true || !instapaperToken || !instapaperTokenSecret) {
     toast('not-enabled');
     return;
@@ -2305,7 +2375,13 @@ async function handleSendToInstapaperCommand() {
   if (!page?.ok || !page.url) { toast('failed'); return; }
 
   try {
-    const payload = buildInstapaperPayload({ url: page.url, html: page.html, title: page.title });
+    // 摘要那步會多打一次 Gemini（數秒）→ 先 toast「製作摘要中」避免 UI 看似卡住。
+    // toggle 開但沒 key 時 generateInstapaperSummary 會秒回 '',toast 瞬間翻到 sending。
+    if (instapaperSummaryEnabled !== false) toast('summarizing');
+    // 摘要 best-effort:產不出回 ''，buildInstapaperPayload 不帶 description,書籤照常送。
+    const description = await generateInstapaperSummary(page.text, { tab });
+    toast('sending');
+    const payload = buildInstapaperPayload({ url: page.url, html: page.html, title: page.title, description });
     const r = await saveToInstapaper({
       token: instapaperToken, tokenSecret: instapaperTokenSecret, payload,
     });

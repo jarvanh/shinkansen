@@ -1989,6 +1989,7 @@
     if (msg?.type === 'INSTAPAPER_TOAST') {
       const MAP = {
         sending:          { kind: 'loading', key: 'instapaper.sending' },
+        summarizing:      { kind: 'loading', key: 'instapaper.summarizing' },
         sent:             { kind: 'success', key: 'instapaper.sent' },
         'not-enabled':    { kind: 'error',   key: 'instapaper.notEnabled' },
         'failed-auth':    { kind: 'error',   key: 'instapaper.failedAuth' },

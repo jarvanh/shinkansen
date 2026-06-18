@@ -894,13 +894,35 @@ if (window.__shinkansen_loaded) {
   // 挑「譯文標題」送下游 reader。
   // 為何不用 document.title:single mode 譯文是就地替換 body DOM,**不動 <head><title>**
   //（也不動 og:title 等 meta）→ document.title 永遠是原文標題。實測送到 Instapaper 標題
-  // 全是未翻譯原文。譯文標題真正所在是頁面主標題 <h1>（已就地翻成譯文)。
-  // 優先序:main / article 內的 <h1> → 第一個 <h1> → 退回 document.title（沒 h1 時）。
+  // 全是未翻譯原文。譯文標題真正所在是頁面內容區的主標題（已就地翻成譯文)。
+  //
+  // 為何不只看 <h1>:不少 CMS（WordPress 主題等）把文章主標放 <h2>/<h3>（class
+  // post-title / entry-title）而非 <h1>,整頁可能一個 <h1> 都沒有。實測 Stratechery
+  // 週報頁 h1 數 = 0,主標是 <main> 內第一個 <h2>(「Fable 的現狀、…」),舊版只查 h1
+  // → fallback 到 document.title → 送出原文標題。改成「內容區第一個標題」的結構性通則
+  //（非站點特判,§8）:main/article 內主標通常是文件序第一個 heading。
+  //
+  // 優先序:
+  //   1. 內容區（main/article）內的 <h1>
+  //   2. 內容區內第一個 <h2>–<h6>（排除 nav/footer 內的）—— CMS 主標在 h2 的情況
+  //   3. 任一 <h1>（沒 main/article 容器時;可能是站名 banner,但仍比原文 title 好）
+  //   4. 退回 document.title（沒任何可用標題;single mode 不動 <head>,永遠原文）
   SK.pickExtractTitle = function pickExtractTitle(doc) {
     doc = doc || document;
-    const h1 = doc.querySelector('main h1') || doc.querySelector('article h1') || doc.querySelector('h1');
-    const h1text = h1 && h1.textContent ? h1.textContent.replace(/\s+/g, ' ').trim() : '';
-    if (h1text) return h1text;
+    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const container = doc.querySelector('main') || doc.querySelector('article');
+    if (container) {
+      const h1text = norm(container.querySelector('h1') && container.querySelector('h1').textContent);
+      if (h1text) return h1text;
+      for (const h of container.querySelectorAll('h2, h3, h4, h5, h6')) {
+        if (h.closest('nav, footer')) continue; // 站內導覽 / 頁尾標題不是文章主標
+        const t = norm(h.textContent);
+        if (t) return t;
+      }
+    }
+    const anyH1 = doc.querySelector('h1');
+    const a = norm(anyH1 && anyH1.textContent);
+    if (a) return a;
     return doc.title || '';
   };
 
@@ -937,7 +959,11 @@ if (window.__shinkansen_loaded) {
     const body = SK.hardenExtractedHtml(parsed.content, title, doc);
     const html = '<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>'
       + SK.escapeHtmlText(title) + '</title></head><body>' + body + '</body></html>';
-    return { url, title, html };
+    // text:給「送到 Instapaper」的摘要用的純文字(Readability 已抽好正文 textContent)。
+    // 折疊空白即可,長度上限交給 summarizeArticle 統一截斷(單一資料源)。已翻譯頁 = 譯文,
+    // 未翻譯頁 = 原文,兩者都餵得進摘要 prompt。
+    const text = (parsed.textContent || '').replace(/\s+/g, ' ').trim();
+    return { url, title, html, text };
   };
 
   // 把 Readability 輸出的正文 HTML 再硬化一層，對齊 JRead extractReaderPayload 已驗證的
@@ -1027,10 +1053,13 @@ if (window.__shinkansen_loaded) {
       if (titleEl && title) titleEl.textContent = title;
     } catch (_) { /* 改 <title> 失敗不影響 title 參數 */ }
     const html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    // text:摘要用純文字(legacy 路徑從 strip 後的 clone 取,含較多噪音但有總比沒有好)
+    const text = (clone.textContent || '').replace(/\s+/g, ' ').trim();
     return {
       url: (doc.location && doc.location.href) || '',
       title,
       html,
+      text,
     };
   };
 }

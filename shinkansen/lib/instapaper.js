@@ -167,13 +167,20 @@ export function parseTokenResponse(text) {
 // （失去原文連結）——既然不必要就不設,留住 source URL 對使用者較好。
 // 殘留風險:官方文件稱 content 對「可爬頁面」是 fallback;實測 stable 但無法保證 Instapaper
 // 不會延遲 re-crawl 覆蓋。若日後發現 bookmark 延遲變回原文 / 影片,再加回 is_private_from_source。
-export function buildInstapaperPayload({ url, html, title }) {
+// description(選填):文章摘要,對應 Full API 的 description 欄位(顯示在 Instapaper
+// 項目底下)。空值 / 非字串不帶。摘要由 lib/gemini.js summarizeArticle 產出,best-effort
+// ——產不出時這裡直接收到空值、不帶 description,書籤照常送(摘要是加值不擋送出)。
+export function buildInstapaperPayload({ url, html, title, description }) {
   if (!url || typeof url !== 'string') {
     throw new Error('buildInstapaperPayload: url is required');
   }
   const payload = { url };
   if (title && typeof title === 'string') payload.title = title;
   if (html && typeof html === 'string') payload.content = html;
+  if (description && typeof description === 'string') {
+    const trimmed = description.trim();
+    if (trimmed) payload.description = trimmed;
+  }
   return payload;
 }
 

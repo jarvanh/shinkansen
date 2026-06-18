@@ -558,9 +558,23 @@ $('send-to-instapaper-btn').addEventListener('click', async () => {
     if (!tab?.id) throw new Error('no active tab');
     const page = await browser.tabs.sendMessage(tab.id, { type: 'EXTRACT_PAGE_HTML' });
     if (!page?.ok || !page.url) throw new Error(page?.error || 'extract failed');
+    // 送出前向 background 要文章摘要。Gemini 呼叫 + usage 記帳集中在 background（與 Alt+I
+    // 路徑共用同一個 generateInstapaperSummary，單一資料源不 drift）。best-effort:background
+    // 依 instapaperSummaryEnabled + 是否有 Gemini key gate,回 '' 代表不附摘要,書籤照常送。
+    let description = '';
+    try {
+      // 摘要那步會多打一次 Gemini（數秒），顯示獨立狀態避免看起來像卡在「送出中」。
+      // 只讀 toggle 當「要不要顯示摘要中」的 UX 訊號,真正 gate（含 Gemini key）仍只在
+      // background;toggle 開但沒 key 時 background 會秒回 ''，狀態瞬間翻到送出中。
+      const { instapaperSummaryEnabled = true } = await browser.storage.sync.get(['instapaperSummaryEnabled']);
+      if (instapaperSummaryEnabled !== false) statusEl.textContent = t('instapaper.summarizing');
+      const sres = await browser.runtime.sendMessage({ type: 'SUMMARIZE_FOR_INSTAPAPER', payload: { text: page.text } });
+      if (sres?.ok && typeof sres.summary === 'string') description = sres.summary;
+    } catch (_) { /* 摘要失敗不擋送出 */ }
+    statusEl.textContent = t('instapaper.sending');
     const { instapaperToken, instapaperTokenSecret } =
       await browser.storage.sync.get(['instapaperToken', 'instapaperTokenSecret']);
-    const payload = buildInstapaperPayload({ url: page.url, html: page.html, title: page.title });
+    const payload = buildInstapaperPayload({ url: page.url, html: page.html, title: page.title, description });
     const r = await saveToInstapaper({ token: instapaperToken, tokenSecret: instapaperTokenSecret, payload });
     if (r.ok) {
       statusEl.textContent = t('instapaper.sent');

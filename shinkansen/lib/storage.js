@@ -670,6 +670,10 @@ export const DEFAULT_SETTINGS = {
   // 使用者看到無作用按鈕。連結後寫入的 token / tokenSecret / username 不放
   // DEFAULT_SETTINGS（連結時才寫 storage.sync,密碼用完即丟不存,見 lib/instapaper.js）。
   instapaperEnabled: false,
+  // 送到 Instapaper 時一併上傳文章摘要(用翻譯目標語言,固定走 Gemini Flash Lite)。
+  // 預設開:只要有 Gemini API key,送出時自動附摘要;沒 key / 摘要失敗則靜默略過、
+  // 書籤照常送。摘要每次會多一筆 flash-lite 用量(極微小),使用者可在此關閉。
+  instapaperSummaryEnabled: true,
   // v1.5.6: 中國用語黑名單。使用者自訂時整個陣列覆蓋（不做 per-entry merge）。
   // 內容會以 <forbidden_terms_blacklist> 區塊注入到 systemInstruction 末端，
   // 且修改清單後快取 key 會帶 _b<hash> 後綴讓既有快取自動失效。

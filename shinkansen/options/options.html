@@ -88,6 +88,11 @@
         <span data-i18n="options.instapaper.enable">啟用「送到 Instapaper」</span>
         <small class="muted" data-i18n="options.instapaper.enableHint">啟用後，工具列視窗會出現「送到 Instapaper」按鈕，也可用快速鍵 Alt+I，把目前（翻譯後）的整頁存到你的 Instapaper</small>
       </label>
+      <label class="toggle">
+        <input type="checkbox" id="instapaperSummaryEnabled">
+        <span data-i18n="options.instapaper.summary">送出時附上文章摘要</span>
+        <small class="muted" data-i18n="options.instapaper.summaryHint">摘要會顯示在 Instapaper 項目底下，使用你的翻譯目標語言，固定以最便宜的 Gemini Flash Lite 產生（需要有效的 Gemini API Key）。每次送出會多一筆極小的用量；沒有 Gemini Key 或摘要失敗時自動略過，書籤照常送出</small>
+      </label>
 
       <!-- 未連結：email + 密碼 + 連結按鈕 -->
       <div id="instapaper-link-form">
