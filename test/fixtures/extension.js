@@ -90,7 +90,9 @@ export const test = base.extend({
           ? 'text/html; charset=utf-8'
           : ext === '.json'
             ? 'application/json; charset=utf-8'
-            : 'text/plain; charset=utf-8';
+            : ext === '.xml'
+              ? 'application/xml; charset=utf-8'  // Chrome 會解析成 XML 文件（非 HTML），給非 HTML 文件 gate regression 用
+              : 'text/plain; charset=utf-8';
         res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'no-store' });
         res.end(fs.readFileSync(filePath));
       } catch (err) {

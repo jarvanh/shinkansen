@@ -32,10 +32,32 @@ function _sk_isCurrentFrameDisabled() {
   return _sk_shouldDisableInFrame(isFrame, window.innerWidth, window.innerHeight, visible);
 }
 
+// ─── v1.10.59: 非 HTML 文件 gate（pure function 設計，給 spec unit-test 用） ───
+// RSS/Atom/純 XML feed（如 rsshub.app/<route>）等被 Chrome 直接渲染的文件，content
+// script 一樣會被注入，但這類 XMLDocument 的 createElement('div') 產出的是 namespace
+// 為 null 的通用 Element，沒有 .style / attachShadow 等 HTMLElement 能力 →
+// content-toast.js 第 9 行 `toastHost.style.cssText = ...` 會直接 throw（Cannot set
+// properties of undefined），整條 content script 在此中斷。
+//
+// 判別不能看 documentElement.namespaceURI：Chrome 的 XML viewer 會在 XMLDocument 上
+// 注入一個 namespace 為 xhtml 的 `<html>` pretty-print wrapper（root 看起來像 HTML），
+// 但 document 本身仍是 XMLDocument、createElement('div') 仍是無 .style 的通用 Element。
+// 所以直接測「這份文件能不能造出帶 .style 的 div」這個 content script 真正依賴的能力
+// ——結構性通則，對任何文件型別都成立，不綁站點 / contentType 白名單。
+function _sk_isNonHtmlDocument(doc) {
+  try {
+    const probe = doc && doc.createElement('div');
+    return !probe || !probe.style;  // 無 .style = 無 HTMLElement 能力 = 非 HTML 文件
+  } catch (_e) {
+    return true;  // createElement 都 throw 的文件更不該跑 content script
+  }
+}
+
 if (window.__shinkansen_loaded) {
   // 防止重複載入（SPA 框架可能重新注入 content script）
-} else if (_sk_isCurrentFrameDisabled()) {
-  // 在不合格 iframe 內（廣告/分析/cookie consent 等），不建立完整命名空間
+} else if (_sk_isCurrentFrameDisabled() || _sk_isNonHtmlDocument(document)) {
+  // 在不合格 iframe 內（廣告/分析/cookie consent 等）或非 HTML 文件（RSS/XML feed 等），
+  // 不建立完整命名空間，避免在沒有 HTMLElement 能力的文件上注入時 throw
   window.__shinkansen_loaded = true;
   window.__SK = { disabled: true, shouldDisableInFrame: _sk_shouldDisableInFrame };
 } else {
