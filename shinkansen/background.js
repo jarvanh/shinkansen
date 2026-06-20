@@ -20,6 +20,7 @@ import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 import { refreshExchangeRate, getCachedRate, isCacheFresh } from './lib/exchange-rate.js'; // v1.8.41
 import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 import { saveToInstapaper, buildInstapaperPayload } from './lib/instapaper.js'; // 送到 Instapaper（Alt+I 快捷鍵路徑）
+import { planStreamingPartialReuse } from './lib/stream-reuse.js'; // v1.10.61: streaming 批次 missing-only 分流
 
 // instapaper-keys.js（gitignored）的 consumer 金鑰載入。
 // 不能用 dynamic import()：MV3 service worker 禁止 dynamic import（實測 throw
@@ -1462,14 +1463,30 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     }).catch(() => {});
   };
 
+  // v1.10.61: streaming 批次改「只補缺的」。原本只要這批有一段 miss(allHit=false)就把
+  // 整批 texts 重送 Gemini(含已快取段落),跟 handleTranslate / openai-compat 的
+  // missing-only 行為不一致 —— RSS feed 頂端插入新文章時,新段落落進 batch 0 會讓整批
+  // 連已翻段落一起重打。改法:先把已快取段落以「原始 index」即刻回推給 content(等同
+  // fast path 的零 API 重注入),只把 miss 的段落送 translateBatchStream;由於 stream 的
+  // onSegment 給的是 missingTexts 內的 index,要 remap 回原始 index(content 端 segmentIdx
+  // 必須對應 job.texts,見 content.js STREAMING_SEGMENT 處理的 idx < job.texts.length 驗證)。
+  const { missingIdxs, missingTexts, cachedSegments } = planStreamingPartialReuse(cached, texts);
+  debugLog('info', 'cache', 'streaming batch partial reuse', {
+    streamId, total: texts.length, reusedFromCache: cacheHits, streamedMissing: missingTexts.length,
+  });
+
   try {
+    // 已快取段落即刻回推(content 走 idle gate 注入,跟 fast path 同一條路徑)
+    onFirstChunk();
+    for (const seg of cachedSegments) onSegment(seg.idx, seg.translation, false);
+
     const result = await translateBatchStream(
-      texts,
+      missingTexts,
       effectiveSettings,
       glossary,
       fixedGlossaryEntries,
       forbiddenTermsList.length > 0 ? forbiddenTermsList : null,
-      { onFirstChunk, onSegment },
+      { onFirstChunk, onSegment: (mIdx, tr, hm) => onSegment(missingIdxs[mIdx], tr, hm) },
       ac.signal,
     );
 
@@ -1480,9 +1497,9 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
       // setBatch 內部會跳過 falsy translations，且 length 不對齊時也只寫對齊的那部分
       const writableTexts = [];
       const writableTranslations = [];
-      for (let i = 0; i < texts.length && i < result.translations.length; i++) {
+      for (let i = 0; i < missingTexts.length && i < result.translations.length; i++) {
         if (result.translations[i]) {
-          writableTexts.push(texts[i]);
+          writableTexts.push(missingTexts[i]);
           writableTranslations.push(result.translations[i]);
         }
       }
@@ -1518,8 +1535,11 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
           ...result.usage,
           billedInputTokens,
           billedCostUSD,
+          // v1.10.61: 帶上本批已快取段數,讓 content 端 pickRescanToast 正確判定純快取
+          // (否則 missing-only 後「只剩少數真送 API」會被誤報成整批新翻)
+          cacheHits,
         },
-        totalSegments: result.translations.length,
+        totalSegments: texts.length,
         hadMismatch: result.hadMismatch,
         finishReason: result.finishReason,
       },
