@@ -474,15 +474,15 @@
 
     // ── options 禁用詞清單分頁 ───────────────────────────
     'options.forbidden.heading': '禁用詞清單',
-    'options.forbidden.intro': '針對 AI 模型容易漏網的禁用辭彙自訂禁用對照表。內容會以高顯著性區塊注入翻譯引擎的翻譯 Prompt 末端，明確要求譯文不可使用左欄詞彙、必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文',
+    'options.forbidden.intro': '自訂不希望出現在譯文中的詞彙清單。內容會以高顯著性區塊注入翻譯引擎的翻譯 Prompt 末端，要求譯文不可使用「禁用詞」欄的詞彙。「替換詞」可留空：填了就要求改用指定詞，留空時則由 AI 自行改寫成自然的台灣慣用說法。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文',
     'options.forbidden.colWord': '禁用詞',
     'options.forbidden.colReplacement': '替換詞',
     'options.forbidden.colNote': '備註',
     'options.forbidden.add': '＋ 新增一條',
     'options.forbidden.reset': '還原預設清單',
     'options.forbidden.resetConfirm': '確定要還原預設禁用詞清單嗎？目前的自訂內容會被覆蓋。',
-    'options.forbidden.placeholderForbidden': '禁用詞（簡中）',
-    'options.forbidden.placeholderReplacement': '替換詞（台灣）',
+    'options.forbidden.placeholderForbidden': '禁用詞',
+    'options.forbidden.placeholderReplacement': '替換詞（可留空）',
     'options.forbidden.placeholderNote': '（可選）',
 
     // ── options 用量紀錄分頁 ─────────────────────────────
@@ -1294,15 +1294,15 @@
 
     // ── options 禁用词清单分页 ───────────────────────────
     'options.forbidden.heading': '禁用词清单',
-    'options.forbidden.intro': '针对 AI 模型容易漏网的禁用词汇自定义禁用对照表。内容会以高显著性区块注入翻译引擎的翻译 Prompt 末端，明确要求译文不可使用左栏词汇、必须改用右栏。修改清单后会自动让既有翻译缓存分区，不再命中旧译文',
+    'options.forbidden.intro': '自定义不希望出现在译文中的词汇清单。内容会以高显著性区块注入翻译引擎的翻译 Prompt 末端，要求译文不可使用「禁用词」栏的词汇。「替换词」可留空：填了就要求改用指定词，留空时则由 AI 自行改写成自然、合适的说法。修改清单后会自动让既有翻译缓存分区，不再命中旧译文',
     'options.forbidden.colWord': '禁用词',
     'options.forbidden.colReplacement': '替换词',
     'options.forbidden.colNote': '备注',
     'options.forbidden.add': '＋ 新增一条',
     'options.forbidden.reset': '还原默认清单',
     'options.forbidden.resetConfirm': '确定要还原默认禁用词清单吗？目前的自定义内容会被覆盖。',
-    'options.forbidden.placeholderForbidden': '禁用词（简中）',
-    'options.forbidden.placeholderReplacement': '替换词（台湾）',
+    'options.forbidden.placeholderForbidden': '禁用词',
+    'options.forbidden.placeholderReplacement': '替换词（可留空）',
     'options.forbidden.placeholderNote': '（可选）',
 
     // ── options 用量记录分页 ─────────────────────────────
@@ -2112,15 +2112,15 @@
 
     // ── options forbidden terms tab ───────────────────────
     'options.forbidden.heading': 'Forbidden terms',
-    'options.forbidden.intro': "Customize a forbidden-terms mapping for terms AI models often miss. The list is injected as a high-prominence block at the end of the translation engine's translation prompt, explicitly requiring translations not to use the left column terms and to use the right column instead. Modifying the list automatically partitions existing translation cache, so old translations no longer match",
+    'options.forbidden.intro': "Customize a list of words you don't want appearing in translations. The list is injected as a high-prominence block at the end of the translation engine's translation prompt, requiring translations not to use the words in the \"Forbidden term\" column. The \"Replacement\" column is optional: fill it in to require a specific word, or leave it blank to let the AI rephrase naturally on its own. Modifying the list automatically partitions existing translation cache, so old translations no longer match",
     'options.forbidden.colWord': 'Forbidden term',
     'options.forbidden.colReplacement': 'Replacement',
     'options.forbidden.colNote': 'Note',
     'options.forbidden.add': '+ Add row',
     'options.forbidden.reset': 'Restore default list',
     'options.forbidden.resetConfirm': 'Restore the default forbidden terms list? Your current customizations will be overwritten.',
-    'options.forbidden.placeholderForbidden': 'Forbidden term (Simplified)',
-    'options.forbidden.placeholderReplacement': 'Replacement (Taiwan)',
+    'options.forbidden.placeholderForbidden': 'Forbidden term',
+    'options.forbidden.placeholderReplacement': 'Replacement (optional)',
     'options.forbidden.placeholderNote': '(Optional)',
 
     // ── options usage tab ─────────────────────────────────
@@ -2930,15 +2930,15 @@
 
     // ── options 禁止語リストタブ ───────────────────────────
     'options.forbidden.heading': '禁止語リスト',
-    'options.forbidden.intro': 'AI モデルが見落としやすい禁止語に対するカスタム禁止対応表。内容は高顕著性ブロックとして翻訳エンジンの翻訳プロンプト末尾に注入され、左欄の語を訳文で使用せず右欄に置き換えるよう明示的に要求します。リスト変更後は既存の翻訳キャッシュが自動的にパーティション分割され、古い訳文にヒットしなくなります',
+    'options.forbidden.intro': '訳文に出てほしくない語のリストをカスタマイズします。内容は高顕著性ブロックとして翻訳エンジンの翻訳プロンプト末尾に注入され、「禁止語」欄の語を訳文で使用しないよう要求します。「置換語」欄は任意で、入力すると指定語への置き換えを要求し、空欄の場合は AI が自然な言い回しに自動で書き換えます。リスト変更後は既存の翻訳キャッシュが自動的にパーティション分割され、古い訳文にヒットしなくなります',
     'options.forbidden.colWord': '禁止語',
     'options.forbidden.colReplacement': '置換語',
     'options.forbidden.colNote': '備考',
     'options.forbidden.add': '＋ 行を追加',
     'options.forbidden.reset': 'デフォルトリストに戻す',
     'options.forbidden.resetConfirm': 'デフォルトの禁止語リストに戻しますか？現在のカスタム内容は上書きされます。',
-    'options.forbidden.placeholderForbidden': '禁止語（簡体字）',
-    'options.forbidden.placeholderReplacement': '置換語（台湾）',
+    'options.forbidden.placeholderForbidden': '禁止語',
+    'options.forbidden.placeholderReplacement': '置換語（任意）',
     'options.forbidden.placeholderNote': '（任意）',
 
     // ── options 使用量履歴タブ ─────────────────────────────
@@ -3748,15 +3748,15 @@
 
     // ── options 금지어 목록 탭 ───────────────────────────
     'options.forbidden.heading': '금지어 목록',
-    'options.forbidden.intro': 'AI 모델이 놓치기 쉬운 금지 어휘에 대한 커스텀 금지 매핑 테이블. 내용은 높은 가시성 블록으로 번역 엔진의 번역 Prompt 끝에 주입되어 번역문에서 왼쪽 열의 어휘를 사용하지 않고 오른쪽 열로 변경하도록 명확히 요구합니다. 목록 수정 후 기존 번역 캐시가 자동으로 분할되어 더 이상 이전 번역에 적중하지 않습니다',
+    'options.forbidden.intro': '번역문에 나타나지 않기를 원하는 어휘 목록을 커스터마이즈합니다. 내용은 높은 가시성 블록으로 번역 엔진의 번역 Prompt 끝에 주입되어 번역문에서 「금지어」 열의 어휘를 사용하지 않도록 요구합니다. 「대체어」 열은 선택 사항으로, 입력하면 지정한 단어로 변경하도록 요구하고 비워 두면 AI가 자연스러운 표현으로 자동으로 다시 씁니다. 목록 수정 후 기존 번역 캐시가 자동으로 분할되어 더 이상 이전 번역에 적중하지 않습니다',
     'options.forbidden.colWord': '금지어',
     'options.forbidden.colReplacement': '대체어',
     'options.forbidden.colNote': '비고',
     'options.forbidden.add': '＋ 항목 추가',
     'options.forbidden.reset': '기본 목록 복원',
     'options.forbidden.resetConfirm': '기본 금지어 목록을 복원하시겠습니까? 현재 커스텀 내용은 덮어쓰여집니다.',
-    'options.forbidden.placeholderForbidden': '금지어 (간체)',
-    'options.forbidden.placeholderReplacement': '대체어 (타이완)',
+    'options.forbidden.placeholderForbidden': '금지어',
+    'options.forbidden.placeholderReplacement': '대체어 (선택)',
     'options.forbidden.placeholderNote': '(선택)',
 
     // ── options 사용 기록 탭 ─────────────────────────────
@@ -4565,15 +4565,15 @@
 
     // ── options pestaña lista de prohibidas ───────────────────────────
     'options.forbidden.heading': 'Lista de palabras prohibidas',
-    'options.forbidden.intro': 'Tabla personalizada para palabras que los modelos de IA tienden a dejar pasar. Se inyecta como un bloque destacado al final del prompt del motor de traducción, exigiendo explícitamente que no se use la palabra de la columna izquierda y se sustituya por la de la derecha. Modificar la lista hace que la caché existente se particione automáticamente y deje de hacer hit a las traducciones antiguas',
+    'options.forbidden.intro': 'Personaliza una lista de palabras que no quieres que aparezcan en las traducciones. Se inyecta como un bloque destacado al final del prompt del motor de traducción, exigiendo que las traducciones no usen las palabras de la columna «Palabra prohibida». La columna «Sustituto» es opcional: rellénala para exigir una palabra concreta, o déjala vacía para que la IA reformule de forma natural por su cuenta. Modificar la lista hace que la caché existente se particione automáticamente y deje de hacer hit a las traducciones antiguas',
     'options.forbidden.colWord': 'Palabra prohibida',
     'options.forbidden.colReplacement': 'Sustituto',
     'options.forbidden.colNote': 'Notas',
     'options.forbidden.add': '＋ Añadir entrada',
     'options.forbidden.reset': 'Restaurar lista por defecto',
     'options.forbidden.resetConfirm': '¿Restaurar la lista de palabras prohibidas por defecto? Se sobrescribirá el contenido personalizado actual.',
-    'options.forbidden.placeholderForbidden': 'Palabra prohibida (chino simplificado)',
-    'options.forbidden.placeholderReplacement': 'Sustituto (Taiwán)',
+    'options.forbidden.placeholderForbidden': 'Palabra prohibida',
+    'options.forbidden.placeholderReplacement': 'Sustituto (opcional)',
     'options.forbidden.placeholderNote': '(opcional)',
 
     // ── options pestaña historial de uso ─────────────────────────────
@@ -5382,15 +5382,15 @@
 
     // ── options onglet liste de mots interdits ───────────────────────────
     'options.forbidden.heading': 'Liste de mots interdits',
-    'options.forbidden.intro': 'Table d\'interdiction personnalisée pour les mots que les modèles d\'IA laissent passer facilement. Le contenu est injecté en bloc très visible à la fin du prompt du moteur de traduction, exigeant explicitement que les mots de la colonne gauche ne soient pas utilisés et soient remplacés par ceux de la colonne droite. Modifier la liste partitionne automatiquement le cache de traduction existant pour ne plus correspondre aux anciennes traductions',
+    'options.forbidden.intro': 'Personnalisez une liste de mots que vous ne voulez pas voir apparaître dans les traductions. Le contenu est injecté en bloc très visible à la fin du prompt du moteur de traduction, exigeant que les traductions n\'utilisent pas les mots de la colonne « Mot interdit ». La colonne « Remplacement » est facultative : renseignez-la pour exiger un mot précis, ou laissez-la vide pour que l\'IA reformule naturellement d\'elle-même. Modifier la liste partitionne automatiquement le cache de traduction existant pour ne plus correspondre aux anciennes traductions',
     'options.forbidden.colWord': 'Mot interdit',
     'options.forbidden.colReplacement': 'Remplacement',
     'options.forbidden.colNote': 'Note',
     'options.forbidden.add': '＋ Ajouter une entrée',
     'options.forbidden.reset': 'Restaurer la liste par défaut',
     'options.forbidden.resetConfirm': 'Restaurer la liste de mots interdits par défaut ? Le contenu personnalisé actuel sera écrasé.',
-    'options.forbidden.placeholderForbidden': 'Mot interdit (chinois simplifié)',
-    'options.forbidden.placeholderReplacement': 'Remplacement (Taïwan)',
+    'options.forbidden.placeholderForbidden': 'Mot interdit',
+    'options.forbidden.placeholderReplacement': 'Remplacement (facultatif)',
     'options.forbidden.placeholderNote': '(facultatif)',
 
     // ── options onglet historique d\'utilisation ─────────────────────────────
@@ -6199,15 +6199,15 @@
 
     // ── options Verbotene-Wörter-Reiter ───────────────────────────
     'options.forbidden.heading': 'Verbotene-Wörter-Liste',
-    'options.forbidden.intro': 'Eine eigene Verbots-Zuordnungstabelle für Wörter, die KI-Modelle leicht durchgehen lassen. Der Inhalt wird als hochsichtbarer Block am Ende des Übersetzungs-Prompts der Engine injiziert und fordert explizit, dass die Wörter der linken Spalte in der Übersetzung nicht verwendet, sondern durch die der rechten Spalte ersetzt werden. Nach Änderung der Liste wird der bestehende Übersetzungs-Cache automatisch partitioniert und alte Übersetzungen werden nicht mehr getroffen',
+    'options.forbidden.intro': 'Passen Sie eine Liste von Wörtern an, die nicht in Übersetzungen erscheinen sollen. Der Inhalt wird als hochsichtbarer Block am Ende des Übersetzungs-Prompts der Engine injiziert und fordert, dass Übersetzungen die Wörter der Spalte „Verbotenes Wort" nicht verwenden. Die Spalte „Ersetzung" ist optional: Tragen Sie ein Wort ein, um eine bestimmte Ersetzung zu verlangen, oder lassen Sie sie leer, damit die KI selbstständig natürlich umformuliert. Nach Änderung der Liste wird der bestehende Übersetzungs-Cache automatisch partitioniert und alte Übersetzungen werden nicht mehr getroffen',
     'options.forbidden.colWord': 'Verbotenes Wort',
     'options.forbidden.colReplacement': 'Ersetzung',
     'options.forbidden.colNote': 'Notiz',
     'options.forbidden.add': '＋ Eintrag hinzufügen',
     'options.forbidden.reset': 'Standardliste wiederherstellen',
     'options.forbidden.resetConfirm': 'Wirklich die Standard-Verbotene-Wörter-Liste wiederherstellen? Aktuelle eigene Inhalte werden überschrieben.',
-    'options.forbidden.placeholderForbidden': 'Verbotenes Wort (vereinfachtes Chinesisch)',
-    'options.forbidden.placeholderReplacement': 'Ersetzung (Taiwan)',
+    'options.forbidden.placeholderForbidden': 'Verbotenes Wort',
+    'options.forbidden.placeholderReplacement': 'Ersetzung (optional)',
     'options.forbidden.placeholderNote': '(optional)',
 
     // ── options Nutzungsverlaufs-Reiter ─────────────────────────────

@@ -252,7 +252,7 @@ Firefox's **HTTPS-Only Mode** (`about:preferences#privacy`, scroll to the bottom
 
 AI models occasionally produce wording you'd rather avoid in the translation — for example, when translating to British English you may want "colour" instead of "color"; when translating to European Portuguese you may want "telemóvel" instead of "celular"; or your in-house style guide may forbid certain words entirely ("utilize" should always be "use", "leverage" should always be "use", etc.). The blocked-word list lets you give the model an explicit rule per word: never use the left column; always use the right column.
 
-The list works for any target language. Each entry has three columns — blocked word, replacement, and a free-text note (optional, useful for documenting why an entry exists). You can edit, add to, or fully replace the list in the "Blocked-word list" settings tab, or click "Restore defaults" to revert. By default the list is empty; some targets ship with prepopulated defaults curated for that language's typical AI failure modes. Switching between targets only auto-resets the list if your current entries still match the previous target's defaults — your hand-edited entries are preserved.
+The list works for any target language. Each entry has three columns — blocked word (required), replacement (optional), and a free-text note (optional, useful for documenting why an entry exists). Only the blocked word is required: fill in a replacement to force a specific word, or leave it blank to simply forbid the word and let the model rephrase naturally on its own — handy when you just dislike a word but can't pin down a fixed replacement (e.g. a cliché). You can edit, add to, or fully replace the list in the "Blocked-word list" settings tab, or click "Restore defaults" to revert. By default the list is empty; some targets ship with prepopulated defaults curated for that language's typical AI failure modes. Switching between targets only auto-resets the list if your current entries still match the previous target's defaults — your hand-edited entries are preserved.
 
 After every translation response, Shinkansen scans the output and logs a `forbidden-term-leak` warning in the Debug tab (with original and translation snippets) for any blocked words that slipped through — letting you investigate model leakage without **automatically rewriting the translation**, following the design principle "language preferences belong in the prompt, not in post-hoc regex replace", which avoids damaging legitimate quoted uses in the translation.
 
@@ -290,7 +290,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.10.59 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.10.60 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

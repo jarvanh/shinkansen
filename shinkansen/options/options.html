@@ -866,9 +866,10 @@
     <section>
       <h2 data-i18n="options.forbidden.heading">禁用詞清單</h2>
       <p class="muted" data-i18n="options.forbidden.intro">
-        針對 AI 模型容易漏網的禁用辭彙自訂禁用對照表。內容會以高顯著性區塊
-        注入翻譯引擎的翻譯 Prompt 末端，明確要求譯文不可使用左欄詞彙、
-        必須改用右欄。修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文
+        自訂不希望出現在譯文中的詞彙清單。內容會以高顯著性區塊注入翻譯引擎的
+        翻譯 Prompt 末端，要求譯文不可使用「禁用詞」欄的詞彙。「替換詞」可留空：
+        填了就要求改用指定詞，留空時則由 AI 自行改寫成自然的台灣慣用說法。
+        修改清單後會自動讓既有翻譯快取分區，不再命中舊譯文
       </p>
       <div class="glossary-table-wrapper">
         <table class="glossary-edit-table" id="forbidden-terms-table">

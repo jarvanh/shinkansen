@@ -138,16 +138,19 @@ export const DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT = `你是專業的{sourceLanguag
 4. 不要遺漏輸入片段：輸出陣列加總應涵蓋所有輸入時間範圍
 </critical_rules>`;
 
-// v1.5.6: 中國用語黑名單預設清單。使用者可在「術語表」分頁的「禁用詞清單」section 編輯。
+// v1.5.6: 禁用詞預設清單。使用者可在「術語表」分頁的「禁用詞清單」section 編輯。
 // 注入時機：buildEffectiveSystemInstruction 在所有其他規則（含 fixedGlossary）之後，
 // 以 <forbidden_terms_blacklist> 區塊放在最末端，讓 LLM 給予最高權重。
 // 與既有「進程→線程」對照（v0.83 ~ v1.5.5）相比修正：原對映把兩個都誤翻為簡中
 // （process 在台灣應為「行程」、thread 應為「執行緒」），這版分開列正確對映。
+//
+// 替換詞可留空（replacement: ''）：用於「單純不希望出現某詞、但提不出固定替換詞」
+// 的情境（例如陳腔濫調）。留空時 buildEffectiveSystemInstruction 會把該詞列入「禁用
+// （未指定替換詞）」區，請 LLM 自行改寫成自然的台灣慣用說法。
 export const DEFAULT_FORBIDDEN_TERMS = [
   { forbidden: '視頻',     replacement: '影片',     note: '' },
   { forbidden: '音頻',     replacement: '音訊',     note: '' },
   { forbidden: '軟件',     replacement: '軟體',     note: '' },
-  { forbidden: '硬件',     replacement: '硬體',     note: '' },
   { forbidden: '程序',     replacement: '程式',     note: '指 program；若原文是 procedure/process 用「程序」屬正確' },
   { forbidden: '進程',     replacement: '行程',     note: 'process（注意：不是「線程」）' },
   { forbidden: '線程',     replacement: '執行緒',   note: 'thread' },
@@ -164,11 +167,12 @@ export const DEFAULT_FORBIDDEN_TERMS = [
   { forbidden: '發布',     replacement: '發表',     note: '' },
   { forbidden: '屏幕',     replacement: '螢幕',     note: '' },
   { forbidden: '劍指',     replacement: '針對',     note: '' },
-  { forbidden: '界面',     replacement: '介面',     note: '' },
   { forbidden: '痛點',     replacement: '要害',     note: '' },
   { forbidden: '硬傷',     replacement: '罩門',     note: '' },
   { forbidden: '文檔',     replacement: '文件',     note: 'document（注意：「文件」在台灣指 document，「檔案」才是 file）' },
   { forbidden: '操作系統', replacement: '作業系統', note: '' },
+  { forbidden: '沒有之一', replacement: '',         note: '陳腔濫調，留空替換詞由 AI 自行改寫' },
+  { forbidden: '橫空出世', replacement: '',         note: '陳腔濫調，留空替換詞由 AI 自行改寫' },
 ];
 
 // ── i18n:翻譯目標語言(P1 / v1.8.59)─────────────────────────────────

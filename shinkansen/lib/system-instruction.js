@@ -197,14 +197,32 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
   // v1.8.39 起從末端前移到 fixedGlossary 之後——失去「最末端最高權重」位置,
   // 靠 regression spec(forbidden-terms-leak-detect 系列)監測 LLM 服從度退化。
   if (forbiddenTerms && forbiddenTerms.length > 0) {
-    const tableLines = forbiddenTerms
-      .map(t => `${sanitizeTermText(t.forbidden)} → ${sanitizeTermText(t.replacement)}`)
-      .filter(l => !/^\s*→\s*$/.test(l))
-      .join('\n');
-    if (tableLines) {
-      parts.push(
-        '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的中國用語黑名單。譯文中絕對不可使用左欄詞彙，必須改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。違反此規則即為錯誤翻譯。\n\n禁用 → 必須改用\n' + tableLines + '\n\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>'
-      );
+    // 拆兩類：有填替換詞的走「禁用 → 必須改用」對照；只填禁用詞、替換詞留空的
+    // 列入「禁用（未指定替換詞）」區，請 LLM 自行改寫成自然的台灣慣用說法
+    // （使用者單純不想看到某詞、但提不出固定替換詞的情境，例如陳腔濫調）。
+    const mappedLines = [];
+    const bannedOnly = [];
+    for (const t of forbiddenTerms) {
+      if (!t) continue;
+      const forbidden = sanitizeTermText(t.forbidden);
+      if (!forbidden || !forbidden.trim()) continue;
+      const replacement = sanitizeTermText(t.replacement);
+      if (replacement && replacement.trim()) {
+        mappedLines.push(`${forbidden} → ${replacement}`);
+      } else {
+        bannedOnly.push(forbidden);
+      }
+    }
+    if (mappedLines.length > 0 || bannedOnly.length > 0) {
+      let block = '<forbidden_terms_blacklist>\n極重要：以下是嚴格禁用的詞彙，譯文中絕對不可使用，違反此規則即為錯誤翻譯。\n';
+      if (mappedLines.length > 0) {
+        block += '\n【禁用 → 必須改用】以下左欄詞彙一律改用右欄的台灣慣用語。即使原文是英文（例如 video / software / data），譯文也只能使用右欄。\n' + mappedLines.join('\n') + '\n';
+      }
+      if (bannedOnly.length > 0) {
+        block += '\n【禁用（未指定替換詞）】以下詞彙同樣不可出現在譯文中，但未指定替換詞，請自行改用合適、自然的台灣慣用說法表達相同語意。\n' + bannedOnly.join('\n') + '\n';
+      }
+      block += '\n說明：本黑名單為硬性規定，優先級高於任何 stylistic 考量。若該詞為文章本身討論的主題（例如一篇分析「中國科技用語演變」的文章），請使用引號標示後保留原詞，例如「視頻」。\n</forbidden_terms_blacklist>';
+      parts.push(block);
     }
   }
 
