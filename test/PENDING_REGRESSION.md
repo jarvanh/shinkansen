@@ -17,6 +17,13 @@
 
 ## 條目
 
+### toast 在嚴格 CSP 站點(Safari)裸露顯示「翻譯中…」(2026-06-21,v1.10.63 修)
+- **症狀**:iOS Safari 上,某些站點(實例:miniflux)一載入頁面,左上角就冒出卡住的「翻譯中…」toast——沒觸發任何翻譯、自動翻譯也沒開。看到的是 toast 範本的預設文字(非真實 loading 訊息,真訊息會帶數字),且位置不對(裸露無樣式)。Chrome / 桌面看不到。
+- **根因**:miniflux 送嚴格 CSP `style-src 'nonce-...'`(無 unsafe-inline)。Safari 的 content script **不像 Chrome isolated world 那樣免疫頁面 CSP** → toast 注入的 shadow `<style>` 被 `style-src` 擋掉 → `display:none` 與全部樣式失效 → toast 裸露顯示範本字。
+- **修在**:`shinkansen/content-toast.js` —— toast 樣式改用 Constructable Stylesheet(`shadow.adoptedStyleSheets = [sheet]`,`sheet.replaceSync(TOAST_CSS)`)注入,不再用 `<style>`。JS API 建的樣式表不受 `style-src` 管。同時還原 v1.10.62 的 visualViewport 定位改動(那是基於錯誤假設的多餘複雜度,真兇是 CSP)。
+- **為什麼 path B**:Playwright **Chromium 重現不出**——Chrome content script 免疫頁面 CSP,即使在帶嚴格 CSP 的 fixture 上,舊的 `<style>` 也照樣生效 → spec 分辨不出修法前後、只會得到假綠。且 toast 是 `mode:'closed'` shadow,spec 無法內省 `adoptedStyleSheets`。
+- **已驗證(ground truth)**:**iOS 模擬器(iPhone 17,iOS 26.5)真 WebKit before/after 截圖** —— 修前 miniflux 登入頁左上角有「翻譯中…」幽靈,套修法 rebuild 後消失;桌面 cage 另驗正常 toast(adoptedStyleSheets 路徑)樣式完整、右下角正常顯示。既有 9 條 toast spec 全綠確認重構無回歸。
+
 ### ~~送 Instapaper — EXTRACT_PAGE_HTML 只由最上層 frame 回應(2026-06-15)~~
 - ★ **關閉(2026-06-18,Jimmy 決定)**:跨 frame 廣播搶答的時序屬永久 path B(同 M1/M2)——Playwright harness 走單一頂層 frame、`getShinkansenEvaluator` 只接頂層 isolated world,重現不出「哪個 frame 先回應」,寫不出乾淨 spec。修法早已 in place(`content.js` 非頂層 frame 不回應)+ cage 實機驗過生效(bookmark 2020084398 = 乾淨譯文、無影片)。無對應自動測試可補 → 關閉,不再佔活動 queue。
 - ~~**症狀**:含內嵌 youtube(或任何 iframe)的頁面送 Instapaper,存下來變成「影片」而非主文。實機 readtrung 驗到:送出的 content 是 youtube-nocookie iframe frame 回的「影片嵌入頁」(347 字、標題=影片名)。~~

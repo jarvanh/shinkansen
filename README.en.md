@@ -290,7 +290,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.10.62 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.10.63 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 
