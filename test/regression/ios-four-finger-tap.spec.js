@@ -22,6 +22,9 @@
 // SANITY CHECK 紀錄(長按,已驗證,2026-06-14):
 //   暫時把 content-touch.js touchstart 的 gesture.timer setTimeout 整段拿掉 →
 //   「四指長按 → slot 1」case fail(0 call),還原後全綠。
+// SANITY CHECK 紀錄(fourFingerGesture 開關,已驗證):
+//   暫時把 isEnabled() 改成只回 SK.IS_IOS_BUILD===true(忽略 fourFingerEnabled)→
+//   「Options 關閉 fourFingerGesture → 四指 tap 不觸發」case fail(1 call),還原後全綠。
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
@@ -101,6 +104,35 @@ test('IS_IOS_BUILD=false(桌面 build 預設)→ 四指 tap 不觸發', async ({
   await page.waitForTimeout(800);
   const calls = await evaluate(`window.__tapCalls`);
   expect(calls.length, '桌面 build gate 應擋下手勢').toBe(0);
+});
+
+test('Options 關閉 fourFingerGesture → 四指 tap 不觸發（IS_IOS_BUILD=true 也擋下）', async ({ context, localServer }) => {
+  const { page, evaluate } = await setupPage(context, localServer, { iosBuild: true });
+
+  // 使用者在 Options 關掉四指手勢：寫 storage.sync.fourFingerGesture=false。
+  // content-touch.js 的 onChanged 會更新內部旗標,輪詢 getter 確認已生效再派發。
+  await evaluate(`browser.storage.sync.set({ fourFingerGesture: false })`);
+  const start = Date.now();
+  while (Date.now() - start < 3000) {
+    if (await evaluate(`window.__SK.getFourFingerEnabled()`) === false) break;
+    await page.waitForTimeout(50);
+  }
+  expect(await evaluate(`window.__SK.getFourFingerEnabled()`), '旗標應已翻為 false').toBe(false);
+
+  await page.evaluate(`
+    (() => {
+      const ts = window.__mkTouches(4);
+      window.__touch('touchstart', ts);
+      window.__touch('touchend', []);
+    })()
+  `);
+
+  await page.waitForTimeout(800);
+  const calls = await evaluate(`window.__tapCalls`);
+  expect(calls.length, '關閉四指手勢後 gate 應擋下').toBe(0);
+
+  // 還原（不污染同 context 後續 test 的 storage）
+  await evaluate(`browser.storage.sync.remove('fourFingerGesture')`);
 });
 
 test('四指 swipe(移動超過容差)→ 不觸發', async ({ context, localServer }) => {

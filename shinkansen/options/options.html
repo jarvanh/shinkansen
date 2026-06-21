@@ -344,12 +344,46 @@
           <option value="top-left" data-i18n="options.toast.posTL">左上角</option>
         </select>
       </label>
-      <label>
+      <label class="opacity-row">
         <!-- v1.8.61:純動態 i18n label(原本寫死繁中沒掛 data-i18n,en/zh-CN UI 漏翻)。
              由 options.js _renderToastOpacityLabel 在 init / slider input / UI 語系切換時設整段字串。 -->
         <span id="toastOpacityLabelWrap">通知透明度 70%</span>
         <input type="range" id="toastOpacity" min="10" max="100" step="10" value="70">
+        <div class="opacity-demo" id="toastOpacityDemo" aria-hidden="true">
+          <span class="toast-demo-box">
+            <span class="toast-demo-line"></span>
+            <span class="toast-demo-bar"></span>
+          </span>
+        </div>
         <small class="muted" data-i18n="options.toast.opacityHint">如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點</small>
+      </label>
+    </section>
+
+    <section>
+      <h2 data-i18n="options.floating.heading">懸浮翻譯按鈕</h2>
+      <p class="muted" data-i18n="options.floating.intro">在頁面邊緣顯示一顆可拖移的圓形按鈕，短按用預設翻譯、長按選三組預設，可拖到左右任一邊吸附</p>
+      <label class="toggle">
+        <input type="checkbox" id="floatingIcon">
+        <span data-i18n="options.floating.enable">顯示懸浮翻譯按鈕</span>
+        <small class="muted" data-i18n="options.floating.enableHint">手機 / 平板預設開啟、桌面瀏覽器預設關閉；短按等同工具列「翻譯本頁」按鈕的預設</small>
+      </label>
+      <label class="opacity-row">
+        <span id="floatingOpacityLabelWrap">按鈕透明度 70%</span>
+        <input type="range" id="floatingIconOpacity" min="10" max="100" step="10" value="70">
+        <div class="opacity-demo" id="floatingOpacityDemo" aria-hidden="true">
+          <img src="../icons/icon-48.png" alt="" width="16" height="16">
+        </div>
+        <small class="muted" data-i18n="options.floating.opacityHint">覺得太搶眼可以往左拉降低不透明度，讓按鈕變淡一點</small>
+      </label>
+    </section>
+
+    <!-- 四指觸控翻譯：iOS / iPadOS only，由 options.js 依 IS_IOS_BUILD 控制 hidden -->
+    <section id="four-finger-section" hidden>
+      <h2 data-i18n="options.fourFinger.heading">四指觸控翻譯</h2>
+      <p class="muted" data-i18n="options.fourFinger.intro">在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；關閉後仍可用硬體鍵盤快速鍵與懸浮按鈕</p>
+      <label class="toggle">
+        <input type="checkbox" id="fourFingerGesture" checked>
+        <span data-i18n="options.fourFinger.enable">啟用四指觸控手勢</span>
       </label>
     </section>
 

@@ -689,6 +689,19 @@ export const DEFAULT_SETTINGS = {
   // 預設 slot 2 = Flash（與 v1.4.12 開始 popup 按鈕硬碼映射的行為一致）。
   // 使用者可在一般設定改成其他 preset，按 popup 按鈕等同按該 slot 的快速鍵。
   popupButtonSlot: 2,
+  // 懸浮翻譯控制按鈕（floating action button）。
+  // floatingIcon：enable 開關。預設 null = 平台分流（content / options 端都把非 boolean
+  //   解析成 IS_IOS_BUILD：iOS / iPadOS build 預設開、桌面 build 預設關）。使用者在 options
+  //   明確切過就寫入 boolean，之後尊重該值。
+  // floatingIconOpacity：0.1–1，預設 0.7（與 toast 一致）。
+  // floatingIconPos：吸附邊緣位置。edge='left'|'right'，offsetY=0(頂)…1(底) 垂直比例。
+  //   預設右緣中段；視窗縮放後按比例還原。
+  floatingIcon: null,
+  floatingIconOpacity: 0.7,
+  floatingIconPos: { edge: 'right', offsetY: 0.5 },
+  // 四指觸控手勢 enable（iOS / iPadOS）。預設 true（沿用一直以來的 always-on 行為）。
+  // content-touch.js isEnabled() 額外 gate 此旗標；桌面 build 無此手勢，旗標無作用。
+  fourFingerGesture: true,
   // v1.6.13: 自動翻譯網站（白名單）觸發時要用哪一組 preset。預設 slot 2 = Flash。
   // 修法前自動翻譯路徑直接 SK.translatePage() 不帶 slot,fallback 全域 geminiConfig.model;
   // 使用者改 preset model 後 Alt+S 走新 model，但白名單路徑仍走全域 → UX 不一致。

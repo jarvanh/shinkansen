@@ -280,6 +280,17 @@
     'options.toast.opacityHint': '如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點',
     'options.toast.autoHide': '翻譯完成後自動關閉通知',
     'options.toast.autoHideHint': '開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉',
+    // 懸浮翻譯按鈕
+    'options.floating.heading': '懸浮翻譯按鈕',
+    'options.floating.intro': '在頁面邊緣顯示一顆可拖移的圓形按鈕，短按用預設翻譯、長按選三組預設，可拖到左右任一邊吸附',
+    'options.floating.enable': '顯示懸浮翻譯按鈕',
+    'options.floating.enableHint': '手機 / 平板預設開啟、桌面瀏覽器預設關閉；短按等同工具列「翻譯本頁」按鈕的預設',
+    'options.floating.opacity': '按鈕透明度 {value}%',
+    'options.floating.opacityHint': '覺得太搶眼可以往左拉降低不透明度，讓按鈕變淡一點',
+    // 四指觸控翻譯（iOS / iPadOS）
+    'options.fourFinger.heading': '四指觸控翻譯',
+    'options.fourFinger.intro': '在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；關閉後仍可用硬體鍵盤快速鍵與懸浮按鈕',
+    'options.fourFinger.enable': '啟用四指觸控手勢',
 
     // ── options 金額顯示幣值 ─────────────────────────────
     'options.currency.heading': '金額顯示幣值',
@@ -1100,6 +1111,15 @@
     'options.toast.opacityHint': '如果觉得太显眼，可以往左拉降低不透明度，让通知变淡一点',
     'options.toast.autoHide': '翻译完成后自动关闭通知',
     'options.toast.autoHideHint': '开启时翻译完成的通知会在 5 秒后自动消失；关闭时需手动点击关闭',
+    'options.floating.heading': '悬浮翻译按钮',
+    'options.floating.intro': '在页面边缘显示一颗可拖动的圆形按钮，轻按用默认翻译、长按选三组预设，可拖到左右任一边吸附',
+    'options.floating.enable': '显示悬浮翻译按钮',
+    'options.floating.enableHint': '手机 / 平板默认开启、桌面浏览器默认关闭；轻按等同工具栏「翻译本页」按钮的默认',
+    'options.floating.opacity': '按钮透明度 {value}%',
+    'options.floating.opacityHint': '觉得太显眼可以往左拉降低不透明度，让按钮变淡一点',
+    'options.fourFinger.heading': '四指触控翻译',
+    'options.fourFinger.intro': '在手机 / 平板用四根手指轻点页面即翻译、四指长按用次要预设；关闭后仍可用硬件键盘快捷键与悬浮按钮',
+    'options.fourFinger.enable': '启用四指触控手势',
 
     // ── options 金额显示币值 ─────────────────────────────
     'options.currency.heading': '金额显示币值',
@@ -1918,6 +1938,15 @@
     'options.toast.opacityHint': 'If too prominent, drag left to lower opacity and make notifications more subtle',
     'options.toast.autoHide': 'Auto-close notification on completion',
     'options.toast.autoHideHint': 'When enabled, the completion notification auto-disappears after 5 seconds; when disabled, click to close',
+    'options.floating.heading': 'Floating translate button',
+    'options.floating.intro': 'Show a draggable round button at the edge of the page — tap to translate with your default, long-press to pick one of three presets, drag to snap to either side',
+    'options.floating.enable': 'Show floating translate button',
+    'options.floating.enableHint': 'On by default on phones / tablets, off by default on desktop browsers; a tap does the same as the toolbar "Translate page" default',
+    'options.floating.opacity': 'Button opacity {value}%',
+    'options.floating.opacityHint': 'If too prominent, drag left to lower opacity and make the button more subtle',
+    'options.fourFinger.heading': 'Four-finger touch translate',
+    'options.fourFinger.intro': 'On phones / tablets, tap with four fingers to translate, four-finger long-press for the secondary preset; when off, hardware keyboard shortcuts and the floating button still work',
+    'options.fourFinger.enable': 'Enable four-finger touch gesture',
 
     // ── options currency ─────────────────────────────────
     'options.currency.heading': 'Currency display',
@@ -2736,6 +2765,15 @@
     'options.toast.opacityHint': '目立ちすぎる場合は左にスライドして不透明度を下げ、通知を薄くできます',
     'options.toast.autoHide': '翻訳完了後に通知を自動で閉じる',
     'options.toast.autoHideHint': '有効時は翻訳完了通知が 5 秒後に自動消去、無効時は手動で閉じる必要があります',
+    'options.floating.heading': 'フローティング翻訳ボタン',
+    'options.floating.intro': 'ページの端にドラッグできる丸いボタンを表示。タップで既定の翻訳、長押しで 3 つのプリセットから選択、左右どちらの端にもスナップできます',
+    'options.floating.enable': 'フローティング翻訳ボタンを表示',
+    'options.floating.enableHint': 'スマホ / タブレットは既定でオン、デスクトップブラウザは既定でオフ。タップはツールバーの「ページを翻訳」既定と同じ',
+    'options.floating.opacity': 'ボタンの透明度 {value}%',
+    'options.floating.opacityHint': '目立ちすぎる場合は左にドラッグして不透明度を下げ、ボタンを控えめにできます',
+    'options.fourFinger.heading': '4 本指タッチ翻訳',
+    'options.fourFinger.intro': 'スマホ / タブレットで 4 本指でタップすると翻訳、4 本指長押しでセカンダリプリセット。オフにしてもハードウェアキーボードのショートカットとフローティングボタンは使えます',
+    'options.fourFinger.enable': '4 本指タッチジェスチャを有効化',
 
     // ── options 金額表示通貨 ─────────────────────────────
     'options.currency.heading': '金額表示通貨',
@@ -3554,6 +3592,15 @@
     'options.toast.opacityHint': '너무 눈에 띄면 왼쪽으로 드래그하여 불투명도를 낮춰 알림을 옅게 만들 수 있습니다',
     'options.toast.autoHide': '번역 완료 후 알림 자동 닫기',
     'options.toast.autoHideHint': '활성화 시 번역 완료 알림이 5초 후 자동으로 사라지고, 비활성화 시 수동으로 닫아야 합니다',
+    'options.floating.heading': '플로팅 번역 버튼',
+    'options.floating.intro': '페이지 가장자리에 드래그할 수 있는 둥근 버튼을 표시합니다. 짧게 누르면 기본 번역, 길게 누르면 세 가지 프리셋 선택, 좌우 어느 쪽 가장자리에도 붙일 수 있습니다',
+    'options.floating.enable': '플로팅 번역 버튼 표시',
+    'options.floating.enableHint': '휴대폰 / 태블릿은 기본 켜짐, 데스크톱 브라우저는 기본 꺼짐. 짧게 누르면 도구 모음의 "페이지 번역" 기본값과 동일',
+    'options.floating.opacity': '버튼 투명도 {value}%',
+    'options.floating.opacityHint': '너무 눈에 띄면 왼쪽으로 드래그해 불투명도를 낮춰 버튼을 더 은은하게 만들 수 있습니다',
+    'options.fourFinger.heading': '네 손가락 터치 번역',
+    'options.fourFinger.intro': '휴대폰 / 태블릿에서 네 손가락으로 탭하면 번역, 네 손가락 길게 누르면 보조 프리셋. 꺼도 하드웨어 키보드 단축키와 플로팅 버튼은 사용할 수 있습니다',
+    'options.fourFinger.enable': '네 손가락 터치 제스처 사용',
 
     // ── options 금액 표시 통화 ─────────────────────────────
     'options.currency.heading': '금액 표시 통화',
@@ -4371,6 +4418,15 @@
     'options.toast.opacityHint': 'Si te resulta demasiado llamativa, arrastra hacia la izquierda para reducir la opacidad y atenuarla',
     'options.toast.autoHide': 'Cerrar notificación automáticamente al terminar',
     'options.toast.autoHideHint': 'Si está activado, la notificación de fin de traducción desaparece tras 5 segundos; si está desactivado, hay que cerrarla manualmente',
+    'options.floating.heading': 'Botón de traducción flotante',
+    'options.floating.intro': 'Muestra un botón redondo y arrastrable en el borde de la página: toca para traducir con tu ajuste predeterminado, mantén pulsado para elegir entre tres preajustes y arrástralo para fijarlo a cualquier lado',
+    'options.floating.enable': 'Mostrar botón de traducción flotante',
+    'options.floating.enableHint': 'Activado por defecto en móviles / tabletas y desactivado en navegadores de escritorio; un toque equivale al ajuste predeterminado del botón «Traducir página» de la barra de herramientas',
+    'options.floating.opacity': 'Opacidad del botón {value}%',
+    'options.floating.opacityHint': 'Si resulta muy llamativo, arrastra a la izquierda para bajar la opacidad y hacer el botón más discreto',
+    'options.fourFinger.heading': 'Traducción táctil con cuatro dedos',
+    'options.fourFinger.intro': 'En móviles / tabletas, toca con cuatro dedos para traducir y mantén pulsado con cuatro dedos para el preajuste secundario; al desactivarlo, siguen funcionando los atajos de teclado físico y el botón flotante',
+    'options.fourFinger.enable': 'Activar gesto táctil de cuatro dedos',
 
     // ── options moneda mostrada ─────────────────────────────
     'options.currency.heading': 'Moneda para mostrar importes',
@@ -5188,6 +5244,15 @@
     'options.toast.opacityHint': 'Si trop visible, faites glisser à gauche pour réduire l\'opacité et atténuer la notification',
     'options.toast.autoHide': 'Fermer automatiquement la notification à la fin de la traduction',
     'options.toast.autoHideHint': 'Si activé, la notification de fin de traduction disparaît au bout de 5 secondes ; sinon il faut la fermer manuellement',
+    'options.floating.heading': 'Bouton de traduction flottant',
+    'options.floating.intro': 'Affiche un bouton rond déplaçable sur le bord de la page : appuyez pour traduire avec votre préréglage par défaut, appui long pour choisir parmi trois préréglages, faites-le glisser pour l\'ancrer d\'un côté ou de l\'autre',
+    'options.floating.enable': 'Afficher le bouton de traduction flottant',
+    'options.floating.enableHint': 'Activé par défaut sur téléphone / tablette, désactivé par défaut sur les navigateurs de bureau ; un appui équivaut au préréglage par défaut du bouton « Traduire la page » de la barre d\'outils',
+    'options.floating.opacity': 'Opacité du bouton {value}%',
+    'options.floating.opacityHint': 'Si trop visible, glissez vers la gauche pour réduire l\'opacité et rendre le bouton plus discret',
+    'options.fourFinger.heading': 'Traduction tactile à quatre doigts',
+    'options.fourFinger.intro': 'Sur téléphone / tablette, touchez avec quatre doigts pour traduire, appui long à quatre doigts pour le préréglage secondaire ; une fois désactivé, les raccourcis clavier matériels et le bouton flottant restent disponibles',
+    'options.fourFinger.enable': 'Activer le geste tactile à quatre doigts',
 
     // ── options devise d\'affichage ─────────────────────────────
     'options.currency.heading': 'Devise d\'affichage',
@@ -6005,6 +6070,15 @@
     'options.toast.opacityHint': 'Wenn zu auffällig, kann die Deckkraft durch Ziehen nach links reduziert werden, um die Benachrichtigung dezenter zu machen',
     'options.toast.autoHide': 'Benachrichtigung nach Übersetzung automatisch schließen',
     'options.toast.autoHideHint': 'Wenn aktiviert, verschwindet die Benachrichtigung der abgeschlossenen Übersetzung nach 5 Sekunden automatisch; sonst muss sie manuell geschlossen werden',
+    'options.floating.heading': 'Schwebende Übersetzungsschaltfläche',
+    'options.floating.intro': 'Zeigt eine verschiebbare runde Schaltfläche am Seitenrand — tippen für die Standardübersetzung, lange drücken zur Auswahl aus drei Voreinstellungen, an beide Seiten andockbar',
+    'options.floating.enable': 'Schwebende Übersetzungsschaltfläche anzeigen',
+    'options.floating.enableHint': 'Auf Smartphones / Tablets standardmäßig an, in Desktop-Browsern standardmäßig aus; ein Tippen entspricht der Standardvoreinstellung der Symbolleisten-Schaltfläche „Seite übersetzen"',
+    'options.floating.opacity': 'Schaltflächen-Deckkraft {value}%',
+    'options.floating.opacityHint': 'Wenn zu auffällig, nach links ziehen, um die Deckkraft zu verringern und die Schaltfläche dezenter zu machen',
+    'options.fourFinger.heading': 'Vier-Finger-Touch-Übersetzung',
+    'options.fourFinger.intro': 'Auf Smartphones / Tablets mit vier Fingern tippen zum Übersetzen, Vier-Finger-Langdruck für die sekundäre Voreinstellung; deaktiviert funktionieren Hardware-Tastaturkürzel und die schwebende Schaltfläche weiterhin',
+    'options.fourFinger.enable': 'Vier-Finger-Touch-Geste aktivieren',
 
     // ── options Anzeigewährung ─────────────────────────────
     'options.currency.heading': 'Anzeigewährung',

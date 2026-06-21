@@ -1340,3 +1340,58 @@ shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-de
   /* 字級拉到 16px 後固定 130px 放不下完整日期 */
   body.runtime-ios .usage-date-label input[type="date"] { width: 150px; }
 }
+
+/* 透明度設定的即時範例（懸浮按鈕 / toast 通知）。decorative，aria-hidden，
+   opacity 由 options.js _render*OpacityLabel 跟著 slider 即時套用。 */
+/* 透明度 slider 列：文字 / slider / 說明垂直置中。label 文字固定寬，避免
+   50% / 100% 位數變動讓 slider 起點左右跳（CLAUDE.md §1 固定 width 原則）。 */
+label.opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+label.opacity-row > span[id$="OpacityLabelWrap"] {
+  flex: 0 0 auto;
+  width: 132px;
+}
+label.opacity-row input[type="range"] {
+  flex: 0 0 200px;
+  margin: 0;
+}
+label.opacity-row small {
+  flex: 1 1 130px;
+  min-width: 0;
+  margin: 0;
+}
+
+.opacity-demo {
+  /* 範例與 slider 同列、垂直置中（align-items: center）。label 文字固定寬，
+     slider 起點不被推歪；範例排在 slider 之後。 */
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  transition: opacity .1s ease;
+}
+.opacity-demo img { display: block; }
+.toast-demo-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  padding: 6px 10px;
+}
+.toast-demo-line {
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  background: #c7c7cc;
+}
+.toast-demo-bar {
+  width: 30px;
+  height: 4px;
+  border-radius: 2px;
+  background: #0071e3;
+}

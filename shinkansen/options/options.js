@@ -167,6 +167,17 @@ async function load() {
   // v1.6.8: Toast master switch
   $('showProgressToast').checked = s.showProgressToast !== false;
 
+  // 懸浮翻譯按鈕：enable（null = 平台預設，桌面 false / iOS true）+ 透明度
+  $('floatingIcon').checked = typeof s.floatingIcon === 'boolean' ? s.floatingIcon : IS_IOS_BUILD;
+  const floatingOpacityPct = Math.round((s.floatingIconOpacity ?? 0.7) * 100);
+  $('floatingIconOpacity').value = floatingOpacityPct;
+  _renderFloatingOpacityLabel(floatingOpacityPct);
+
+  // 四指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
+  // 預設開（!== false）；桌面隱藏的 checkbox 仍維持 true，存檔不會誤寫 false。
+  $('four-finger-section').hidden = !IS_IOS_BUILD;
+  $('fourFingerGesture').checked = s.fourFingerGesture !== false;
+
   // 送到 Instapaper：enable 開關 + 連結狀態（已連結時顯示帳號 + 解除連結）
   $('instapaperEnabled').checked = s.instapaperEnabled === true;
   // 摘要開關預設開（!== false）：既有使用者沒此 key 時也視為開
@@ -377,7 +388,9 @@ async function load() {
     _updateCurrencySectionVisibility();
     // v1.8.61:Toast opacity label 動態 i18n 字串
     _renderToastOpacityLabel($('toastOpacity')?.value || 70);
-    // v1.8.61:字幕 prompt token hint 重 render — load() line 293 已呼叫過一次,但當時
+    // 懸浮按鈕 opacity label 動態 i18n 字串
+    _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
+    // v1.8.61:字幕 prompt hint 重 render — load() line 293 已呼叫過一次,但當時
     // picker.value 還沒從 storage sync(走 navigator.language 推 auto),Jimmy 機器是
     // 繁中環境就拿到繁中,即使 stored uiLanguage='en' 也無效。picker.value sync 後重 render 一次。
     updateYtPromptCostHint();
@@ -399,6 +412,8 @@ async function load() {
       _updateCurrencySectionVisibility();
       // v1.8.61:Toast opacity label 跟著 UI 語系重 render
       _renderToastOpacityLabel($('toastOpacity')?.value || 70);
+      // 懸浮按鈕 opacity label 跟著 UI 語系重 render
+      _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
       // v1.8.61:字幕 prompt token 開銷 hint 是純動態 _t() 計算,applyI18n 不碰,
       // 主動 reapply 才會看到新語言的 dict 字串
       updateYtPromptCostHint();
@@ -704,8 +719,19 @@ function fmtMoneyOpts() {
 // en / zh-CN UI 漏翻)。每次 slider 拖動 / init / UI 語系切換都重 render。
 function _renderToastOpacityLabel(value) {
   const wrap = document.getElementById('toastOpacityLabelWrap');
-  if (!wrap) return;
-  wrap.textContent = _t('options.toast.opacity', { value });
+  if (wrap) wrap.textContent = _t('options.toast.opacity', { value });
+  // 即時範例：迷你通知框跟著 slider 套用同透明度
+  const demo = document.getElementById('toastOpacityDemo');
+  if (demo) demo.style.opacity = String(Math.max(0, Math.min(1, Number(value) / 100)));
+}
+
+// 懸浮按鈕透明度 label 走 i18n 動態字串（與 toast opacity 同模式）
+function _renderFloatingOpacityLabel(value) {
+  const wrap = document.getElementById('floatingOpacityLabelWrap');
+  if (wrap) wrap.textContent = _t('options.floating.opacity', { value });
+  // 即時範例：「新」icon 跟著 slider 套用同透明度
+  const demo = document.getElementById('floatingOpacityDemo');
+  if (demo) demo.style.opacity = String(Math.max(0, Math.min(1, Number(value) / 100)));
 }
 
 // v1.8.61:「金額顯示幣值」section 只在繁中 UI 顯示。
@@ -979,6 +1005,11 @@ async function _saveImpl() {
     toastAutoHide: $('toastAutoHide').checked,
     // v1.6.8: Toast master switch（false 完全不顯示，連訊息都不發）
     showProgressToast: $('showProgressToast').checked,
+    // 懸浮翻譯按鈕：使用者明確切過 → 一律寫 boolean（之後不再走平台預設）
+    floatingIcon: $('floatingIcon').checked,
+    floatingIconOpacity: parseUserNum($('floatingIconOpacity').value, (DEFAULTS.floatingIconOpacity ?? 0.7) * 100) / 100,
+    // 四指觸控手勢 enable（iOS only；桌面 checkbox 隱藏但維持 loaded 值，不誤寫）
+    fourFingerGesture: $('fourFingerGesture').checked,
     // v1.5.0: 雙語對照視覺標記
     translationMarkStyle: getSelectedMarkStyle(),
     // v1.8.52: 雙語強調色（已在 setDualAccent 時 sanitize 過,直接寫）
@@ -1260,6 +1291,8 @@ $('uiLanguage')?.addEventListener('change', async () => {
     _updateCurrencySectionVisibility();
     // v1.8.61:Toast opacity label 跟著 UI 語系重 render
     _renderToastOpacityLabel($('toastOpacity')?.value || 70);
+    // 懸浮按鈕 opacity label 跟著 UI 語系重 render
+    _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
     // v1.8.61:字幕 prompt token 開銷 hint 是純動態 _t() 計算,主動 reapply
     updateYtPromptCostHint();
   }
@@ -1637,6 +1670,9 @@ $('tier').addEventListener('change', () => {
 $('toastOpacity').addEventListener('input', () => {
   _renderToastOpacityLabel($('toastOpacity').value);
 });
+$('floatingIconOpacity').addEventListener('input', () => {
+  _renderFloatingOpacityLabel($('floatingIconOpacity').value);
+});
 $('toastPosition').addEventListener('change', markDirty);
 
 // v1.5.0: 雙語視覺標記 radio 切換 → 即時更新 demo wrapper
@@ -1729,6 +1765,10 @@ function sanitizeImport(raw) {
     autoTranslateSlot:   { type: 'number', min: 1, max: 3, int: true }, // v1.6.13
     modelPricingOverrides: { type: 'object' }, // v1.6.14
     showProgressToast:   { type: 'boolean' }, // v1.6.8
+    floatingIcon:        { type: 'boolean', nullable: true }, // 懸浮按鈕 enable（null = 平台預設）
+    floatingIconOpacity: { type: 'number', min: 0.1, max: 1 },
+    floatingIconPos:     { type: 'object' }, // { edge, offsetY }，content script 拖移後寫入
+    fourFingerGesture:   { type: 'boolean' }, // 四指觸控手勢 enable（iOS）
     // issue #48 fix：之前漏列導致匯入時這些 key 默默丟掉
     targetLanguage:      { type: 'string', oneOf: TARGET_LANGUAGES },
     uiLanguage:          { type: 'string', oneOf: UI_LANGUAGES },

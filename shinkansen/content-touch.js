@@ -34,10 +34,25 @@
     if (gesture && gesture.timer) { clearTimeout(gesture.timer); gesture.timer = null; }
   }
 
+  // 使用者可在 Options 關閉四指手勢（storage.sync.fourFingerGesture，預設開）。
+  // 不在載入期以 IS_IOS_BUILD gate 訂閱——isEnabled() 才 gate IS_IOS_BUILD，讓
+  // regression spec 可 runtime 翻 IS_IOS_BUILD 後仍吃得到這個旗標（且訂閱成本極小）。
+  let fourFingerEnabled = true;
+  browser.storage.sync.get(['fourFingerGesture']).then((s) => {
+    if (typeof s.fourFingerGesture === 'boolean') fourFingerEnabled = s.fourFingerGesture;
+  }).catch(() => {});
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.fourFingerGesture) {
+      fourFingerEnabled = changes.fourFingerGesture.newValue !== false;
+    }
+  });
+  SK.getFourFingerEnabled = () => fourFingerEnabled;   // regression spec 讀取用
+
   function isEnabled() {
     // IS_IOS_BUILD 由 lib/distribution-cs.js 寫入（iOS build override 為 true）。
     // 動態讀（不在載入期快照）讓 regression spec 可在 runtime 翻 flag 測手勢邏輯。
-    return SK.IS_IOS_BUILD === true;
+    // 再 gate fourFingerEnabled：使用者在 Options 關掉四指手勢時整段早退。
+    return SK.IS_IOS_BUILD === true && fourFingerEnabled;
   }
 
   window.addEventListener('touchstart', (e) => {
