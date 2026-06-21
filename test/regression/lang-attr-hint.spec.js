@@ -15,6 +15,16 @@
 //
 // SANITY 紀錄(已驗證):暫時把 getElementLangHint 一律 return null → spec「lang=zh 短簡中應翻」
 // fail(fallback 純文字 detect 仍誤判 zh-Hant 當 already-in-target)。還原 fix → 全綠。
+//
+// ── 追加 regression(form named-control .lang 遮蓋,對應 v1.10.66 修)──
+// Bug:HTMLFormElement 帶 [LegacyOverrideBuiltIns],表單內有 name="lang" 控制項時
+//   form.lang 回傳該控制項(element)而非字串,getElementLangHint 對 form ancestor 走到
+//   `cur.lang.toLowerCase()` 直接 throw「cur.lang.toLowerCase is not a function」→
+//   整頁翻譯在偵測階段就炸、卡 translating(WordPress email-subscriptions form 實例,
+//   實站 militaryrealism.blog 重現)。
+// 修法:採用 cur.lang 前先 typeof === 'string' 守衛,非字串 fall through 到 getAttribute('lang')。
+// SANITY 紀錄(已驗證):把守衛改回 `if (cur.lang)` → 「form named-control 不 throw」test
+//   throw「cur.lang.toLowerCase is not a function」而 fail。還原 fix → pass。
 
 import { test, expect } from '../fixtures/extension.js';
 import { getShinkansenEvaluator } from './helpers/run-inject.js';
@@ -178,6 +188,39 @@ test('isCandidateText:lang=zh-TW 繁中 tweet 應 skip(信 lang attribute,target
   expect(result.zhtw, 'lang=zh-TW 繁中應 skip(不在 units)').toBe(false);
   expect(result.zhhant, 'lang=zh-Hant 應 skip').toBe(false);
   expect(result.zhhk, 'lang=zh-HK 應 skip').toBe(false);
+
+  await page.close();
+});
+
+test('getElementLangHint:form 內 name="lang" 控制項遮蓋 .lang 時不 throw', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#text-in-form-named-lang', { timeout: 10_000 });
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  // form.lang 被 name="lang" 的 input 遮蓋成 element(非字串)。修法前對 form ancestor
+  // 呼叫 .toLowerCase() 會 throw;修法後應 fall through 到 getAttribute('lang')(null)→ 不命中。
+  const result = await evaluate(`
+    (() => {
+      const SK = window.__SK;
+      const el = document.querySelector('#text-in-form-named-lang');
+      const form = document.querySelector('#form-named-lang-control');
+      let threw = false, hint = 'SENTINEL';
+      try { hint = SK._getElementLangHint(el); } catch (e) { threw = true; hint = String(e && e.message); }
+      return {
+        formLangIsString: typeof form.lang === 'string',
+        threw,
+        hint,
+      };
+    })()
+  `);
+  // 前置確認:這個 fixture 真的觸發 form.lang 被遮蓋(非字串),否則 regression 失去意義
+  expect(result.formLangIsString, 'fixture 應讓 form.lang 被 name="lang" 控制項遮蓋成非字串').toBe(false);
+  expect(result.threw, 'getElementLangHint 不應 throw').toBe(false);
+  expect(result.hint, 'form ancestor 無真實 lang attribute → 應回 null').toBeNull();
 
   await page.close();
 });

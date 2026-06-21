@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.66** —— **修「某些頁面整頁無法翻譯、一觸發就卡在『翻譯中』」**。在含特定訂閱／搜尋表單的頁面（實例：使用 WordPress 內建電子報訂閱表單的部落格），整頁翻譯一觸發就毫無譯文、永遠卡在翻譯中。根因：偵測階段判斷段落語言時，會往上爬 DOM 讀每個祖先元素的 `lang` 屬性；但 HTML 表單有個特性——表單內若有名為 `lang` 的欄位（`<input name="lang">`），存取 `form.lang` 會回傳那個欄位元素而非語言字串，於是對它呼叫字串方法直接拋錯、整條翻譯在偵測就中斷。修法：讀 `lang` 前先確認它真的是字串，不是字串就改讀該元素的 `lang` 屬性值（永遠是字串或無），任何元素型別皆涵蓋、不綁特定網站。新增 1 條 regression（form 內 `name="lang"` 欄位遮蓋情境不再拋錯，含 SANITY）。**不需清快取**：不動翻譯 prompt、cache key 結構與譯文內容。
+
 **v1.10.65** —— **修「Shinkansen 翻譯後再進 JRead 閱讀模式畫面每秒閃動」（跨擴充功能握手）**。在 iPhone 上把某頁先用 Shinkansen 翻譯、再進入姊妹擴充功能 JRead 的閱讀模式，畫面會每秒閃一下、像在不斷重排版（未翻譯則無）。根因：JRead 進閱讀模式會把被 Shinkansen 翻譯過的文章元素重排成閱讀卡片，而 Shinkansen 的 content guard 每秒巡一次、把這個重排後的元素誤判成「譯文被單頁應用覆蓋」而重建子節點 → 每秒 reflow 閃動。閱讀卡片就是被翻譯的元素本身、落在 content guard 的管轄區內，JRead 端無法閃避，故由 Shinkansen 這端在閱讀模式期間讓位。修法採跨擴充功能握手：JRead 進／出閱讀模式時對頁面 dispatch `jread-reader-mode` CustomEvent（跨 extension content script、與 Debug Bridge 同一套 CustomEvent 機制），Shinkansen 收到就暫停／恢復 content guard（暫停期間不停 interval、不重建 observer，退出後立即接續）。需 JRead（v0.8.149 起）與 Shinkansen 兩端都更新才生效。新增 4 條 regression（事件→旗標雙向切換、detail 缺漏的安全降級、暫停期間 content guard 不丟、原始碼 guard 接線，皆含 SANITY）。**不需清快取**：不動翻譯 prompt、cache key 結構與譯文內容。
 
 **v1.10.64** —— **新增懸浮翻譯按鈕（floating action button）＋ 四指觸控手勢開關**。在頁面邊緣新增一顆可拖移的方形「新」icon：短按用工具列預設（`popupButtonSlot`）翻譯本頁、長按跳出三組 preset 選單、可拖到左右任一邊吸附（位置記憶，視窗縮放按比例還原）。手機／平板預設開啟、桌面瀏覽器預設關閉，可在設定頁開關並調整透明度（透明度設定旁附即時範例預覽：通知用迷你 toast、按鈕用「新」icon）。icon 視覺 16px、可點範圍 32px（透明 padding 包覆，觸控好點）。同時新增「四指觸控翻譯」開關（iOS／iPadOS），讓使用者可關閉四指手勢、只保留硬體鍵盤快速鍵與懸浮按鈕。floating icon 走獨立 closed Shadow DOM host（不注入文章內容，不影響 Readwise 等下游擷取）。新增 regression（短按路由 `popupButtonSlot`、長按選單三列、真實 pointer 短按／長按／拖移吸附、四指開關 gate，皆含 SANITY）。

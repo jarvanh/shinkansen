@@ -165,7 +165,11 @@
     if (!el || el.nodeType !== Node.ELEMENT_NODE) return null;
     let cur = el;
     while (cur && cur !== document.body && cur !== document.documentElement) {
-      if (cur.lang) return cur.lang.toLowerCase();
+      // 只在 .lang 為字串時採用:HTMLFormElement 帶 [LegacyOverrideBuiltIns],
+      // 若表單內有 name="lang" 的控制項,form.lang 會被該控制項(element)遮蓋而非回傳字串
+      // (WordPress email-subscriptions form 實例),直接 .toLowerCase() 會 throw。
+      // 非字串時 fall through 到 getAttribute('lang')(永遠回字串或 null)。
+      if (typeof cur.lang === 'string' && cur.lang) return cur.lang.toLowerCase();
       const attr = cur.getAttribute && cur.getAttribute('lang');
       if (attr) return attr.toLowerCase();
       cur = cur.parentElement;

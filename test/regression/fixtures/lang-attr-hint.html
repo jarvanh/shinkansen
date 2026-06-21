@@ -42,5 +42,14 @@
 <div lang="zh">
   <p id="tweet-inherited-zh">这是简中，从父div继承 lang=zh,应翻</p>
 </div>
+
+<!-- form named-control 遮蓋陷阱:HTMLFormElement 帶 [LegacyOverrideBuiltIns],
+     表單內若有 name="lang" 的控制項,form.lang 會回傳該控制項(element)而非字串,
+     getElementLangHint 對 form ancestor 呼叫 .toLowerCase() 會 throw(WordPress
+     email-subscriptions form 實例)。修法應 fall through 不 throw。 -->
+<form action="#" id="form-named-lang-control">
+  <input type="hidden" name="lang" value="en">
+  <p id="text-in-form-named-lang">English text inside a form that has a control named lang</p>
+</form>
 </body>
 </html>
