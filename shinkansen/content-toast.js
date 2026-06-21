@@ -6,13 +6,22 @@
   // ─── Toast 提示 （Shadow DOM 隔離） ─────────────────────
   const toastHost = document.createElement('div');
   toastHost.id = 'shinkansen-toast-host';
-  toastHost.style.cssText = 'all: initial; position: fixed; z-index: 2147483647;';
+  // host 改成「覆蓋 visual viewport 的定位容器」:position:fixed + 由 JS 依
+  // window.visualViewport 同步 left/top/width/height(見下方 syncViewportBox)。
+  // 內層 .toast 改用 position:absolute 錨在這個容器上,bottom/right 24px 就會貼齊
+  // visual viewport 的可見邊角,而不是 layout viewport ——修 iOS Safari fixed 元素
+  // 在捲動 / 網址列收合 / 雙指縮放後跑到可見區外、toast 看不到的問題。
+  // pointer-events:none 讓覆蓋全螢幕的 host 不攔頁面點擊(只有 .toast 設 auto)。
+  toastHost.style.cssText = 'all: initial; position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 2147483647; pointer-events: none;';
   const shadow = toastHost.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `
     <style>
       :host, * { box-sizing: border-box; }
       .toast {
-        position: fixed;
+        /* absolute 錨在 host(host 由 JS 同步成 visual viewport 大小);host 為
+           pointer-events:none,toast 自己要設回 auto 才能點關閉 / action 按鈕。 */
+        position: absolute;
+        pointer-events: auto;
         width: 280px;
         padding: 14px 16px 12px 16px;
         background: #ffffff;
@@ -192,6 +201,36 @@
     </div>
   `;
   document.documentElement.appendChild(toastHost);
+
+  // ─── visual viewport 同步（iOS Safari fixed 元素定位修正） ───────────────
+  // 把 host 的 fixed 方框同步成 window.visualViewport 的可見矩形。iOS Safari 的
+  // fixed 元素相對 layout viewport 定位、不跟 visual viewport 走,捲動 / 網址列
+  // 收合 / 雙指縮放後 toast 會被定位到可見區外。內層 .toast 是 absolute,所以
+  // host 對齊到 visual viewport,toast 的 bottom/right 24px 就永遠貼齊可見邊角。
+  // 桌面瀏覽器 offsetLeft/Top 為 0、width/height ≈ innerWidth/Height,結果與
+  // 原本 fixed bottom-right 視覺一致(host pointer-events:none 不影響點擊)。
+  function syncViewportBox() {
+    const vv = window.visualViewport;
+    if (vv) {
+      toastHost.style.left = vv.offsetLeft + 'px';
+      toastHost.style.top = vv.offsetTop + 'px';
+      toastHost.style.width = vv.width + 'px';
+      toastHost.style.height = vv.height + 'px';
+    } else {
+      // 無 visualViewport API 的舊環境:退回覆蓋整個 layout viewport
+      toastHost.style.left = '0px';
+      toastHost.style.top = '0px';
+      toastHost.style.width = '100%';
+      toastHost.style.height = '100%';
+    }
+  }
+  syncViewportBox();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncViewportBox);
+    window.visualViewport.addEventListener('scroll', syncViewportBox);
+  }
+  // 沒有 visualViewport 的環境靠 window resize 兜底;有 visualViewport 時這條也無害
+  window.addEventListener('resize', syncViewportBox);
 
   // Toast 透明度
   function applyToastOpacity(opacity) {
