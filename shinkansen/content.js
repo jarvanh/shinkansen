@@ -9,6 +9,18 @@
 
   const STATE = SK.STATE;
 
+  // ─── v1.10.65: JRead 閱讀模式握手 ──────────────────────
+  // JRead 進 / 出閱讀模式時 dispatch 'jread-reader-mode' CustomEvent（跨 extension
+  // content script、同 shinkansen-debug-request 機制）。閱讀模式期間暫停 content guard：
+  // JRead 把被翻譯的 articleEl 重排成閱讀卡片，guard 每秒 sweep 會誤判成「譯文被覆蓋」
+  // 而重建子節點 → 畫面每秒閃動（只在 translate-first 後進閱讀模式）。閱讀卡片即 articleEl
+  // 本身、在 guard 管轄區內，JRead 端無法閃避，故由 guard 端讓位。詳見 content-spa.js
+  // setContentGuardPaused / contentGuardExternallyPaused 註解。
+  window.addEventListener('jread-reader-mode', (e) => {
+    const active = !!(e && e.detail && e.detail.active);
+    if (typeof SK.setContentGuardPaused === 'function') SK.setContentGuardPaused(active);
+  });
+
   // ─── v0.88: Debug Bridge ──────────────────────────────
   // 已知限制（刻意不修）：response 的 object detail 在 Firefox main world 讀屬性
   // 會 throw Permission denied（Xray 安全模型，同 content-youtube.js bridgeRequest

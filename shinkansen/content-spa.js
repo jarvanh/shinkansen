@@ -18,6 +18,15 @@
   let contentGuardInterval = null;
   const GUARD_SWEEP_INTERVAL_MS = 1000;
 
+  // v1.10.65: 外部暫停旗標——JRead 閱讀模式啟動時透過 'jread-reader-mode' CustomEvent
+  // 叫 Shinkansen 暫停 content guard。為什麼需要:JRead 進閱讀模式會把被翻譯的
+  // articleEl 重排成閱讀卡片,guard 每秒 sweep 會把它誤判成「譯文被 SPA 覆蓋」而重建
+  // 子節點 → 使用者畫面每秒閃一下(只在 translate-first 後進閱讀模式才發生)。閱讀卡片
+  // 就是 articleEl 本身、在 guard 管轄區內,JRead 端無法閃避,故由 guard 端在閱讀模式
+  // 期間讓位(早退)。runContentGuard / onSpaObserverMutations 入口都 check 此旗標。
+  // 退出閱讀模式時 JRead 送 active:false 恢復。SK.setContentGuardPaused 是唯一寫入點。
+  let contentGuardExternallyPaused = false;
+
   // v1.8.14: Guard sweep 改用 IntersectionObserver 維護「viewport 附近」的子集,
   // sweep 只走子集而非整份 STATE.translatedHTML。長文(Wikipedia 千段)從每秒
   // 1000 次字串相等比對 + 部分 rect 算降到通常 < 30 個 entry 的子集。
@@ -261,6 +270,7 @@
       rescanCount: spaObserverRescanCount,
       seenTextsSize: spaObserverSeenTexts.size,
       contentGuardActive: !!contentGuardInterval,
+      contentGuardExternallyPaused: contentGuardExternallyPaused, // v1.10.65: JRead 閱讀模式期間 true
       guardVisibleSetSize: guardVisibleSet ? guardVisibleSet.size : null,
       stateTranslated: STATE.translated,
       stateTranslating: STATE.translating,
@@ -272,6 +282,15 @@
       earlyReturnNotTranslated: _dbgEarlyReturnNotTranslated,
       earlyReturnMaxRescans: _dbgEarlyReturnMaxRescans,
     };
+  };
+
+  // v1.10.65: 外部（JRead 閱讀模式）暫停 / 恢復 content guard 的唯一寫入點。
+  // paused=true:runContentGuard / onSpaObserverMutations 入口讓位（早退），停止把
+  // JRead 重排的 articleEl 誤判成「譯文被覆蓋」而每秒重建 → 消除畫面每秒閃動。
+  // 不停 interval / 不 stopSpaObserver（恢復後無需重建、立即接續）。idempotent。
+  SK.setContentGuardPaused = function setContentGuardPaused(paused) {
+    contentGuardExternallyPaused = !!paused;
+    SK.sendLog('info', 'spa', 'content guard ' + (contentGuardExternallyPaused ? 'paused' : 'resumed') + ' (JRead reader mode)');
   };
 
   // mousedown capture: framework 的 click handler 跑之前先把 nodeValue mutate
@@ -594,6 +613,8 @@
   // ─── Content Guard ────────────────────────────────────
 
   function runContentGuard() {
+    // v1.10.65: JRead 閱讀模式期間讓位——見 contentGuardExternallyPaused 宣告註解。
+    if (contentGuardExternallyPaused) return;
     if (!STATE.translated) return;
     // v1.6.10: 分頁隱藏時跳過——使用者看不到的內容無需即時修復,且 sweep
     // 每秒一次,每個 entry 都呼叫 getBoundingClientRect 強制 layout,長頁
@@ -806,6 +827,10 @@
   let _dbgEarlyReturnMaxRescans = 0;
   function onSpaObserverMutations(mutations) {
     _dbgMutationBatchesSeen++;
+    // v1.10.65: JRead 閱讀模式期間讓位（同 runContentGuard）——不 stopSpaObserver、
+    // 只跳過本批 reconcile，退出閱讀模式恢復後續 mutation 照常處理。也擋掉 JRead
+    // 進閱讀模式重排 articleEl 觸發的這批 mutation 被當成「譯文被覆蓋」回寫。
+    if (contentGuardExternallyPaused) return;
     if (!STATE.translated) { _dbgEarlyReturnNotTranslated++; stopSpaObserver(); return; }
     if (spaObserverRescanCount >= SK.SPA_OBSERVER_MAX_RESCANS) { _dbgEarlyReturnMaxRescans++; return; }
 
