@@ -10,6 +10,8 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
+- Added **Floating button** — tap it to translate the page; long-press to switch translation engine or open the menu. On by default on phones and tablets, with adjustable size and opacity.
+- Added **Send to Instapaper** — save the fully translated article to your own Instapaper with one tap, to read again later.
 - Added **Multi-language support** — translate into 8 languages (Traditional Chinese / Simplified Chinese / English / Japanese / Korean / Spanish / French / German); the extension UI is also available in all 8 languages.
 - Added **Instant Translation** — see the page start turning Chinese within 1 second of pressing translate (Gemini only).
 - Added **Bilingual mode** — original text and translation shown side by side.
@@ -290,7 +292,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.10.69 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.20.0 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

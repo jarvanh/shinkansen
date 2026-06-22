@@ -25,7 +25,7 @@
  * 註：本檔修改後 README.md 與 docs/index.html 的「近期重大更新」段落也要手動同步。
  */
 export const RELEASE_HIGHLIGHTS = [
-  '**X & Instagram 翻譯修正**',
-  '**YouTube 字幕 bug 修復**',
-  '**直接選擇翻譯目標語言**',
+  '**新增「懸浮按鈕」**：點選懸浮按鈕即翻譯，長按可換翻譯引擎或叫出選單',
+  '**新增「送到 Instapaper」**：把翻譯後的文章一鍵存進 Instapaper，日後可以重讀',
+  '**iOS 版近期上架**，敬請期待',
 ];
