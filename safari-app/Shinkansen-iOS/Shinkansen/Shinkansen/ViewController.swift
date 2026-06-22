@@ -57,9 +57,20 @@ class ViewController: UIViewController, WKNavigationDelegate, WKScriptMessageHan
             saveSettings(body)
         case "getSettings":
             sendSettingsToPage()
+        case "openSettings":
+            openAppSettings()
         default:
             break
         }
+    }
+
+    // 開啟系統「設定」。iOS 沒有公開、可上架的深層連結直達「Safari → 擴充功能」那頁
+    // （App-Prefs: 私有 scheme 會被 App Review 退件，且 iOS 18+ WEB_EXTENSIONS 子路徑已失效），
+    // 故只能用官方 openSettingsURLString 開到本 App 的設定頁，再由說明文字引導使用者前往
+    // Safari → 擴充功能開啟 Shinkansen。
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     // 把 onboarding / 設定畫面選的 API Key + 預設模型寫進 App Group，並遞增 seq

@@ -10,6 +10,9 @@
 //   handleTranslatePreset(該 slot) + 收選單；點選單外 / 捲動 = 收選單。
 // - 拖移（pointermove 超過 DRAG_THRESHOLD_PX）= 進入拖移模式，放開時吸附最近的左／右
 //   緣，垂直位置存比例（floatingIconPos = { edge, offsetY }），視窗縮放後按比例還原。
+// - 觸控裝置（iPhone / iPad）渲染時把 top 夾離上下角落 CORNER_DEADZONE_PX：iPadOS 視窗
+//   右下角是縮放拖曳把手、上方角落是系統手勢區，按鈕停太靠近會被 OS 攔走觸控而拖不出來。
+//   預設右下角（offsetY=1）在觸控裝置上即落在這條安全極限、儘量靠近角落但不進保留區。
 // - enable / 透明度 / 尺寸 / 位置走 storage.sync，onChanged 即時生效（比照 content-toast.js）。
 //   floatingIcon 預設值：未設過（非 boolean）時一律預設開啟（不分平台），使用者在 options
 //   明確設過則尊重該設定。floatingIconSize：icon 邊長 16（預設）/ 32（觸控好點）。
@@ -29,6 +32,15 @@
   const HIT_PADDING = 16;                // icon 外圍透明可點 padding（觸控好點）
   const EDGE_MARGIN = 6;                 // 吸附邊緣時與視窗邊的間距
   const DEFAULT_OPACITY = 0.7;
+  const DEFAULT_POS = { edge: 'right', offsetY: 1 };   // 預設右下角（edge=right、offsetY=1 到底）
+  // 觸控裝置（iPhone / iPad）角落 OS 保留區邊長。iPadOS 視窗右下角是縮放拖曳把手、
+  // 上方角落是 Control Center 等系統手勢區：按鈕停太靠近角落會被 OS 攔走觸控，使用者
+  // 再也按不到 / 拖不出來。按鈕 x 永遠貼左／右緣，故只需把 y 夾離上下角落這段距離。
+  const CORNER_DEADZONE_PX = 44;
+  // maxTouchPoints ≥ 1 = 真觸控裝置（iPad 偽裝 Mac 仍 = 5；桌面 = 0）。與 lib/platform.js
+  // isTouchScreenDevice() 同一套訊號（content script 不能 import，故就地判）。可被
+  // regression（SK._floating.setTouchForTest）覆寫以驗夾邊路徑。
+  let isTouch = (typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) >= 1);
   // icon 尺寸為使用者可調（floatingIconSize：16 / 32），故 hitSize 跟著變動（非常數）。
   let iconSize = DEFAULT_ICON_SIZE;      // 目前 icon 邊長
   let hitSize = iconSize + HIT_PADDING;  // 目前按鈕可點 footprint（= icon + 透明 padding）
@@ -115,6 +127,8 @@
       white-space: nowrap;
     }
     .menu-item:hover { background: #f0f0f3; }
+    .menu-divider { height: 1px; background: #e5e5ea; margin: 4px 8px; }
+    .menu-item.feature .slot.feature-icon { font-size: 13px; line-height: 1; }
     .menu-item .slot {
       flex: 0 0 auto;
       width: 18px;
@@ -151,7 +165,7 @@
   document.documentElement.appendChild(host);
 
   // ─── 設定狀態 ───────────────────────────────────────────────────────────
-  let pos = { edge: 'right', offsetY: 0.5 };   // offsetY = 0(頂)…1(底) 比例
+  let pos = { ...DEFAULT_POS };   // offsetY = 0(頂)…1(底) 比例
   let currentOpacity = DEFAULT_OPACITY;        // 使用者設定的透明度（選單開啟時暫時拉到 1，關閉還原）
 
   function resolveEnabled(v) {
@@ -181,16 +195,30 @@
   }
 
   function sanitizePos(p) {
-    const edge = (p && (p.edge === 'left' || p.edge === 'right')) ? p.edge : 'right';
-    let offsetY = p && typeof p.offsetY === 'number' ? p.offsetY : 0.5;
-    if (!(offsetY >= 0 && offsetY <= 1)) offsetY = 0.5;
+    const edge = (p && (p.edge === 'left' || p.edge === 'right')) ? p.edge : DEFAULT_POS.edge;
+    let offsetY = p && typeof p.offsetY === 'number' ? p.offsetY : DEFAULT_POS.offsetY;
+    if (!(offsetY >= 0 && offsetY <= 1)) offsetY = DEFAULT_POS.offsetY;
     return { edge, offsetY };
+  }
+
+  // 觸控裝置：把 top 夾到「按鈕 hit 區不碰上下角落 OS 保留區」範圍，避免停進 iPadOS
+  // 視窗縮放把手 / 系統手勢角落而再也拖不出來。純函式（吃 viewportH / hit / touch）方便
+  // regression 直接驗，不依賴實機是否觸控。非觸控（桌面）只夾在可視範圍、不留角落間距。
+  function cornerClampTop(top, viewportH, hit, touch) {
+    const maxFree = Math.max(0, viewportH - hit);          // 不夾角落時 top 的合法上限
+    if (!touch) return Math.max(0, Math.min(maxFree, top));
+    const minTop = CORNER_DEADZONE_PX;                     // 離頂部角落安全距
+    const maxTop = viewportH - hit - CORNER_DEADZONE_PX;   // 離底部角落安全距
+    // 視窗太矮（maxTop < minTop）夾不出安全區 → 置中，至少不卡在角落極端
+    if (maxTop < minTop) return Math.max(0, Math.min(maxFree, Math.round(maxFree / 2)));
+    return Math.max(minTop, Math.min(maxTop, top));
   }
 
   // 依 pos 把 host 貼到邊緣（offsetY 比例 → top px）
   function applyPos(p) {
     pos = sanitizePos(p);
-    const top = Math.round(pos.offsetY * Math.max(0, window.innerHeight - hitSize));
+    const rawTop = Math.round(pos.offsetY * Math.max(0, window.innerHeight - hitSize));
+    const top = cornerClampTop(rawTop, window.innerHeight, hitSize, isTouch);
     host.style.top = top + 'px';
     host.style.bottom = 'auto';
     if (pos.edge === 'left') {
@@ -248,6 +276,30 @@
       });
       menuEl.appendChild(item);
     }
+    // 分隔線 +「功能選單」：叫出工具列圖示選單(popup)當頁內浮層
+    const divider = document.createElement('div');
+    divider.className = 'menu-divider';
+    menuEl.appendChild(divider);
+    const featureItem = document.createElement('button');
+    featureItem.className = 'menu-item feature';
+    featureItem.type = 'button';
+    featureItem.setAttribute('role', 'menuitem');
+    featureItem.dataset.feature = 'menu';
+    const fIcon = document.createElement('span');
+    fIcon.className = 'slot feature-icon';
+    fIcon.textContent = '☰';
+    const fLabel = document.createElement('span');
+    fLabel.className = 'label';
+    fLabel.textContent = (typeof SK.t === 'function' ? SK.t('floating.featureMenu') : '功能選單');
+    featureItem.appendChild(fIcon);
+    featureItem.appendChild(fLabel);
+    featureItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+      openFeaturePanel();
+    });
+    menuEl.appendChild(featureItem);
   }
 
   async function openMenu() {
@@ -276,6 +328,95 @@
       outsideHandler = null;
     }
     window.removeEventListener('scroll', closeMenu, true);
+  }
+
+  // ─── 功能選單浮層（頁內 iframe 載入 popup.html?panel=1）────────────────────
+  // iOS / Safari 無法由 content script 程式化開啟原生 popup（openPopup 需 user gesture，
+  // 跨 runtime.sendMessage 會失效），故在頁內用 closed Shadow DOM + iframe 載入真正的
+  // popup.html 當浮層，維持單一資料源（CLAUDE.md §5）。popup.js 偵測 ?panel=1 → 關閉
+  // 動作改 postMessage('shinkansen-close-panel') 通知這裡收掉浮層。
+  let panelHost = null, panelFrame = null, panelMsgHandler = null, panelKeyHandler = null;
+
+  const PANEL_CSS = `
+    :host, * { box-sizing: border-box; }
+    .backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.4);
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .frame {
+      border: none;
+      width: min(94vw, 360px);
+      height: min(86vh, 620px);
+      max-height: 86vh;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 18px 56px rgba(0,0,0,.4);
+      overflow: hidden;
+    }
+  `;
+
+  function closeFeaturePanel() {
+    if (!panelHost) return;
+    try { panelHost.remove(); } catch (_e) {}
+    panelHost = null;
+    panelFrame = null;
+    if (panelMsgHandler) { window.removeEventListener('message', panelMsgHandler); panelMsgHandler = null; }
+    if (panelKeyHandler) { window.removeEventListener('keydown', panelKeyHandler, true); panelKeyHandler = null; }
+  }
+
+  function openFeaturePanel() {
+    if (panelHost) return;   // 已開著不重複開
+    let popupUrl = '';
+    try { popupUrl = browser.runtime.getURL('popup/popup.html') + '?panel=1'; } catch (_e) { return; }
+    let pHost, pShadow;
+    try {
+      pHost = document.createElement('div');
+      pHost.id = 'shinkansen-panel-host';
+      pHost.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 2147483640;';
+      pShadow = pHost.attachShadow({ mode: 'closed' });
+    } catch (_e) { return; }
+    const backdrop = document.createElement('div');
+    backdrop.className = 'backdrop';
+    const frame = document.createElement('iframe');
+    frame.className = 'frame';
+    frame.setAttribute('title', 'Shinkansen');
+    frame.src = popupUrl;
+    backdrop.appendChild(frame);
+    // 點浮層外圍（backdrop 本體、非 iframe）→ 收
+    backdrop.addEventListener('pointerdown', (e) => {
+      if (e.target === backdrop) closeFeaturePanel();
+    });
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(PANEL_CSS);
+      pShadow.adoptedStyleSheets = [sheet];
+    } catch (_e) {
+      const styleEl = document.createElement('style');
+      styleEl.textContent = PANEL_CSS;
+      pShadow.appendChild(styleEl);
+    }
+    pShadow.appendChild(backdrop);
+    document.documentElement.appendChild(pHost);
+    panelHost = pHost;
+    panelFrame = frame;
+    // popup.js（?panel=1）postMessage（驗 source 為本 iframe）：
+    //   close-panel → 收浮層；panel-size → 依 popup 內容高度收緊 iframe（避免底部留白），
+    //   夾在 [200, 86vh] 之間（內容比框小才縮、永不超出視窗）。
+    panelMsgHandler = (ev) => {
+      if (!panelFrame || ev.source !== panelFrame.contentWindow || !ev.data) return;
+      if (ev.data.type === 'shinkansen-close-panel') {
+        closeFeaturePanel();
+      } else if (ev.data.type === 'shinkansen-panel-size' && typeof ev.data.height === 'number') {
+        const cap = Math.round(window.innerHeight * 0.86);
+        panelFrame.style.height = Math.max(200, Math.min(ev.data.height, cap)) + 'px';
+      }
+    };
+    window.addEventListener('message', panelMsgHandler);
+    panelKeyHandler = (ev) => { if (ev.key === 'Escape') closeFeaturePanel(); };
+    window.addEventListener('keydown', panelKeyHandler, true);
   }
 
   // ─── 翻譯觸發 ───────────────────────────────────────────────────────────
@@ -400,9 +541,16 @@
     runPreset,
     applyEnabled, applyOpacity, applySize, applyPos,
     resolveEnabled, pickPopupSlot,
+    cornerClampTop, CORNER_DEADZONE_PX,
+    openFeaturePanel, closeFeaturePanel,
+    isPanelOpen: () => !!panelHost,
+    getPanelFrameSrc: () => (panelFrame ? panelFrame.src : null),
     isMenuOpen: () => menuOpen,
     getOpacity: () => host.style.opacity,
     getIconSize: () => iconSize,
     getPos: () => ({ ...pos }),
+    getTop: () => host.style.top,
+    // regression 用：覆寫觸控旗標以驗角落夾邊路徑（實機 Chromium maxTouchPoints=0）
+    setTouchForTest: (v) => { isTouch = !!v; applyPos(pos); },
   };
 })(window.__SK);

@@ -11,6 +11,38 @@ import { isTouchScreenDevice } from '../lib/platform.js';
 import { pickPopupSlot, presetsRequireGemini, TARGET_LANGUAGES, DEFAULT_SETTINGS } from '../lib/storage.js';
 import { saveToInstapaper, buildInstapaperPayload } from '../lib/instapaper.js'; // 送到 Instapaper
 
+// 懸浮按鈕的「功能選單」會把本 popup 以 iframe 嵌進網頁當頁內浮層（src 帶 ?panel=1）。
+// 嵌入頁無法自關（window.close 無效）→ 改 postMessage 通知外層 content script 收掉浮層；
+// 真正的工具列 popup（非 panel）維持原本 window.close()。
+const IS_PANEL = (() => {
+  try { return new URLSearchParams(location.search).get('panel') === '1'; }
+  catch (_e) { return false; }
+})();
+function closePopup() {
+  if (IS_PANEL) {
+    try { window.parent.postMessage({ type: 'shinkansen-close-panel' }, '*'); } catch (_e) {}
+    return;
+  }
+  window.close();
+}
+// panel 浮層模式：回報內容高度給外層 content script，讓 iframe 收緊到內容高度（不留白）。
+// 內容變動（banner 展開 / usage 載入）時用 ResizeObserver 重報。非 panel（原生 popup）no-op。
+if (IS_PANEL) {
+  // 用 body 量內容高度（documentElement.scrollHeight 會被 iframe viewport 高度撐住、量不到
+   // 真實內容；body 高度才是內容本身）。
+  const postPanelSize = () => {
+    try {
+      const h = Math.ceil(document.body.getBoundingClientRect().height);
+      window.parent.postMessage({ type: 'shinkansen-panel-size', height: h }, '*');
+    } catch (_e) {}
+  };
+  window.addEventListener('load', postPanelSize);
+  if (window.ResizeObserver) {
+    try { new ResizeObserver(postPanelSize).observe(document.body); } catch (_e) {}
+  }
+  setTimeout(postPanelSize, 0);
+}
+
 // iOS build（SPEC-PRIVATE §26）。build 屬性 vs 平台屬性分離見 lib/platform.js：
 //   - body.runtime-ios（build 屬性，不論 host OS）：CSS 隱藏「翻譯文件」入口
 //     （iOS build 已 strip translate-doc/，留著是死按鈕）
@@ -217,7 +249,7 @@ document.addEventListener('click', async (e) => {
           : 'https://github.com/jimmysu0309/shinkansen/releases');
     }
     await browser.tabs.create({ url });
-    window.close();
+    closePopup();
   } catch (err) {
     console.error('[shinkansen] update-banner click failed', err);
   }
@@ -393,7 +425,7 @@ $('translate-btn').addEventListener('click', async () => {
     const { popupButtonSlot } = await browser.storage.sync.get('popupButtonSlot');
     const slot = pickPopupSlot(popupButtonSlot);
     await browser.tabs.sendMessage(tab.id, { type: 'TRANSLATE_PRESET', payload: { slot } });
-    window.close();
+    closePopup();
   } catch (err) {
     statusEl.textContent = t('popup.status.cannotRun');
     statusEl.style.color = '#ff3b30';
@@ -534,7 +566,7 @@ $('options-btn').addEventListener('click', async() => {
 $('translate-doc-btn').addEventListener('click', async () => {
   const url = browser.runtime.getURL('translate-doc/index.html');
   await browser.tabs.create({ url });
-  window.close();
+  closePopup();
 });
 
 // ── 送到 Instapaper ──────────────────────────────────────

@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://generativelanguage.googleapis.com">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://generativelanguage.googleapis.com">
 
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 
@@ -55,8 +55,19 @@
                         </div>
                         <p class="intro ob-note model-hint"></p>
                     </article>
-                    <!-- 3 四指輕點 -->
+                    <!-- 3 懸浮按鈕 -->
                     <article class="ob-step" data-step="3" hidden>
+                        <div class="ob-glyph" aria-hidden="true">
+                            <!-- 網頁畫面外框 + 右緣真實懸浮按鈕 icon（工具列「新」方形 icon，真實顯示尺寸 16×16） -->
+                            <div class="ob-fab-screen">
+                                <img class="ob-fab-real" width="16" height="16" alt=""
+                                    src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAHbElEQVR4AdRYB3BURRj+7uWSABFBRIKMBaQ6NHXGQZBoMjo2GJKxgI2h6YhdLIgIQ4INnJGxJYIiMQgCIhBGpQSBgyAdIYAQepGahBJCAiRw535vso+793avJNSb+2d3/7b/93bf7v9+A4pfq5RBiS2T319IapE80HfZKWVgagtBilARAEAG7vV5F/rgS/QJUhldcp4PwyBIBcICwOC9lYHjSv0RhNgRjFWGaAFg8JJ5pbeMVYIwAaiW5koH4fP5hjFGwwxeLA0HVxPx/eQqmCsQaeBvPNEBnq97O6hpo+tQnZ87ysArKXdj0Te9wTlC+eIqGHy7Qyna5Tc1uBY1Y90OKjhehkh/N9SNw9MPtEHW4BTkpvdBr0fbo0aMG8891BYP3d00pLsqrUBx6Wml45KyM0o+mYbLhSY31sWjHZrhnac7YsLQx5H7bR/8MfIZDOh+D1rdWh/Uoa6ktH6JaHZTPTl0tNxGQQFkvN0Fy0e/AD4ZLqvcNt3ubelwRoaUs6UNbdMHPIZpH3XHstH9MDn1SaT2TUT3pNZoLgKLiY6imZYIaOzAbqhdK1avo5VUCsSDQ4w7ylxWuW0qRY5GytnShrbX16ll2jqUw2TQV2qf+7XaQVdAaxWh4OSp8ggtgJKycuTm7cGAb+binfQcrf0lAXC6/Kw2ACkoO12B/D1FyJqTh+QPJuPBAePxbsY8LN34n1RRtkEBFBwrhc8Hk1TW5RXnQKKOSk6+1+tFxTmvQ3yi9AwyZ63D61/ORsKrmUh6Mwu9Ps1GxoxVOHT0pENfxwgKIDXTg3v6j8WIiUsc9oXHS5HwWqZJX/223CFfs+Wgafvs8OnwEolNY/v+oxg9czVWbt6P8rPnbNLwh0EBSDdzV+6QXautXyfOOvZaN77B4svOuu2HZNfSsxgXsBMWgFNnKsA96j8vT5jbxdlNXtvb4tkE0PzVO62x4bK6F7yjBdCofm18/15XjHjpAQztdR9qxLodk78lLqDBPRMQX+8ah6znI+0x6rWHMei5zgDRIvDXrmk8poh7QUdThz+F7E97IGdUT4x5t2ugsd9IC+DetjejfbOGSLqrCbp2aqHcBgwiuXNLVXzgjUsfXTo1R5QCgFvkPY3FzayjW+Lr4Mbra6NOXCyaBMmxtAD8QFa767qIe+iSAIgRN3m1n4LGQQQANB7CYEeL7RKGWpVUtAA27S6CZ+1uzFicj0l/bcT4uXnmLcmbkle8fTae9ZSRJuZswJQF/2L28u2Ys2I73G7nNLsPHseoKctMsvvieLFII76etgJZs/PE/BvIUpLTc6Xa5j2FGDp2oXmJfTl1OdKnrzJvSd6Uf4rAKtWspvRUhSXnxAyOF+EXk5ch2h1l6cnO5r1FJkgClTz/dtaybeCDyMheZd7Y/jL/vhYATxGmxEyD/87oiyXp5+mTF5Ng/9WuFWPpUH/pd32xYswLmCjy/hriA8WuH+zbwa4bbKwFII0McQTyyIsW20BSlKE2k3LqRxnndVQvcfFJ/cePnDuc9vws4WhXUYeA7Ka6rzq7XqjxRQfAF1gsoiOO4yXqz1KHYgiGFsBhkUrT9pxIh5ktMm0mkReKqFdx1mtmoVGGOhEqLC4L5SYsuRbA6vwD6PDSWHR6eRyYrzN13rbvSFhOV4gUufOr49Cx/4+YNH+j0mbT7kIlP1KmFoDd0QfPd0brJg3sbOU4od0tmPFJD7Bk0k6RqXKFSErjCJlhAegh6jYpCa0ics1s9uchKWijAH30xKmIfAVTDgrAEG/fyP4P4m2RNgdzopNxG7IqYZfvLSi2s6o81gJoKHL830c8g8Q7G4flXL60Upmpxb7CEmWqvXFXgVSrdqsFMFl8bNSvW0s5wYGiEgeflYdhP3qsAkBu3l481rG5Q4+MaZ7NbC4IaQFs2HlYOUGxqCZ8l71aKctZtQNpohDA1WCJJP66OIdekTg+SQ5BFRlaAGmZi6ynKX0zsN6i9KEqk0id2SL7ZE2nT5c7JCugXfDProBxdQdaAHxKeX6VBR57PT+eDtX2sQcxvF+SWY608zlmhsk2FBmG+gK022kBUHFCzno24K38+JBfsUvk8GS4Fc79b9w2t6nviw07CxBu0SpU4ZdxkIICyF2/18zxuw2aBBayaECKqxnDJoD8n1jXgb+YuTzTEKnE2ha/L+RYtrzsZN+/rXdtTf+hti+epcujlQoBv7BEE/BvoHg5Y6PPl114hPKjJmXwFOuJe9buwsEjztOrYT3ni87JGomKBNtQFHQFdMY/iZrmkB8WmF9sfKqkD3+Y71BnbTVZFGrHzVqLj7IWO+RkcFuljvPgswlLAmj6ojCOWhfSDJfLlUZHkVC5qGXOE5U3HpuS5q/xO11szsbMXINSUX22sa0hT67s3Hz4044Dxyx5sI6Rnz3C44Ir6DYK5uCyycTT35r9eaq5hVxVWIXLFnjlxAyeXRMAV8FwGUlkXA3kH6sJgEETxNaZn7vgQsTvBO0vBYngPAyescr5LACSYS4NQZAk8zK2DJrEwLfMHJnkHzzD+h8AAP//eA205wAAAAZJREFUAwDqqBgYSbzG5QAAAABJRU5ErkJggg=="></div>
+                        </div>
+                        <p class="ob-head">點懸浮按鈕翻譯</p>
+                        <p class="intro">開啟網頁後，畫面右下角會出現懸浮翻譯按鈕，輕點一下就翻譯整頁，再點一次切回原文。按鈕可以拖曳移動、在設定中調整大小或關閉</p>
+                    </article>
+                    <!-- 4 四指輕點（替代方式）-->
+                    <article class="ob-step" data-step="4" hidden>
                         <div class="ob-glyph" aria-hidden="true">
                             <svg class="ob-tap" viewBox="0 0 96 60" width="92" height="58">
                                 <circle class="ob-drop" cx="21" cy="40" r="7"></circle>
@@ -66,11 +77,11 @@
                                 <line class="ob-surface" x1="12" y1="49" x2="84" y2="49"></line>
                             </svg>
                         </div>
-                        <p class="ob-head">四指輕點切換翻譯</p>
-                        <p class="intro">在任何網頁上用四根手指輕點畫面，就會翻譯整頁；再點一次切回原文</p>
+                        <p class="ob-head">四指輕點（替代方式）</p>
+                        <p class="intro">四指輕點預設關閉。如果不喜歡畫面上的懸浮按鈕，可以在設定中關閉懸浮按鈕、改開四指手勢，之後用四根手指輕點任何網頁就能翻譯整頁，再點一次切回原文</p>
                     </article>
-                    <!-- 4 YouTube 自動字幕 -->
-                    <article class="ob-step" data-step="4" hidden>
+                    <!-- 5 YouTube 自動字幕 -->
+                    <article class="ob-step" data-step="5" hidden>
                         <div class="ob-glyph" aria-hidden="true">
                             <svg viewBox="0 0 84 56" width="84" height="58">
                                 <rect x="4" y="6" width="76" height="44" rx="10"></rect>
@@ -80,17 +91,18 @@
                         <p class="ob-head">YouTube 字幕自動翻譯</p>
                         <p class="intro">打開 YouTube 影片時，Shinkansen 會自動把字幕翻成中文。不需要時可在擴充功能設定中關閉</p>
                     </article>
-                    <!-- 5 啟用擴充功能（收尾） -->
-                    <article class="ob-step" data-step="5" hidden>
+                    <!-- 6 啟用擴充功能（收尾） -->
+                    <article class="ob-step" data-step="6" hidden>
                         <p class="ob-head">最後一步：在 Safari 啟用</p>
                         <div class="steps">
                             <p class="steps-title">啟用方式</p>
                             <ol>
-                                <li>在 iOS「設定」中找到「Safari」→「擴充功能」，開啟「Shinkansen」並允許網站存取權限</li>
-                                <li>或在 Safari 網址列點擴充功能按鈕，選「管理擴充功能」開啟</li>
+                                <li>點下方按鈕開啟「設定」，前往「Safari」→「擴充功能」</li>
+                                <li>開啟「Shinkansen」，並把網站存取權限設為「允許」（建議選「所有網站」）</li>
                             </ol>
                         </div>
-                        <p class="intro ob-note">剛才的設定會在啟用後自動同步到擴充功能</p>
+                        <button type="button" class="ob-btn ob-primary open-ios-settings">開啟「設定」</button>
+                        <p class="intro ob-note">也可以在 Safari 網址列點擴充功能按鈕，選「管理擴充功能」開啟。剛才的設定會在啟用後自動同步到擴充功能</p>
                     </article>
                 </div>
                 <div class="ob-nav">
@@ -110,7 +122,7 @@
                     <p class="steps-title">啟用方式</p>
                     <ol>
                         <li>在 iOS「設定」中找到「Safari」→「擴充功能」，開啟「Shinkansen」並允許網站存取權限</li>
-                        <li>網頁上四指輕點即可翻譯整頁；YouTube 影片字幕會自動翻譯</li>
+                        <li>網頁上點懸浮按鈕即可翻譯整頁；YouTube 影片字幕會自動翻譯</li>
                     </ol>
                 </div>
                 <button type="button" class="ob-btn ob-primary open-settings">API Key 與預設模型設定</button>
@@ -203,8 +215,19 @@
                         </div>
                         <p class="intro ob-note model-hint"></p>
                     </article>
-                    <!-- 3 Four-finger tap -->
+                    <!-- 3 Floating button -->
                     <article class="ob-step" data-step="3" hidden>
+                        <div class="ob-glyph" aria-hidden="true">
+                            <!-- 網頁畫面外框 + 右緣真實懸浮按鈕 icon（工具列「新」方形 icon，真實顯示尺寸 16×16） -->
+                            <div class="ob-fab-screen">
+                                <img class="ob-fab-real" width="16" height="16" alt=""
+                                    src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAHbElEQVR4AdRYB3BURRj+7uWSABFBRIKMBaQ6NHXGQZBoMjo2GJKxgI2h6YhdLIgIQ4INnJGxJYIiMQgCIhBGpQSBgyAdIYAQepGahBJCAiRw535vso+793avJNSb+2d3/7b/93bf7v9+A4pfq5RBiS2T319IapE80HfZKWVgagtBilARAEAG7vV5F/rgS/QJUhldcp4PwyBIBcICwOC9lYHjSv0RhNgRjFWGaAFg8JJ5pbeMVYIwAaiW5koH4fP5hjFGwwxeLA0HVxPx/eQqmCsQaeBvPNEBnq97O6hpo+tQnZ87ysArKXdj0Te9wTlC+eIqGHy7Qyna5Tc1uBY1Y90OKjhehkh/N9SNw9MPtEHW4BTkpvdBr0fbo0aMG8891BYP3d00pLsqrUBx6Wml45KyM0o+mYbLhSY31sWjHZrhnac7YsLQx5H7bR/8MfIZDOh+D1rdWh/Uoa6ktH6JaHZTPTl0tNxGQQFkvN0Fy0e/AD4ZLqvcNt3ubelwRoaUs6UNbdMHPIZpH3XHstH9MDn1SaT2TUT3pNZoLgKLiY6imZYIaOzAbqhdK1avo5VUCsSDQ4w7ylxWuW0qRY5GytnShrbX16ll2jqUw2TQV2qf+7XaQVdAaxWh4OSp8ggtgJKycuTm7cGAb+binfQcrf0lAXC6/Kw2ACkoO12B/D1FyJqTh+QPJuPBAePxbsY8LN34n1RRtkEBFBwrhc8Hk1TW5RXnQKKOSk6+1+tFxTmvQ3yi9AwyZ63D61/ORsKrmUh6Mwu9Ps1GxoxVOHT0pENfxwgKIDXTg3v6j8WIiUsc9oXHS5HwWqZJX/223CFfs+Wgafvs8OnwEolNY/v+oxg9czVWbt6P8rPnbNLwh0EBSDdzV+6QXautXyfOOvZaN77B4svOuu2HZNfSsxgXsBMWgFNnKsA96j8vT5jbxdlNXtvb4tkE0PzVO62x4bK6F7yjBdCofm18/15XjHjpAQztdR9qxLodk78lLqDBPRMQX+8ah6znI+0x6rWHMei5zgDRIvDXrmk8poh7QUdThz+F7E97IGdUT4x5t2ugsd9IC+DetjejfbOGSLqrCbp2aqHcBgwiuXNLVXzgjUsfXTo1R5QCgFvkPY3FzayjW+Lr4Mbra6NOXCyaBMmxtAD8QFa767qIe+iSAIgRN3m1n4LGQQQANB7CYEeL7RKGWpVUtAA27S6CZ+1uzFicj0l/bcT4uXnmLcmbkle8fTae9ZSRJuZswJQF/2L28u2Ys2I73G7nNLsPHseoKctMsvvieLFII76etgJZs/PE/BvIUpLTc6Xa5j2FGDp2oXmJfTl1OdKnrzJvSd6Uf4rAKtWspvRUhSXnxAyOF+EXk5ch2h1l6cnO5r1FJkgClTz/dtaybeCDyMheZd7Y/jL/vhYATxGmxEyD/87oiyXp5+mTF5Ng/9WuFWPpUH/pd32xYswLmCjy/hriA8WuH+zbwa4bbKwFII0McQTyyIsW20BSlKE2k3LqRxnndVQvcfFJ/cePnDuc9vws4WhXUYeA7Ka6rzq7XqjxRQfAF1gsoiOO4yXqz1KHYgiGFsBhkUrT9pxIh5ktMm0mkReKqFdx1mtmoVGGOhEqLC4L5SYsuRbA6vwD6PDSWHR6eRyYrzN13rbvSFhOV4gUufOr49Cx/4+YNH+j0mbT7kIlP1KmFoDd0QfPd0brJg3sbOU4od0tmPFJD7Bk0k6RqXKFSErjCJlhAegh6jYpCa0ics1s9uchKWijAH30xKmIfAVTDgrAEG/fyP4P4m2RNgdzopNxG7IqYZfvLSi2s6o81gJoKHL830c8g8Q7G4flXL60Upmpxb7CEmWqvXFXgVSrdqsFMFl8bNSvW0s5wYGiEgeflYdhP3qsAkBu3l481rG5Q4+MaZ7NbC4IaQFs2HlYOUGxqCZ8l71aKctZtQNpohDA1WCJJP66OIdekTg+SQ5BFRlaAGmZi6ynKX0zsN6i9KEqk0id2SL7ZE2nT5c7JCugXfDProBxdQdaAHxKeX6VBR57PT+eDtX2sQcxvF+SWY608zlmhsk2FBmG+gK022kBUHFCzno24K38+JBfsUvk8GS4Fc79b9w2t6nviw07CxBu0SpU4ZdxkIICyF2/18zxuw2aBBayaECKqxnDJoD8n1jXgb+YuTzTEKnE2ha/L+RYtrzsZN+/rXdtTf+hti+epcujlQoBv7BEE/BvoHg5Y6PPl114hPKjJmXwFOuJe9buwsEjztOrYT3ni87JGomKBNtQFHQFdMY/iZrmkB8WmF9sfKqkD3+Y71BnbTVZFGrHzVqLj7IWO+RkcFuljvPgswlLAmj6ojCOWhfSDJfLlUZHkVC5qGXOE5U3HpuS5q/xO11szsbMXINSUX22sa0hT67s3Hz4044Dxyx5sI6Rnz3C44Ir6DYK5uCyycTT35r9eaq5hVxVWIXLFnjlxAyeXRMAV8FwGUlkXA3kH6sJgEETxNaZn7vgQsTvBO0vBYngPAyescr5LACSYS4NQZAk8zK2DJrEwLfMHJnkHzzD+h8AAP//eA205wAAAAZJREFUAwDqqBgYSbzG5QAAAABJRU5ErkJggg=="></div>
+                        </div>
+                        <p class="ob-head">Tap the floating button to translate</p>
+                        <p class="intro">Open any web page and a floating translate button appears in the bottom-right corner. Tap it to translate the whole page, and tap again to switch back. You can drag it around, or resize or hide it in the settings.</p>
+                    </article>
+                    <!-- 4 Four-finger tap (alternative) -->
+                    <article class="ob-step" data-step="4" hidden>
                         <div class="ob-glyph" aria-hidden="true">
                             <svg class="ob-tap" viewBox="0 0 96 60" width="92" height="58">
                                 <circle class="ob-drop" cx="21" cy="40" r="7"></circle>
@@ -214,11 +237,11 @@
                                 <line class="ob-surface" x1="12" y1="49" x2="84" y2="49"></line>
                             </svg>
                         </div>
-                        <p class="ob-head">Four-finger tap to translate</p>
-                        <p class="intro">On any web page, tap with four fingers to translate the whole page; tap again to switch back.</p>
+                        <p class="ob-head">Four-finger tap (alternative)</p>
+                        <p class="intro">Four-finger tap is off by default. If you'd rather not see the floating button on screen, turn off the floating button and turn on the four-finger gesture in the settings — then tap any page with four fingers to translate, and tap again to switch back.</p>
                     </article>
-                    <!-- 4 YouTube auto subtitles -->
-                    <article class="ob-step" data-step="4" hidden>
+                    <!-- 5 YouTube auto subtitles -->
+                    <article class="ob-step" data-step="5" hidden>
                         <div class="ob-glyph" aria-hidden="true">
                             <svg viewBox="0 0 84 56" width="84" height="58">
                                 <rect x="4" y="6" width="76" height="44" rx="10"></rect>
@@ -228,17 +251,18 @@
                         <p class="ob-head">YouTube subtitles, auto-translated</p>
                         <p class="intro">When you open a YouTube video, Shinkansen translates the subtitles automatically. You can turn this off in the extension settings.</p>
                     </article>
-                    <!-- 5 Enable in Safari -->
-                    <article class="ob-step" data-step="5" hidden>
+                    <!-- 6 Enable in Safari -->
+                    <article class="ob-step" data-step="6" hidden>
                         <p class="ob-head">Last step: enable in Safari</p>
                         <div class="steps">
                             <p class="steps-title">How to enable</p>
                             <ol>
-                                <li>In iOS Settings, open Safari → Extensions, turn on “Shinkansen” and allow website access</li>
-                                <li>Or in Safari, tap the extensions button in the address bar and choose “Manage Extensions”</li>
+                                <li>Tap the button below to open Settings, then go to Safari → Extensions</li>
+                                <li>Turn on “Shinkansen” and set website access to “Allow” (“All Websites” recommended)</li>
                             </ol>
                         </div>
-                        <p class="intro ob-note">The settings you just chose sync to the extension once it's enabled.</p>
+                        <button type="button" class="ob-btn ob-primary open-ios-settings">Open Settings</button>
+                        <p class="intro ob-note">You can also tap the extensions button in Safari's address bar and choose “Manage Extensions”. The settings you just chose sync to the extension once it's enabled.</p>
                     </article>
                 </div>
                 <div class="ob-nav">
@@ -258,7 +282,7 @@
                     <p class="steps-title">How to enable</p>
                     <ol>
                         <li>In iOS Settings, open Safari → Extensions, turn on “Shinkansen” and allow website access</li>
-                        <li>Four-finger tap any page to translate it; YouTube subtitles translate automatically</li>
+                        <li>Tap the floating button on any page to translate it; YouTube subtitles translate automatically</li>
                     </ol>
                 </div>
                 <button type="button" class="ob-btn ob-primary open-settings">API Key &amp; default model</button>
@@ -471,6 +495,14 @@
                     if (h) h.postMessage({ action: 'getSettings' });
                 } catch (e) {}
             }
+            // 請 host app 開啟系統「設定」（Swift 用 openSettingsURLString 開到本 App 設定頁，
+            // 再由步驟說明引導前往 Safari → 擴充功能）。cage / 一般瀏覽器無 handler → no-op。
+            function openIosSettings() {
+                try {
+                    var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.controller;
+                    if (h) h.postMessage({ action: 'openSettings' });
+                } catch (e) {}
+            }
             // Swift 端 evaluateJavaScript 回填現值用
             window.__skApplySettings = function (apiKey, model) {
                 state.apiKey = typeof apiKey === 'string' ? apiKey : '';
@@ -584,6 +616,11 @@
                 var closeBtn = settings.querySelector('.close-settings');
                 if (closeBtn) closeBtn.addEventListener('click', closeSettings);
             }
+
+            // 引導最後一步的「開啟設定」按鈕（只作用在目前語言區塊）
+            Array.prototype.forEach.call(lang.querySelectorAll('.open-ios-settings'), function (b) {
+                b.addEventListener('click', openIosSettings);
+            });
 
             // 入口：看過 → 直接 home；沒看過 → 跑引導
             if (seenOnboard()) { finishOnboard(); }

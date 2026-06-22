@@ -91,14 +91,11 @@
 > 完成，走路徑 A 寫了 regression spec（`test/jest-unit/alarm-dispatcher.test.cjs` /
 > `drive-batch-merge.test.cjs` / `exchange-rate-and-format.test.cjs` 新增 describe）並 SANITY 驗過，
 > 從本清單移除。L2(a) 的 Google / YouTube `_runAsrSubBatch` 折疊評估後風險 > 收益，**不做**
->（輸入格式 / 輸出目標 / 時間戳生成全不同）。剩 L5 待評估。
-
-### L5 — gemini.js segment mismatch 逐段 fallback 不過 rate limiter
-- lib/gemini.js translateChunk mismatch 時逐段重打 API,不經 limiter.acquire(不計入 RPM/TPM 視窗)。
-- **為何 deferred**:修法需把 limiter 從 background 接進純 API 模組(架構改動);mismatch 罕見,逐段 fallback 內層已有 429 退避兜底,後果良性。
-- **建議**:fallback 逐段也走 limiter,或在 background 層處理 mismatch retry。
+>（輸入格式 / 輸出目標 / 時間戳生成全不同）。L5 評估後決定**永久不做**(理由見下方「非 bug / 維持原樣」段)。本段所有條目已結案。
 
 ## 已評估為「非 bug / 維持原樣」(不要再被當問題重提)
+
+- **L5 gemini.js segment mismatch 逐段 fallback 不過 rate limiter**:**永久不做**(2026-06-22)。lib/gemini.js translateChunk mismatch 時逐段重打 API 不經 limiter.acquire,但 mismatch 罕見、逐段 fallback 內層已有 429 退避兜底、後果良性;修法需把 limiter 從 background 接進純 API 模組(架構改動),ROI 不足。不再追蹤,勿重提。
 
 - **M7 PDF 多行末行被吞**:**誤報**。數學證明 fit 保證 `requiredH ≤ blockH+1`,drawText 的 `cy < pdfBottom - lineHeight` break 對成功 fit 的最後一行永不觸發(餘裕 = `fontSize×(visualRatio-1)+lineHeight-1 ≥ 5.5 > 0`)。break 只在 fallback overflow 情境清掉真的溢出的行——正確行為。移除 break 反而讓 fallback 譯文溢出蓋下個 block。2026-06-09 Plano/Quotation/Trimble 真翻譯 Read 譯文 PDF 均無末行遺失。
 - **L1 caption scale observer**:**維持觀察 #movie_player**,不縮到 .ytp-caption-window-container。YT 在字幕 toggle / 全螢幕 / 畫質切換時銷毀重建該容器,observer 掛舊容器會漏掉重建。現有 rAF 合併 + idempotent apply 已壓住成本(且只在 scale≠100 啟動)。
