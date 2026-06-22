@@ -352,9 +352,106 @@ test('floating icon: 長按選單「功能選單」叫出 popup 浮層（頁內 
   await page.waitForTimeout(1000);
   await page.screenshot({ path: testInfo.outputPath('floating-feature-panel.png') });
 
-  // (3) 收浮層
+  // (3) 浮層 iframe 寬度收緊到 popup 內容寬（issue 1：外框左右寬度與內容相符）。
+  //     popup.js（?panel=1）load 後 postMessage 內容寬（桌面 body 280px）→ 外層把 iframe
+  //     寬度設成該值，消除原本 min(94vw,360px) 外框比內容寬的左右白邊。
+  const sized = await evaluate(`(() => window.__SK._floating.getPanelFrameSize())()`);
+  expect(sized).toBeTruthy();
+  const panelW = parseInt(sized.w, 10);
+  expect(panelW).toBeGreaterThanOrEqual(260);   // 收緊到 popup 內容寬附近
+  expect(panelW).toBeLessThanOrEqual(300);       // 不再是 360 外框寬
+
+  // (4) 收浮層
   const closed = await evaluate(`(() => { window.__SK._floating.closeFeaturePanel(); return window.__SK._floating.isPanelOpen(); })()`);
   expect(closed).toBe(false);
+
+  await page.close();
+});
+
+// issue 3:disable → 重新 enable 時按鈕回到預設位置（escape hatch，比照 JRead v0.8.161）。
+// 初始載入不重置（尊重 storage 存的位置）；只有 false→true 轉移才 applyPos(null)+persist。
+//
+// SANITY 紀錄（已驗證）：把 applyEnabled 的 `if (lastEnabled === false && enabled === true)`
+//   區塊暫拿掉 → 「reenable 回預設」斷言 fail（位置仍是自訂 left/0.3）→ 還原 → pass。
+test('floating icon: disable → 重新 enable 回預設位置、初始載入不重置', async ({ context, localServer }) => {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  const result = await evaluate(`(async () => {
+    const f = window.__SK._floating;
+    // 模擬初始載入：enable + 套用 storage 存的自訂位置（lastEnabled 從 null → true，不重置）
+    f.applyEnabled(true);
+    f.applyPos({ edge: 'left', offsetY: 0.3 });
+    const afterInit = f.getPos();
+    // disable → re-enable：false→true 轉移應重置回預設（右下角 edge=right, offsetY=1）
+    f.applyEnabled(false);
+    f.applyEnabled(true);
+    const afterReenable = f.getPos();
+    const stored = await browser.storage.sync.get('floatingIconPos');
+    return { afterInit, afterReenable, stored: stored.floatingIconPos };
+  })()`);
+
+  // 初始載入套自訂位置後不被重置（尊重 storage）
+  expect(result.afterInit).toEqual({ edge: 'left', offsetY: 0.3 });
+  // disable→enable 後回預設右下角，且 persist 進 storage
+  expect(result.afterReenable).toEqual({ edge: 'right', offsetY: 1 });
+  expect(result.stored).toEqual({ edge: 'right', offsetY: 1 });
+
+  await page.close();
+});
+
+// issue 6:長按選單選引擎 → force 重譯（不先還原原文）。短按維持 toggle（force=false）。
+// 驗的是「接線層」：選單列 click 路由到 handleTranslatePreset(slot, {force:true})、
+// 短按路由到 (slot, {force:false})。force 觸發後 content.js 內「已譯→還原後 fall through 重譯」
+// 那層走真實翻譯，屬整合路徑（harness 不灌真 API），這裡鎖 force 旗標確實有帶到。
+//
+// SANITY 紀錄（已驗證）：把 buildMenu 的 `runPreset(p.slot, true)` 暫改回 `runPreset(p.slot)` →
+//   menuForce 斷言 fail（收到 force=false）→ 還原 → pass。
+test('floating icon: 選單選引擎帶 force 重譯、短按維持 toggle', async ({ context, localServer }) => {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  // 選單列 click → handleTranslatePreset(slot, {force:true})
+  const menuForce = await evaluate(`(async () => {
+    const f = window.__SK._floating;
+    f.applyEnabled(true);
+    await f.openMenu();
+    const calls = [];
+    const orig = window.__SK.handleTranslatePreset;
+    window.__SK.handleTranslatePreset = (slot, opts) => { calls.push({ slot, force: !!(opts && opts.force) }); };
+    try {
+      f.menuEl.querySelector('.menu-item[data-slot="2"]').click();
+    } finally {
+      window.__SK.handleTranslatePreset = orig;
+    }
+    return calls;
+  })()`);
+  expect(menuForce).toEqual([{ slot: 2, force: true }]);
+
+  // 短按 → handleTranslatePreset(slot, {force:false})（toggle 語意不變）
+  const shortToggle = await evaluate(`(async () => {
+    const f = window.__SK._floating;
+    await browser.storage.sync.set({ popupButtonSlot: 1 });
+    const calls = [];
+    const orig = window.__SK.handleTranslatePreset;
+    window.__SK.handleTranslatePreset = (slot, opts) => { calls.push({ slot, force: !!(opts && opts.force) }); };
+    try {
+      await f.handleShortPress();
+    } finally {
+      window.__SK.handleTranslatePreset = orig;
+      await browser.storage.sync.remove('popupButtonSlot');
+    }
+    return calls;
+  })()`);
+  expect(shortToggle).toEqual([{ slot: 1, force: false }]);
 
   await page.close();
 });

@@ -632,6 +632,25 @@ const messageHandlers = {
       return { ok: true, reloading: true };
     },
   },
+  // 懸浮按鈕長按選單的「功能選單」（Safari 路徑）：content script 不能在網頁裡 iframe 載入
+  // 擴充頁（Safari 已知限制，iOS 上會整頁 refresh），改由 background 開原生工具列 popup
+  // （browser.action.openPopup()，Safari 16+ / Chrome 支援）。openPopup 不支援 / 失敗時退而
+  // 開新分頁載入 popup.html。皆無 iframe → 不 refresh。content-floating-icon.js 只在 Safari
+  // runtime 走這條（非 Safari 維持頁內 iframe 浮層）。
+  OPEN_FEATURE_MENU: {
+    async: true,
+    handler: async () => {
+      const action = browser.action || browser.browserAction;
+      if (action && typeof action.openPopup === 'function') {
+        try {
+          await action.openPopup();
+          return { opened: 'popup' };
+        } catch (_e) { /* openPopup 不支援 / 需手勢失敗 → fall through 開新分頁 */ }
+      }
+      await browser.tabs.create({ url: browser.runtime.getURL('popup/popup.html') });
+      return { opened: 'tab' };
+    },
+  },
   TRANSLATE_BATCH: {
     async: true,
     handler: (payload, sender) => {

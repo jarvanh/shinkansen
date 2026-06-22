@@ -1914,7 +1914,10 @@
 
   // v1.4.12: 依 preset slot 觸發對應 engine + model 翻譯。
   // 行為：閒置 → 啟動對應 preset；翻譯中 → abort；已翻譯 → restorePage（任一 slot）。
-  async function handleTranslatePreset(slot) {
+  async function handleTranslatePreset(slot, opts = {}) {
+    // opts.force（懸浮按鈕長按選單選引擎時帶）：直接用指定 preset 重新翻譯，而非 toggle 還原。
+    // 一般入口（短按 / 快速鍵 / popup）維持 toggle 語意：已譯 → 還原。
+    const force = opts.force === true;
     // v1.10.57: 翻譯中判斷必須在「已翻譯」之前 —— 已翻譯改以 DOM marker 為準
     // (SK.isPageTranslated),而翻譯途中譯文是逐段注入的,marker 會提前出現,
     // 若先判 isPageTranslated 會把「翻譯中按鍵取消」誤導成 restorePage。
@@ -1927,10 +1930,13 @@
         return;
       }
     }
-    // 已翻譯（以 DOM 注入痕跡為準，不信 STATE.translated）：任意 preset 快速鍵皆還原
+    // 已翻譯（以 DOM 注入痕跡為準，不信 STATE.translated）：
+    //   - 一般入口：任意 preset 觸發皆還原（toggle）
+    //   - force（長按選單選引擎）：先還原既有譯文，再 fall through 用新 preset 重新翻譯，
+    //     避免在已注入的譯文上再疊一層；換引擎=重譯，不是 toggle 回原文。
     if (SK.isPageTranslated()) {
       restorePage();
-      return;
+      if (!force) return;
     }
     // 閒置：讀 preset 定義。若 storage 還沒寫入（例如從 v1.4.11 升級第一次按快捷鍵）
     // 就 fallback 到 SK.DEFAULT_PRESETS，避免「按鍵無反應」。

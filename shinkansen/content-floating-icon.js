@@ -79,6 +79,7 @@
       touch-action: none;          /* 自行處理拖移，禁瀏覽器捲動 / 手勢介入 */
       user-select: none;
       -webkit-user-select: none;
+      -webkit-touch-callout: none; /* iOS 長按按鈕禁 callout（copy / 分享）選取片 */
       -webkit-tap-highlight-color: transparent;
       transition: transform .15s ease, filter .15s ease;
     }
@@ -173,7 +174,16 @@
     return typeof v === 'boolean' ? v : true;
   }
 
+  // disable → 重新 enable 時按鈕回到預設位置（比照 JRead floating-icon.js v0.8.161）：
+  // 使用者把按鈕拖到不順手的角落後，到設定關掉再開即重置。初始載入（lastEnabled = null）
+  // 不重置，尊重 storage 存的位置；只有 false→true 的轉移才 applyPos(null)+persist。
+  let lastEnabled = null;
   function applyEnabled(enabled) {
+    if (lastEnabled === false && enabled === true) {
+      applyPos(null);     // sanitizePos(null) → 預設位置（右下角）
+      persistPos();
+    }
+    lastEnabled = enabled;
     host.style.display = enabled ? 'block' : 'none';
     if (!enabled) closeMenu();
   }
@@ -272,7 +282,7 @@
         e.preventDefault();
         e.stopPropagation();
         closeMenu();
-        runPreset(p.slot);
+        runPreset(p.slot, true);   // 選單選引擎 → 強制重譯，不先還原原文
       });
       menuEl.appendChild(item);
     }
@@ -330,12 +340,34 @@
     window.removeEventListener('scroll', closeMenu, true);
   }
 
-  // ─── 功能選單浮層（頁內 iframe 載入 popup.html?panel=1）────────────────────
-  // iOS / Safari 無法由 content script 程式化開啟原生 popup（openPopup 需 user gesture，
-  // 跨 runtime.sendMessage 會失效），故在頁內用 closed Shadow DOM + iframe 載入真正的
-  // popup.html 當浮層，維持單一資料源（CLAUDE.md §5）。popup.js 偵測 ?panel=1 → 關閉
-  // 動作改 postMessage('shinkansen-close-panel') 通知這裡收掉浮層。
+  // ─── 功能選單入口 ─────────────────────────────────────────────────────────
+  // Safari（macOS / iOS）不能在網頁裡 iframe 載入擴充頁（safari-web-extension:// 在 https
+  // 頁的 iframe 是 Safari 已知限制，iOS 上會整頁 refresh）→ 改叫原生工具列 popup
+  // （background 的 browser.action.openPopup()，Safari 16+ 支援），失敗則 background 退而
+  // 開新分頁載入 popup.html。皆無 iframe → 不 refresh。
+  // 非 Safari（Chrome / Firefox）維持頁內 iframe 浮層（openFeaturePanelIframe）：在頁內用
+  // closed Shadow DOM + iframe 載入真正的 popup.html?panel=1 當浮層，維持單一資料源
+  // （CLAUDE.md §5）。popup.js 偵測 ?panel=1 → 關閉動作改 postMessage('shinkansen-close-panel')。
   let panelHost = null, panelFrame = null, panelMsgHandler = null, panelKeyHandler = null;
+
+  // Safari runtime 偵測：getURL 的 scheme 為 safari-web-extension://（content script 可用）
+  function isSafariRuntime() {
+    try { return (browser.runtime.getURL('') || '').startsWith('safari-web-extension://'); }
+    catch (_e) { return false; }
+  }
+
+  function openFeaturePanel() {
+    if (isSafariRuntime()) {
+      // Safari：交給 background 開原生 popup / 新分頁；不退回 iframe（iframe 會整頁 refresh）
+      try {
+        if (SK && typeof SK.safeSendMessage === 'function') {
+          SK.safeSendMessage({ type: 'OPEN_FEATURE_MENU' }).catch(() => {});
+        }
+      } catch (_e) {}
+      return;
+    }
+    openFeaturePanelIframe();
+  }
 
   const PANEL_CSS = `
     :host, * { box-sizing: border-box; }
@@ -367,7 +399,7 @@
     if (panelKeyHandler) { window.removeEventListener('keydown', panelKeyHandler, true); panelKeyHandler = null; }
   }
 
-  function openFeaturePanel() {
+  function openFeaturePanelIframe() {
     if (panelHost) return;   // 已開著不重複開
     let popupUrl = '';
     try { popupUrl = browser.runtime.getURL('popup/popup.html') + '?panel=1'; } catch (_e) { return; }
@@ -403,15 +435,22 @@
     panelHost = pHost;
     panelFrame = frame;
     // popup.js（?panel=1）postMessage（驗 source 為本 iframe）：
-    //   close-panel → 收浮層；panel-size → 依 popup 內容高度收緊 iframe（避免底部留白），
-    //   夾在 [200, 86vh] 之間（內容比框小才縮、永不超出視窗）。
+    //   close-panel → 收浮層；panel-size → 依 popup 內容高度 / 寬度收緊 iframe（避免留白），
+    //   高度夾在 [200, 86vh]、寬度夾在 [240, 94vw] 之間（內容比框小才縮、永不超出視窗）。
     panelMsgHandler = (ev) => {
       if (!panelFrame || ev.source !== panelFrame.contentWindow || !ev.data) return;
       if (ev.data.type === 'shinkansen-close-panel') {
         closeFeaturePanel();
-      } else if (ev.data.type === 'shinkansen-panel-size' && typeof ev.data.height === 'number') {
-        const cap = Math.round(window.innerHeight * 0.86);
-        panelFrame.style.height = Math.max(200, Math.min(ev.data.height, cap)) + 'px';
+      } else if (ev.data.type === 'shinkansen-panel-size') {
+        if (typeof ev.data.height === 'number') {
+          const capH = Math.round(window.innerHeight * 0.86);
+          panelFrame.style.height = Math.max(200, Math.min(ev.data.height, capH)) + 'px';
+        }
+        // 寬度收緊到 popup 內容寬（桌面 280px），消除外框比內容寬的左右白邊（issue 1）
+        if (typeof ev.data.width === 'number' && ev.data.width > 0) {
+          const capW = Math.round(window.innerWidth * 0.94);
+          panelFrame.style.width = Math.max(240, Math.min(ev.data.width, capW)) + 'px';
+        }
       }
     };
     window.addEventListener('message', panelMsgHandler);
@@ -420,9 +459,11 @@
   }
 
   // ─── 翻譯觸發 ───────────────────────────────────────────────────────────
-  function runPreset(slot) {
+  // force=true（長按選單選引擎）：直接用該 preset 重新翻譯，不先還原原文（換引擎=重譯）。
+  // 短按走 force=false，維持 toggle 語意（已譯→還原）。
+  function runPreset(slot, force) {
     if (typeof SK.handleTranslatePreset === 'function') {
-      SK.handleTranslatePreset(slot);
+      SK.handleTranslatePreset(slot, { force: force === true });
     }
   }
 
@@ -542,9 +583,10 @@
     applyEnabled, applyOpacity, applySize, applyPos,
     resolveEnabled, pickPopupSlot,
     cornerClampTop, CORNER_DEADZONE_PX,
-    openFeaturePanel, closeFeaturePanel,
+    openFeaturePanel, openFeaturePanelIframe, closeFeaturePanel, isSafariRuntime,
     isPanelOpen: () => !!panelHost,
     getPanelFrameSrc: () => (panelFrame ? panelFrame.src : null),
+    getPanelFrameSize: () => (panelFrame ? { w: panelFrame.style.width, h: panelFrame.style.height } : null),
     isMenuOpen: () => menuOpen,
     getOpacity: () => host.style.opacity,
     getIconSize: () => iconSize,

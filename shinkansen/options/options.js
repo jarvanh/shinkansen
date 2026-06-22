@@ -176,6 +176,7 @@ async function load() {
   const floatingOpacityPct = Math.round((s.floatingIconOpacity ?? 0.7) * 100);
   $('floatingIconOpacity').value = floatingOpacityPct;
   _renderFloatingOpacityLabel(floatingOpacityPct);
+  _renderFloatingSizeDemo();
 
   // 四指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
   // 預設關（=== true 才開）；改由懸浮按鈕當主要觸控入口，四指易誤觸發故預設關。
@@ -735,6 +736,13 @@ function _renderFloatingOpacityLabel(value) {
   // 即時範例：「新」icon 跟著 slider 套用同透明度
   const demo = document.getElementById('floatingOpacityDemo');
   if (demo) demo.style.opacity = String(Math.max(0, Math.min(1, Number(value) / 100)));
+}
+
+// 透明度範例 icon 的尺寸跟著「按鈕大小」radio（16 / 32）即時變動，與真實懸浮按鈕一致。
+function _renderFloatingSizeDemo() {
+  const size = document.querySelector('input[name="floatingIconSize"]:checked')?.value === '32' ? 32 : 16;
+  const img = document.querySelector('#floatingOpacityDemo img');
+  if (img) { img.width = size; img.height = size; }
 }
 
 // v1.8.61:「金額顯示幣值」section 只在繁中 UI 顯示。
@@ -1679,6 +1687,10 @@ $('toastOpacity').addEventListener('input', () => {
 $('floatingIconOpacity').addEventListener('input', () => {
   _renderFloatingOpacityLabel($('floatingIconOpacity').value);
 });
+// 切「按鈕大小」radio → 透明度範例 icon 即時跟著放大 / 縮小
+for (const r of document.querySelectorAll('input[name="floatingIconSize"]')) {
+  r.addEventListener('change', _renderFloatingSizeDemo);
+}
 $('toastPosition').addEventListener('change', markDirty);
 
 // v1.5.0: 雙語視覺標記 radio 切換 → 即時更新 demo wrapper
@@ -1714,11 +1726,22 @@ for (const btn of document.querySelectorAll('.dual-accent-swatch')) {
   }
 }
 
+// 「回復預設設定」要排除在外的 sync key：Instapaper 帳號連結是使用者一次性 OAuth
+// 授權（email + 密碼換來的 token / secret / username，密碼用完即丟），重新連結需再次
+// 輸入密碼，屬於「帳號連結」而非「設定偏好」，不該被「回復預設」清掉 → 先存後還原。
+const RESET_PRESERVE_KEYS = ['instapaperToken', 'instapaperTokenSecret', 'instapaperUsername'];
 $('reset-defaults').addEventListener('click', async () => {
   if (!confirm(_t('options.reset.confirm'))) return;
   // v0.62 起：apiKey 在 browser.storage.local，不在 sync 裡，
   // 所以直接 clear sync 即可；apiKey 自然不受影響。
+  const preserved = await browser.storage.sync.get(RESET_PRESERVE_KEYS);
   await browser.storage.sync.clear();
+  // clear 後把要保留的帳號連結寫回（只還原實際存在的 key，避免寫入 undefined）
+  const restore = {};
+  for (const k of RESET_PRESERVE_KEYS) {
+    if (preserved[k] !== undefined) restore[k] = preserved[k];
+  }
+  if (Object.keys(restore).length) await browser.storage.sync.set(restore);
   await load();
   showSaveBar('saved', _t('options.reset.done'));
 });

@@ -19,7 +19,12 @@
       :host, * { box-sizing: border-box; }
       .toast {
         position: fixed;
-        width: 280px;
+        /* 依內容自動調整寬度（短訊息不再佔 280px），夾在 [180px, 320px] 之間：
+           長訊息 / detail / 更新提示在 max-content 撐到上限後改換行，短訊息（「已還原原文」
+           等）縮到內容寬。只設 right/left 其一（pos-* class），故 shrink-to-fit 生效。 */
+        width: max-content;
+        min-width: 180px;
+        max-width: min(320px, calc(100vw - 40px));
         padding: 14px 16px 12px 16px;
         background: #ffffff;
         color: #1d1d1f;
@@ -453,6 +458,13 @@
         document.addEventListener('mousedown', toastOutsideHandler, true);
       }, 0);
     }
+  };
+
+  // regression 用（isolated world）：toast 為 closed shadow，外部量不到寬度；
+  // 暴露 toast 元素的 bounding rect 供「依內容自動調整寬度」斷言（與 SK.shouldShowToast 同性質測試 seam）。
+  SK._getToastRect = function _getToastRect() {
+    const r = toastEl.getBoundingClientRect();
+    return { width: r.width, height: r.height };
   };
 
   SK.hideToast = function hideToast() {

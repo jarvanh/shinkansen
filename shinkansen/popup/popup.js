@@ -32,8 +32,11 @@ if (IS_PANEL) {
    // 真實內容；body 高度才是內容本身）。
   const postPanelSize = () => {
     try {
-      const h = Math.ceil(document.body.getBoundingClientRect().height);
-      window.parent.postMessage({ type: 'shinkansen-panel-size', height: h }, '*');
+      const rect = document.body.getBoundingClientRect();
+      const h = Math.ceil(rect.height);
+      // 一併回報內容寬度，讓外層 iframe 收緊到 popup 實際寬（桌面 280px），不留左右白邊。
+      const w = Math.ceil(rect.width);
+      window.parent.postMessage({ type: 'shinkansen-panel-size', height: h, width: w }, '*');
     } catch (_e) {}
   };
   window.addEventListener('load', postPanelSize);
