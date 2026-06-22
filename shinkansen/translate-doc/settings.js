@@ -10,9 +10,9 @@
 // 觸發：從 translate-doc/index.html 工具列「翻譯設定」modal 內「進階設定 →」
 // 按鈕用 chrome.tabs.create 開新 tab 進來
 //
-// UI 風格對齊 options/options.js:button.primary 儲存按鈕 + save-bar 紅綠提示條,
-// 任何 input/change 觸發 markDirty 在頂端顯示「有未儲存的變更」紅條,儲存後
-// 換綠條「✓ 已儲存」3 秒後消失。
+// UI 風格對齊 options/options.js:自動存檔（手動儲存按鈕已移除）+ save-bar 提示條,
+// 任何 input/change 觸發 markDirty → debounce 後自動 save(),頂端先顯示「儲存中」再
+// 換綠條「已自動儲存」3 秒後消失。
 
 import { browser } from '../lib/compat.js';
 import { getSettings, DEFAULT_SETTINGS, DEFAULT_DOC_SYSTEM_PROMPT } from '../lib/storage.js';
@@ -60,7 +60,26 @@ async function initI18n() {
   });
 }
 
+// 自動存檔：手動儲存按鈕已移除，任一 input/change → markDirty → debounce 後 save()。
+// _saveInFlight / _savePending 防並發 read-modify-write 互蓋，並把 in-flight 期間的
+// 變更補存一次（對齊 options.js 同套機制）。
+let _saveInFlight = false;
+let _savePending = false;
 async function save() {
+  if (_saveInFlight) { _savePending = true; return; }
+  _saveInFlight = true;
+  try {
+    await _saveImpl();
+    while (_savePending) {
+      _savePending = false;
+      await _saveImpl();
+    }
+  } finally {
+    _saveInFlight = false;
+  }
+}
+
+async function _saveImpl() {
   // 讀現有 settings 再 merge — 不踩到使用者其他設定
   const existing = (await browser.storage.sync.get(null)) || {};
   const td = existing.translateDoc || {};
@@ -98,16 +117,20 @@ function hideSaveBar() {
   bar.hidden = true;
   if (saveBarHideTimer) { clearTimeout(saveBarHideTimer); saveBarHideTimer = null; }
 }
+let _autoSaveTimer = null;
+function scheduleAutoSave() {
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => { _autoSaveTimer = null; save(); }, 600);
+}
 function markDirty() {
   if (!initialLoaded) return; // load() 階段觸發的 input 不算 dirty
+  scheduleAutoSave();
   const bar = $('save-bar');
   if (bar.classList.contains('saved') && !bar.hidden) return;
   showSaveBar('dirty', t('doc.settingsPage.saveBar.dirty'));
 }
 document.querySelector('.container').addEventListener('input', markDirty);
 document.querySelector('.container').addEventListener('change', markDirty);
-
-$('td-save-btn').addEventListener('click', save);
 
 $('td-reset-prompt').addEventListener('click', () => {
   $('td-systemPrompt').value = DEFAULT_DOC_SYSTEM_PROMPT;

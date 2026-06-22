@@ -117,13 +117,14 @@ test('UI / target 解耦:切 targetLanguage(經 storage)不會 reapply UI(uiLang
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#tab-settings');
-  await expect(page.locator('[data-i18n="options.action.save"]').first()).toHaveText('儲存設定');
+  // sentinel：手動儲存按鈕已移除改自動存檔，改用「介面語言」標題判斷 UI dict 語系
+  await expect(page.locator('[data-i18n="options.uiLanguage.heading"]')).toHaveText('介面語言');
 
   // 模擬 popup 寫 storage 切 target=en → UI 應仍繁中(uiLanguage 鎖死)
   await setStorage(context, { targetLanguage: 'en' });
   await page.waitForTimeout(300);
   await expect(
-    page.locator('[data-i18n="options.action.save"]').first(),
+    page.locator('[data-i18n="options.uiLanguage.heading"]'),
     'target 切換不該改變 UI dict(因為 uiLanguage 已明確鎖到 zh-TW)',
-  ).toHaveText('儲存設定');
+  ).toHaveText('介面語言');
 });

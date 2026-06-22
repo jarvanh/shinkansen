@@ -167,16 +167,20 @@ async function load() {
   // v1.6.8: Toast master switch
   $('showProgressToast').checked = s.showProgressToast !== false;
 
-  // 懸浮翻譯按鈕：enable（null = 平台預設，桌面 false / iOS true）+ 透明度
-  $('floatingIcon').checked = typeof s.floatingIcon === 'boolean' ? s.floatingIcon : IS_IOS_BUILD;
+  // 懸浮翻譯按鈕：enable（null = 一律預設開啟）+ 大小 + 透明度
+  $('floatingIcon').checked = typeof s.floatingIcon === 'boolean' ? s.floatingIcon : true;
+  const floatingSize = s.floatingIconSize === 32 ? 32 : 16;
+  for (const r of document.querySelectorAll('input[name="floatingIconSize"]')) {
+    r.checked = (r.value === String(floatingSize));
+  }
   const floatingOpacityPct = Math.round((s.floatingIconOpacity ?? 0.7) * 100);
   $('floatingIconOpacity').value = floatingOpacityPct;
   _renderFloatingOpacityLabel(floatingOpacityPct);
 
   // 四指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
-  // 預設開（!== false）；桌面隱藏的 checkbox 仍維持 true，存檔不會誤寫 false。
+  // 預設關（=== true 才開）；改由懸浮按鈕當主要觸控入口，四指易誤觸發故預設關。
   $('four-finger-section').hidden = !IS_IOS_BUILD;
-  $('fourFingerGesture').checked = s.fourFingerGesture !== false;
+  $('fourFingerGesture').checked = s.fourFingerGesture === true;
 
   // 送到 Instapaper：enable 開關 + 連結狀態（已連結時顯示帳號 + 解除連結）
   $('instapaperEnabled').checked = s.instapaperEnabled === true;
@@ -488,8 +492,7 @@ function renderShortcutRecorders() {
 
 function saveShortcutTable() {
   browser.storage.sync.set({ customShortcuts: shortcutTable }).then(() => {
-    $('save-status').textContent = _t('options.action.saved');
-    setTimeout(() => { $('save-status').textContent = ''; }, 2000);
+    showSaveBar('saved', _t('options.action.savedBar'));
   }).catch(() => {});
 }
 
@@ -919,12 +922,19 @@ function updateYtPromptCostHint() {
 // 兩個 Tab 的儲存按鈕共用同一個 save()，快速連按 / 跨 Tab 同時改 / 打字+按鈕同時觸發
 // → 後一筆 set 可能蓋掉前一筆 get 之間的 in-flight 變更。
 let _saveInFlight = false;
+let _savePending = false;
 
 async function save() {
-  if (_saveInFlight) return;
+  // 自動存檔下，存檔期間若又有變更進來，記成 pending，存完再補存一次抓最後狀態，
+  // 避免 in-flight 期間的變更被 _saveInFlight 早退吃掉而漏存。
+  if (_saveInFlight) { _savePending = true; return; }
   _saveInFlight = true;
   try {
-    return await _saveImpl();
+    await _saveImpl();
+    while (_savePending) {
+      _savePending = false;
+      await _saveImpl();
+    }
   } finally {
     _saveInFlight = false;
   }
@@ -1007,6 +1017,7 @@ async function _saveImpl() {
     showProgressToast: $('showProgressToast').checked,
     // 懸浮翻譯按鈕：使用者明確切過 → 一律寫 boolean（之後不再走平台預設）
     floatingIcon: $('floatingIcon').checked,
+    floatingIconSize: (document.querySelector('input[name="floatingIconSize"]:checked')?.value === '32') ? 32 : 16,
     floatingIconOpacity: parseUserNum($('floatingIconOpacity').value, (DEFAULTS.floatingIconOpacity ?? 0.7) * 100) / 100,
     // 四指觸控手勢 enable（iOS only；桌面 checkbox 隱藏但維持 loaded 值，不誤寫）
     fourFingerGesture: $('fourFingerGesture').checked,
@@ -1171,21 +1182,11 @@ async function _saveImpl() {
   const cpApiKeyValue = ($('cp-apiKey').value || '').trim();
   await browser.storage.local.set({ customProviderApiKey: cpApiKeyValue });
   await browser.storage.sync.set(settings);
-  $('save-status').textContent = _t('options.action.saved');
-  setTimeout(() => { $('save-status').textContent = ''; }, 2000);
-  // v0.94: 顯示綠色已儲存提示條
+  // 顯示綠色「已自動儲存」提示條（手動儲存按鈕已移除，改自動存檔）
   showSaveBar('saved', _t('options.action.savedBar'));
 }
 
-$('save').addEventListener('click', save);
-// v1.0.28: Gemini 分頁也共用同一個 save()
-$('save-gemini').addEventListener('click', save);
-// v1.0.29: 術語表分頁也共用同一個 save()
-$('save-glossary').addEventListener('click', save);
-// v1.5.6: 禁用詞清單分頁
-$('save-forbidden').addEventListener('click', save);
-// v1.5.7: 自訂 Provider 分頁
-$('save-custom-provider').addEventListener('click', save);
+// 自動存檔：手動「儲存設定」按鈕已移除，任一控制項變更由 markDirty → scheduleAutoSave 觸發 save()。
 
 // v1.5.7: 自訂 Provider API Key 顯示 / 隱藏切換
 $('cp-toggle-apiKey').addEventListener('click', () => {
@@ -1321,10 +1322,6 @@ function _syncForbiddenTermsToTarget(tl) {
   renderForbiddenTermsTable();
 }
 
-// v1.2.11: YouTube 字幕分頁
-$('save-youtube').addEventListener('click', save);
-// Debug 分頁
-$('save-debug').addEventListener('click', save);
 $('yt-reset-prompt').addEventListener('click', () => {
   // P1: 依當前 target 給對應 effective default(zh-TW 走原 DEFAULT_SUBTITLE,其他走 UNIVERSAL 注入後)
   const tl = _currentTargetLang;
@@ -1448,9 +1445,18 @@ function showSaveBar(state, text) {
     saveBarHideTimer = setTimeout(() => { bar.hidden = true; }, 3000);
   }
 }
+// ─── 自動存檔 ──────────────────────────────────────────────
+// 手動「儲存設定」按鈕已移除：任一控制項變更 → markDirty → debounce 後自動 save()，
+// 使用者不需手動存檔。debounce 讓連續打字 / 拉 slider 只在停手後存一次。
+let _autoSaveTimer = null;
+function scheduleAutoSave() {
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => { _autoSaveTimer = null; save(); }, 600);
+}
 function markDirty() {
+  scheduleAutoSave();
   const bar = $('save-bar');
-  // 若目前是「已儲存」狀態，不立即覆蓋（等它自己消失）
+  // 若目前是「已自動儲存」綠條還在，不立即覆蓋（等它自己消失）
   if (bar.classList.contains('saved') && !bar.hidden) return;
   showSaveBar('dirty', _t('options.action.dirtyBar'));
 }
@@ -1714,12 +1720,7 @@ $('reset-defaults').addEventListener('click', async () => {
   // 所以直接 clear sync 即可；apiKey 自然不受影響。
   await browser.storage.sync.clear();
   await load();
-  $('save-status').textContent = _t('options.reset.done');
-  $('save-status').style.color = '#34c759';
-  setTimeout(() => {
-    $('save-status').textContent = '';
-    $('save-status').style.color = '';
-  }, 3000);
+  showSaveBar('saved', _t('options.reset.done'));
 });
 
 // v0.88: 舊的 view-logs 按鈕已移除，Log 改為獨立分頁
@@ -1765,7 +1766,8 @@ function sanitizeImport(raw) {
     autoTranslateSlot:   { type: 'number', min: 1, max: 3, int: true }, // v1.6.13
     modelPricingOverrides: { type: 'object' }, // v1.6.14
     showProgressToast:   { type: 'boolean' }, // v1.6.8
-    floatingIcon:        { type: 'boolean', nullable: true }, // 懸浮按鈕 enable（null = 平台預設）
+    floatingIcon:        { type: 'boolean', nullable: true }, // 懸浮按鈕 enable（null = 預設開啟）
+    floatingIconSize:    { type: 'number', oneOf: [16, 32] }, // icon 邊長 px（16 小 / 32 大）
     floatingIconOpacity: { type: 'number', min: 0.1, max: 1 },
     floatingIconPos:     { type: 'object' }, // { edge, offsetY }，content script 拖移後寫入
     fourFingerGesture:   { type: 'boolean' }, // 四指觸控手勢 enable（iOS）

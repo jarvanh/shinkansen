@@ -1193,6 +1193,30 @@ shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-de
   margin: 0;
 }
 
+/* 懸浮按鈕大小選擇：前置 label + 兩個 radio（小 / 大）水平排列 */
+.floating-size-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+}
+.floating-size-options > span {
+  font-size: 13px;
+  color: #1d1d1f;
+}
+.floating-size-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #1d1d1f;
+  cursor: pointer;
+}
+.floating-size-options input[type="radio"] {
+  margin: 0;
+}
+
 .footer-easter-egg {
   text-align: center;
   font-size: 11px;

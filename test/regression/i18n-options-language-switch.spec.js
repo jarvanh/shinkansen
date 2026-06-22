@@ -11,7 +11,9 @@
 //   options.js 同時在 (a)#uiLanguage change handler 內,(b)init 內
 //   subscribeUiLanguageChange callback 內呼叫 applyI18n;只 disable (a)spec 仍綠
 //   (因為 storage write → onChanged → (b)reapply)。兩條都 disable 才 fail
-//   (Expected「保存设置」/ Received「儲存設定」)。還原兩條 → 全綠。
+//   (Expected「界面语言」/ Received「介面語言」)。還原兩條 → 全綠。
+//   （2026-06-22:手動儲存按鈕移除改自動存檔，sentinel 從 options.action.save 改成
+//    options.uiLanguage.heading「介面語言」。）
 //
 // SANITY 紀錄 2(tab-bar wrap,2026-05-08):把 options.css 的 .tab-bar
 // `flex-wrap: wrap` comment 掉 → 「最後一個 tab(Debug)應折行到第二列」
@@ -32,23 +34,20 @@ test('options 載入後依 uiLanguage 切 dict + #uiLanguage 切換時即時 rea
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#uiLanguage');
-  // 等 init() applyI18n 完成
-  await expect(page.locator('[data-i18n="options.action.save"]').first()).toHaveText('儲存設定');
+  // 等 init() applyI18n 完成（手動儲存按鈕已移除改自動存檔，sentinel 改用「介面語言」標題）
   await expect(page.locator('[data-i18n="options.uiLanguage.heading"]')).toHaveText('介面語言');
 
   // 從 picker 切 zh-CN(同時觸發 storage write + applyI18n reapply)
   await page.selectOption('#uiLanguage', 'zh-CN');
-  await expect(page.locator('[data-i18n="options.action.save"]').first()).toHaveText('保存设置');
   await expect(page.locator('[data-i18n="options.uiLanguage.heading"]')).toHaveText('界面语言');
 
   // 切 en
   await page.selectOption('#uiLanguage', 'en');
-  await expect(page.locator('[data-i18n="options.action.save"]').first()).toHaveText('Save settings');
   await expect(page.locator('[data-i18n="options.uiLanguage.heading"]')).toHaveText('Interface language');
 
   // 切 'auto' → headless chromium navigator.language=en → en dict
   await page.selectOption('#uiLanguage', 'auto');
-  await expect(page.locator('[data-i18n="options.action.save"]').first()).toHaveText('Save settings');
+  await expect(page.locator('[data-i18n="options.uiLanguage.heading"]')).toHaveText('Interface language');
 
   // v1.8.60 修補:en label 較長 → tab-bar 必須 flex-wrap 讓 tab 折行
   // (不可只靠水平捲軸,使用者看不出來「右邊還有 tab」),且最後一個 tab(Debug)

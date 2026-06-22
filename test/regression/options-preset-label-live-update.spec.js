@@ -6,7 +6,7 @@
 //
 // SANITY 紀錄(已驗證 v1.8.17 release 前):
 //   把 options.js 中 preset-label-{slot} 的 input listener 註解掉(三 slot 全 disable),
-//   spec fail(Expected「預設 2:我的測試標籤」/ Received「預設 2:Flash Lite」)。
+//   spec fail(Expected「預設 2:我的測試標籤」/ Received「預設 2:Flash」)。
 //   還原 listener → pass。
 
 import { test, expect } from '../fixtures/extension.js';
@@ -24,8 +24,9 @@ test('preset 標籤改變時下游兩個下拉選單即時更新', async ({ cont
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.waitForSelector('#preset-label-1');
-  // init() 載入完成後 option text 應已組好為「預設 2:Flash Lite」(預設值)
-  await expect(page.locator('#popup-button-slot option[value="1"]')).toHaveText('預設 2：Flash Lite');
+  // init() 載入完成後 option text 應已組好為「預設 2:Flash」(預設值)
+  // （2026-06-22:preset slot 1↔2 預設對調後,「預設 2」slot 預設 model 由 Flash Lite 改成 Flash）
+  await expect(page.locator('#popup-button-slot option[value="1"]')).toHaveText('預設 2：Flash');
 
   // 改 slot 1 的標籤,popup-button-slot 與 auto-translate-slot 的對應 option 應立刻更新
   await page.fill('#preset-label-1', '我的測試標籤');

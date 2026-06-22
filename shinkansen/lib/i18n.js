@@ -150,8 +150,8 @@
     'options.action.testingConnect': '正在連線測試⋯',
     'options.action.connectOk': '連線成功',
     'options.action.saved': '✓ 已儲存',
-    'options.action.dirtyBar': '有未儲存的變更',
-    'options.action.savedBar': '設定已儲存',
+    'options.action.dirtyBar': '儲存中⋯',
+    'options.action.savedBar': '已自動儲存',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 有新版可下載',
@@ -163,7 +163,7 @@
     'options.uiLanguage.heading': '介面語言',
     'options.uiLanguage.label': '擴充功能介面顯示',
     'options.uiLanguage.auto': '自動（跟瀏覽器設定）',
-    'options.uiLanguage.hint': '控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟工具列圖示中的「翻譯目標語言」獨立，互不影響',
+    'options.uiLanguage.hint': '控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟工具列圖示選單中的「翻譯目標語言」獨立，互不影響',
 
     'popup.label.targetLanguage': '翻譯成',
 
@@ -178,7 +178,7 @@
     // ── 送到 Instapaper ────────────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': '啟用「送到 Instapaper」',
-    'options.instapaper.enableHint': '啟用後，工具列視窗會出現「送到 Instapaper」按鈕，也可用快速鍵 Alt+I，把目前（翻譯後）的整頁存到你的 Instapaper',
+    'options.instapaper.enableHint': '啟用後，工具列圖示選單會出現「送到 Instapaper」按鈕，也可用快速鍵 Alt+I，把目前（翻譯後）的整頁存到你的 Instapaper',
     'options.instapaper.summary': '送出時附上文章摘要',
     'options.instapaper.summaryHint': '摘要會顯示在 Instapaper 項目底下，使用你的翻譯目標語言，固定以最便宜的 Gemini Flash Lite 產生（需要有效的 Gemini API Key）。每次送出會多一筆極小的用量；沒有 Gemini Key 或摘要失敗時自動略過，書籤照常送出',
     'options.instapaper.emailLabel': 'Instapaper 帳號 Email',
@@ -233,7 +233,7 @@
 
     // ── options 工具列按鈕對應 ───────────────────────────
     'options.popupBtn.heading': '工具列「翻譯本頁」按鈕',
-    'options.popupBtn.intro': '點擊瀏覽器工具列上的 Shinkansen 圖示後，跳出視窗中「翻譯本頁」按鈕要使用哪一組設定（與翻譯快速鍵共用三組預設）',
+    'options.popupBtn.intro': '點擊瀏覽器工具列上的 Shinkansen 圖示後，工具列圖示選單中「翻譯本頁」按鈕要使用哪一組設定（與翻譯快速鍵共用三組預設）',
     'options.popupBtn.label': '對應的翻譯預設',
 
     // ── options 網域規則 ─────────────────────────────────
@@ -280,16 +280,19 @@
     'options.toast.opacityHint': '如果覺得太搶眼，可以往左拉降低不透明度，讓通知變淡一點',
     'options.toast.autoHide': '翻譯完成後自動關閉通知',
     'options.toast.autoHideHint': '開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉',
-    // 懸浮翻譯按鈕
-    'options.floating.heading': '懸浮翻譯按鈕',
-    'options.floating.intro': '在頁面邊緣顯示一顆可拖移的圓形按鈕，短按用預設翻譯、長按選三組預設，可拖到左右任一邊吸附',
-    'options.floating.enable': '顯示懸浮翻譯按鈕',
-    'options.floating.enableHint': '手機 / 平板預設開啟、桌面瀏覽器預設關閉；短按等同工具列「翻譯本頁」按鈕的預設',
+    // 懸浮按鈕
+    'options.floating.heading': '懸浮按鈕',
+    'options.floating.intro': '在頁面邊緣顯示一顆可拖移的按鈕，短按用預設翻譯、長按選三組預設，可拖到左右任一邊吸附',
+    'options.floating.enable': '顯示懸浮按鈕',
+    'options.floating.enableHint': '預設開啟；短按等同工具列「翻譯本頁」按鈕的預設',
+    'options.floating.size': '按鈕大小',
+    'options.floating.sizeSmall': '小',
+    'options.floating.sizeLarge': '大',
     'options.floating.opacity': '按鈕透明度 {value}%',
     'options.floating.opacityHint': '覺得太搶眼可以往左拉降低不透明度，讓按鈕變淡一點',
     // 四指觸控翻譯（iOS / iPadOS）
     'options.fourFinger.heading': '四指觸控翻譯',
-    'options.fourFinger.intro': '在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；關閉後仍可用硬體鍵盤快速鍵與懸浮按鈕',
+    'options.fourFinger.intro': '預設關閉，避免誤觸發。開啟後在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；懸浮按鈕與硬體鍵盤快速鍵不受此開關影響',
     'options.fourFinger.enable': '啟用四指觸控手勢',
 
     // ── options 金額顯示幣值 ─────────────────────────────
@@ -385,9 +388,9 @@
     'options.gemini.quota.retriesHint': '單批翻譯遇到 API 錯誤（如 429 配額限制）時的最大重試次數，設為 0 表示不重試、失敗即跳過，預設 3 次',
 
     'options.gemini.resetAll': '重設所有參數',
-    'options.gemini.resetAllTitle': '把本分頁所有欄位重設為預設值（按下後仍需點「儲存設定」才會生效）',
-    'options.gemini.resetAllConfirm': '確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：Service Tier、模型計價覆蓋（清空走內建表）、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後仍需點「儲存設定」才會生效。',
-    'options.gemini.resetAllDone': '欄位已重設，請按「儲存設定」生效',
+    'options.gemini.resetAllTitle': '把本分頁所有欄位重設為預設值（會自動儲存）',
+    'options.gemini.resetAllConfirm': '確定要把 Gemini 分頁所有參數重設為預設值嗎？\n\n影響欄位：Service Tier、模型計價覆蓋（清空走內建表）、Tier/RPM/TPM/RPD、安全邊際、重試次數、Temperature、Max Output Tokens、翻譯 Prompt、並發批次、每批段數/字元/段落上限。\n\n按下後會自動儲存。',
+    'options.gemini.resetAllDone': '欄位已重設並自動儲存',
 
     // ── options Gemini cost-hint(動態 yt-prompt-cost-hint) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate 不會送 prompt</strong>，這兩個 toggle 對 Google MT 不適用',
@@ -836,8 +839,8 @@
     'doc.settingsPage.danger.hint.html': '系統會把每次翻譯結果記在本機，下次翻同一段文字直接用，不重複收費。按下這個按鈕會清掉所有文件的翻譯記憶 — 下次翻舊文件會重新呼叫 AI（也會重新計費）。<br>適用情境：換了上面的「翻譯指令」想全部重翻試試；或覺得舊翻譯品質不好想重來。<br><strong>不影響網頁翻譯、字幕翻譯、術語表的記憶</strong>',
     'doc.settingsPage.btn.clearAllCache': '清除所有文件翻譯記憶',
     'doc.settingsPage.btn.save': '儲存設定',
-    'doc.settingsPage.saveBar.saved': '✓ 已儲存',
-    'doc.settingsPage.saveBar.dirty': '有未儲存的變更',
+    'doc.settingsPage.saveBar.saved': '已自動儲存',
+    'doc.settingsPage.saveBar.dirty': '儲存中⋯',
     'doc.settingsPage.confirm.clearAllCache': '確定要清掉所有文件翻譯記憶嗎？\n\n清除後，之前翻過的文件下次再翻會重新呼叫 AI（也會重新計費）。\n\n網頁翻譯、字幕翻譯不受影響。',
     'doc.settingsPage.cache.cleared': '✓ 已清除 {n} 筆翻譯記憶',
     'doc.settingsPage.cache.failed': '✗ 清除失敗：{error}',
@@ -981,8 +984,8 @@
     'options.action.testingConnect': '正在连接测试⋯',
     'options.action.connectOk': '连接成功',
     'options.action.saved': '✓ 已保存',
-    'options.action.dirtyBar': '有未保存的更改',
-    'options.action.savedBar': '设置已保存',
+    'options.action.dirtyBar': '保存中⋯',
+    'options.action.savedBar': '已自动保存',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 有新版可下载',
@@ -994,7 +997,7 @@
     'options.uiLanguage.heading': '界面语言',
     'options.uiLanguage.label': '扩展功能界面显示',
     'options.uiLanguage.auto': '自动（跟浏览器设置）',
-    'options.uiLanguage.hint': '控制工具栏图标、设置页、翻译进度通知等扩展功能界面字符串的语言。跟工具栏图标中的「翻译目标语言」独立，互不影响',
+    'options.uiLanguage.hint': '控制工具栏图标、设置页、翻译进度通知等扩展功能界面字符串的语言。跟工具栏图标菜单中的「翻译目标语言」独立，互不影响',
 
     'popup.label.targetLanguage': '翻译成',
 
@@ -1009,7 +1012,7 @@
     // ── 发送到 Instapaper ──────────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': '启用「发送到 Instapaper」',
-    'options.instapaper.enableHint': '启用后，工具栏弹窗会出现「发送到 Instapaper」按钮，也可用快捷键 Alt+I，把当前（翻译后）的整页保存到你的 Instapaper',
+    'options.instapaper.enableHint': '启用后，工具栏图标菜单会出现「发送到 Instapaper」按钮，也可用快捷键 Alt+I，把当前（翻译后）的整页保存到你的 Instapaper',
     'options.instapaper.summary': '发送时附上文章摘要',
     'options.instapaper.summaryHint': '摘要会显示在 Instapaper 条目下方，使用你的翻译目标语言，固定用最便宜的 Gemini Flash Lite 生成（需要有效的 Gemini API Key）。每次发送会多一笔极小的用量；没有 Gemini Key 或摘要失败时自动跳过，书签照常发送',
     'options.instapaper.emailLabel': 'Instapaper 账号 Email',
@@ -1064,7 +1067,7 @@
 
     // ── options 工具栏按钮对应 ───────────────────────────
     'options.popupBtn.heading': '工具栏「翻译本页」按钮',
-    'options.popupBtn.intro': '点击浏览器工具栏上的 Shinkansen 图标后，弹出窗口中「翻译本页」按钮要使用哪一组设置（与翻译快捷键共用三组预设）',
+    'options.popupBtn.intro': '点击浏览器工具栏上的 Shinkansen 图标后，工具栏图标菜单中「翻译本页」按钮要使用哪一组设置（与翻译快捷键共用三组预设）',
     'options.popupBtn.label': '对应的翻译预设',
 
     // ── options 域名规则 ─────────────────────────────────
@@ -1111,14 +1114,17 @@
     'options.toast.opacityHint': '如果觉得太显眼，可以往左拉降低不透明度，让通知变淡一点',
     'options.toast.autoHide': '翻译完成后自动关闭通知',
     'options.toast.autoHideHint': '开启时翻译完成的通知会在 5 秒后自动消失；关闭时需手动点击关闭',
-    'options.floating.heading': '悬浮翻译按钮',
-    'options.floating.intro': '在页面边缘显示一颗可拖动的圆形按钮，轻按用默认翻译、长按选三组预设，可拖到左右任一边吸附',
-    'options.floating.enable': '显示悬浮翻译按钮',
-    'options.floating.enableHint': '手机 / 平板默认开启、桌面浏览器默认关闭；轻按等同工具栏「翻译本页」按钮的默认',
+    'options.floating.heading': '悬浮按钮',
+    'options.floating.intro': '在页面边缘显示一颗可拖动的按钮，轻按用默认翻译、长按选三组预设，可拖到左右任一边吸附',
+    'options.floating.enable': '显示悬浮按钮',
+    'options.floating.enableHint': '默认开启；轻按等同工具栏「翻译本页」按钮的默认',
+    'options.floating.size': '按钮大小',
+    'options.floating.sizeSmall': '小',
+    'options.floating.sizeLarge': '大',
     'options.floating.opacity': '按钮透明度 {value}%',
     'options.floating.opacityHint': '觉得太显眼可以往左拉降低不透明度，让按钮变淡一点',
     'options.fourFinger.heading': '四指触控翻译',
-    'options.fourFinger.intro': '在手机 / 平板用四根手指轻点页面即翻译、四指长按用次要预设；关闭后仍可用硬件键盘快捷键与悬浮按钮',
+    'options.fourFinger.intro': '默认关闭，避免误触发。开启后在手机 / 平板用四根手指轻点页面即翻译、四指长按用次要预设；悬浮按钮与硬件键盘快捷键不受此开关影响',
     'options.fourFinger.enable': '启用四指触控手势',
 
     // ── options 金额显示币值 ─────────────────────────────
@@ -1214,9 +1220,9 @@
     'options.gemini.quota.retriesHint': '单批翻译遇到 API 错误（如 429 配额限制）时的最大重试次数，设为 0 表示不重试、失败即跳过，默认 3 次',
 
     'options.gemini.resetAll': '重置所有参数',
-    'options.gemini.resetAllTitle': '把本分页所有字段重置为默认值（按下后仍需点「保存设置」才会生效）',
-    'options.gemini.resetAllConfirm': '确定要把 Gemini 分页所有参数重置为默认值吗？\n\n影响字段：Service Tier、模型计价覆盖（清空走内置表）、Tier/RPM/TPM/RPD、安全边际、重试次数、Temperature、Max Output Tokens、翻译 Prompt、并发批次、每批段数/字符/段落上限。\n\n按下后仍需点「保存设置」才会生效。',
-    'options.gemini.resetAllDone': '字段已重置，请按「保存设置」生效',
+    'options.gemini.resetAllTitle': '把本分页所有字段重置为默认值（会自动保存）',
+    'options.gemini.resetAllConfirm': '确定要把 Gemini 分页所有参数重置为默认值吗？\n\n影响字段：Service Tier、模型计价覆盖（清空走内置表）、Tier/RPM/TPM/RPD、安全边际、重试次数、Temperature、Max Output Tokens、翻译 Prompt、并发批次、每批段数/字符/段落上限。\n\n按下后会自动保存。',
+    'options.gemini.resetAllDone': '字段已重置并自动保存',
 
     // ── options Gemini cost-hint(动态 yt-prompt-cost-hint) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate 不会发送 prompt</strong>，这两个 toggle 对 Google MT 不适用',
@@ -1663,8 +1669,8 @@
     'doc.settingsPage.danger.hint.html': '系统会把每次翻译结果记在本机，下次翻同一段文字直接用，不重复收费。点这个按钮会清掉所有文档的翻译记忆 — 下次翻旧文档会重新调用 AI（也会重新计费）。<br>适用场景：换了上面的「翻译指令」想全部重翻试试；或觉得旧翻译质量不好想重来。<br><strong>不影响网页翻译、字幕翻译、术语表的记忆</strong>',
     'doc.settingsPage.btn.clearAllCache': '清除所有文档翻译记忆',
     'doc.settingsPage.btn.save': '保存设置',
-    'doc.settingsPage.saveBar.saved': '✓ 已保存',
-    'doc.settingsPage.saveBar.dirty': '有未保存的更改',
+    'doc.settingsPage.saveBar.saved': '已自动保存',
+    'doc.settingsPage.saveBar.dirty': '保存中⋯',
     'doc.settingsPage.confirm.clearAllCache': '确定要清除所有文档翻译记忆吗？\n\n清除后，之前翻过的文档下次再翻会重新调用 AI（也会重新计费）。\n\n网页翻译、字幕翻译不受影响。',
     'doc.settingsPage.cache.cleared': '✓ 已清除 {n} 条翻译记忆',
     'doc.settingsPage.cache.failed': '✗ 清除失败：{error}',
@@ -1808,8 +1814,8 @@
     'options.action.testingConnect': 'Connection test in progress…',
     'options.action.connectOk': 'Connected',
     'options.action.saved': '✓ Saved',
-    'options.action.dirtyBar': 'Unsaved changes',
-    'options.action.savedBar': 'Settings saved',
+    'options.action.dirtyBar': 'Saving…',
+    'options.action.savedBar': 'Auto-saved',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Update available',
@@ -1821,7 +1827,7 @@
     'options.uiLanguage.heading': 'Interface language',
     'options.uiLanguage.label': 'Extension UI shown in',
     'options.uiLanguage.auto': 'Automatic (follow browser locale)',
-    'options.uiLanguage.hint': 'Controls the language of the toolbar icon, settings page, translation progress toast, and other extension UI strings. Independent from the "Translation target language" picker in the toolbar popup',
+    'options.uiLanguage.hint': 'Controls the language of the toolbar icon, settings page, translation progress toast, and other extension UI strings. Independent from the "Translation target language" picker in the toolbar icon menu',
 
     'popup.label.targetLanguage': 'Translate to',
 
@@ -1836,7 +1842,7 @@
     // ── Send to Instapaper ─────────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': 'Enable "Send to Instapaper"',
-    'options.instapaper.enableHint': 'Once enabled, a "Send to Instapaper" button appears in the toolbar popup (or press Alt+I) to save the current, translated page to your Instapaper',
+    'options.instapaper.enableHint': 'Once enabled, a "Send to Instapaper" button appears in the toolbar icon menu (or press Alt+I) to save the current, translated page to your Instapaper',
     'options.instapaper.summary': 'Attach an article summary when sending',
     'options.instapaper.summaryHint': 'The summary appears beneath the item in Instapaper, written in your translation target language and always generated with the cheapest Gemini Flash Lite (requires a valid Gemini API key). Each send adds a tiny bit of usage; if no Gemini key is set or the summary fails, it is skipped and the bookmark is still saved',
     'options.instapaper.emailLabel': 'Instapaper account email',
@@ -1891,7 +1897,7 @@
 
     // ── options toolbar button ───────────────────────────
     'options.popupBtn.heading': 'Toolbar "Translate page" button',
-    'options.popupBtn.intro': 'When you click the Shinkansen icon in the browser toolbar, which preset should the popup\'s "Translate page" button use (shares the three preset slots with shortcuts)',
+    'options.popupBtn.intro': 'When you click the Shinkansen icon in the browser toolbar, which preset should the "Translate page" button in the toolbar icon menu use (shares the three preset slots with shortcuts)',
     'options.popupBtn.label': 'Mapped translation preset',
 
     // ── options domain rules ─────────────────────────────
@@ -1938,14 +1944,17 @@
     'options.toast.opacityHint': 'If too prominent, drag left to lower opacity and make notifications more subtle',
     'options.toast.autoHide': 'Auto-close notification on completion',
     'options.toast.autoHideHint': 'When enabled, the completion notification auto-disappears after 5 seconds; when disabled, click to close',
-    'options.floating.heading': 'Floating translate button',
-    'options.floating.intro': 'Show a draggable round button at the edge of the page — tap to translate with your default, long-press to pick one of three presets, drag to snap to either side',
-    'options.floating.enable': 'Show floating translate button',
-    'options.floating.enableHint': 'On by default on phones / tablets, off by default on desktop browsers; a tap does the same as the toolbar "Translate page" default',
+    'options.floating.heading': 'Floating button',
+    'options.floating.intro': 'Show a draggable button at the edge of the page — tap to translate with your default, long-press to pick one of three presets, drag to snap to either side',
+    'options.floating.enable': 'Show floating button',
+    'options.floating.enableHint': 'On by default; a tap does the same as the toolbar "Translate page" default',
+    'options.floating.size': 'Button size',
+    'options.floating.sizeSmall': 'Small',
+    'options.floating.sizeLarge': 'Large',
     'options.floating.opacity': 'Button opacity {value}%',
     'options.floating.opacityHint': 'If too prominent, drag left to lower opacity and make the button more subtle',
     'options.fourFinger.heading': 'Four-finger touch translate',
-    'options.fourFinger.intro': 'On phones / tablets, tap with four fingers to translate, four-finger long-press for the secondary preset; when off, hardware keyboard shortcuts and the floating button still work',
+    'options.fourFinger.intro': 'Off by default to avoid accidental triggers. When on, tap with four fingers to translate and four-finger long-press for the secondary preset; the floating button and hardware keyboard shortcuts are unaffected by this switch',
     'options.fourFinger.enable': 'Enable four-finger touch gesture',
 
     // ── options currency ─────────────────────────────────
@@ -2041,9 +2050,9 @@
     'options.gemini.quota.retriesHint': 'Max retries when a single batch translation hits an API error (e.g. 429 quota limit). Set to 0 to skip on failure (no retries), default 3',
 
     'options.gemini.resetAll': 'Reset all params',
-    'options.gemini.resetAllTitle': 'Reset all fields on this tab to defaults (still need to click "Save settings" to apply)',
-    'options.gemini.resetAllConfirm': 'Reset all Gemini tab params to defaults?\n\nAffected fields: Service Tier, model pricing override (clear → use built-in table), Tier/RPM/TPM/RPD, safety margin, retry count, Temperature, Max Output Tokens, Translation Prompt, concurrent batches, paragraphs/chars/page limit per batch.\n\nStill need to click "Save settings" to apply.',
-    'options.gemini.resetAllDone': 'Fields reset, click "Save settings" to apply',
+    'options.gemini.resetAllTitle': 'Reset all fields on this tab to defaults (saved automatically)',
+    'options.gemini.resetAllConfirm': 'Reset all Gemini tab params to defaults?\n\nAffected fields: Service Tier, model pricing override (clear → use built-in table), Tier/RPM/TPM/RPD, safety margin, retry count, Temperature, Max Output Tokens, Translation Prompt, concurrent batches, paragraphs/chars/page limit per batch.\n\nSaved automatically.',
+    'options.gemini.resetAllDone': 'Fields reset and auto-saved',
 
     // ── options Gemini cost-hint (dynamic yt-prompt-cost-hint) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate sends no prompt</strong>; these two toggles do not apply to Google MT',
@@ -2490,8 +2499,8 @@
     'doc.settingsPage.danger.hint.html': 'Each translation is cached locally so the next time the same text is translated it is reused for free. This button clears the cache for every document — translating any old document again will call the AI (and incur tokens). <br>Use this when: you changed the prompt above and want every old document re-translated, or you feel the old translations are poor and want to start over.<br><strong>Web translation, subtitle translation, and the glossary memory are not affected.</strong>',
     'doc.settingsPage.btn.clearAllCache': 'Clear all document translation memory',
     'doc.settingsPage.btn.save': 'Save',
-    'doc.settingsPage.saveBar.saved': '✓ Saved',
-    'doc.settingsPage.saveBar.dirty': 'You have unsaved changes',
+    'doc.settingsPage.saveBar.saved': 'Auto-saved',
+    'doc.settingsPage.saveBar.dirty': 'Saving…',
     'doc.settingsPage.confirm.clearAllCache': 'Clear all document translation memory?\n\nAll documents you previously translated will call the AI again next time (and incur tokens).\n\nWeb translation and subtitle translation are not affected.',
     'doc.settingsPage.cache.cleared': '✓ Cleared {n} translation memory entries',
     'doc.settingsPage.cache.failed': '✗ Clear failed: {error}',
@@ -2635,8 +2644,8 @@
     'options.action.testingConnect': '接続テスト中⋯',
     'options.action.connectOk': '接続成功',
     'options.action.saved': '✓ 保存しました',
-    'options.action.dirtyBar': '未保存の変更があります',
-    'options.action.savedBar': '設定を保存しました',
+    'options.action.dirtyBar': '保存中⋯',
+    'options.action.savedBar': '自動保存しました',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 新バージョンあり',
@@ -2648,7 +2657,7 @@
     'options.uiLanguage.heading': 'インターフェース言語',
     'options.uiLanguage.label': '拡張機能 UI の表示',
     'options.uiLanguage.auto': '自動（ブラウザ設定に従う）',
-    'options.uiLanguage.hint': 'ツールバーアイコン、設定ページ、翻訳進捗通知など拡張機能 UI の言語を制御します。ツールバーポップアップの「翻訳目標言語」とは独立しており、互いに影響しません',
+    'options.uiLanguage.hint': 'ツールバーアイコン、設定ページ、翻訳進捗通知など拡張機能 UI の言語を制御します。ツールバーアイコンメニューの「翻訳目標言語」とは独立しており、互いに影響しません',
 
     'popup.label.targetLanguage': '翻訳先',
 
@@ -2663,7 +2672,7 @@
     // ── Instapaper に送信 ──────────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': '「Instapaper に送信」を有効にする',
-    'options.instapaper.enableHint': '有効にすると、ツールバーのポップアップに「Instapaper に送信」ボタンが表示され、ショートカット Alt+I でも、現在の（翻訳後の）ページ全体を Instapaper に保存できます',
+    'options.instapaper.enableHint': '有効にすると、ツールバーアイコンメニューに「Instapaper に送信」ボタンが表示され、ショートカット Alt+I でも、現在の（翻訳後の）ページ全体を Instapaper に保存できます',
     'options.instapaper.summary': '送信時に記事の要約を添付',
     'options.instapaper.summaryHint': '要約は Instapaper の項目の下に表示され、翻訳先の言語で書かれ、常に最も安価な Gemini Flash Lite で生成されます（有効な Gemini API キーが必要）。送信ごとにごくわずかな使用量が加算されます。Gemini キーがない場合や要約に失敗した場合は自動的にスキップされ、ブックマークはそのまま保存されます',
     'options.instapaper.emailLabel': 'Instapaper アカウントのメールアドレス',
@@ -2718,7 +2727,7 @@
 
     // ── options ツールバーボタン対応 ───────────────────────
     'options.popupBtn.heading': 'ツールバー「このページを翻訳」ボタン',
-    'options.popupBtn.intro': 'ブラウザのツールバーで Shinkansen アイコンをクリックすると表示されるポップアップ内の「このページを翻訳」ボタンで使用するプリセット（翻訳ショートカットと共通の 3 組から選択）',
+    'options.popupBtn.intro': 'ブラウザのツールバーで Shinkansen アイコンをクリックすると表示されるツールバーアイコンメニュー内の「このページを翻訳」ボタンで使用するプリセット（翻訳ショートカットと共通の 3 組から選択）',
     'options.popupBtn.label': '対応する翻訳プリセット',
 
     // ── options ドメインルール ─────────────────────────────────
@@ -2765,14 +2774,17 @@
     'options.toast.opacityHint': '目立ちすぎる場合は左にスライドして不透明度を下げ、通知を薄くできます',
     'options.toast.autoHide': '翻訳完了後に通知を自動で閉じる',
     'options.toast.autoHideHint': '有効時は翻訳完了通知が 5 秒後に自動消去、無効時は手動で閉じる必要があります',
-    'options.floating.heading': 'フローティング翻訳ボタン',
-    'options.floating.intro': 'ページの端にドラッグできる丸いボタンを表示。タップで既定の翻訳、長押しで 3 つのプリセットから選択、左右どちらの端にもスナップできます',
-    'options.floating.enable': 'フローティング翻訳ボタンを表示',
-    'options.floating.enableHint': 'スマホ / タブレットは既定でオン、デスクトップブラウザは既定でオフ。タップはツールバーの「ページを翻訳」既定と同じ',
+    'options.floating.heading': 'フローティングボタン',
+    'options.floating.intro': 'ページの端にドラッグできるボタンを表示。タップで既定の翻訳、長押しで 3 つのプリセットから選択、左右どちらの端にもスナップできます',
+    'options.floating.enable': 'フローティングボタンを表示',
+    'options.floating.enableHint': '既定でオン。タップはツールバーの「ページを翻訳」既定と同じ',
+    'options.floating.size': 'ボタンのサイズ',
+    'options.floating.sizeSmall': '小',
+    'options.floating.sizeLarge': '大',
     'options.floating.opacity': 'ボタンの透明度 {value}%',
     'options.floating.opacityHint': '目立ちすぎる場合は左にドラッグして不透明度を下げ、ボタンを控えめにできます',
     'options.fourFinger.heading': '4 本指タッチ翻訳',
-    'options.fourFinger.intro': 'スマホ / タブレットで 4 本指でタップすると翻訳、4 本指長押しでセカンダリプリセット。オフにしてもハードウェアキーボードのショートカットとフローティングボタンは使えます',
+    'options.fourFinger.intro': '誤操作を防ぐため既定でオフ。オンにするとスマホ / タブレットで 4 本指タップで翻訳、4 本指長押しでセカンダリプリセット。フローティングボタンとハードウェアキーボードのショートカットはこのスイッチの影響を受けません',
     'options.fourFinger.enable': '4 本指タッチジェスチャを有効化',
 
     // ── options 金額表示通貨 ─────────────────────────────
@@ -2868,9 +2880,9 @@
     'options.gemini.quota.retriesHint': '1 バッチ翻訳で API エラー（429 クォータ制限など）に遭遇した際の最大リトライ回数。0 でリトライなし（失敗時はスキップ）、デフォルト 3 回',
 
     'options.gemini.resetAll': 'すべてのパラメータをリセット',
-    'options.gemini.resetAllTitle': 'このタブのすべてのフィールドをデフォルトにリセット（押した後も「設定を保存」が必要）',
-    'options.gemini.resetAllConfirm': 'Gemini タブのすべてのパラメータをデフォルトにリセットしますか？\n\n影響するフィールド：Service Tier、モデル料金上書き（クリアして組み込み表へ）、Tier/RPM/TPM/RPD、安全マージン、リトライ回数、Temperature、Max Output Tokens、翻訳プロンプト、並行バッチ、バッチごと段落 / 文字 / 段落上限。\n\n押した後も「設定を保存」で反映されます。',
-    'options.gemini.resetAllDone': 'フィールドをリセットしました。「設定を保存」を押して反映してください',
+    'options.gemini.resetAllTitle': 'このタブのすべてのフィールドをデフォルトにリセット（自動的に保存されます）',
+    'options.gemini.resetAllConfirm': 'Gemini タブのすべてのパラメータをデフォルトにリセットしますか？\n\n影響するフィールド：Service Tier、モデル料金上書き（クリアして組み込み表へ）、Tier/RPM/TPM/RPD、安全マージン、リトライ回数、Temperature、Max Output Tokens、翻訳プロンプト、並行バッチ、バッチごと段落 / 文字 / 段落上限。\n\n押すと自動的に保存されます。',
+    'options.gemini.resetAllDone': 'フィールドをリセットし自動保存しました',
 
     // ── options Gemini cost-hint(動的 yt-prompt-cost-hint) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate はプロンプトを送信しません</strong>。これら 2 つのトグルは Google MT には適用されません',
@@ -3317,8 +3329,8 @@
     'doc.settingsPage.danger.hint.html': '翻訳結果は本機にキャッシュされ、同じテキストの再翻訳は無料で再利用されます。このボタンを押すとすべての文書のキャッシュが消去されます — 古い文書を再翻訳すると AI を再度呼び出します（コスト発生）。<br>使用シーン：上の「翻訳指示」を変更してすべて再翻訳したい / 旧訳の品質が悪くやり直したい。<br><strong>Web 翻訳・字幕翻訳・用語集メモリには影響しません。</strong>',
     'doc.settingsPage.btn.clearAllCache': 'すべての文書翻訳メモリを消去',
     'doc.settingsPage.btn.save': '設定を保存',
-    'doc.settingsPage.saveBar.saved': '✓ 保存しました',
-    'doc.settingsPage.saveBar.dirty': '未保存の変更があります',
+    'doc.settingsPage.saveBar.saved': '自動保存しました',
+    'doc.settingsPage.saveBar.dirty': '保存中⋯',
     'doc.settingsPage.confirm.clearAllCache': 'すべての文書翻訳メモリを消去しますか？\n\n消去後、過去に翻訳した文書を再翻訳すると AI を再度呼び出します（コスト発生）。\n\nWeb 翻訳・字幕翻訳には影響しません。',
     'doc.settingsPage.cache.cleared': '✓ {n} 件の翻訳メモリを消去しました',
     'doc.settingsPage.cache.failed': '✗ 消去失敗：{error}',
@@ -3462,8 +3474,8 @@
     'options.action.testingConnect': '연결 테스트 중⋯',
     'options.action.connectOk': '연결 성공',
     'options.action.saved': '✓ 저장됨',
-    'options.action.dirtyBar': '저장되지 않은 변경사항 있음',
-    'options.action.savedBar': '설정 저장됨',
+    'options.action.dirtyBar': '저장 중⋯',
+    'options.action.savedBar': '자동 저장됨',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 새 버전 있음',
@@ -3475,7 +3487,7 @@
     'options.uiLanguage.heading': '인터페이스 언어',
     'options.uiLanguage.label': '확장 프로그램 UI 표시',
     'options.uiLanguage.auto': '자동 (브라우저 설정 따르기)',
-    'options.uiLanguage.hint': '도구 모음 아이콘, 설정 페이지, 번역 진행 알림 등 확장 프로그램 UI의 언어를 제어합니다. 도구 모음 팝업의 "번역 대상 언어"와 독립적이며 서로 영향을 주지 않습니다',
+    'options.uiLanguage.hint': '도구 모음 아이콘, 설정 페이지, 번역 진행 알림 등 확장 프로그램 UI의 언어를 제어합니다. 도구 모음 아이콘 메뉴의 "번역 대상 언어"와 독립적이며 서로 영향을 주지 않습니다',
 
     'popup.label.targetLanguage': '번역할 언어',
 
@@ -3490,7 +3502,7 @@
     // ── Instapaper로 보내기 ────────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': '"Instapaper로 보내기" 사용',
-    'options.instapaper.enableHint': '사용하면 도구 모음 팝업에 "Instapaper로 보내기" 버튼이 나타나며, 단축키 Alt+I로도 현재(번역된) 페이지 전체를 Instapaper에 저장할 수 있습니다',
+    'options.instapaper.enableHint': '사용하면 도구 모음 아이콘 메뉴에 "Instapaper로 보내기" 버튼이 나타나며, 단축키 Alt+I로도 현재(번역된) 페이지 전체를 Instapaper에 저장할 수 있습니다',
     'options.instapaper.summary': '보낼 때 기사 요약 첨부',
     'options.instapaper.summaryHint': '요약은 Instapaper 항목 아래에 표시되며, 번역 대상 언어로 작성되고 항상 가장 저렴한 Gemini Flash Lite로 생성됩니다(유효한 Gemini API 키 필요). 보낼 때마다 아주 적은 사용량이 추가됩니다. Gemini 키가 없거나 요약에 실패하면 자동으로 건너뛰고 북마크는 그대로 저장됩니다',
     'options.instapaper.emailLabel': 'Instapaper 계정 이메일',
@@ -3545,7 +3557,7 @@
 
     // ── options 도구 모음 버튼 매핑 ───────────────────────
     'options.popupBtn.heading': '도구 모음 "이 페이지 번역" 버튼',
-    'options.popupBtn.intro': '브라우저 도구 모음에서 Shinkansen 아이콘을 클릭한 후 팝업의 "이 페이지 번역" 버튼이 사용할 프리셋(번역 단축키와 공통 3개 프리셋)',
+    'options.popupBtn.intro': '브라우저 도구 모음에서 Shinkansen 아이콘을 클릭한 후 도구 모음 아이콘 메뉴의 "이 페이지 번역" 버튼이 사용할 프리셋(번역 단축키와 공통 3개 프리셋)',
     'options.popupBtn.label': '대응하는 번역 프리셋',
 
     // ── options 도메인 규칙 ─────────────────────────────
@@ -3592,14 +3604,17 @@
     'options.toast.opacityHint': '너무 눈에 띄면 왼쪽으로 드래그하여 불투명도를 낮춰 알림을 옅게 만들 수 있습니다',
     'options.toast.autoHide': '번역 완료 후 알림 자동 닫기',
     'options.toast.autoHideHint': '활성화 시 번역 완료 알림이 5초 후 자동으로 사라지고, 비활성화 시 수동으로 닫아야 합니다',
-    'options.floating.heading': '플로팅 번역 버튼',
-    'options.floating.intro': '페이지 가장자리에 드래그할 수 있는 둥근 버튼을 표시합니다. 짧게 누르면 기본 번역, 길게 누르면 세 가지 프리셋 선택, 좌우 어느 쪽 가장자리에도 붙일 수 있습니다',
-    'options.floating.enable': '플로팅 번역 버튼 표시',
-    'options.floating.enableHint': '휴대폰 / 태블릿은 기본 켜짐, 데스크톱 브라우저는 기본 꺼짐. 짧게 누르면 도구 모음의 "페이지 번역" 기본값과 동일',
+    'options.floating.heading': '플로팅 버튼',
+    'options.floating.intro': '페이지 가장자리에 드래그할 수 있는 버튼을 표시합니다. 짧게 누르면 기본 번역, 길게 누르면 세 가지 프리셋 선택, 좌우 어느 쪽 가장자리에도 붙일 수 있습니다',
+    'options.floating.enable': '플로팅 버튼 표시',
+    'options.floating.enableHint': '기본 켜짐. 짧게 누르면 도구 모음의 "페이지 번역" 기본값과 동일',
+    'options.floating.size': '버튼 크기',
+    'options.floating.sizeSmall': '작게',
+    'options.floating.sizeLarge': '크게',
     'options.floating.opacity': '버튼 투명도 {value}%',
     'options.floating.opacityHint': '너무 눈에 띄면 왼쪽으로 드래그해 불투명도를 낮춰 버튼을 더 은은하게 만들 수 있습니다',
     'options.fourFinger.heading': '네 손가락 터치 번역',
-    'options.fourFinger.intro': '휴대폰 / 태블릿에서 네 손가락으로 탭하면 번역, 네 손가락 길게 누르면 보조 프리셋. 꺼도 하드웨어 키보드 단축키와 플로팅 버튼은 사용할 수 있습니다',
+    'options.fourFinger.intro': '오작동을 막기 위해 기본 꺼짐. 켜면 휴대폰 / 태블릿에서 네 손가락으로 탭하면 번역, 네 손가락 길게 누르면 보조 프리셋. 플로팅 버튼과 하드웨어 키보드 단축키는 이 스위치의 영향을 받지 않습니다',
     'options.fourFinger.enable': '네 손가락 터치 제스처 사용',
 
     // ── options 금액 표시 통화 ─────────────────────────────
@@ -3695,9 +3710,9 @@
     'options.gemini.quota.retriesHint': '단일 배치 번역에서 API 오류 (429 할당량 제한 등) 발생 시 최대 재시도 횟수. 0이면 재시도 없이 실패 시 건너뜀, 기본 3회',
 
     'options.gemini.resetAll': '모든 매개변수 재설정',
-    'options.gemini.resetAllTitle': '이 탭의 모든 필드를 기본값으로 재설정 (누른 후에도 "설정 저장"을 클릭해야 적용됨)',
-    'options.gemini.resetAllConfirm': 'Gemini 탭의 모든 매개변수를 기본값으로 재설정하시겠습니까?\n\n영향 필드: Service Tier, 모델 가격 덮어쓰기 (비우면 내장 표 사용), Tier/RPM/TPM/RPD, 안전 마진, 재시도 횟수, Temperature, Max Output Tokens, 번역 Prompt, 병렬 배치, 배치당 단락 / 문자 / 단락 상한.\n\n누른 후에도 "설정 저장"을 클릭해야 적용됩니다.',
-    'options.gemini.resetAllDone': '필드가 재설정되었습니다. "설정 저장"을 눌러 적용하세요',
+    'options.gemini.resetAllTitle': '이 탭의 모든 필드를 기본값으로 재설정 (자동으로 저장됨)',
+    'options.gemini.resetAllConfirm': 'Gemini 탭의 모든 매개변수를 기본값으로 재설정하시겠습니까?\n\n영향 필드: Service Tier, 모델 가격 덮어쓰기 (비우면 내장 표 사용), Tier/RPM/TPM/RPD, 안전 마진, 재시도 횟수, Temperature, Max Output Tokens, 번역 Prompt, 병렬 배치, 배치당 단락 / 문자 / 단락 상한.\n\n누르면 자동으로 저장됩니다.',
+    'options.gemini.resetAllDone': '필드가 재설정되고 자동 저장되었습니다',
 
     // ── options Gemini cost-hint(동적 yt-prompt-cost-hint) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate는 prompt를 보내지 않습니다</strong>. 이 두 토글은 Google MT에 적용되지 않습니다',
@@ -4144,8 +4159,8 @@
     'doc.settingsPage.danger.hint.html': '번역 결과는 로컬에 캐시되며, 같은 텍스트의 재번역은 무료로 재사용됩니다. 이 버튼을 누르면 모든 문서의 캐시가 삭제됩니다 — 이전 문서를 재번역하면 AI를 다시 호출합니다 (비용 발생). <br>사용 시나리오: 위의 "번역 지시"를 바꾸고 모두 재번역하고 싶다 / 이전 번역 품질이 좋지 않아 다시 하고 싶다.<br><strong>웹 번역·자막 번역·용어집 메모리에는 영향 없음.</strong>',
     'doc.settingsPage.btn.clearAllCache': '모든 문서 번역 메모리 삭제',
     'doc.settingsPage.btn.save': '설정 저장',
-    'doc.settingsPage.saveBar.saved': '✓ 저장됨',
-    'doc.settingsPage.saveBar.dirty': '저장되지 않은 변경사항 있음',
+    'doc.settingsPage.saveBar.saved': '자동 저장됨',
+    'doc.settingsPage.saveBar.dirty': '저장 중⋯',
     'doc.settingsPage.confirm.clearAllCache': '모든 문서 번역 메모리를 삭제하시겠습니까?\n\n삭제 후, 이전에 번역한 문서를 다시 번역하면 AI를 다시 호출합니다 (비용 발생).\n\n웹 번역·자막 번역에는 영향 없음.',
     'doc.settingsPage.cache.cleared': '✓ {n} 항목의 번역 메모리 삭제됨',
     'doc.settingsPage.cache.failed': '✗ 삭제 실패: {error}',
@@ -4288,8 +4303,8 @@
     'options.action.testingConnect': 'Probando conexión⋯',
     'options.action.connectOk': 'Conexión correcta',
     'options.action.saved': '✓ Guardado',
-    'options.action.dirtyBar': 'Hay cambios sin guardar',
-    'options.action.savedBar': 'Ajustes guardados',
+    'options.action.dirtyBar': 'Guardando…',
+    'options.action.savedBar': 'Guardado automáticamente',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Nueva versión disponible',
@@ -4301,7 +4316,7 @@
     'options.uiLanguage.heading': 'Idioma de la interfaz',
     'options.uiLanguage.label': 'Mostrar interfaz de la extensión en',
     'options.uiLanguage.auto': 'Automático (según el navegador)',
-    'options.uiLanguage.hint': 'Controla el idioma de la interfaz de la extensión: icono de la barra de herramientas, página de ajustes, notificaciones de progreso de traducción, etc. Independiente del "Idioma de destino" en el popup de la barra de herramientas, no se afectan entre sí',
+    'options.uiLanguage.hint': 'Controla el idioma de la interfaz de la extensión: icono de la barra de herramientas, página de ajustes, notificaciones de progreso de traducción, etc. Independiente del "Idioma de destino" en el menú del icono de la barra de herramientas, no se afectan entre sí',
 
     'popup.label.targetLanguage': 'Traducir a',
 
@@ -4316,7 +4331,7 @@
     // ── Enviar a Instapaper ────────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': 'Activar «Enviar a Instapaper»',
-    'options.instapaper.enableHint': 'Una vez activado, aparece un botón «Enviar a Instapaper» en la ventana emergente de la barra de herramientas (o pulsa Alt+I) para guardar la página actual ya traducida en tu Instapaper',
+    'options.instapaper.enableHint': 'Una vez activado, aparece un botón «Enviar a Instapaper» en el menú del icono de la barra de herramientas (o pulsa Alt+I) para guardar la página actual ya traducida en tu Instapaper',
     'options.instapaper.summary': 'Adjuntar un resumen del artículo al enviar',
     'options.instapaper.summaryHint': 'El resumen aparece debajo del elemento en Instapaper, escrito en tu idioma de destino de traducción y generado siempre con el Gemini Flash Lite más económico (requiere una clave de API de Gemini válida). Cada envío añade un consumo mínimo; si no hay clave de Gemini o el resumen falla, se omite y el marcador se guarda igualmente',
     'options.instapaper.emailLabel': 'Correo de la cuenta de Instapaper',
@@ -4371,7 +4386,7 @@
 
     // ── options correspondencia del botón de la barra ───────────────────────
     'options.popupBtn.heading': 'Botón "Traducir página" de la barra de herramientas',
-    'options.popupBtn.intro': 'Al hacer clic en el icono de Shinkansen de la barra del navegador, ¿qué preajuste usa el botón "Traducir página" de la ventana emergente? (comparte los tres preajustes con los atajos de traducción)',
+    'options.popupBtn.intro': 'Al hacer clic en el icono de Shinkansen de la barra del navegador, ¿qué preajuste usa el botón "Traducir página" del menú del icono de la barra de herramientas? (comparte los tres preajustes con los atajos de traducción)',
     'options.popupBtn.label': 'Preajuste de traducción asociado',
 
     // ── options reglas de dominio ─────────────────────────────
@@ -4418,14 +4433,17 @@
     'options.toast.opacityHint': 'Si te resulta demasiado llamativa, arrastra hacia la izquierda para reducir la opacidad y atenuarla',
     'options.toast.autoHide': 'Cerrar notificación automáticamente al terminar',
     'options.toast.autoHideHint': 'Si está activado, la notificación de fin de traducción desaparece tras 5 segundos; si está desactivado, hay que cerrarla manualmente',
-    'options.floating.heading': 'Botón de traducción flotante',
-    'options.floating.intro': 'Muestra un botón redondo y arrastrable en el borde de la página: toca para traducir con tu ajuste predeterminado, mantén pulsado para elegir entre tres preajustes y arrástralo para fijarlo a cualquier lado',
-    'options.floating.enable': 'Mostrar botón de traducción flotante',
-    'options.floating.enableHint': 'Activado por defecto en móviles / tabletas y desactivado en navegadores de escritorio; un toque equivale al ajuste predeterminado del botón «Traducir página» de la barra de herramientas',
+    'options.floating.heading': 'Botón flotante',
+    'options.floating.intro': 'Muestra un botón arrastrable en el borde de la página: toca para traducir con tu ajuste predeterminado, mantén pulsado para elegir entre tres preajustes y arrástralo para fijarlo a cualquier lado',
+    'options.floating.enable': 'Mostrar botón flotante',
+    'options.floating.enableHint': 'Activado por defecto; un toque equivale al ajuste predeterminado del botón «Traducir página» de la barra de herramientas',
+    'options.floating.size': 'Tamaño del botón',
+    'options.floating.sizeSmall': 'Pequeño',
+    'options.floating.sizeLarge': 'Grande',
     'options.floating.opacity': 'Opacidad del botón {value}%',
     'options.floating.opacityHint': 'Si resulta muy llamativo, arrastra a la izquierda para bajar la opacidad y hacer el botón más discreto',
     'options.fourFinger.heading': 'Traducción táctil con cuatro dedos',
-    'options.fourFinger.intro': 'En móviles / tabletas, toca con cuatro dedos para traducir y mantén pulsado con cuatro dedos para el preajuste secundario; al desactivarlo, siguen funcionando los atajos de teclado físico y el botón flotante',
+    'options.fourFinger.intro': 'Desactivado por defecto para evitar activaciones accidentales. Al activarlo, en móviles / tabletas toca con cuatro dedos para traducir y mantén pulsado con cuatro dedos para el preajuste secundario; el botón flotante y los atajos de teclado físico no se ven afectados por este interruptor',
     'options.fourFinger.enable': 'Activar gesto táctil de cuatro dedos',
 
     // ── options moneda mostrada ─────────────────────────────
@@ -4521,9 +4539,9 @@
     'options.gemini.quota.retriesHint': 'Número máximo de reintentos cuando un lote encuentra un error de la API (por ejemplo 429 por cuota). 0 = sin reintento, salta directamente; por defecto 3',
 
     'options.gemini.resetAll': 'Restablecer todos los parámetros',
-    'options.gemini.resetAllTitle': 'Restablecer todos los campos de esta pestaña a los valores por defecto (después hay que pulsar "Guardar ajustes" para aplicar)',
-    'options.gemini.resetAllConfirm': '¿Seguro que quieres restablecer todos los parámetros de la pestaña Gemini?\n\nCampos afectados: Service Tier, sobrescritos de precio (vacíos = se usa la tabla integrada), Tier/RPM/TPM/RPD, margen de seguridad, reintentos, Temperature, Max Output Tokens, prompt de traducción, lotes concurrentes, párrafos / caracteres / párrafos por lote.\n\nDespués hay que pulsar "Guardar ajustes" para aplicar.',
-    'options.gemini.resetAllDone': 'Campos restablecidos, pulsa "Guardar ajustes" para aplicar',
+    'options.gemini.resetAllTitle': 'Restablecer todos los campos de esta pestaña a los valores por defecto (se guarda automáticamente)',
+    'options.gemini.resetAllConfirm': '¿Seguro que quieres restablecer todos los parámetros de la pestaña Gemini?\n\nCampos afectados: Service Tier, sobrescritos de precio (vacíos = se usa la tabla integrada), Tier/RPM/TPM/RPD, margen de seguridad, reintentos, Temperature, Max Output Tokens, prompt de traducción, lotes concurrentes, párrafos / caracteres / párrafos por lote.\n\nSe guarda automáticamente.',
+    'options.gemini.resetAllDone': 'Campos restablecidos y guardados automáticamente',
 
     // ── options Gemini cost-hint (yt-prompt-cost-hint dinámico) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate no envía prompt</strong>; estos dos toggles no se aplican a Google MT',
@@ -4970,8 +4988,8 @@
     'doc.settingsPage.danger.hint.html': 'Cada traducción se cachea localmente, así la siguiente vez que se traduzca el mismo texto se reutiliza gratis. Este botón borra la caché de cada documento — volver a traducir cualquier documento llamará a la IA (consumiendo tokens). <br>Úsalo cuando: cambiaste el prompt arriba y quieres retraducir todo, o las traducciones antiguas te parecen pobres y quieres empezar de cero.<br><strong>La traducción web, la traducción de subtítulos y la memoria del glosario no se ven afectadas.</strong>',
     'doc.settingsPage.btn.clearAllCache': 'Borrar toda la memoria de traducción de documentos',
     'doc.settingsPage.btn.save': 'Guardar',
-    'doc.settingsPage.saveBar.saved': '✓ Guardado',
-    'doc.settingsPage.saveBar.dirty': 'Tienes cambios sin guardar',
+    'doc.settingsPage.saveBar.saved': 'Guardado automáticamente',
+    'doc.settingsPage.saveBar.dirty': 'Guardando…',
     'doc.settingsPage.confirm.clearAllCache': '¿Borrar toda la memoria de traducción de documentos?\n\nTodos los documentos que tradujiste antes llamarán de nuevo a la IA la próxima vez (consumiendo tokens).\n\nLa traducción web y la traducción de subtítulos no se ven afectadas.',
     'doc.settingsPage.cache.cleared': '✓ {n} entradas de memoria borradas',
     'doc.settingsPage.cache.failed': '✗ Borrado fallido: {error}',
@@ -5114,8 +5132,8 @@
     'options.action.testingConnect': 'Test de connexion⋯',
     'options.action.connectOk': 'Connexion réussie',
     'options.action.saved': '✓ Enregistré',
-    'options.action.dirtyBar': 'Modifications non enregistrées',
-    'options.action.savedBar': 'Paramètres enregistrés',
+    'options.action.dirtyBar': 'Enregistrement…',
+    'options.action.savedBar': 'Enregistré automatiquement',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Nouvelle version disponible',
@@ -5127,7 +5145,7 @@
     'options.uiLanguage.heading': 'Langue de l\'interface',
     'options.uiLanguage.label': 'Affichage de l\'interface de l\'extension',
     'options.uiLanguage.auto': 'Automatique (selon le navigateur)',
-    'options.uiLanguage.hint': 'Contrôle la langue de l\'interface : icône de la barre d\'outils, page de paramètres, notifications de progression. Indépendant de la « langue cible » dans le popup de la barre d\'outils, sans effet l\'un sur l\'autre',
+    'options.uiLanguage.hint': 'Contrôle la langue de l\'interface : icône de la barre d\'outils, page de paramètres, notifications de progression. Indépendant de la « langue cible » dans le menu de l\'icône de la barre d\'outils, sans effet l\'un sur l\'autre',
 
     'popup.label.targetLanguage': 'Traduire en',
 
@@ -5142,7 +5160,7 @@
     // ── Envoyer vers Instapaper ────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': 'Activer « Envoyer vers Instapaper »',
-    'options.instapaper.enableHint': 'Une fois activé, un bouton « Envoyer vers Instapaper » apparaît dans la fenêtre de la barre d\'outils (ou appuyez sur Alt+I) pour enregistrer la page actuelle, traduite, dans votre Instapaper',
+    'options.instapaper.enableHint': 'Une fois activé, un bouton « Envoyer vers Instapaper » apparaît dans le menu de l\'icône de la barre d\'outils (ou appuyez sur Alt+I) pour enregistrer la page actuelle, traduite, dans votre Instapaper',
     'options.instapaper.summary': 'Joindre un résumé de l\'article lors de l\'envoi',
     'options.instapaper.summaryHint': 'Le résumé apparaît sous l\'élément dans Instapaper, rédigé dans votre langue cible de traduction et toujours généré avec le Gemini Flash Lite le moins cher (nécessite une clé API Gemini valide). Chaque envoi ajoute une consommation minime ; en l\'absence de clé Gemini ou en cas d\'échec du résumé, il est ignoré et le favori est tout de même enregistré',
     'options.instapaper.emailLabel': 'E-mail du compte Instapaper',
@@ -5197,7 +5215,7 @@
 
     // ── options correspondance bouton barre d\'outils ───────────────────────
     'options.popupBtn.heading': 'Bouton « Traduire la page » de la barre d\'outils',
-    'options.popupBtn.intro': 'Quand on clique sur l\'icône Shinkansen dans la barre d\'outils, quel préréglage utilise le bouton « Traduire la page » de la fenêtre contextuelle (les trois préréglages sont communs aux raccourcis de traduction)',
+    'options.popupBtn.intro': 'Quand on clique sur l\'icône Shinkansen dans la barre d\'outils, quel préréglage utilise le bouton « Traduire la page » du menu de l\'icône de la barre d\'outils (les trois préréglages sont communs aux raccourcis de traduction)',
     'options.popupBtn.label': 'Préréglage de traduction associé',
 
     // ── options règles de domaine ─────────────────────────────
@@ -5244,14 +5262,17 @@
     'options.toast.opacityHint': 'Si trop visible, faites glisser à gauche pour réduire l\'opacité et atténuer la notification',
     'options.toast.autoHide': 'Fermer automatiquement la notification à la fin de la traduction',
     'options.toast.autoHideHint': 'Si activé, la notification de fin de traduction disparaît au bout de 5 secondes ; sinon il faut la fermer manuellement',
-    'options.floating.heading': 'Bouton de traduction flottant',
-    'options.floating.intro': 'Affiche un bouton rond déplaçable sur le bord de la page : appuyez pour traduire avec votre préréglage par défaut, appui long pour choisir parmi trois préréglages, faites-le glisser pour l\'ancrer d\'un côté ou de l\'autre',
-    'options.floating.enable': 'Afficher le bouton de traduction flottant',
-    'options.floating.enableHint': 'Activé par défaut sur téléphone / tablette, désactivé par défaut sur les navigateurs de bureau ; un appui équivaut au préréglage par défaut du bouton « Traduire la page » de la barre d\'outils',
+    'options.floating.heading': 'Bouton flottant',
+    'options.floating.intro': 'Affiche un bouton déplaçable sur le bord de la page : appuyez pour traduire avec votre préréglage par défaut, appui long pour choisir parmi trois préréglages, faites-le glisser pour l\'ancrer d\'un côté ou de l\'autre',
+    'options.floating.enable': 'Afficher le bouton flottant',
+    'options.floating.enableHint': 'Activé par défaut ; un appui équivaut au préréglage par défaut du bouton « Traduire la page » de la barre d\'outils',
+    'options.floating.size': 'Taille du bouton',
+    'options.floating.sizeSmall': 'Petit',
+    'options.floating.sizeLarge': 'Grand',
     'options.floating.opacity': 'Opacité du bouton {value}%',
     'options.floating.opacityHint': 'Si trop visible, glissez vers la gauche pour réduire l\'opacité et rendre le bouton plus discret',
     'options.fourFinger.heading': 'Traduction tactile à quatre doigts',
-    'options.fourFinger.intro': 'Sur téléphone / tablette, touchez avec quatre doigts pour traduire, appui long à quatre doigts pour le préréglage secondaire ; une fois désactivé, les raccourcis clavier matériels et le bouton flottant restent disponibles',
+    'options.fourFinger.intro': 'Désactivé par défaut pour éviter les déclenchements accidentels. Une fois activé, sur téléphone / tablette touchez avec quatre doigts pour traduire, appui long à quatre doigts pour le préréglage secondaire ; le bouton flottant et les raccourcis clavier matériels ne sont pas affectés par cet interrupteur',
     'options.fourFinger.enable': 'Activer le geste tactile à quatre doigts',
 
     // ── options devise d\'affichage ─────────────────────────────
@@ -5347,9 +5368,9 @@
     'options.gemini.quota.retriesHint': 'Nombre maximal de réessais lorsqu\'un lot rencontre une erreur API (par exemple 429 limitation de quota). 0 = aucun réessai, échec passé directement ; par défaut 3',
 
     'options.gemini.resetAll': 'Réinitialiser tous les paramètres',
-    'options.gemini.resetAllTitle': 'Réinitialiser tous les champs de cet onglet aux valeurs par défaut (cliquez sur « Enregistrer les paramètres » pour appliquer)',
-    'options.gemini.resetAllConfirm': 'Voulez-vous vraiment réinitialiser tous les paramètres de l\'onglet Gemini aux valeurs par défaut ?\n\nChamps affectés : Service Tier, surcharge des prix (vide = utilise la table intégrée), Tier/RPM/TPM/RPD, marge de sécurité, réessais, Temperature, Max Output Tokens, prompt de traduction, lots concurrents, paragraphes / caractères / paragraphes par lot.\n\nIl faut ensuite cliquer sur « Enregistrer les paramètres » pour appliquer.',
-    'options.gemini.resetAllDone': 'Champs réinitialisés, cliquez sur « Enregistrer les paramètres » pour appliquer',
+    'options.gemini.resetAllTitle': 'Réinitialiser tous les champs de cet onglet aux valeurs par défaut (enregistré automatiquement)',
+    'options.gemini.resetAllConfirm': 'Voulez-vous vraiment réinitialiser tous les paramètres de l\'onglet Gemini aux valeurs par défaut ?\n\nChamps affectés : Service Tier, surcharge des prix (vide = utilise la table intégrée), Tier/RPM/TPM/RPD, marge de sécurité, réessais, Temperature, Max Output Tokens, prompt de traduction, lots concurrents, paragraphes / caractères / paragraphes par lot.\n\nEnregistré automatiquement.',
+    'options.gemini.resetAllDone': 'Champs réinitialisés et enregistrés automatiquement',
 
     // ── options Gemini cost-hint (yt-prompt-cost-hint dynamique) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate n\'envoie pas de prompt</strong> ; ces deux toggles ne s\'appliquent pas à Google MT',
@@ -5796,8 +5817,8 @@
     'doc.settingsPage.danger.hint.html': 'Chaque traduction est mise en cache localement, donc la prochaine fois que le même texte est traduit, il est réutilisé gratuitement. Ce bouton efface le cache de tous les documents — re-traduire un document précédent rappellera l\'IA (consommant des tokens). <br>À utiliser quand : vous avez changé le prompt ci-dessus et voulez tout retraduire, ou les anciennes traductions vous semblent médiocres et vous voulez recommencer.<br><strong>La traduction web, la traduction de sous-titres et la mémoire du glossaire ne sont pas affectées.</strong>',
     'doc.settingsPage.btn.clearAllCache': 'Effacer toute la mémoire de traduction de documents',
     'doc.settingsPage.btn.save': 'Enregistrer',
-    'doc.settingsPage.saveBar.saved': '✓ Enregistré',
-    'doc.settingsPage.saveBar.dirty': 'Vous avez des modifications non enregistrées',
+    'doc.settingsPage.saveBar.saved': 'Enregistré automatiquement',
+    'doc.settingsPage.saveBar.dirty': 'Enregistrement…',
     'doc.settingsPage.confirm.clearAllCache': 'Effacer toute la mémoire de traduction de documents ?\n\nTous les documents que vous avez traduits avant rappelleront l\'IA la prochaine fois (consommant des tokens).\n\nLa traduction web et la traduction de sous-titres ne sont pas affectées.',
     'doc.settingsPage.cache.cleared': '✓ {n} entrées de mémoire effacées',
     'doc.settingsPage.cache.failed': '✗ Effacement échoué : {error}',
@@ -5940,8 +5961,8 @@
     'options.action.testingConnect': 'Verbindungstest läuft⋯',
     'options.action.connectOk': 'Verbindung erfolgreich',
     'options.action.saved': '✓ Gespeichert',
-    'options.action.dirtyBar': 'Ungespeicherte Änderungen vorhanden',
-    'options.action.savedBar': 'Einstellungen gespeichert',
+    'options.action.dirtyBar': 'Wird gespeichert…',
+    'options.action.savedBar': 'Automatisch gespeichert',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Neue Version verfügbar',
@@ -5953,7 +5974,7 @@
     'options.uiLanguage.heading': 'Oberflächensprache',
     'options.uiLanguage.label': 'Anzeige der Erweiterungs-UI',
     'options.uiLanguage.auto': 'Automatisch (Browsereinstellung folgen)',
-    'options.uiLanguage.hint': 'Steuert die Sprache der Erweiterungs-UI: Symbol in der Symbolleiste, Einstellungsseite, Übersetzungsfortschritts-Benachrichtigungen usw. Unabhängig von der „Übersetzungs-Zielsprache" im Symbolleisten-Popup, beeinflussen sich nicht gegenseitig',
+    'options.uiLanguage.hint': 'Steuert die Sprache der Erweiterungs-UI: Symbol in der Symbolleiste, Einstellungsseite, Übersetzungsfortschritts-Benachrichtigungen usw. Unabhängig von der „Übersetzungs-Zielsprache" im Symbolleistensymbol-Menü, beeinflussen sich nicht gegenseitig',
 
     'popup.label.targetLanguage': 'Übersetzen nach',
 
@@ -5968,7 +5989,7 @@
     // ── An Instapaper senden ───────────────────────────────
     'options.instapaper.heading': 'Instapaper',
     'options.instapaper.enable': '„An Instapaper senden“ aktivieren',
-    'options.instapaper.enableHint': 'Nach dem Aktivieren erscheint im Symbolleisten-Popup eine Schaltfläche „An Instapaper senden“ (oder drücke Alt+I), um die aktuelle, übersetzte Seite in deinem Instapaper zu speichern',
+    'options.instapaper.enableHint': 'Nach dem Aktivieren erscheint im Symbolleistensymbol-Menü eine Schaltfläche „An Instapaper senden” (oder drücke Alt+I), um die aktuelle, übersetzte Seite in deinem Instapaper zu speichern',
     'options.instapaper.summary': 'Beim Senden eine Artikelzusammenfassung anhängen',
     'options.instapaper.summaryHint': 'Die Zusammenfassung erscheint unter dem Eintrag in Instapaper, wird in deiner Übersetzungszielsprache verfasst und stets mit dem günstigsten Gemini Flash Lite erzeugt (erfordert einen gültigen Gemini-API-Schlüssel). Jeder Versand verursacht einen winzigen Verbrauch; ohne Gemini-Schlüssel oder bei einem Fehler wird sie übersprungen und das Lesezeichen trotzdem gespeichert',
     'options.instapaper.emailLabel': 'E-Mail des Instapaper-Kontos',
@@ -6023,7 +6044,7 @@
 
     // ── options Symbolleisten-Button-Zuordnung ───────────────────────
     'options.popupBtn.heading': 'Symbolleisten-Button „Seite übersetzen"',
-    'options.popupBtn.intro': 'Welche Voreinstellung der Button „Seite übersetzen" im Popup verwendet, das nach Klick auf das Shinkansen-Symbol in der Symbolleiste erscheint (gemeinsam mit den drei Voreinstellungen der Tastenkürzel)',
+    'options.popupBtn.intro': 'Welche Voreinstellung der Button „Seite übersetzen" im Symbolleistensymbol-Menü verwendet, das nach Klick auf das Shinkansen-Symbol in der Symbolleiste erscheint (gemeinsam mit den drei Voreinstellungen der Tastenkürzel)',
     'options.popupBtn.label': 'Zugeordnete Übersetzungs-Voreinstellung',
 
     // ── options Domain-Regeln ─────────────────────────────
@@ -6070,14 +6091,17 @@
     'options.toast.opacityHint': 'Wenn zu auffällig, kann die Deckkraft durch Ziehen nach links reduziert werden, um die Benachrichtigung dezenter zu machen',
     'options.toast.autoHide': 'Benachrichtigung nach Übersetzung automatisch schließen',
     'options.toast.autoHideHint': 'Wenn aktiviert, verschwindet die Benachrichtigung der abgeschlossenen Übersetzung nach 5 Sekunden automatisch; sonst muss sie manuell geschlossen werden',
-    'options.floating.heading': 'Schwebende Übersetzungsschaltfläche',
-    'options.floating.intro': 'Zeigt eine verschiebbare runde Schaltfläche am Seitenrand — tippen für die Standardübersetzung, lange drücken zur Auswahl aus drei Voreinstellungen, an beide Seiten andockbar',
-    'options.floating.enable': 'Schwebende Übersetzungsschaltfläche anzeigen',
-    'options.floating.enableHint': 'Auf Smartphones / Tablets standardmäßig an, in Desktop-Browsern standardmäßig aus; ein Tippen entspricht der Standardvoreinstellung der Symbolleisten-Schaltfläche „Seite übersetzen"',
+    'options.floating.heading': 'Schwebende Schaltfläche',
+    'options.floating.intro': 'Zeigt eine verschiebbare Schaltfläche am Seitenrand — tippen für die Standardübersetzung, lange drücken zur Auswahl aus drei Voreinstellungen, an beide Seiten andockbar',
+    'options.floating.enable': 'Schwebende Schaltfläche anzeigen',
+    'options.floating.enableHint': 'Standardmäßig an; ein Tippen entspricht der Standardvoreinstellung der Symbolleisten-Schaltfläche „Seite übersetzen"',
+    'options.floating.size': 'Schaltflächengröße',
+    'options.floating.sizeSmall': 'Klein',
+    'options.floating.sizeLarge': 'Groß',
     'options.floating.opacity': 'Schaltflächen-Deckkraft {value}%',
     'options.floating.opacityHint': 'Wenn zu auffällig, nach links ziehen, um die Deckkraft zu verringern und die Schaltfläche dezenter zu machen',
     'options.fourFinger.heading': 'Vier-Finger-Touch-Übersetzung',
-    'options.fourFinger.intro': 'Auf Smartphones / Tablets mit vier Fingern tippen zum Übersetzen, Vier-Finger-Langdruck für die sekundäre Voreinstellung; deaktiviert funktionieren Hardware-Tastaturkürzel und die schwebende Schaltfläche weiterhin',
+    'options.fourFinger.intro': 'Standardmäßig aus, um versehentliches Auslösen zu vermeiden. Wenn aktiviert, auf Smartphones / Tablets mit vier Fingern tippen zum Übersetzen, Vier-Finger-Langdruck für die sekundäre Voreinstellung; die schwebende Schaltfläche und Hardware-Tastaturkürzel sind von diesem Schalter nicht betroffen',
     'options.fourFinger.enable': 'Vier-Finger-Touch-Geste aktivieren',
 
     // ── options Anzeigewährung ─────────────────────────────
@@ -6173,9 +6197,9 @@
     'options.gemini.quota.retriesHint': 'Maximale Wiederholungen bei API-Fehlern (z. B. 429 Quotenlimit) in einem einzelnen Batch. 0 = keine Wiederholung, Fehler wird übersprungen; Standard 3',
 
     'options.gemini.resetAll': 'Alle Parameter zurücksetzen',
-    'options.gemini.resetAllTitle': 'Alle Felder dieses Reiters auf Standardwerte zurücksetzen (nach Klick muss „Einstellungen speichern" geklickt werden, damit es wirksam wird)',
-    'options.gemini.resetAllConfirm': 'Wirklich alle Parameter des Gemini-Reiters auf Standardwerte zurücksetzen?\n\nBetroffene Felder: Service Tier, Modellpreis-Überschreibungen (leer = eingebaute Tabelle), Tier/RPM/TPM/RPD, Sicherheitspuffer, Wiederholungsversuche, Temperature, Max Output Tokens, Übersetzungs-Prompt, parallele Batches, Absätze / Zeichen / Absatzlimit pro Batch.\n\nNach Klick muss „Einstellungen speichern" geklickt werden, damit es wirksam wird.',
-    'options.gemini.resetAllDone': 'Felder zurückgesetzt, klicke „Einstellungen speichern", um sie zu übernehmen',
+    'options.gemini.resetAllTitle': 'Alle Felder dieses Reiters auf Standardwerte zurücksetzen (wird automatisch gespeichert)',
+    'options.gemini.resetAllConfirm': 'Wirklich alle Parameter des Gemini-Reiters auf Standardwerte zurücksetzen?\n\nBetroffene Felder: Service Tier, Modellpreis-Überschreibungen (leer = eingebaute Tabelle), Tier/RPM/TPM/RPD, Sicherheitspuffer, Wiederholungsversuche, Temperature, Max Output Tokens, Übersetzungs-Prompt, parallele Batches, Absätze / Zeichen / Absatzlimit pro Batch.\n\nWird automatisch gespeichert.',
+    'options.gemini.resetAllDone': 'Felder zurückgesetzt und automatisch gespeichert',
 
     // ── options Gemini cost-hint (dynamisches yt-prompt-cost-hint) ─
     'options.gemini.cost.googleHint.html': '<strong>Google Translate sendet keinen Prompt</strong>; diese beiden Toggles gelten nicht für Google MT',
@@ -6622,8 +6646,8 @@
     'doc.settingsPage.danger.hint.html': 'Jede Übersetzung wird lokal zwischengespeichert, sodass beim nächsten Mal derselbe Text kostenlos wiederverwendet wird. Diese Schaltfläche löscht den Cache jedes Dokuments — eine erneute Übersetzung eines früheren Dokuments ruft die KI erneut auf (verbraucht Tokens). <br>Verwenden Sie dies, wenn: Sie den obigen Prompt geändert haben und alles neu übersetzen möchten, oder die alten Übersetzungen Ihnen schwach erscheinen und Sie neu beginnen möchten.<br><strong>Web-Übersetzung, Untertitelübersetzung und Glossar-Memory sind nicht betroffen.</strong>',
     'doc.settingsPage.btn.clearAllCache': 'Komplettes Dokumentübersetzungs-Memory löschen',
     'doc.settingsPage.btn.save': 'Speichern',
-    'doc.settingsPage.saveBar.saved': '✓ Gespeichert',
-    'doc.settingsPage.saveBar.dirty': 'Sie haben nicht gespeicherte Änderungen',
+    'doc.settingsPage.saveBar.saved': 'Automatisch gespeichert',
+    'doc.settingsPage.saveBar.dirty': 'Wird gespeichert…',
     'doc.settingsPage.confirm.clearAllCache': 'Komplettes Dokumentübersetzungs-Memory löschen?\n\nAlle Dokumente, die Sie zuvor übersetzt haben, rufen beim nächsten Mal die KI erneut auf (verbraucht Tokens).\n\nWeb-Übersetzung und Untertitelübersetzung sind nicht betroffen.',
     'doc.settingsPage.cache.cleared': '✓ {n} Memory-Einträge gelöscht',
     'doc.settingsPage.cache.failed': '✗ Löschen fehlgeschlagen: {error}',

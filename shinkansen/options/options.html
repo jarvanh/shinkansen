@@ -62,7 +62,7 @@
           <option value="fr">Français</option>
           <option value="de">Deutsch</option>
         </select>
-        <small class="muted" data-i18n="options.uiLanguage.hint">控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟工具列圖示中的「翻譯目標語言」獨立，互不影響</small>
+        <small class="muted" data-i18n="options.uiLanguage.hint">控制工具列圖示、設定頁、翻譯進度通知等擴充功能介面字串的語言。跟工具列圖示選單中的「翻譯目標語言」獨立，互不影響</small>
       </label>
     </section>
 
@@ -86,7 +86,7 @@
       <label class="toggle">
         <input type="checkbox" id="instapaperEnabled">
         <span data-i18n="options.instapaper.enable">啟用「送到 Instapaper」</span>
-        <small class="muted" data-i18n="options.instapaper.enableHint">啟用後，工具列視窗會出現「送到 Instapaper」按鈕，也可用快速鍵 Alt+I，把目前（翻譯後）的整頁存到你的 Instapaper</small>
+        <small class="muted" data-i18n="options.instapaper.enableHint">啟用後，工具列圖示選單會出現「送到 Instapaper」按鈕，也可用快速鍵 Alt+I，把目前（翻譯後）的整頁存到你的 Instapaper</small>
       </label>
       <label class="toggle">
         <input type="checkbox" id="instapaperSummaryEnabled">
@@ -244,7 +244,7 @@
 
     <section>
       <h2 data-i18n="options.popupBtn.heading">工具列「翻譯本頁」按鈕</h2>
-      <p class="muted" data-i18n="options.popupBtn.intro">點擊瀏覽器工具列上的 Shinkansen 圖示後，跳出視窗中「翻譯本頁」按鈕要使用哪一組設定（與翻譯快速鍵共用三組預設）</p>
+      <p class="muted" data-i18n="options.popupBtn.intro">點擊瀏覽器工具列上的 Shinkansen 圖示後，工具列圖示選單中「翻譯本頁」按鈕要使用哪一組設定（與翻譯快速鍵共用三組預設）</p>
       <label class="popup-button-slot-label">
         <span data-i18n="options.popupBtn.label">對應的翻譯預設</span>
         <!-- 注意:option text 由 refreshSlotDropdownLabels() 動態管理(prefix + 使用者
@@ -360,13 +360,18 @@
     </section>
 
     <section>
-      <h2 data-i18n="options.floating.heading">懸浮翻譯按鈕</h2>
-      <p class="muted" data-i18n="options.floating.intro">在頁面邊緣顯示一顆可拖移的圓形按鈕，短按用預設翻譯、長按選三組預設，可拖到左右任一邊吸附</p>
+      <h2 data-i18n="options.floating.heading">懸浮按鈕</h2>
+      <p class="muted" data-i18n="options.floating.intro">在頁面邊緣顯示一顆可拖移的按鈕，短按用預設翻譯、長按選三組預設，可拖到左右任一邊吸附</p>
       <label class="toggle">
         <input type="checkbox" id="floatingIcon">
-        <span data-i18n="options.floating.enable">顯示懸浮翻譯按鈕</span>
-        <small class="muted" data-i18n="options.floating.enableHint">手機 / 平板預設開啟、桌面瀏覽器預設關閉；短按等同工具列「翻譯本頁」按鈕的預設</small>
+        <span data-i18n="options.floating.enable">顯示懸浮按鈕</span>
+        <small class="muted" data-i18n="options.floating.enableHint">預設開啟；短按等同工具列「翻譯本頁」按鈕的預設</small>
       </label>
+      <div class="floating-size-options">
+        <span data-i18n="options.floating.size">按鈕大小</span>
+        <label><input type="radio" name="floatingIconSize" value="16" checked><span data-i18n="options.floating.sizeSmall">小</span></label>
+        <label><input type="radio" name="floatingIconSize" value="32"><span data-i18n="options.floating.sizeLarge">大</span></label>
+      </div>
       <label class="opacity-row">
         <span id="floatingOpacityLabelWrap">按鈕透明度 70%</span>
         <input type="range" id="floatingIconOpacity" min="10" max="100" step="10" value="70">
@@ -380,9 +385,9 @@
     <!-- 四指觸控翻譯：iOS / iPadOS only，由 options.js 依 IS_IOS_BUILD 控制 hidden -->
     <section id="four-finger-section" hidden>
       <h2 data-i18n="options.fourFinger.heading">四指觸控翻譯</h2>
-      <p class="muted" data-i18n="options.fourFinger.intro">在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；關閉後仍可用硬體鍵盤快速鍵與懸浮按鈕</p>
+      <p class="muted" data-i18n="options.fourFinger.intro">預設關閉，避免誤觸發。開啟後在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；懸浮按鈕與硬體鍵盤快速鍵不受此開關影響</p>
       <label class="toggle">
-        <input type="checkbox" id="fourFingerGesture" checked>
+        <input type="checkbox" id="fourFingerGesture">
         <span data-i18n="options.fourFinger.enable">啟用四指觸控手勢</span>
       </label>
     </section>
@@ -423,10 +428,6 @@
       <button id="reset-defaults" class="secondary" data-i18n="options.reset.button">回復預設設定</button>
     </section>
 
-    <div class="actions">
-      <button id="save" class="primary" data-i18n="options.action.save">儲存設定</button>
-      <span id="save-status"></span>
-    </div>
 
     <section class="license-section">
       <h2 data-i18n="options.license.heading">授權資訊</h2>
@@ -606,8 +607,7 @@
     </section>
 
     <div class="actions">
-      <button id="save-gemini" class="primary" data-i18n="options.action.save">儲存設定</button>
-      <button id="gemini-reset-all" class="secondary" type="button" data-i18n-attr-title="options.gemini.resetAllTitle" title="把本分頁所有欄位重設為預設值（按下後仍需點「儲存設定」才會生效）" data-i18n="options.gemini.resetAll">重設所有參數</button>
+      <button id="gemini-reset-all" class="secondary" type="button" data-i18n-attr-title="options.gemini.resetAllTitle" title="把本分頁所有欄位重設為預設值（會自動儲存）" data-i18n="options.gemini.resetAll">重設所有參數</button>
       <span id="save-gemini-status"></span>
     </div>
 
@@ -712,10 +712,6 @@
       </details>
     </section>
 
-    <div class="actions">
-      <button id="save-glossary" class="primary" data-i18n="options.action.save">儲存設定</button>
-      <span id="save-glossary-status"></span>
-    </div>
 
     </div><!-- /tab-glossary -->
 
@@ -887,10 +883,6 @@
       </label>
     </section>
 
-    <div class="actions">
-      <button id="save-custom-provider" class="primary" data-i18n="options.action.save">儲存設定</button>
-      <span id="save-custom-provider-status"></span>
-    </div>
 
     </div><!-- /tab-custom-provider -->
 
@@ -924,10 +916,6 @@
       </div>
     </section>
 
-    <div class="actions">
-      <button id="save-forbidden" class="primary" data-i18n="options.action.save">儲存設定</button>
-      <span id="save-forbidden-status"></span>
-    </div>
 
     </div><!-- /tab-forbidden -->
 
@@ -1099,9 +1087,6 @@
         </label>
       </div>
 
-      <button id="save-debug" class="primary" data-i18n="options.action.save">儲存設定</button>
-      <span id="save-debug-status"></span>
-
     </div><!-- /tab-log -->
 
     <!-- ═══ YouTube 字幕分頁（v1.2.11 新增） ═══ -->
@@ -1231,10 +1216,6 @@
       </details>
     </section>
 
-    <div class="actions">
-      <button id="save-youtube" class="primary" data-i18n="options.action.save">儲存設定</button>
-      <span id="save-youtube-status"></span>
-    </div>
 
     </div><!-- /tab-youtube -->
 

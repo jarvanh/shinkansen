@@ -7,6 +7,8 @@
 
 ## v1.10.x
 
+**v1.10.67** —— **設定頁改為自動儲存＋懸浮按鈕預設開啟、可調大小，四指手勢預設關閉，預設模型改 Gemini 3.1 Flash Lite**。設定頁（options）全面改成自動儲存：移除所有分頁底部的「儲存設定」按鈕，任何欄位一改動即自動寫入並以底部儲存列提示，省去「改完忘了按儲存」的困擾（「重設所有參數」也改為自動儲存）。懸浮按鈕：預設改為全平台一律開啟（原本桌面預設關、行動裝置預設開），並新增「按鈕大小」選項（小 16px／大 32px，觸控較好點）。四指觸控手勢（iOS／iPadOS）改為預設關閉，避免捲動／縮放時誤觸發；懸浮按鈕成為行動裝置主要觸控入口，硬體鍵盤快速鍵與懸浮按鈕不受此開關影響，使用者仍可在設定頁開啟四指手勢。預設翻譯模型由 Gemini 3 Flash 改為 Gemini 3.1 Flash Lite（省成本，與主要預設第 1 組一致），預設計價同步調整；三組翻譯預設的前兩組順序對調（第 1 組＝Flash Lite、第 2 組＝Flash）。同步修正多處介面用詞（「工具列圖示選單」）。**不需清快取**：不動翻譯 prompt、cache key 結構與譯文內容（僅變更預設模型與介面行為）。
+
 **v1.10.66** —— **修「某些頁面整頁無法翻譯、一觸發就卡在『翻譯中』」**。在含特定訂閱／搜尋表單的頁面（實例：使用 WordPress 內建電子報訂閱表單的部落格），整頁翻譯一觸發就毫無譯文、永遠卡在翻譯中。根因：偵測階段判斷段落語言時，會往上爬 DOM 讀每個祖先元素的 `lang` 屬性；但 HTML 表單有個特性——表單內若有名為 `lang` 的欄位（`<input name="lang">`），存取 `form.lang` 會回傳那個欄位元素而非語言字串，於是對它呼叫字串方法直接拋錯、整條翻譯在偵測就中斷。修法：讀 `lang` 前先確認它真的是字串，不是字串就改讀該元素的 `lang` 屬性值（永遠是字串或無），任何元素型別皆涵蓋、不綁特定網站。新增 1 條 regression（form 內 `name="lang"` 欄位遮蓋情境不再拋錯，含 SANITY）。**不需清快取**：不動翻譯 prompt、cache key 結構與譯文內容。
 
 **v1.10.65** —— **修「Shinkansen 翻譯後再進 JRead 閱讀模式畫面每秒閃動」（跨擴充功能握手）**。在 iPhone 上把某頁先用 Shinkansen 翻譯、再進入姊妹擴充功能 JRead 的閱讀模式，畫面會每秒閃一下、像在不斷重排版（未翻譯則無）。根因：JRead 進閱讀模式會把被 Shinkansen 翻譯過的文章元素重排成閱讀卡片，而 Shinkansen 的 content guard 每秒巡一次、把這個重排後的元素誤判成「譯文被單頁應用覆蓋」而重建子節點 → 每秒 reflow 閃動。閱讀卡片就是被翻譯的元素本身、落在 content guard 的管轄區內，JRead 端無法閃避，故由 Shinkansen 這端在閱讀模式期間讓位。修法採跨擴充功能握手：JRead 進／出閱讀模式時對頁面 dispatch `jread-reader-mode` CustomEvent（跨 extension content script、與 Debug Bridge 同一套 CustomEvent 機制），Shinkansen 收到就暫停／恢復 content guard（暫停期間不停 interval、不重建 observer，退出後立即接續）。需 JRead（v0.8.149 起）與 Shinkansen 兩端都更新才生效。新增 4 條 regression（事件→旗標雙向切換、detail 缺漏的安全降級、暫停期間 content guard 不丟、原始碼 guard 接線，皆含 SANITY）。**不需清快取**：不動翻譯 prompt、cache key 結構與譯文內容。

@@ -10,9 +10,10 @@
 //   handleTranslatePreset(該 slot) + 收選單；點選單外 / 捲動 = 收選單。
 // - 拖移（pointermove 超過 DRAG_THRESHOLD_PX）= 進入拖移模式，放開時吸附最近的左／右
 //   緣，垂直位置存比例（floatingIconPos = { edge, offsetY }），視窗縮放後按比例還原。
-// - enable / 透明度 / 位置走 storage.sync，onChanged 即時生效（比照 content-toast.js）。
-//   floatingIcon 預設值平台分流：未設過（非 boolean）時 = IS_IOS_BUILD（iOS / iPadOS
-//   build 預設開、桌面 build 預設關），使用者在 options 明確設過則尊重該設定。
+// - enable / 透明度 / 尺寸 / 位置走 storage.sync，onChanged 即時生效（比照 content-toast.js）。
+//   floatingIcon 預設值：未設過（非 boolean）時一律預設開啟（不分平台），使用者在 options
+//   明確設過則尊重該設定。floatingIconSize：icon 邊長 16（預設）/ 32（觸控好點）。
+//   長按開選單時暫時拉到全不透明，收起再還原使用者設定的透明度。
 // - 比照 toast 用獨立 Shadow DOM host（closed）+ adoptedStyleSheets（CSP-safe），掛在
 //   documentElement，不注入文章內容 → 不破壞 Readwise 擷取（CLAUDE.md §15）。
 // - 只在 top frame 放一顆（window === window.top）；iframe / SK.disabled / 非 HTML
@@ -24,10 +25,13 @@
 
   const LONGPRESS_MS = 500;              // 壓住達此毫秒 = 長按 → 開選單；之前放開 = 短按
   const DRAG_THRESHOLD_PX = 8;           // pointer 位移超過此距離 = 進入拖移（取消短按 / 長按）
-  const ICON_SIZE = 16;                  // icon 視覺尺寸（方形 icon 顯示邊長）
-  const HIT_SIZE = 32;                    // 按鈕可點 footprint（透明 padding 包住 icon，觸控好點）
+  const DEFAULT_ICON_SIZE = 16;          // icon 視覺尺寸預設（方形 icon 顯示邊長）；使用者可選 32
+  const HIT_PADDING = 16;                // icon 外圍透明可點 padding（觸控好點）
   const EDGE_MARGIN = 6;                 // 吸附邊緣時與視窗邊的間距
   const DEFAULT_OPACITY = 0.7;
+  // icon 尺寸為使用者可調（floatingIconSize：16 / 32），故 hitSize 跟著變動（非常數）。
+  let iconSize = DEFAULT_ICON_SIZE;      // 目前 icon 邊長
+  let hitSize = iconSize + HIT_PADDING;  // 目前按鈕可點 footprint（= icon + 透明 padding）
 
   // ─── Shadow DOM host（CSP-safe，比照 content-toast.js）──────────────────
   let host, shadow, btn, menuEl;
@@ -51,8 +55,8 @@
     :host, * { box-sizing: border-box; }
     .fab {
       position: relative;
-      width: ${HIT_SIZE}px;
-      height: ${HIT_SIZE}px;
+      width: var(--fab-hit, 32px);
+      height: var(--fab-hit, 32px);
       border: none;
       padding: 0;
       background: none;            /* 不加圓框 / 白底，直接用工具列方形 icon 本體 */
@@ -68,8 +72,8 @@
     }
     .fab:active { transform: scale(.92); }
     .fab img {
-      width: ${ICON_SIZE}px;
-      height: ${ICON_SIZE}px;
+      width: var(--fab-icon, 16px);
+      height: var(--fab-icon, 16px);
       display: block;
       /* drop-shadow 讓 icon 在淺色 / 同色頁面也看得見，但不是圓框 */
       filter: drop-shadow(0 1px 3px rgba(0,0,0,.4));
@@ -93,8 +97,8 @@
       font: 13px -apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
     }
     .menu.show { display: flex; }
-    .menu.side-left  { left: ${HIT_SIZE + 8}px; }
-    .menu.side-right { right: ${HIT_SIZE + 8}px; }
+    .menu.side-left  { left: calc(var(--fab-hit, 32px) + 8px); }
+    .menu.side-right { right: calc(var(--fab-hit, 32px) + 8px); }
     .menu-item {
       display: flex;
       align-items: center;
@@ -148,10 +152,11 @@
 
   // ─── 設定狀態 ───────────────────────────────────────────────────────────
   let pos = { edge: 'right', offsetY: 0.5 };   // offsetY = 0(頂)…1(底) 比例
+  let currentOpacity = DEFAULT_OPACITY;        // 使用者設定的透明度（選單開啟時暫時拉到 1，關閉還原）
 
   function resolveEnabled(v) {
-    // 未設過（非 boolean）→ 平台預設：iOS/iPadOS build 開、桌面 build 關
-    return typeof v === 'boolean' ? v : (SK.IS_IOS_BUILD === true);
+    // 未設過（非 boolean）→ 一律預設開啟（不分平台）
+    return typeof v === 'boolean' ? v : true;
   }
 
   function applyEnabled(enabled) {
@@ -160,8 +165,19 @@
   }
 
   function applyOpacity(v) {
-    const o = typeof v === 'number' ? v : DEFAULT_OPACITY;
-    host.style.opacity = String(Math.max(0.1, Math.min(1, o)));
+    if (typeof v === 'number') currentOpacity = Math.max(0.1, Math.min(1, v));
+    // 選單開啟時保持全不透明，讓使用者看清選單；關閉後才套回使用者設定值
+    host.style.opacity = menuOpen ? '1' : String(currentOpacity);
+  }
+
+  // floatingIconSize：16 / 32。設 CSS 變數驅動 .fab 與 .fab img 尺寸，並更新 hitSize
+  // 供 applyPos / 拖移 clamp 計算。
+  function applySize(v) {
+    iconSize = v === 32 ? 32 : DEFAULT_ICON_SIZE;
+    hitSize = iconSize + HIT_PADDING;
+    host.style.setProperty('--fab-icon', iconSize + 'px');
+    host.style.setProperty('--fab-hit', hitSize + 'px');
+    applyPos(pos);   // 尺寸變了重貼邊，避免超出視窗
   }
 
   function sanitizePos(p) {
@@ -174,7 +190,7 @@
   // 依 pos 把 host 貼到邊緣（offsetY 比例 → top px）
   function applyPos(p) {
     pos = sanitizePos(p);
-    const top = Math.round(pos.offsetY * Math.max(0, window.innerHeight - HIT_SIZE));
+    const top = Math.round(pos.offsetY * Math.max(0, window.innerHeight - hitSize));
     host.style.top = top + 'px';
     host.style.bottom = 'auto';
     if (pos.edge === 'left') {
@@ -239,6 +255,7 @@
     await buildMenu();
     menuEl.classList.add('show');
     menuOpen = true;
+    host.style.opacity = '1';   // 選單開啟時拉到全不透明，讓使用者看清選單（task：長按降透明度）
     // 點選單外 / 捲動 → 收
     outsideHandler = (ev) => {
       const path = ev.composedPath ? ev.composedPath() : [];
@@ -253,6 +270,7 @@
     if (!menuOpen) return;
     menuEl.classList.remove('show');
     menuOpen = false;
+    host.style.opacity = String(currentOpacity);   // 選單收起，還原使用者設定的透明度
     if (outsideHandler) {
       document.removeEventListener('pointerdown', outsideHandler, true);
       outsideHandler = null;
@@ -309,9 +327,9 @@
     }
     if (press.moved) {
       // 自由跟手（拖移期間），放開再吸附
-      const half = HIT_SIZE / 2;
-      const left = Math.max(0, Math.min(window.innerWidth - HIT_SIZE, e.clientX - half));
-      const top = Math.max(0, Math.min(window.innerHeight - HIT_SIZE, e.clientY - half));
+      const half = hitSize / 2;
+      const left = Math.max(0, Math.min(window.innerWidth - hitSize, e.clientX - half));
+      const top = Math.max(0, Math.min(window.innerHeight - hitSize, e.clientY - half));
       host.style.left = left + 'px';
       host.style.right = 'auto';
       host.style.top = top + 'px';
@@ -330,7 +348,7 @@
       // 吸附最近邊緣：pointer 在視窗左半 → 左緣，右半 → 右緣
       const edge = e.clientX < window.innerWidth / 2 ? 'left' : 'right';
       const offsetY = Math.max(0, Math.min(1,
-        (e.clientY - HIT_SIZE / 2) / Math.max(1, window.innerHeight - HIT_SIZE)));
+        (e.clientY - hitSize / 2) / Math.max(1, window.innerHeight - hitSize)));
       applyPos({ edge, offsetY });
       persistPos();
       return;
@@ -354,12 +372,14 @@
   }, { passive: true });
 
   // ─── 初始化：讀 storage + onChanged 即時生效 ─────────────────────────────
-  browser.storage.sync.get(['floatingIcon', 'floatingIconOpacity', 'floatingIconPos']).then((s) => {
+  browser.storage.sync.get(['floatingIcon', 'floatingIconOpacity', 'floatingIconSize', 'floatingIconPos']).then((s) => {
     applyOpacity(s.floatingIconOpacity);
+    applySize(s.floatingIconSize);
     applyPos(s.floatingIconPos);
     applyEnabled(resolveEnabled(s.floatingIcon));
   }).catch(() => {
     applyOpacity(undefined);
+    applySize(undefined);
     applyPos(undefined);
     applyEnabled(resolveEnabled(undefined));
   });
@@ -368,6 +388,7 @@
     if (area !== 'sync') return;
     if (changes.floatingIcon) applyEnabled(resolveEnabled(changes.floatingIcon.newValue));
     if (changes.floatingIconOpacity) applyOpacity(changes.floatingIconOpacity.newValue);
+    if (changes.floatingIconSize) applySize(changes.floatingIconSize.newValue);
     if (changes.floatingIconPos) applyPos(changes.floatingIconPos.newValue);
   });
 
@@ -377,9 +398,11 @@
     openMenu, closeMenu, buildMenu,
     handleShortPress,
     runPreset,
-    applyEnabled, applyOpacity, applyPos,
+    applyEnabled, applyOpacity, applySize, applyPos,
     resolveEnabled, pickPopupSlot,
     isMenuOpen: () => menuOpen,
+    getOpacity: () => host.style.opacity,
+    getIconSize: () => iconSize,
     getPos: () => ({ ...pos }),
   };
 })(window.__SK);

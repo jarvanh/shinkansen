@@ -28,15 +28,15 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 
 ## Features
 
-- **Multi-language target + multi-language UI**: translate into 8 languages — Traditional Chinese (Taiwan) / Simplified Chinese (China) / English / Japanese / Korean / Spanish / French / German. Pick in the "Translate to" dropdown inside the toolbar popup; all translation paths (web / PDF / YouTube subtitles) share this setting. Popup, settings page, web-translation progress toast, and PDF document reader UI are all available in all 8 UI languages — independent picker, defaults to your browser locale.
+- **Multi-language target + multi-language UI**: translate into 8 languages — Traditional Chinese (Taiwan) / Simplified Chinese (China) / English / Japanese / Korean / Spanish / French / German. Pick in the "Translate to" dropdown inside the toolbar icon menu; all translation paths (web / PDF / YouTube subtitles) share this setting. The toolbar icon menu, settings page, web-translation progress toast, and PDF document reader UI are all available in all 8 UI languages — independent picker, defaults to your browser locale.
 - **Instant Translation**: see the page start turning into your target language within 1 second of pressing translate — no waiting for the entire batch to come back before any text is updated (Gemini only).
 - **Preserves page layout**: text is replaced in place; fonts, sizes, colors, and links are kept; bold and italics survive untouched.
-- **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the popup. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
+- **Single-language overlay / bilingual side-by-side dual mode**: one-click switch in the toolbar icon menu. *Overlay* replaces text in place; *bilingual* keeps the original and appends the translation as a new paragraph. Bilingual mode offers four visual treatments (subtle background tint / left border / dotted underline / none) for the translated paragraphs.
 - **Three translation engines**: Gemini (AI translation, best quality, requires API key) + Google Translate (unofficial free endpoint, no API key, faster) + Custom model — switch freely depending on what you're reading.
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with Traditional Chinese; styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
-- **Bilingual subtitles**: one-click toggle in the popup makes subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. YouTube and Google Drive videos share the same setting. Details in "Bilingual subtitles" below.
+- **Bilingual subtitles**: one-click toggle in the toolbar icon menu makes subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. YouTube and Google Drive videos share the same setting. Details in "Bilingual subtitles" below.
 - **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
 - **Custom glossary**: pin specific terms to your preferred translations so proper nouns are always rendered consistently. Two layers (global + domain-specific) where domain rules override global. Details in "Custom glossary" below.
 - **Blocked-word list**: an editable list of words you don't want in the translation. Works for any target language — write your own substitution pairs (defaults to empty for most targets; ships with 25 entries for Traditional Chinese targets). Injected as a high-prominence block at the end of the system prompt. Details in "Blocked-word list" below.
@@ -92,8 +92,8 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
 - **YouTube subtitle translation**: open a video with English captions, make sure CC is on, click the toolbar icon → toggle "YouTube subtitle translation" on
 - **Auto-translate sites**: add domains to the "Auto-translate sites" list in settings; pages on those sites translate on load (toast shows the `[Auto]` prefix)
 - **Custom glossary**: add term mappings in the "Glossary" tab; translations are forced to use your preferred renderings
-- **Glossary consistency**: enable it from the popup or settings page; long-form translations build a glossary first to keep proper nouns consistent
-- **Edit translations**: after translating, click "Edit translations" in the popup to directly edit the translated text on the page
+- **Glossary consistency**: enable it from the toolbar icon menu or settings page; long-form translations build a glossary first to keep proper nouns consistent
+- **Edit translations**: after translating, click "Edit translations" in the toolbar icon menu to directly edit the translated text on the page
 
 ## Translation shortcuts and presets
 
@@ -129,7 +129,7 @@ When to use it: bulk browsing of English forums, news, product pages, etc. — c
 
 Google Docs renders text via Canvas, so generic web translation extensions can't access the content. Shinkansen detects Google Docs and uses the following flow:
 
-1. On a Google Docs editing page, press `Option+S` (or click "Translate this page" in the popup)
+1. On a Google Docs editing page, press `Option+S` (or click "Translate this page" in the toolbar icon menu)
 2. Shinkansen opens the same document in a new tab in "mobile reading view" (mobilebasic)
 3. Once the new tab loads, translation starts automatically — no second keystroke needed
 
@@ -137,11 +137,11 @@ Notes: you must have view access to the document. Mobile reading view is read-on
 
 ## YouTube subtitle translation
 
-Open a YouTube video with English captions, make sure CC is on, click the Shinkansen toolbar icon — the popup will show a "YouTube subtitle translation" toggle. Turn it on. Captions are progressively replaced with Traditional Chinese without affecting playback; styling matches native YouTube captions exactly.
+Open a YouTube video with English captions, make sure CC is on, click the Shinkansen toolbar icon — the menu will show a "YouTube subtitle translation" toggle. Turn it on. Captions are progressively replaced with Traditional Chinese without affecting playback; styling matches native YouTube captions exactly.
 
 If you watch a lot of English YouTube content, enable auto-translate in the "YouTube subtitles" tab in settings — translation will start automatically whenever you open a video, no manual toggling.
 
-On YouTube video pages, the toolbar popup shows a "Caption size" dropdown to enlarge the translated captions (100%–200%). It works on both desktop and mobile; on iPhone / iPad it also scales the captions shown by the iOS system player in fullscreen
+On YouTube video pages, the toolbar icon menu shows a "Caption size" dropdown to enlarge the translated captions (100%–200%). It works on both desktop and mobile; on iPhone / iPad it also scales the captions shown by the iOS system player in fullscreen
 
 ### AI smart segmentation (ASR-only)
 
@@ -158,7 +158,7 @@ Human-uploaded captions (professional / community-contributed) are unaffected by
 
 ### Bilingual subtitles
 
-Click the Shinkansen toolbar icon, toggle "Bilingual subtitles" on in the popup. Subtitles will then show both original and translation simultaneously (English on top, Chinese below). Off shows Chinese only (default).
+Click the Shinkansen toolbar icon, toggle "Bilingual subtitles" on in the toolbar icon menu. Subtitles will then show both original and translation simultaneously (English on top, Chinese below). Off shows Chinese only (default).
 
 Best for:
 - **Listening practice**: glance at the original when you can't catch a word
@@ -290,7 +290,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.10.66 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v1.10.67 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

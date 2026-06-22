@@ -487,7 +487,7 @@ export const DEFAULT_SETTINGS = {
   // 使用者可選 zh-TW / zh-CN / en 強制鎖。預設 'auto' 不寫 storage(getSettings 走 default)。
   uiLanguage: 'auto',
   geminiConfig: {
-    model: 'gemini-3-flash-preview',       // v0.83: 預設模型升級至 Gemini 3 Flash
+    model: 'gemini-3.1-flash-lite',        // 預設模型 = Gemini 3.1 Flash Lite（省成本，與主要預設 slot 2 一致）
     serviceTier: 'DEFAULT',
     // v1.10.18:Gemini 3 官方強烈建議維持 temperature=1.0,設低於 1.0 可能引發
     // 無限思考迴圈 / 推理退化(舊世代「降溫求穩定」思維對 Gemini 3 失效)。
@@ -501,12 +501,12 @@ export const DEFAULT_SETTINGS = {
     maxOutputTokens: 8192,
     systemInstruction: DEFAULT_SYSTEM_PROMPT,
   },
-  // 計價設定（USD per 1M tokens)。預設值為 gemini-3-flash-preview 的官方報價，
+  // 計價設定（USD per 1M tokens)。預設值為 gemini-3.1-flash-lite 的官方報價，
   // 使用者換模型時請自行至設定頁調整。
   // v1.9.2:cachedDiscount(0-1,cache 命中省下的比例)。Gemini 2.5+ 起 90% off → 0.90。
   pricing: {
-    inputPerMTok: 0.50,
-    outputPerMTok: 3.00,
+    inputPerMTok: 0.25,
+    outputPerMTok: 1.50,
     cachedDiscount: 0.90,
   },
   // v0.69: 全文術語表一致化設定
@@ -660,8 +660,8 @@ export const DEFAULT_SETTINGS = {
   // label 顯示於 options 頁（未來 toast 也可用）。
   // 行為：閒置按 → 啟動對應 preset；翻譯中按 → abort；已翻譯按任意 → restorePage。
   translatePresets: [
-    { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'Flash Lite' },
-    { slot: 2, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
+    { slot: 1, engine: 'gemini', model: 'gemini-3-flash-preview', label: 'Flash' },
+    { slot: 2, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'Flash Lite' },
     { slot: 3, engine: 'google', model: null, label: 'Google MT' },
   ],
   // 自訂快速鍵：三組 preset 各自的使用者自訂鍵組合（null = 沿用 manifest 內建預設）。
@@ -690,18 +690,20 @@ export const DEFAULT_SETTINGS = {
   // 使用者可在一般設定改成其他 preset，按 popup 按鈕等同按該 slot 的快速鍵。
   popupButtonSlot: 2,
   // 懸浮翻譯控制按鈕（floating action button）。
-  // floatingIcon：enable 開關。預設 null = 平台分流（content / options 端都把非 boolean
-  //   解析成 IS_IOS_BUILD：iOS / iPadOS build 預設開、桌面 build 預設關）。使用者在 options
-  //   明確切過就寫入 boolean，之後尊重該值。
+  // floatingIcon：enable 開關。預設 null = 一律預設開啟（content / options 端都把非 boolean
+  //   解析成 true，不分平台）。使用者在 options 明確切過就寫入 boolean，之後尊重該值。
   // floatingIconOpacity：0.1–1，預設 0.7（與 toast 一致）。
+  // floatingIconSize：icon 視覺邊長 px，16（預設，較小）或 32（較大，觸控好點）。
   // floatingIconPos：吸附邊緣位置。edge='left'|'right'，offsetY=0(頂)…1(底) 垂直比例。
   //   預設右緣中段；視窗縮放後按比例還原。
   floatingIcon: null,
   floatingIconOpacity: 0.7,
+  floatingIconSize: 16,
   floatingIconPos: { edge: 'right', offsetY: 0.5 },
-  // 四指觸控手勢 enable（iOS / iPadOS）。預設 true（沿用一直以來的 always-on 行為）。
+  // 四指觸控手勢 enable（iOS / iPadOS）。預設 false（改由懸浮按鈕當主要觸控入口，
+  //   四指手勢易誤觸發故預設關，使用者可在 Options 開啟）。
   // content-touch.js isEnabled() 額外 gate 此旗標；桌面 build 無此手勢，旗標無作用。
-  fourFingerGesture: true,
+  fourFingerGesture: false,
   // v1.6.13: 自動翻譯網站（白名單）觸發時要用哪一組 preset。預設 slot 2 = Flash。
   // 修法前自動翻譯路徑直接 SK.translatePage() 不帶 slot,fallback 全域 geminiConfig.model;
   // 使用者改 preset model 後 Alt+S 走新 model，但白名單路徑仍走全域 → UX 不一致。

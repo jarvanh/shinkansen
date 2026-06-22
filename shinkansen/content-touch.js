@@ -18,7 +18,8 @@
 //   macOS Safari）為 no-op，只有 safari-build-ios.sh override 的 iOS build 啟用。
 //   桌面觸控螢幕（Windows touch laptop 等）不啟用——四指手勢在各桌面 OS 另有
 //   系統手勢語意，誤觸發風險高
-// - 不加 options 開關（avoid redundant toggle 原則，§26.1）
+// - Options 提供「四指觸控翻譯」開關（storage.sync.fourFingerGesture），預設關閉——
+//   懸浮按鈕為主要觸控入口，四指手勢易誤觸發，使用者需要時才在 Options 開啟
 (function (SK) {
   'use strict';
   if (!SK) return;
@@ -34,16 +35,17 @@
     if (gesture && gesture.timer) { clearTimeout(gesture.timer); gesture.timer = null; }
   }
 
-  // 使用者可在 Options 關閉四指手勢（storage.sync.fourFingerGesture，預設開）。
-  // 不在載入期以 IS_IOS_BUILD gate 訂閱——isEnabled() 才 gate IS_IOS_BUILD，讓
-  // regression spec 可 runtime 翻 IS_IOS_BUILD 後仍吃得到這個旗標（且訂閱成本極小）。
-  let fourFingerEnabled = true;
+  // 使用者可在 Options 開啟四指手勢（storage.sync.fourFingerGesture，預設關——改由懸浮
+  // 按鈕當主要觸控入口，四指易誤觸發故預設關）。不在載入期以 IS_IOS_BUILD gate 訂閱——
+  // isEnabled() 才 gate IS_IOS_BUILD，讓 regression spec 可 runtime 翻 IS_IOS_BUILD 後仍
+  // 吃得到這個旗標（且訂閱成本極小）。
+  let fourFingerEnabled = false;
   browser.storage.sync.get(['fourFingerGesture']).then((s) => {
     if (typeof s.fourFingerGesture === 'boolean') fourFingerEnabled = s.fourFingerGesture;
   }).catch(() => {});
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.fourFingerGesture) {
-      fourFingerEnabled = changes.fourFingerGesture.newValue !== false;
+      fourFingerEnabled = changes.fourFingerGesture.newValue === true;
     }
   });
   SK.getFourFingerEnabled = () => fourFingerEnabled;   // regression spec 讀取用
