@@ -28,7 +28,8 @@
 - **修在**:`shinkansen/options/options.js` 加 `_renderFloatingSizeDemo()`(讀 checked radio 設 `#floatingOpacityDemo img` 的 width/height),於 `load()` 與 size radio `change` 觸發。
 - **為什麼 path B**:同上 options.js module 限制;純 options 頁 UI 預覽,無 content script 路徑可驗。已視覺核對函式邏輯。
 
-### Safari 選「功能選單」整頁 refresh — 改叫原生 popup(2026-06-22,dev tail 1.10.68.1 修,path B,需真機驗)
+### ~~Safari 選「功能選單」整頁 refresh — 改叫原生 popup(2026-06-22,v1.10.69 修)~~
+- ★ **關閉(2026-06-22,Jimmy 真機驗收)**:1.10.68.3 TestFlight 真機回報「功能選單」正常叫出、不再 refresh → Safari 分支(openPopup / 新分頁)生效。Safari 原生路徑 Chromium 永遠重現不出(同其他 Safari path B),靠真機 ground truth 結案,不再佔活動 queue。
 - ⚠ **Safari 路徑未在 Chromium 重現**:openPopup / Safari iframe 限制都只在真 Safari 發生,**待 Jimmy 真機 Safari 驗收**。
 - **症狀**(Jimmy 真機回報):長按懸浮按鈕 → 選單出現 → 點「功能選單」→ 整頁 refresh(翻譯過 / 沒翻譯過都會)。
 - **根因**:`openFeaturePanel()`(v1.10.68 新功能)在網頁裡 iframe 載入 `popup.html?panel=1`。Safari 不允許在 https 網頁的 iframe 載入 `safari-web-extension://` 擴充頁(已知限制,WebSearch 證實:CSP child-src/default-src 擋、insecure content 擋),iOS 上表現為整頁 refresh。桌面 Chrome 正常(已驗)。原 code 註解「Safari 無法程式化開原生 popup」過時——Safari 16+ 已支援 `browser.action.openPopup()`。
