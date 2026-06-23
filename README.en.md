@@ -10,15 +10,9 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
-- Added **Floating button** — tap it to translate the page; long-press to switch translation engine or open the menu. On by default on phones and tablets, with adjustable size and opacity.
+- Added **Floating button** — tap it to translate the page; long-press to switch translation engine or open the menu.
 - Added **Send to Instapaper** — save the fully translated article to your own Instapaper with one tap, to read again later.
-- Added **Multi-language support** — translate into 8 languages (Traditional Chinese / Simplified Chinese / English / Japanese / Korean / Spanish / French / German); the extension UI is also available in all 8 languages.
-- Added **Instant Translation** — see the page start turning Chinese within 1 second of pressing translate (Gemini only).
-- Added **Bilingual mode** — original text and translation shown side by side.
-- Added **Custom AI models** — bring your own OpenRouter / Claude / local Ollama, etc.
-- Added **AI subtitle re-segmentation** — YouTube auto-generated captions are re-segmented by AI for more natural Chinese subtitles.
-- Added **Blocked-word list** — explicitly tell the AI model to avoid words you don't want appearing in the translation.
-- Added **Translate opening only** — preview the first N paragraphs to save tokens.
+- **iOS / iPadOS version** is coming soon to the App Store — stay tuned.
 
 ## Why Shinkansen
 
@@ -37,6 +31,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Three translation engines**: Gemini (AI translation, best quality, requires API key) + Google Translate (unofficial free endpoint, no API key, faster) + Custom model — switch freely depending on what you're reading.
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
+- **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with Traditional Chinese; styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
 - **Bilingual subtitles**: one-click toggle in the toolbar icon menu makes subtitles show two lines simultaneously — English on top, Chinese below. Useful for listening practice or proofreading. YouTube and Google Drive videos share the same setting. Details in "Bilingual subtitles" below.
 - **YouTube AI re-segmentation** (ASR-only): YouTube auto-generated captions arrive as broken word fragments without punctuation. Shinkansen sends the whole batch to AI for semantic re-segmentation, then translates — Chinese subtitles go from "shattered words" to "complete sentences". Details in "AI smart segmentation" below.
@@ -48,6 +43,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **API quota management**: Shinkansen manages your Gemini API usage in the background, so large pages don't get cut off mid-translation by Google, and you get an early warning before hitting the daily quota — no failure surprises. For most cases, picking the right Tier is all you need.
 - **Usage tracking**: every translation's token count and cost is logged, with charts and CSV export.
 - **Edit translations**: after a page is translated, you can directly edit the translated text on the page — handy for cleaning up before printing PDFs or letting Readwise Reader pick it up.
+- **Send to Instapaper**: save the whole translated article to your own Instapaper account via the Instapaper API — what gets saved is the translation you see, not the original. Unlike Instapaper's standard save (which stores the URL and lets the server re-fetch the original article), Shinkansen uploads the translated content directly, so you can re-read the translated version later.
 - **Cross-tab translation continuity**: after triggering translation in tab A, opening a link from A in a new tab B (with Cmd-click on Mac / Ctrl-click on Windows / `target="_blank"` / `window.open`) automatically translates B with the same preset. Multi-level: B opens C, C inherits too.
 - **Auto-translate specific sites**: add domains to a whitelist in settings; pages on those sites auto-translate on load (the toast displays an `[Auto]` prefix to indicate the whitelist trigger).
 - **Restore original**: press the same shortcut to switch back to the original — toggle anytime.

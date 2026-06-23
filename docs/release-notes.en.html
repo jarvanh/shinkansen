@@ -99,14 +99,27 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.0.0 <span class="release-date">Released 2026-06-23</span></h2>
+  <p class="release-meta">Compared with the previous store version v1.10.42</p>
+
+  <p class="lead">The two headline features in this release are the floating button and Send to Instapaper; Shinkansen for iOS / iPadOS Safari is also coming soon to the App Store.</p>
+
+  <ul>
+    <li><strong>New "floating button"</strong>: a draggable button pinned to the edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size (small / medium / large) and opacity.</li>
+
+    <li><strong>New "Send to Instapaper"</strong>: after linking your Instapaper account, save the whole translated article to your own Instapaper with one tap from the toolbar popup or a shortcut (it saves the translated version, optionally with an AI summary) to read again later. Unlike the usual read-later flow that stores the URL and lets the server re-fetch the original, Shinkansen uploads the translated content directly.</li>
+
+    <li><strong>Shinkansen for iOS / iPadOS Safari is coming soon to the App Store</strong>: full-page translation on iPhone / iPad is on the way — currently in review, stay tuned. It offers a "four-finger tap" full-page translation gesture; a first-launch onboarding flow lets you enter your Gemini API Key and pick a default translation method (the iOS version does not include PDF document translation).</li>
+
+    <li><strong>Several site-translation and stability fixes</strong>: accumulated fixes for misplaced translations on React / Next.js article sites, crashes on RSS / XML feeds, untranslated forum main posts, and a long article's last paragraph never finishing — plus translation error messages now follow your UI language (8 languages).</li>
+  </ul>
+
   <h2>v1.10.42 <span class="release-date">Released 2026-06-09</span></h2>
   <p class="release-meta">Compared with the previous store version v1.10.17</p>
 
-  <p class="lead">The headline of this release is the launch of Shinkansen for iOS / iPadOS Safari. Across all platforms, it also improves YouTube subtitles, adds custom translation shortcuts, makes translation cancellation restore instantly, and ships several site-translation and settings fixes.</p>
+  <p class="lead">This release improves YouTube subtitles, adds custom translation shortcuts, makes translation cancellation restore instantly, and ships several site-translation and settings fixes.</p>
 
   <ul>
-    <li><strong>Shinkansen for iOS / iPadOS Safari</strong>: Shinkansen now installs on Safari for iPhone / iPad. Alongside hardware keyboard shortcuts, a new "four-finger tap" gesture toggles full-page translation; a first-launch onboarding flow lets you enter your Gemini API Key and pick a default translation method, and the toolbar popup and settings page are re-adapted for phone / tablet screens (the iOS version does not include PDF document translation).</li>
-
     <li><strong>New "custom translation shortcuts"</strong>: the shortcut keys for all three translation presets can now be recorded directly on the settings page under "Translation shortcuts" (click the field, then press the combination you want). This works on every platform and specifically solves the lack of a key-remapping entry point on Safari / iPad external keyboards.</li>
 
     <li><strong>Canceling a translation now restores immediately</strong>: previously, canceling with a shortcut had to wait for the in-flight batch to return before the original text was actually restored (a large batch on a slow model could take several to a dozen seconds); this release restores instantly on key press and lets you re-translate right away, and rapid repeated presses no longer get stuck.</li>

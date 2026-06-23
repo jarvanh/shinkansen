@@ -99,14 +99,27 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons 與 App Store（iOS / iPadOS Safari）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v2.0.0 <span class="release-date">2026-06-23 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v1.10.42</p>
+
+  <p class="lead">這版兩大新功能是「懸浮按鈕」與「送到 Instapaper」；iOS / iPadOS Safari 版也即將登陸 App Store</p>
+
+  <ul>
+    <li><strong>新增「懸浮按鈕」</strong>：頁面邊緣常駐一顆可拖移的懸浮按鈕，點選即翻譯本頁、長按可切換翻譯引擎或叫出功能選單；全平台預設開啟，按鈕大小（小 / 中 / 大）與透明度可調</li>
+
+    <li><strong>新增「送到 Instapaper」</strong>：連結 Instapaper 帳號後，用工具列視窗按鈕或快速鍵即可把翻譯後的整篇文章一鍵存進你自己的 Instapaper（存的是中文譯文版，可附 AI 自動摘要），日後可重讀。不像一般稍後再讀工具只存網址、由伺服器重新抓取原文，Shinkansen 直接上傳翻譯後的內容</li>
+
+    <li><strong>iOS / iPadOS Safari 版即將登陸 App Store</strong>：iPhone / iPad 也能用 Shinkansen 整頁翻譯，目前送審中，敬請期待。提供「四指輕點」整頁翻譯手勢；App 首次開啟有引導流程可填 Gemini API Key、選預設翻譯方式（iOS 版不含 PDF 文件翻譯）</li>
+
+    <li><strong>多項網站翻譯與穩定性修正</strong>：累積修復 React／Next.js 文章站譯文錯位、RSS／XML feed 崩潰、論壇主貼文漏翻、長文最後一段翻不完等問題，翻譯失敗訊息也改為跟著介面語言走（8 語）</li>
+  </ul>
+
   <h2>v1.10.42 <span class="release-date">2026-06-09 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.10.17</p>
 
-  <p class="lead">這版最大的變化是 Shinkansen 推出 iOS / iPadOS Safari 版；跨平台則加強了 YouTube 字幕、自訂翻譯快速鍵、翻譯取消即時還原，以及多項網站翻譯與設定修正</p>
+  <p class="lead">這版加強了 YouTube 字幕、自訂翻譯快速鍵、翻譯取消即時還原，以及多項網站翻譯與設定修正</p>
 
   <ul>
-    <li><strong>推出 iOS / iPadOS Safari 版</strong>：Shinkansen 現在也能裝在 iPhone / iPad 的 Safari 上。除了硬體鍵盤快速鍵，新增「四指輕點」整頁翻譯切換手勢；App 首次開啟有引導流程，可直接填入 Gemini API Key、選預設翻譯方式，工具列彈出視窗與設定頁也針對手機 / 平板螢幕重新調整（iOS 版不含 PDF 文件翻譯）</li>
-
     <li><strong>新增「自訂翻譯快速鍵」</strong>：三組翻譯預設的快速鍵現在可以直接在設定頁「翻譯快速鍵」內錄製（點欄位後按下想要的組合鍵），全平台通用，特別解決 Safari / iPad 外接鍵盤沒有改鍵入口的問題</li>
 
     <li><strong>取消翻譯改為「按下當下立即還原」</strong>：過去按快速鍵取消，要等正在進行的批次回完才真正還原原文（大批次加慢模型可能等數秒到十幾秒）；這版按下當下立即還原、立即可重新翻譯，快速連按也不再卡死</li>
