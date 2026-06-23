@@ -5,6 +5,10 @@
 
 ---
 
+## v2.0.x
+
+**v2.0.0** —— **里程碑版本:邁入跨平台時代,iOS／iPadOS 版即將登陸 App Store**。本版不新增功能程式碼,而是把 v1.x 期間陸續加入的三大功能——**懸浮按鈕**、**送到 Instapaper**、**iOS／iPadOS Safari 版**——整合為 2.0 里程碑,並透過工具列圖示選單的升級歡迎橫幅再次向使用者介紹（major 版觸發升級通知，前次通知為 v1.20.0）。升級歡迎橫幅預告 iOS／iPadOS 版近期上架（送審中，即將登陸 App Store）。另含文件校正:修正 README 設定頁預設模型標示為 `gemini-3.1-flash-lite`（原誤標 `gemini-3-flash-preview`）、補齊禁用詞清單的多語目標行為說明（多數目標語言預設為空、繁中目標預設 25 條、切換目標的條件式重設）、SPEC 檔案結構與偵測規則（`content-floating-icon.js`／Instapaper／Readability 相關檔、ARIA `tree`／`treeitem` 排除、Twitter／WordPress 補抓 selector、`send-to-instapaper` 快捷鍵與 `EXTRACT_PAGE_HTML`／`INSTAPAPER_TOAST` 訊息）同步至現況。**不需清快取**:不動翻譯 prompt、cache key 結構與譯文內容。
+
 ## v1.20.x
 
 **v1.20.1** —— **懸浮按鈕新增「中」尺寸並改為預設、角落防卡死收斂為僅 iPadOS，iOS／iPadOS 導覽頁嵌入真實 Safari 按鈕圖示**。懸浮按鈕「按鈕大小」新增「中」（24px）選項並改為預設（原本只有小 16px／大 32px、預設小），設定頁透明度範例圖示同步支援三段尺寸。觸控裝置角落防卡死（避免按鈕停進視窗縮放角／系統手勢角而拖不出來）收斂為僅 iPadOS 生效——iPhone（無視窗縮放角）與桌面瀏覽器不再設角落禁制區，改以 UA＋觸控點數判定（iPad 桌面模式偽裝 Macintosh 仍算 iPadOS，iPhone／Android／桌面 Mac 排除）。iOS／iPadOS 版導覽說明頁：啟用步驟改用真實的 Safari 網址列「頁面設定」按鈕與選單「管理擴充功能」截圖圖示，並把過時的「AA」正名為「頁面設定」（英文 Page Settings）；新增可展開的「完整設定（進階）」引導，說明如何從擴充功能 popup 開啟完整設定頁。**不需清快取**：不動翻譯 prompt、cache key 結構與譯文內容。

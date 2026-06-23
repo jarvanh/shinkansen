@@ -78,7 +78,7 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
 1. Get a Gemini API key — see the [API key setup guide](docs/API-KEY-SETUP.en.md) for step-by-step instructions
 2. Click the Shinkansen icon in the toolbar → "Settings"
 3. Paste your Gemini API key
-4. Default model is `gemini-3-flash-preview`, Service Tier `DEFAULT`
+4. Default model is `gemini-3.1-flash-lite`, Service Tier `DEFAULT`
 5. Other parameters (temperature, paragraphs per batch, character budget, etc.) can be tweaked as needed
 
 ## Usage
@@ -292,7 +292,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v1.20.1 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.0.0 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 
