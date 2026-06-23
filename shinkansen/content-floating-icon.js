@@ -10,12 +10,13 @@
 //   handleTranslatePreset(該 slot) + 收選單；點選單外 / 捲動 = 收選單。
 // - 拖移（pointermove 超過 DRAG_THRESHOLD_PX）= 進入拖移模式，放開時吸附最近的左／右
 //   緣，垂直位置存比例（floatingIconPos = { edge, offsetY }），視窗縮放後按比例還原。
-// - 觸控裝置（iPhone / iPad）渲染時把 top 夾離上下角落 CORNER_DEADZONE_PX：iPadOS 視窗
-//   右下角是縮放拖曳把手、上方角落是系統手勢區，按鈕停太靠近會被 OS 攔走觸控而拖不出來。
-//   預設右下角（offsetY=1）在觸控裝置上即落在這條安全極限、儘量靠近角落但不進保留區。
+// - 只有 iPadOS 渲染時把 top 夾離上下角落 CORNER_DEADZONE_PX：iPadOS 視窗右下角是縮放
+//   拖曳把手、上方角落是系統手勢區，按鈕停太靠近會被 OS 攔走觸控而拖不出來。iPhone（無
+//   視窗縮放角）與桌面瀏覽器不設禁制區。預設右下角（offsetY=1）在 iPadOS 上即落在這條
+//   安全極限、儘量靠近角落但不進保留區。
 // - enable / 透明度 / 尺寸 / 位置走 storage.sync，onChanged 即時生效（比照 content-toast.js）。
 //   floatingIcon 預設值：未設過（非 boolean）時一律預設開啟（不分平台），使用者在 options
-//   明確設過則尊重該設定。floatingIconSize：icon 邊長 16（預設）/ 32（觸控好點）。
+//   明確設過則尊重該設定。floatingIconSize：icon 邊長 16 小 / 24 中（預設）/ 32 大（觸控好點）。
 //   長按開選單時暫時拉到全不透明，收起再還原使用者設定的透明度。
 // - 比照 toast 用獨立 Shadow DOM host（closed）+ adoptedStyleSheets（CSP-safe），掛在
 //   documentElement，不注入文章內容 → 不破壞 Readwise 擷取（CLAUDE.md §15）。
@@ -28,20 +29,32 @@
 
   const LONGPRESS_MS = 500;              // 壓住達此毫秒 = 長按 → 開選單；之前放開 = 短按
   const DRAG_THRESHOLD_PX = 8;           // pointer 位移超過此距離 = 進入拖移（取消短按 / 長按）
-  const DEFAULT_ICON_SIZE = 16;          // icon 視覺尺寸預設（方形 icon 顯示邊長）；使用者可選 32
+  const DEFAULT_ICON_SIZE = 24;          // icon 視覺尺寸預設「中」（方形 icon 顯示邊長）；使用者可選 16 / 32
   const HIT_PADDING = 16;                // icon 外圍透明可點 padding（觸控好點）
   const EDGE_MARGIN = 6;                 // 吸附邊緣時與視窗邊的間距
   const DEFAULT_OPACITY = 0.7;
   const DEFAULT_POS = { edge: 'right', offsetY: 1 };   // 預設右下角（edge=right、offsetY=1 到底）
-  // 觸控裝置（iPhone / iPad）角落 OS 保留區邊長。iPadOS 視窗右下角是縮放拖曳把手、
-  // 上方角落是 Control Center 等系統手勢區：按鈕停太靠近角落會被 OS 攔走觸控，使用者
-  // 再也按不到 / 拖不出來。按鈕 x 永遠貼左／右緣，故只需把 y 夾離上下角落這段距離。
+  // iPadOS 角落 OS 保留區邊長。iPadOS 視窗右下角是縮放拖曳把手、上方角落是 Control
+  // Center 等系統手勢區：按鈕停太靠近角落會被 OS 攔走觸控，使用者再也按不到 / 拖不出來。
+  // 按鈕 x 永遠貼左／右緣，故只需把 y 夾離上下角落這段距離。
   const CORNER_DEADZONE_PX = 44;
-  // maxTouchPoints ≥ 1 = 真觸控裝置（iPad 偽裝 Mac 仍 = 5；桌面 = 0）。與 lib/platform.js
-  // isTouchScreenDevice() 同一套訊號（content script 不能 import，故就地判）。可被
-  // regression（SK._floating.setTouchForTest）覆寫以驗夾邊路徑。
-  let isTouch = (typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) >= 1);
-  // icon 尺寸為使用者可調（floatingIconSize：16 / 32），故 hitSize 跟著變動（非常數）。
+  // 角落禁制區只針對 iPadOS。判斷：真觸控（maxTouchPoints ≥ 1）+ iPad UA 訊號。iPadOS 13+
+  // 桌面模式把 UA 偽裝成 Macintosh，但 maxTouchPoints 仍 ≥ 1（桌面 Mac = 0），故「Macintosh
+  // + 觸控」視為 iPad。iPhone / iPod 先排除——它們的 UA 也帶「like Mac OS X」字串，若只比對
+  // Mac OS X 會誤判（故只認 Macintosh，且不比對 Mac OS X）。Android（UA 帶 Android）、桌面
+  // （maxTouchPoints = 0）皆排除——它們沒有 iPad 的視窗縮放角／系統手勢角問題。純函式吃
+  // (ua, touchPoints) 方便 regression 直接驗各平台 UA 分支；可被 setIPadOSForTest 覆寫驗夾邊。
+  function isIPadOSEnv(ua, touchPoints) {
+    if (!((touchPoints || 0) >= 1)) return false;
+    ua = ua || '';
+    if (/iPhone|iPod/.test(ua)) return false;
+    return /iPad/.test(ua) || /Macintosh/.test(ua);
+  }
+  let isIPadOS = isIPadOSEnv(
+    (typeof navigator !== 'undefined' && navigator.userAgent) || '',
+    (typeof navigator !== 'undefined' && navigator.maxTouchPoints) || 0
+  );
+  // icon 尺寸為使用者可調（floatingIconSize：16 / 24 / 32），故 hitSize 跟著變動（非常數）。
   let iconSize = DEFAULT_ICON_SIZE;      // 目前 icon 邊長
   let hitSize = iconSize + HIT_PADDING;  // 目前按鈕可點 footprint（= icon + 透明 padding）
 
@@ -194,10 +207,11 @@
     host.style.opacity = menuOpen ? '1' : String(currentOpacity);
   }
 
-  // floatingIconSize：16 / 32。設 CSS 變數驅動 .fab 與 .fab img 尺寸，並更新 hitSize
-  // 供 applyPos / 拖移 clamp 計算。
+  // floatingIconSize：16（小）/ 24（中，預設）/ 32（大）。設 CSS 變數驅動 .fab 與 .fab img
+  // 尺寸，並更新 hitSize 供 applyPos / 拖移 clamp 計算。未設 / 非合法值 fallback 預設 24（中）；
+  // 16 是合法選項故必須列進白名單，否則會被 fallback 吃掉變 24。
   function applySize(v) {
-    iconSize = v === 32 ? 32 : DEFAULT_ICON_SIZE;
+    iconSize = (v === 16 || v === 24 || v === 32) ? v : DEFAULT_ICON_SIZE;
     hitSize = iconSize + HIT_PADDING;
     host.style.setProperty('--fab-icon', iconSize + 'px');
     host.style.setProperty('--fab-hit', hitSize + 'px');
@@ -211,12 +225,12 @@
     return { edge, offsetY };
   }
 
-  // 觸控裝置：把 top 夾到「按鈕 hit 區不碰上下角落 OS 保留區」範圍，避免停進 iPadOS
-  // 視窗縮放把手 / 系統手勢角落而再也拖不出來。純函式（吃 viewportH / hit / touch）方便
-  // regression 直接驗，不依賴實機是否觸控。非觸控（桌面）只夾在可視範圍、不留角落間距。
-  function cornerClampTop(top, viewportH, hit, touch) {
+  // iPadOS：把 top 夾到「按鈕 hit 區不碰上下角落 OS 保留區」範圍，避免停進 iPadOS 視窗
+  // 縮放把手 / 系統手勢角落而再也拖不出來。純函式（吃 viewportH / hit / ipad）方便
+  // regression 直接驗，不依賴實機平台。非 iPadOS（iPhone / 桌面）只夾在可視範圍、不留角落間距。
+  function cornerClampTop(top, viewportH, hit, ipad) {
     const maxFree = Math.max(0, viewportH - hit);          // 不夾角落時 top 的合法上限
-    if (!touch) return Math.max(0, Math.min(maxFree, top));
+    if (!ipad) return Math.max(0, Math.min(maxFree, top));
     const minTop = CORNER_DEADZONE_PX;                     // 離頂部角落安全距
     const maxTop = viewportH - hit - CORNER_DEADZONE_PX;   // 離底部角落安全距
     // 視窗太矮（maxTop < minTop）夾不出安全區 → 置中，至少不卡在角落極端
@@ -228,7 +242,7 @@
   function applyPos(p) {
     pos = sanitizePos(p);
     const rawTop = Math.round(pos.offsetY * Math.max(0, window.innerHeight - hitSize));
-    const top = cornerClampTop(rawTop, window.innerHeight, hitSize, isTouch);
+    const top = cornerClampTop(rawTop, window.innerHeight, hitSize, isIPadOS);
     host.style.top = top + 'px';
     host.style.bottom = 'auto';
     if (pos.edge === 'left') {
@@ -582,7 +596,7 @@
     runPreset,
     applyEnabled, applyOpacity, applySize, applyPos,
     resolveEnabled, pickPopupSlot,
-    cornerClampTop, CORNER_DEADZONE_PX,
+    cornerClampTop, CORNER_DEADZONE_PX, isIPadOSEnv,
     openFeaturePanel, openFeaturePanelIframe, closeFeaturePanel, isSafariRuntime,
     isPanelOpen: () => !!panelHost,
     getPanelFrameSrc: () => (panelFrame ? panelFrame.src : null),
@@ -592,7 +606,7 @@
     getIconSize: () => iconSize,
     getPos: () => ({ ...pos }),
     getTop: () => host.style.top,
-    // regression 用：覆寫觸控旗標以驗角落夾邊路徑（實機 Chromium maxTouchPoints=0）
-    setTouchForTest: (v) => { isTouch = !!v; applyPos(pos); },
+    // regression 用：覆寫 iPadOS 旗標以驗角落夾邊路徑（實機 Chromium maxTouchPoints=0）
+    setIPadOSForTest: (v) => { isIPadOS = !!v; applyPos(pos); },
   };
 })(window.__SK);

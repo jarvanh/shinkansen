@@ -693,12 +693,12 @@ export const DEFAULT_SETTINGS = {
   // floatingIcon：enable 開關。預設 null = 一律預設開啟（content / options 端都把非 boolean
   //   解析成 true，不分平台）。使用者在 options 明確切過就寫入 boolean，之後尊重該值。
   // floatingIconOpacity：0.1–1，預設 0.7（與 toast 一致）。
-  // floatingIconSize：icon 視覺邊長 px，16（預設，較小）或 32（較大，觸控好點）。
+  // floatingIconSize：icon 視覺邊長 px，16（小）/ 24（預設，中）/ 32（大，觸控好點）。
   // floatingIconPos：吸附邊緣位置。edge='left'|'right'，offsetY=0(頂)…1(底) 垂直比例。
   //   預設右下角（edge='right'、offsetY=1）；視窗縮放後按比例還原。
   floatingIcon: null,
   floatingIconOpacity: 0.7,
-  floatingIconSize: 16,
+  floatingIconSize: 24,
   floatingIconPos: { edge: 'right', offsetY: 1 },
   // 四指觸控手勢 enable（iOS / iPadOS）。預設 false（改由懸浮按鈕當主要觸控入口，
   //   四指手勢易誤觸發故預設關，使用者可在 Options 開啟）。

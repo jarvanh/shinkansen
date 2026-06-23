@@ -17,8 +17,8 @@
 //   暫時改成寫死 `slot = 2` → 「短按路由到 popupButtonSlot=3」斷言 fail（收到 2）→
 //   還原 → pass。另把 buildMenu 的 `[1,2,3].map` 暫改成 `[1,2]` → 「選單三列」斷言
 //   fail（只 2 列）→ 還原 → pass。
-// SANITY 紀錄（大小 / 選單透明度，已驗證）：把 applySize 的 `iconSize = v===32?32:16`
-//   暫改成永遠 16 → 「大小切換」large.icon 斷言 fail（收到 16）→ 還原 → pass。
+// SANITY 紀錄（大小 / 選單透明度，已驗證）：把 applySize 的 `iconSize = (v===16||v===24||v===32)?v:24`
+//   暫改成永遠 16 → 「大小切換」medium/large.icon 斷言 fail（收到 16）→ 還原 → pass。
 //   把 openMenu 的 `host.style.opacity='1'` 暫拿掉 → 「長按選單期間降透明度」
 //   menuShown 斷言 fail（收到 0.5）→ 還原 → pass。
 import { test, expect } from '../fixtures/extension.js';
@@ -182,7 +182,7 @@ test('floating icon: 真實 pointer 手勢（短按 / 長按 / 拖移吸附）+ 
   await page.close();
 });
 
-test('floating icon: 大小切換（16 / 32）+ 長按選單期間降透明度', async ({ context, localServer }) => {
+test('floating icon: 大小切換（16 / 24 / 32）+ 長按選單期間降透明度', async ({ context, localServer }) => {
   const page = await context.newPage();
   await page.setViewportSize({ width: 1000, height: 700 });
   await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
@@ -196,22 +196,26 @@ test('floating icon: 大小切換（16 / 32）+ 長按選單期間降透明度',
     f.applyPos({ edge: 'right', offsetY: 0.5 });
   })()`);
 
-  // (1) 大小切換：applySize(16) → icon 16、host footprint = 16+padding；applySize(32) → 變大
+  // (1) 大小切換：16 小 / 24 中 / 32 大，三檔 footprint 各自遞增、icon 邊長對得上
   const sizes = await evaluate(`(async () => {
     const f = window.__SK._floating;
     f.applySize(16);
     const small = { icon: f.getIconSize(), w: f.host.getBoundingClientRect().width };
+    f.applySize(24);
+    const medium = { icon: f.getIconSize(), w: f.host.getBoundingClientRect().width };
     f.applySize(32);
     const large = { icon: f.getIconSize(), w: f.host.getBoundingClientRect().width };
-    return { small, large };
+    return { small, medium, large };
   })()`);
   expect(sizes.small.icon).toBe(16);
+  expect(sizes.medium.icon).toBe(24);
   expect(sizes.large.icon).toBe(32);
-  expect(sizes.large.w).toBeGreaterThan(sizes.small.w); // 32 的 footprint 比 16 大
+  expect(sizes.medium.w).toBeGreaterThan(sizes.small.w);  // 24 的 footprint 比 16 大
+  expect(sizes.large.w).toBeGreaterThan(sizes.medium.w);  // 32 又比 24 大
 
-  // 非法值 fallback 回 16
+  // 非法值 fallback 回預設 24（中）；明確選 16（小）不被 fallback 吃掉（上面 small.icon 已驗 16）
   const fallback = await evaluate(`(() => { window.__SK._floating.applySize(999); return window.__SK._floating.getIconSize(); })()`);
-  expect(fallback).toBe(16);
+  expect(fallback).toBe(24);
 
   // (6) 長按選單期間降透明度：設使用者透明度 0.5 → 平時 host.opacity=0.5；
   //     開選單時拉到 1（讓使用者看清選單）；收選單還原 0.5
@@ -232,16 +236,17 @@ test('floating icon: 大小切換（16 / 32）+ 長按選單期間降透明度',
   await page.close();
 });
 
-// 觸控裝置角落禁制區：iPadOS 視窗右下角是縮放拖曳把手，按鈕停太靠近角落會被 OS 攔走
-// 觸控而拖不出來。渲染時把 top 夾離上下角落 CORNER_DEADZONE_PX；非觸控（桌面）不夾角落。
-// 兩層驗：(A) 純函式 cornerClampTop 夾邊邏輯；(B) 真實 render path——setTouchForTest 覆寫
-// 觸控旗標後 applyPos 寫進 host.style.top 的實際值（實機 Chromium maxTouchPoints=0，
-// 故走覆寫；驗到「修法實際生效那條 path」而非只測純函式）。
+// 角落禁制區只針對 iPadOS：iPadOS 視窗右下角是縮放拖曳把手、上方角落是系統手勢區，
+// 按鈕停太靠近角落會被 OS 攔走觸控而拖不出來。渲染時把 top 夾離上下角落 CORNER_DEADZONE_PX；
+// iPhone 與桌面瀏覽器不夾角落（沒有 iPad 的視窗縮放角／系統手勢角問題）。三層驗：
+// (A) 純函式 cornerClampTop 夾邊邏輯；(B) isIPadOSEnv 平台判斷各 UA 分支；(C) 真實 render
+// path——setIPadOSForTest 覆寫 iPadOS 旗標後 applyPos 寫進 host.style.top 的實際值（實機
+// Chromium maxTouchPoints=0，故走覆寫；驗到「修法實際生效那條 path」而非只測純函式）。
 //
-// SANITY 紀錄（已驗證）：把 cornerClampTop 的觸控分支 `return Math.max(minTop,...)` 暫改成
-//   `return Math.max(0, Math.min(maxFree, top))`（等同不夾角落）→ touchFlushBottom 斷言
-//   fail（收到 668 而非 624）、整合 touchTop 斷言 fail（收到 668px）→ 還原 → pass。
-test('floating icon: 觸控裝置角落禁制區（不卡 iPadOS 視窗縮放角）', async ({ context, localServer }) => {
+// SANITY 紀錄（已驗證）：把 cornerClampTop 的 iPadOS 分支 `return Math.max(minTop,...)` 暫改成
+//   `return Math.max(0, Math.min(maxFree, top))`（等同不夾角落）→ ipadFlushBottom 斷言
+//   fail（收到 668 而非 624）、整合 ipadTop 斷言 fail（收到 668px）→ 還原 → pass。
+test('floating icon: iPadOS 角落禁制區（不卡視窗縮放角；iPhone/桌面不夾）', async ({ context, localServer }) => {
   const page = await context.newPage();
   await page.setViewportSize({ width: 1000, height: 700 });
   await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
@@ -249,18 +254,18 @@ test('floating icon: 觸控裝置角落禁制區（不卡 iPadOS 視窗縮放角
 
   const { evaluate } = await getShinkansenEvaluator(page);
 
-  // (A) 純函式：H=700、hit=32 → free=668、D=44。觸控夾離上下角落，桌面只夾可視範圍。
+  // (A) 純函式：H=700、hit=32 → free=668、D=44。iPadOS 夾離上下角落，iPhone/桌面只夾可視範圍。
   const pure = await evaluate(`(() => {
     const f = window.__SK._floating;
     const H = 700, hit = 32, free = H - hit;
     return {
       D: f.CORNER_DEADZONE_PX,
-      deskFlushBottom: f.cornerClampTop(free, H, hit, false),  // 桌面貼底不夾 → free
+      deskFlushBottom: f.cornerClampTop(free, H, hit, false),  // 非 iPadOS 貼底不夾 → free
       deskOver: f.cornerClampTop(9999, H, hit, false),         // 超出 → free
       deskNeg: f.cornerClampTop(-50, H, hit, false),           // 負 → 0
-      touchFlushBottom: f.cornerClampTop(free, H, hit, true),  // 觸控貼底 → free - D
-      touchFlushTop: f.cornerClampTop(0, H, hit, true),        // 觸控貼頂 → D
-      touchMid: f.cornerClampTop(300, H, hit, true),           // 中段不變
+      ipadFlushBottom: f.cornerClampTop(free, H, hit, true),   // iPadOS 貼底 → free - D
+      ipadFlushTop: f.cornerClampTop(0, H, hit, true),         // iPadOS 貼頂 → D
+      ipadMid: f.cornerClampTop(300, H, hit, true),            // 中段不變
       tinyCenter: f.cornerClampTop(0, 80, 32, true),           // 視窗太矮夾不出安全區 → 置中
     };
   })()`);
@@ -268,36 +273,61 @@ test('floating icon: 觸控裝置角落禁制區（不卡 iPadOS 視窗縮放角
   expect(pure.deskFlushBottom).toBe(668);
   expect(pure.deskOver).toBe(668);
   expect(pure.deskNeg).toBe(0);
-  expect(pure.touchFlushBottom).toBe(624);   // 668 - 44
-  expect(pure.touchFlushTop).toBe(44);
-  expect(pure.touchMid).toBe(300);
+  expect(pure.ipadFlushBottom).toBe(624);    // 668 - 44
+  expect(pure.ipadFlushTop).toBe(44);
+  expect(pure.ipadMid).toBe(300);
   expect(pure.tinyCenter).toBe(24);          // round((80-32)/2)
 
-  // (B) 真實 render path：setTouchForTest 覆寫觸控旗標 → applyPos 渲染 host top
+  // (B) isIPadOSEnv 平台判斷：iPad / iPadOS 桌面模式(Macintosh + 觸控) → true；
+  //     iPhone / Android / 桌面 Mac(無觸控) → false。只有 iPad 有視窗縮放角問題。
+  const plat = await evaluate(`(() => {
+    const f = window.__SK._floating;
+    const IPAD = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15';
+    const IPADOS_DESKTOP = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15';
+    const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15';
+    const ANDROID = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36';
+    const DESKTOP_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
+    return {
+      ipad: f.isIPadOSEnv(IPAD, 5),                  // 真 iPad → true
+      ipadDesktopMode: f.isIPadOSEnv(IPADOS_DESKTOP, 5), // iPadOS 桌面模式偽裝 Mac 但有觸控 → true
+      iphone: f.isIPadOSEnv(IPHONE, 5),              // iPhone → false
+      android: f.isIPadOSEnv(ANDROID, 5),            // Android → false
+      desktopMac: f.isIPadOSEnv(DESKTOP_MAC, 0),     // 桌面 Mac 無觸控 → false
+      macUaNoTouch: f.isIPadOSEnv(IPADOS_DESKTOP, 0),// Macintosh UA 但無觸控 → false
+    };
+  })()`);
+  expect(plat.ipad).toBe(true);
+  expect(plat.ipadDesktopMode).toBe(true);
+  expect(plat.iphone).toBe(false);
+  expect(plat.android).toBe(false);
+  expect(plat.desktopMac).toBe(false);
+  expect(plat.macUaNoTouch).toBe(false);
+
+  // (C) 真實 render path：setIPadOSForTest 覆寫 iPadOS 旗標 → applyPos 渲染 host top
   const render = await evaluate(`(() => {
     const f = window.__SK._floating;
     f.applyEnabled(true);
     f.applySize(16);                          // 釘住 hit = 16 + padding = 32
     const H = window.innerHeight;
     const hit = f.host.getBoundingClientRect().height;
-    // 桌面：預設右下角 offsetY=1 → 貼底（free），不夾角落
-    f.setTouchForTest(false);
+    // 非 iPadOS（iPhone/桌面）：預設右下角 offsetY=1 → 貼底（free），不夾角落
+    f.setIPadOSForTest(false);
     f.applyPos({ edge: 'right', offsetY: 1 });
     const deskTop = f.getTop();
-    // 觸控：同樣 offsetY=1 → 夾到 free - D（儘量靠底但不進右下角縮放區）
-    f.setTouchForTest(true);
+    // iPadOS：同樣 offsetY=1 → 夾到 free - D（儘量靠底但不進右下角縮放區）
+    f.setIPadOSForTest(true);
     f.applyPos({ edge: 'right', offsetY: 1 });
-    const touchTop = f.getTop();
-    // 觸控 + 拖到頂 offsetY=0 → 夾到 D，不進頂角
+    const ipadTop = f.getTop();
+    // iPadOS + 拖到頂 offsetY=0 → 夾到 D，不進頂角
     f.applyPos({ edge: 'right', offsetY: 0 });
-    const touchTopEdge = f.getTop();
-    f.setTouchForTest(false);                 // 還原（本 test 結束，避免殘留）
-    return { H, hit, deskTop, touchTop, touchTopEdge, D: f.CORNER_DEADZONE_PX };
+    const ipadTopEdge = f.getTop();
+    f.setIPadOSForTest(false);                // 還原（本 test 結束，避免殘留）
+    return { H, hit, deskTop, ipadTop, ipadTopEdge, D: f.CORNER_DEADZONE_PX };
   })()`);
   const free = render.H - render.hit;
-  expect(render.deskTop).toBe(free + 'px');                 // 桌面貼底
-  expect(render.touchTop).toBe(free - render.D + 'px');     // 觸控夾離底角
-  expect(render.touchTopEdge).toBe(render.D + 'px');        // 觸控夾離頂角
+  expect(render.deskTop).toBe(free + 'px');                 // 非 iPadOS 貼底
+  expect(render.ipadTop).toBe(free - render.D + 'px');      // iPadOS 夾離底角
+  expect(render.ipadTopEdge).toBe(render.D + 'px');         // iPadOS 夾離頂角
 
   await page.close();
 });

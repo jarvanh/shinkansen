@@ -169,7 +169,7 @@ async function load() {
 
   // 懸浮翻譯按鈕：enable（null = 一律預設開啟）+ 大小 + 透明度
   $('floatingIcon').checked = typeof s.floatingIcon === 'boolean' ? s.floatingIcon : true;
-  const floatingSize = s.floatingIconSize === 32 ? 32 : 16;
+  const floatingSize = [16, 24, 32].includes(s.floatingIconSize) ? s.floatingIconSize : 24;
   for (const r of document.querySelectorAll('input[name="floatingIconSize"]')) {
     r.checked = (r.value === String(floatingSize));
   }
@@ -738,9 +738,10 @@ function _renderFloatingOpacityLabel(value) {
   if (demo) demo.style.opacity = String(Math.max(0, Math.min(1, Number(value) / 100)));
 }
 
-// 透明度範例 icon 的尺寸跟著「按鈕大小」radio（16 / 32）即時變動，與真實懸浮按鈕一致。
+// 透明度範例 icon 的尺寸跟著「按鈕大小」radio（16 / 24 / 32）即時變動，與真實懸浮按鈕一致。
 function _renderFloatingSizeDemo() {
-  const size = document.querySelector('input[name="floatingIconSize"]:checked')?.value === '32' ? 32 : 16;
+  const v = document.querySelector('input[name="floatingIconSize"]:checked')?.value;
+  const size = ['16', '24', '32'].includes(v) ? Number(v) : 24;
   const img = document.querySelector('#floatingOpacityDemo img');
   if (img) { img.width = size; img.height = size; }
 }
@@ -1025,7 +1026,7 @@ async function _saveImpl() {
     showProgressToast: $('showProgressToast').checked,
     // 懸浮翻譯按鈕：使用者明確切過 → 一律寫 boolean（之後不再走平台預設）
     floatingIcon: $('floatingIcon').checked,
-    floatingIconSize: (document.querySelector('input[name="floatingIconSize"]:checked')?.value === '32') ? 32 : 16,
+    floatingIconSize: (() => { const v = document.querySelector('input[name="floatingIconSize"]:checked')?.value; return ['16', '24', '32'].includes(v) ? Number(v) : 24; })(),
     floatingIconOpacity: parseUserNum($('floatingIconOpacity').value, (DEFAULTS.floatingIconOpacity ?? 0.7) * 100) / 100,
     // 四指觸控手勢 enable（iOS only；桌面 checkbox 隱藏但維持 loaded 值，不誤寫）
     fourFingerGesture: $('fourFingerGesture').checked,
@@ -1790,7 +1791,7 @@ function sanitizeImport(raw) {
     modelPricingOverrides: { type: 'object' }, // v1.6.14
     showProgressToast:   { type: 'boolean' }, // v1.6.8
     floatingIcon:        { type: 'boolean', nullable: true }, // 懸浮按鈕 enable（null = 預設開啟）
-    floatingIconSize:    { type: 'number', oneOf: [16, 32] }, // icon 邊長 px（16 小 / 32 大）
+    floatingIconSize:    { type: 'number', oneOf: [16, 24, 32] }, // icon 邊長 px（16 小 / 24 中 / 32 大）
     floatingIconOpacity: { type: 'number', min: 0.1, max: 1 },
     floatingIconPos:     { type: 'object' }, // { edge, offsetY }，content script 拖移後寫入
     fourFingerGesture:   { type: 'boolean' }, // 四指觸控手勢 enable（iOS）

@@ -98,8 +98,8 @@
                             <p class="steps-title">最快的方式</p>
                             <ol>
                                 <li>在 Safari 開啟任一網頁</li>
-                                <li>點網址列上的「AA」（頁面選單）按鈕</li>
-                                <li>選「管理擴充功能」，開啟「Shinkansen」</li>
+                                <li>點網址列上的「頁面設定」按鈕 <span class="inline-btn" role="img" aria-label="頁面設定按鈕"></span></li>
+                                <li>選「管理擴充功能」 <span class="inline-btn-ext" role="img" aria-label="管理擴充功能"></span>，開啟「Shinkansen」</li>
                                 <li>再點一下「Shinkansen」，把網站存取權限設為「允許」（建議「所有網站」）</li>
                             </ol>
                         </div>
@@ -122,18 +122,31 @@
                 <div class="steps">
                     <p class="steps-title">啟用方式</p>
                     <ol>
-                        <li>在 Safari 點網址列的「AA」按鈕 →「管理擴充功能」→ 開啟「Shinkansen」並允許網站權限</li>
+                        <li>在 Safari 點網址列的「頁面設定」按鈕 <span class="inline-btn" role="img" aria-label="頁面設定按鈕"></span> →「管理擴充功能」 <span class="inline-btn-ext" role="img" aria-label="管理擴充功能"></span> → 開啟「Shinkansen」並允許網站權限</li>
                         <li>網頁上點懸浮按鈕即可翻譯整頁；YouTube 影片字幕會自動翻譯</li>
                     </ol>
                 </div>
                 <button type="button" class="ob-btn ob-primary open-settings">API Key 與預設模型設定</button>
                 <nav class="links">
+                    <a href="#" class="show-full-settings">完整設定（進階）</a>
                     <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.md">API Key 設定教學</a>
                     <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.html">隱私權政策</a>
                     <a href="https://jimmysu0309.github.io/shinkansen/?lang=zh-TW">專案主頁</a>
                     <a href="https://jimmysu0309.github.io/shinkansen/release-notes.html">上架版本紀錄</a>
                     <a href="#" class="replay-onboard">重新看導覽</a>
                 </nav>
+                <!-- 完整設定引導：iOS 無法從 App 直接開擴充功能 options 頁（safari-web-extension://
+                     隨機 UUID context，App 連不到），故改引導使用者從擴充功能 popup 進。預設收合，
+                     點上面「完整設定（進階）」展開。 -->
+                <div class="full-settings-guide steps" hidden>
+                    <p class="steps-title">開啟完整設定</p>
+                    <ol>
+                        <li>在 Safari 開啟任一網頁</li>
+                        <li>點工具列（或網址列「頁面設定」選單）的 Shinkansen 圖示</li>
+                        <li>在彈出的選單點「設定」，即可開啟完整設定頁</li>
+                    </ol>
+                    <p class="intro ob-note">完整設定可調整翻譯預設、懸浮按鈕大小／透明度、四指手勢、YouTube 字幕等所有選項</p>
+                </div>
             </div>
 
             <!-- ===== 設定畫面（常駐，可隨時改 API Key 與預設模型）===== -->
@@ -259,8 +272,8 @@
                             <p class="steps-title">Fastest way</p>
                             <ol>
                                 <li>Open any web page in Safari</li>
-                                <li>Tap the “AA” (Page Menu) button in the address bar</li>
-                                <li>Choose “Manage Extensions” and turn on “Shinkansen”</li>
+                                <li>Tap the “Page Settings” button in the address bar <span class="inline-btn" role="img" aria-label="Page Settings button"></span></li>
+                                <li>Choose “Manage Extensions” <span class="inline-btn-ext" role="img" aria-label="Manage Extensions"></span> and turn on “Shinkansen”</li>
                                 <li>Tap “Shinkansen” and set website access to “Allow” (“All Websites” recommended)</li>
                             </ol>
                         </div>
@@ -283,18 +296,31 @@
                 <div class="steps">
                     <p class="steps-title">How to enable</p>
                     <ol>
-                        <li>In Safari, tap the “AA” button in the address bar → “Manage Extensions” → turn on “Shinkansen” and allow website access</li>
+                        <li>In Safari, tap the “Page Settings” button in the address bar <span class="inline-btn" role="img" aria-label="Page Settings button"></span> → “Manage Extensions” <span class="inline-btn-ext" role="img" aria-label="Manage Extensions"></span> → turn on “Shinkansen” and allow website access</li>
                         <li>Tap the floating button on any page to translate it; YouTube subtitles translate automatically</li>
                     </ol>
                 </div>
                 <button type="button" class="ob-btn ob-primary open-settings">API Key &amp; default model</button>
                 <nav class="links">
+                    <a href="#" class="show-full-settings">Full settings (advanced)</a>
                     <a href="https://github.com/jimmysu0309/shinkansen/blob/main/docs/API-KEY-SETUP.en.md">API Key Setup Guide</a>
                     <a href="https://jimmysu0309.github.io/shinkansen/privacy-policy.en.html">Privacy Policy</a>
                     <a href="https://jimmysu0309.github.io/shinkansen/?lang=en">Homepage</a>
                     <a href="https://jimmysu0309.github.io/shinkansen/release-notes.en.html">Release Notes</a>
                     <a href="#" class="replay-onboard">Replay intro</a>
                 </nav>
+                <!-- Full-settings guide: iOS can't open the extension's options page directly from
+                     the host App (safari-web-extension://<random UUID> context is unreachable), so we
+                     guide the user to open it from the extension popup. Collapsed by default. -->
+                <div class="full-settings-guide steps" hidden>
+                    <p class="steps-title">Open full settings</p>
+                    <ol>
+                        <li>Open any web page in Safari</li>
+                        <li>Tap the Shinkansen icon in the toolbar (or the “Page Settings” menu in the address bar)</li>
+                        <li>Tap “Settings” in the popup to open the full settings page</li>
+                    </ol>
+                    <p class="intro ob-note">Full settings lets you adjust translation presets, floating button size/opacity, the four-finger gesture, YouTube subtitles, and every other option.</p>
+                </div>
             </div>
 
             <!-- ===== Settings (persistent; change API Key & default model anytime) ===== -->
@@ -593,6 +619,13 @@
                 });
                 var openBtn = home.querySelector('.open-settings');
                 if (openBtn) openBtn.addEventListener('click', openSettings);
+                // 「完整設定（進階）」：iOS 無法從 App 直接開擴充功能 options 頁，改展開引導步驟
+                var fullLink = home.querySelector('.show-full-settings');
+                var fullGuide = home.querySelector('.full-settings-guide');
+                if (fullLink && fullGuide) fullLink.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    fullGuide.hidden = !fullGuide.hidden;
+                });
             }
 
             // ===== 設定畫面 =====
