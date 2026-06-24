@@ -47,6 +47,11 @@ DEBUG-BOARD.md
 # 跟 CLAUDE.md 同待遇不入公開 repo)
 .claude/
 
+# 本機商店送審工具(用個人 OAuth/API 憑證自動上架,維持本機不入公開 repo;
+# 對應 ~/.shinkansen-cws-creds / ~/.shinkansen-amo-creds)
+tools/chrome-webstore-submit.sh
+tools/firefox-amo-submit.sh
+
 # macOS Safari Web Extension Xcode project — Phase 2 起 commit project 骨架,
 # 只 ignore build artifacts / per-user Xcode state / rsync 進來的 Extension Resources
 # (對應 SPEC-PRIVATE §23.5)
