@@ -153,6 +153,37 @@
     return SK.isAlreadyInTarget(text, 'zh-TW');
   };
 
+  // 輸出語言守門判定(注入入口 SK.injectTranslation 呼叫的單一資料源)。
+  // 譯文語言明顯 ≠ 目標語言時回 true → caller 不注入,保留原文,避免使用者看到與
+  // 目標語言不符的字。只守「高把握、零誤判」方向:目標是拉丁字母語言(en/es/fr/de)
+  // 但整段譯文是東亞文字(CJK 表意 / 假名 / 韓文音節)。實測 Gemini Flash Lite 對混語
+  // 頁面(例如頁內夾中文 cookie 同意橫幅)偶發把德文段掉回中文,temperature=1.0 隨機性
+  // 使其間歇出現;此守門把「拉丁 target 收到 CJK 輸出」這種必為 LLM 掉語言的段落擋掉。
+  //
+  // 為何不走 detectTextLang:它開頭用頁面 documentElement.lang 短路(ja/ko 頁一律回
+  // ja/ko),在「翻譯日文頁 → 德文」時會把正確德文誤判成 ja。這裡自數 East-Asian 字元
+  // 比例、完全不看 htmlLang,對拉丁 target 的正常譯文(ea≈0)零誤判、門檻 0.5 有巨大 margin。
+  //
+  // 反方向(CJK target 收到拉丁輸出 = echo 原文)不在此守:拉丁 target 未譯的專有名詞多、
+  // 誤判風險高,交由 prompt 端 target-language reinforcement 處理。不認得的 target 一律 false。
+  const LATIN_SCRIPT_TARGETS = new Set(['en', 'es', 'fr', 'de']);
+  SK.isWrongLanguageOutput = function isWrongLanguageOutput(text, target) {
+    if (!text || typeof text !== 'string') return false;
+    if (!LATIN_SCRIPT_TARGETS.has(target)) return false;
+    const letters = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
+    if (letters.length === 0) return false;
+    let ea = 0;
+    for (const ch of letters) {
+      const c = ch.codePointAt(0);
+      if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF)  // CJK 表意
+          || (c >= 0x3040 && c <= 0x30FF)                              // 平假名 / 片假名
+          || (c >= 0xAC00 && c <= 0xD7AF)) {                           // 韓文音節
+        ea++;
+      }
+    }
+    return ea / letters.length >= 0.5;
+  };
+
   const _CJK_RE = /[一-鿿㐀-䶿぀-ゟ゠-ヿ가-힯]/;
   function _buttonThreshold(text) { return _CJK_RE.test(text) ? 3 : 8; }
 

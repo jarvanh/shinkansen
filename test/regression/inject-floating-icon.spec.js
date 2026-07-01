@@ -26,6 +26,40 @@ import { getShinkansenEvaluator } from './helpers/run-inject.js';
 
 const FIXTURE = 'floating-icon';
 
+// 列印 / 存 PDF 隱藏懸浮按鈕（對應 v2.0.2 修的「Google 試算表列印印出懸浮按鈕」bug）。
+// host 是 position:fixed 元素，沒 @media print 規則會被印進輸出。修法在 Shadow DOM
+// stylesheet 加 `@media print { :host { display:none !important } }`（!important 蓋 inline
+// display:block）。用 page.emulateMedia 切 print media，驗 host computed display 變 none、
+// 切回 screen 還原成 block（不影響正常顯示）。
+//
+// SANITY 紀錄（已驗證）：把 content-floating-icon.js CSS 內
+//   `@media print { :host { display: none !important; } }` 暫拿掉 → printDisplay 斷言
+//   fail（print media 下仍是 block）→ 還原 → pass。
+test('floating icon: 列印 / 存 PDF 時隱藏（@media print），正常顯示不受影響', async ({
+  context,
+  localServer,
+}) => {
+  const page = await context.newPage();
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+  await evaluate(`window.__SK._floating.applyEnabled(true)`); // 桌面 build 預設關，先開啟
+
+  const readDisplay = () => evaluate(`getComputedStyle(window.__SK._floating.host).display`);
+
+  await page.emulateMedia({ media: 'screen' });
+  expect(await readDisplay()).toBe('block'); // 螢幕上正常顯示
+
+  await page.emulateMedia({ media: 'print' });
+  expect(await readDisplay()).toBe('none');  // 列印時隱藏，不印進輸出
+
+  await page.emulateMedia({ media: 'screen' });
+  expect(await readDisplay()).toBe('block'); // 列印完還原顯示
+
+  await page.close();
+});
+
 test('floating icon: 短按走 popupButtonSlot、長按選單三列路由正確、平台預設分流', async ({
   context,
   localServer,

@@ -398,6 +398,14 @@
     // 導致字面 \n 殘留可見 DOM 字元。在此入口統一處理，覆蓋所有後續路徑。
     if (translation.includes('\\n')) translation = translation.replace(/\\n/g, '\n');
 
+    // 輸出語言守門:目標為拉丁字母語言(en/es/fr/de)時,若整段譯文是東亞文字,判定為
+    // LLM 掉語言(間歇性,見 content-detect.js SK.isWrongLanguageOutput 說明),不注入 →
+    // 保留原文,避免使用者看到與目標語言不符的中文。single / dual / fragment / streaming /
+    // testInject 都經此入口,一次擋全部(單一資料源:判斷邏輯在 content-detect.js)。
+    if (SK.isWrongLanguageOutput && SK.isWrongLanguageOutput(translation, SK.STATE?.targetLanguage)) {
+      return;
+    }
+
     var _preText = (unit.kind !== 'fragment' && unit.el)
       ? (unit.el.textContent || '').trim() : null;
 

@@ -78,6 +78,9 @@
 
   const CSS = `
     :host, * { box-sizing: border-box; }
+    /* 列印 / 存 PDF 時隱藏懸浮按鈕：host 是 position:fixed 元素,不擋掉會被印進輸出
+       （使用者實測在 Google 試算表列印印出了這顆）。inline display:block 用 !important 蓋掉。 */
+    @media print { :host { display: none !important; } }
     .fab {
       position: relative;
       width: var(--fab-hit, 32px);
