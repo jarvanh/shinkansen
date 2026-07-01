@@ -7,6 +7,8 @@
 
 ## v2.0.x
 
+**v2.0.1** —— **術語表三件修補**。（1）**修「全新安裝術語表顯示『關』卻自行執行」**：翻譯路徑（`content.js`）讀設定走 `storage.sync.get(null)` 原始讀取、不經預設合併，從沒進設定頁存過檔的全新安裝 `settings.glossary` 為 `undefined`，舊 code 的 fallback 寫死 `glossaryEnabled = true` → 設定頁顯示「關」但術語表照建、無聲多花 token。抽 `SK.resolveGlossaryEnabled(settings)` 單一資料源，缺 glossary key 時對齊預設回 `false`（`content-ns.js`）。更新後自動修正、免手動操作（每次翻譯即時重算，不依賴儲存狀態；術語表有進 cache key `_g` suffix，舊的受影響譯文自然不被命中、重翻乾淨版）。（2）**fire-and-forget 術語表加可見回饋**：術語表依批次數分三級（短頁跳過／中頁 fire-and-forget／長頁 blocking），原本只有 blocking 顯示「建立術語表」toast，中頁完全無回饋 → 使用者勾了開關翻一般文章看不到術語表步驟、誤以為沒作用。中頁 fire-and-forget 也顯示同一 toast，並把「翻譯前短等術語表最多 2s」移到翻譯進度 toast 之前讓 toast 可見。（3）**Instapaper 說明文案簡化**：8 語（zh-TW／zh-CN／en／ja／ko／es／fr／de）「送到 Instapaper」設定說明砍掉技術細節（xAuth／chrome.storage.sync／設密碼引導），只留「密碼換 token 用完即丟不存」「內容僅主動觸發時送出」兩句核心。新增 regression：`detect-glossary-enabled-default.spec.js`、`glossary-fire-and-forget-toast.spec.js`（皆含 SANITY）。**不需清快取**：不動翻譯 prompt、cache key 結構與譯文內容；術語表 default 修正靠 `_g` cache key suffix 自然區隔，舊譯文不會被錯誤命中。
+
 **v2.0.0** —— **里程碑版本:邁入跨平台時代,iOS／iPadOS 版即將登陸 App Store**。本版不新增功能程式碼,而是把 v1.x 期間陸續加入的三大功能——**懸浮按鈕**、**送到 Instapaper**、**iOS／iPadOS Safari 版**——整合為 2.0 里程碑,並透過工具列圖示選單的升級歡迎橫幅再次向使用者介紹（major 版觸發升級通知，前次通知為 v1.20.0）。升級歡迎橫幅預告 iOS／iPadOS 版近期上架（送審中，即將登陸 App Store）。另含文件校正:修正 README 設定頁預設模型標示為 `gemini-3.1-flash-lite`（原誤標 `gemini-3-flash-preview`）、補齊禁用詞清單的多語目標行為說明（多數目標語言預設為空、繁中目標預設 25 條、切換目標的條件式重設）、SPEC 檔案結構與偵測規則（`content-floating-icon.js`／Instapaper／Readability 相關檔、ARIA `tree`／`treeitem` 排除、Twitter／WordPress 補抓 selector、`send-to-instapaper` 快捷鍵與 `EXTRACT_PAGE_HTML`／`INSTAPAPER_TOAST` 訊息）同步至現況。**不需清快取**:不動翻譯 prompt、cache key 結構與譯文內容。
 
 ## v1.20.x

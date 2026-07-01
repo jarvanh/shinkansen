@@ -385,6 +385,17 @@ if (window.__shinkansen_loaded) {
     return 'EXTRACT_GLOSSARY';
   };
 
+  // 術語表是否啟用 — 單一資料源,fallback 對齊 storage.js DEFAULT_SETTINGS.glossary.enabled(false)。
+  // 翻譯路徑(content.js)走 storage.sync.get(null) 原始讀取、不經 getSettings() 合併預設,
+  // 全新安裝時 settings.glossary 為 undefined。此處 undefined → false,避免「從沒進設定頁存過檔」
+  // 的全新使用者無聲啟用術語表(設定頁顯示「關」卻照建)。有 glossary 物件時沿用既有語意
+  // (enabled !== false),維持「存過檔的使用者」行為不變。
+  SK.resolveGlossaryEnabled = function resolveGlossaryEnabled(settings) {
+    const gc = settings && settings.glossary;
+    if (!gc) return false;
+    return gc.enabled !== false;
+  };
+
   // v1.8.10: 防禦式清理 LLM 沒照規則回時殘留的多段協定標記。
   // 規格參見 lib/system-instruction.js 的 DELIMITER 與兩種序號標記格式：
   //   - <<<SHINKANSEN_SEP>>>：多段譯文之間的分隔符

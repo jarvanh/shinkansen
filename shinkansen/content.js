@@ -1085,14 +1085,16 @@
     const total = units.length;
 
     // ─── 術語表前置流程 ────────────────────────────
-    let glossaryEnabled = true;
+    // glossaryEnabled 走 SK.resolveGlossaryEnabled 單一資料源(fallback 對齊
+    // DEFAULT_SETTINGS.glossary.enabled=false)。settings 走 storage.sync.get(null)
+    // 原始讀取、不經 getSettings() 合併預設,全新安裝時 settings.glossary 為 undefined。
+    const glossaryEnabled = SK.resolveGlossaryEnabled(settings);
     let skipThreshold = SK.GLOSSARY_SKIP_THRESHOLD_DEFAULT;
     let blockingThreshold = SK.GLOSSARY_BLOCKING_THRESHOLD_DEFAULT;
     let glossaryTimeout = SK.GLOSSARY_TIMEOUT_DEFAULT;
     {
       const gc = settings.glossary;
       if (gc) {
-        glossaryEnabled = gc.enabled !== false;
         skipThreshold = gc.skipThreshold ?? skipThreshold;
         blockingThreshold = gc.blockingThreshold ?? blockingThreshold;
         glossaryTimeout = gc.timeoutMs ?? glossaryTimeout;
@@ -1167,6 +1169,10 @@
           SK.sendLog('warn', 'glossary', 'glossary failed/timeout, proceeding without', { error: err.message });
         }
       } else {
+        // Fire-and-forget:背景抽術語表、不 blocking 首字,但仍顯示「建立術語表」toast
+        // 讓使用者知道有在運作(翻譯進度 toast 之前會短等最多 2s,見下方 glossary-await,
+        // 這段期間本 toast 維持可見)。中頁(skipThreshold < 批次 <= blockingThreshold)走此路。
+        SK.showToast('loading', SK.t('toast.glossaryBuilding'), { progress: 0, startTimer: true });
         const glossaryPromise = SK.safeSendMessage({
           type: _glossaryMsgType,
           payload: { compressedText, inputHash },
@@ -1184,6 +1190,20 @@
       }
     }
 
+    // Fire-and-forget 術語表:翻譯前短等(最多 2s)讓它趕上,期間讓上方「建立術語表」
+    // toast 維持可見;等到 / 逾時後才切成翻譯進度 toast。移到翻譯進度 toast 之前(原本
+    // 在其後)是為了讓中頁的 glossaryBuilding toast 真的被看見。Blocking 路徑 glossary
+    // 已就緒 → 此段 no-op;短頁 / 停用術語表 → STATE._glossaryPromise 為空 → no-op。
+    if (!glossary && STATE._glossaryPromise) {
+      try {
+        glossary = await Promise.race([
+          STATE._glossaryPromise,
+          new Promise(resolve => setTimeout(() => resolve(null), 2000)),
+        ]);
+      } catch (_) { /* ignore */ }
+      STATE._glossaryPromise = null;
+    }
+
     SK.showToast('loading', SK.t('toast.translateProgress', { prefix: labelPrefix, done: 0, total }), {
       progress: 0,
       startTimer: true,
@@ -1194,16 +1214,6 @@
     let _progressClosed = false;
 
     try {
-      if (!glossary && STATE._glossaryPromise) {
-        try {
-          glossary = await Promise.race([
-            STATE._glossaryPromise,
-            new Promise(resolve => setTimeout(() => resolve(null), 2000)),
-          ]);
-        } catch (_) { /* ignore */ }
-        STATE._glossaryPromise = null;
-      }
-
       SK.sendLog('info', 'translate', 'milestone:before_translate_units', { t: Date.now() - entryTime });
       const { done, failures, pageUsage, rpdWarning } = await SK.translateUnits(units, {
         glossary,
