@@ -83,6 +83,7 @@
     <!-- 送到 Instapaper：把翻譯後的整頁存進使用者自己的 Instapaper 帳號 -->
     <section id="instapaper-section">
       <h2 data-i18n="options.instapaper.heading">Instapaper</h2>
+      <p class="muted" data-i18n-html="options.instapaper.intro.html">Instapaper 是一個稍後閱讀服務，把文章存起來，之後就能在手機、平板或電腦上用乾淨、無干擾的版面閱讀。連結帳號後，可把 Shinkansen 翻譯後的整頁存進你自己的 Instapaper（<a href="https://www.instapaper.com/" target="_blank" rel="noopener">instapaper.com</a>）</p>
       <label class="toggle">
         <input type="checkbox" id="instapaperEnabled">
         <span data-i18n="options.instapaper.enable">啟用「送到 Instapaper」</span>
@@ -91,7 +92,7 @@
       <label class="toggle">
         <input type="checkbox" id="instapaperSummaryEnabled">
         <span data-i18n="options.instapaper.summary">送出時附上文章摘要</span>
-        <small class="muted" data-i18n="options.instapaper.summaryHint">摘要會顯示在 Instapaper 項目底下，使用你的翻譯目標語言，固定以最便宜的 Gemini Flash Lite 產生（需要有效的 Gemini API Key）。每次送出會多一筆極小的用量；沒有 Gemini Key 或摘要失敗時自動略過，書籤照常送出</small>
+        <small class="muted" data-i18n="options.instapaper.summaryHint">摘要會顯示在 Instapaper 項目底下，使用你的翻譯目標語言，固定以最便宜的 Gemini Flash Lite 產生（需要有效的 Gemini API Key）。每次送出會多一筆極小的用量</small>
       </label>
 
       <!-- 未連結：email + 密碼 + 連結按鈕 -->
@@ -279,7 +280,7 @@
     <section>
       <h2 data-i18n="options.dualMark.heading">雙語對照視覺標記</h2>
       <p class="muted" data-i18n="options.dualMark.intro">
-        當顯示模式設為「雙語對照」時，譯文會以新段落形式附加在原文之後。以下選項決定譯文段落的視覺標記樣式（顯示模式本身可點工具列圖示切換）
+        當顯示模式設為「雙語對照」時，譯文會以新段落形式附加在原文之後。以下選項決定譯文段落的視覺標記樣式
       </p>
       <div class="dual-demo-pair">
         <div class="dual-demo dual-demo-light">
@@ -333,7 +334,7 @@
       <label class="toggle">
         <input type="checkbox" id="toastAutoHide" checked>
         <span data-i18n="options.toast.autoHide">翻譯完成後自動關閉通知</span>
-        <small class="muted" data-i18n="options.toast.autoHideHint">開啟時翻譯完成的通知會在 5 秒後自動消失；關閉時需手動點擊關閉</small>
+        <small class="muted" data-i18n="options.toast.autoHideHint">開啟時翻譯完成的通知會在 5 秒後自動消失</small>
       </label>
       <label>
         <span data-i18n="options.toast.position">顯示位置</span>
@@ -1095,10 +1096,10 @@
 
     <section>
       <h2 data-i18n="options.yt.auto.heading">自動翻譯</h2>
+      <p class="muted" data-i18n="options.yt.auto.hint">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動點工具列圖示開啟開關</p>
       <label class="checkbox-label">
         <input type="checkbox" id="ytAutoTranslate">
         <span data-i18n="options.yt.auto.toggle">偵測到 YouTube 影片時自動翻譯字幕</span>
-        <small class="muted" data-i18n="options.yt.auto.hint">開啟後進入 YouTube 影片頁面時，會自動開始翻譯字幕，不需手動點工具列圖示開啟開關</small>
       </label>
     </section>
 

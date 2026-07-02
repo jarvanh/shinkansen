@@ -519,3 +519,83 @@ test('floating icon: 選單選引擎帶 force 重譯、短按維持 toggle', asy
 
   await page.close();
 });
+
+// 長按選單「啟動 / 關閉字幕翻譯」列（只在 YouTube 影片頁出現）。
+// 驗：(1) 非 YouTube 頁不出現此列；(2) YouTube 頁未翻時出現、label = ytSubtitleOn、
+//     點它 → SK.translateYouTubeSubtitles（不碰 stopYouTubeTranslation）+ 收選單；
+//     (3) YouTube 頁已翻（YT.active=true）時 label = ytSubtitleOff、點它 →
+//     SK.stopYouTubeTranslation；(4) 此列不算進 preset 列、功能選單仍在。
+// label 與 SK.t 同源比較，免綁特定語系；真實觸發字幕翻譯屬整合路徑（harness 不灌真
+// 字幕），這裡鎖「接線層」路由到正確 YT 函式 + 依 active 狀態決定 label/動作。
+//
+// SANITY 紀錄（已驗證）：把 buildMenu 內 `if (typeof SK.isYouTubePage === 'function' &&
+//   SK.isYouTubePage())` 暫改成 `if (false)` → 「YouTube 頁有字幕列」斷言 fail（exists=false）
+//   → 還原 → pass。把 toggleYtSubtitle 內 active 分支對調（active→translate、else→stop）→
+//   「已翻點列走 stop」斷言 fail（收到 translate）→ 還原 → pass。
+test('floating icon: YouTube 影片頁長按選單「啟動 / 關閉字幕翻譯」列', async ({ context, localServer }) => {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#target', { timeout: 10_000 });
+
+  const { evaluate } = await getShinkansenEvaluator(page);
+
+  // (1) 非 YouTube 頁（isYouTubePage=false）：字幕列不出現
+  const nonYt = await evaluate(`(async () => {
+    const f = window.__SK._floating;
+    window.__SK.isYouTubePage = () => false;
+    f.applyEnabled(true);
+    await f.openMenu();
+    const el = f.menuEl.querySelector('.menu-item.yt-subtitle');
+    f.closeMenu();
+    return { exists: !!el };
+  })()`);
+  expect(nonYt.exists).toBe(false);
+
+  // (2) YouTube 頁、未翻（YT.active=false）：字幕列出現、label=ytSubtitleOn、
+  //     點它 → translateYouTubeSubtitles（不碰 stop）+ 收選單，preset 仍 3 列、功能選單仍在
+  const notActive = await evaluate(`(async () => {
+    const f = window.__SK._floating;
+    window.__SK.isYouTubePage = () => true;
+    window.__SK.YT = { active: false };
+    const calls = { translate: 0, stop: 0 };
+    window.__SK.translateYouTubeSubtitles = () => { calls.translate++; return Promise.resolve(); };
+    window.__SK.stopYouTubeTranslation = () => { calls.stop++; };
+    await f.openMenu();
+    const el = f.menuEl.querySelector('.menu-item.yt-subtitle');
+    const label = el ? el.querySelector('.label').textContent : null;
+    const expectLabel = window.__SK.t('floating.ytSubtitleOn');
+    const presetCount = f.menuEl.querySelectorAll('.menu-item[data-slot]').length;
+    const hasFeature = !!f.menuEl.querySelector('.menu-item.feature');
+    el.click();
+    return { exists: !!el, label, expectLabel, presetCount, hasFeature, calls, openAfterClick: f.isMenuOpen() };
+  })()`);
+  expect(notActive.exists).toBe(true);
+  expect(notActive.label).toBe(notActive.expectLabel);
+  expect(notActive.label).not.toBe('floating.ytSubtitleOn');   // 非漏翻 raw key
+  expect(notActive.presetCount).toBe(3);                        // 字幕列不算進 preset
+  expect(notActive.hasFeature).toBe(true);                      // 功能選單仍在
+  expect(notActive.calls).toEqual({ translate: 1, stop: 0 });   // 未翻 → 啟動
+  expect(notActive.openAfterClick).toBe(false);                 // 點列後收選單
+
+  // (3) YouTube 頁、已翻（YT.active=true）：label=ytSubtitleOff、點它 → stopYouTubeTranslation
+  const active = await evaluate(`(async () => {
+    const f = window.__SK._floating;
+    window.__SK.isYouTubePage = () => true;
+    window.__SK.YT = { active: true };
+    const calls = { translate: 0, stop: 0 };
+    window.__SK.translateYouTubeSubtitles = () => { calls.translate++; return Promise.resolve(); };
+    window.__SK.stopYouTubeTranslation = () => { calls.stop++; };
+    await f.openMenu();
+    const el = f.menuEl.querySelector('.menu-item.yt-subtitle');
+    const label = el ? el.querySelector('.label').textContent : null;
+    const expectLabel = window.__SK.t('floating.ytSubtitleOff');
+    el.click();
+    return { label, expectLabel, calls };
+  })()`);
+  expect(active.label).toBe(active.expectLabel);
+  expect(active.label).not.toBe('floating.ytSubtitleOff');
+  expect(active.calls).toEqual({ translate: 0, stop: 1 });      // 已翻 → 關閉
+
+  await page.close();
+});

@@ -146,6 +146,8 @@
     .menu-item:hover { background: #f0f0f3; }
     .menu-divider { height: 1px; background: #e5e5ea; margin: 4px 8px; }
     .menu-item.feature .slot.feature-icon { font-size: 13px; line-height: 1; }
+    /* YouTube 字幕開關列的「CC」徽章：兩字母縮到 18px 徽章內 */
+    .menu-item.yt-subtitle .slot.yt-icon { font-size: 9px; font-weight: 700; letter-spacing: -.5px; }
     .menu-item .slot {
       flex: 0 0 auto;
       width: 18px;
@@ -303,10 +305,39 @@
       });
       menuEl.appendChild(item);
     }
-    // 分隔線 +「功能選單」：叫出工具列圖示選單(popup)當頁內浮層
+    // 分隔線 +（YouTube 影片頁）字幕翻譯開關 +「功能選單」
     const divider = document.createElement('div');
     divider.className = 'menu-divider';
     menuEl.appendChild(divider);
+    // YouTube 影片頁：加「啟動 / 關閉字幕翻譯」列。狀態依 SK.YT.active 決定 label
+    //（已翻→「關閉字幕翻譯」；未翻→「啟動字幕翻譯」）。選單每次開啟重建，label 恆為最新狀態。
+    if (typeof SK.isYouTubePage === 'function' && SK.isYouTubePage()) {
+      const ytActive = !!(SK.YT && SK.YT.active);
+      const ytItem = document.createElement('button');
+      ytItem.className = 'menu-item yt-subtitle';
+      ytItem.type = 'button';
+      ytItem.setAttribute('role', 'menuitem');
+      ytItem.dataset.yt = 'subtitle';
+      ytItem.dataset.active = ytActive ? '1' : '0';
+      const ytIcon = document.createElement('span');
+      ytIcon.className = 'slot yt-icon';
+      ytIcon.textContent = 'CC';
+      const ytLabel = document.createElement('span');
+      ytLabel.className = 'label';
+      const ytKey = ytActive ? 'floating.ytSubtitleOff' : 'floating.ytSubtitleOn';
+      ytLabel.textContent = (typeof SK.t === 'function')
+        ? SK.t(ytKey)
+        : (ytActive ? '關閉字幕翻譯' : '啟動字幕翻譯');
+      ytItem.appendChild(ytIcon);
+      ytItem.appendChild(ytLabel);
+      ytItem.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeMenu();
+        toggleYtSubtitle();
+      });
+      menuEl.appendChild(ytItem);
+    }
     const featureItem = document.createElement('button');
     featureItem.className = 'menu-item feature';
     featureItem.type = 'button';
@@ -484,6 +515,18 @@
     }
   }
 
+  // YouTube 字幕翻譯開關（長按選單「啟動 / 關閉字幕翻譯」列）：與 popup SET_SUBTITLE
+  // 同一份事實——已啟動→停（顯示原生字幕）；未啟動→開始翻譯。不持久化 autoTranslate，
+  // 只切當前影片，比照 content.js 的 SET_SUBTITLE handler。
+  function toggleYtSubtitle() {
+    const active = !!(SK.YT && SK.YT.active);
+    if (active) {
+      try { SK.stopYouTubeTranslation?.(); } catch (_e) {}
+    } else {
+      try { SK.translateYouTubeSubtitles?.().catch(() => {}); } catch (_e) {}
+    }
+  }
+
   async function handleShortPress() {
     let slot = 2;
     try {
@@ -597,6 +640,7 @@
     openMenu, closeMenu, buildMenu,
     handleShortPress,
     runPreset,
+    toggleYtSubtitle,
     applyEnabled, applyOpacity, applySize, applyPos,
     resolveEnabled, pickPopupSlot,
     cornerClampTop, CORNER_DEADZONE_PX, isIPadOSEnv,
