@@ -1731,18 +1731,24 @@ for (const btn of document.querySelectorAll('.dual-accent-swatch')) {
 // 授權（email + 密碼換來的 token / secret / username，密碼用完即丟），重新連結需再次
 // 輸入密碼，屬於「帳號連結」而非「設定偏好」，不該被「回復預設」清掉 → 先存後還原。
 const RESET_PRESERVE_KEYS = ['instapaperToken', 'instapaperTokenSecret', 'instapaperUsername'];
-$('reset-defaults').addEventListener('click', async () => {
-  if (!confirm(_t('options.reset.confirm'))) return;
-  // v0.62 起：apiKey 在 browser.storage.local，不在 sync 裡，
-  // 所以直接 clear sync 即可；apiKey 自然不受影響。
-  const preserved = await browser.storage.sync.get(RESET_PRESERVE_KEYS);
-  await browser.storage.sync.clear();
-  // clear 後把要保留的帳號連結寫回（只還原實際存在的 key，避免寫入 undefined）
+
+// clear 掉整包 sync 設定,但保留 RESET_PRESERVE_KEYS 列出的帳號連結（先讀存 → clear →
+// 只把「實際存在」的 key 寫回,避免寫入 undefined）。抽成吃 storage 物件的具名純函式,
+// 讓 jest-unit 能用假 storage 驗保留/還原邏輯（對應 test/jest-unit/options-reset-preserve-instapaper.test.cjs）。
+async function resetSyncPreservingLinks(storage) {
+  const preserved = await storage.get(RESET_PRESERVE_KEYS);
+  await storage.clear();
   const restore = {};
   for (const k of RESET_PRESERVE_KEYS) {
     if (preserved[k] !== undefined) restore[k] = preserved[k];
   }
-  if (Object.keys(restore).length) await browser.storage.sync.set(restore);
+  if (Object.keys(restore).length) await storage.set(restore);
+}
+
+$('reset-defaults').addEventListener('click', async () => {
+  if (!confirm(_t('options.reset.confirm'))) return;
+  // v0.62 起：apiKey 在 browser.storage.local，不在 sync 裡，clear sync 不影響 apiKey。
+  await resetSyncPreservingLinks(browser.storage.sync);
   await load();
   showSaveBar('saved', _t('options.reset.done'));
 });
