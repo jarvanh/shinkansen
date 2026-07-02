@@ -17,6 +17,13 @@
 
 ## 條目
 
+### NYT 類猛重繪 React 站:nv-mutate 圖說被 framework 反覆重繪打回英文(2026-07-02,dev tail 2.0.2.1,path B — §15 限制)
+- **症狀**(Jimmy 真頁回報 + cage 截圖 ground truth):NYT React 文章的 `<figcaption>`(圖說)翻譯後,滾動 / 圖片 lazy-load 觸發 React 重繪,圖說「說明 span」被打回英文原文、「來源 span」仍中文(**部分還原**混合態),內文段落正常。元素仍掛 `data-shinkansen-translated` + `nodevalue-mutated`。
+- **已修的部分**(走 path A,已 release gate 級 spec):guard 的「部分還原偵測」缺口——1s sweep(`runContentGuardNvMutate`)+ observer(`detectAndUnmarkExpandedNodeValueMutate`)原本重套只認「backup node 全 detach」,漏掉「framework 只重繪部分 text node / reuse-node reset nodeValue」。改以 `nvMutateRevertedToOriginal`(元素含某 backup 節點原文值 + 未展開)為準。對應 spec:`test/regression/spa-nv-guard-multinode-revert.spec.js`(fixture + SANITY 過)。**對較溫和的 React 站(重繪次數有限)這修法有效。**
+- **殘留(本條 pending)**:NYT 這種「滾動 / lazy-load 期間持續猛重繪同一 figcaption」的站點,guard reapply(每秒一次)反覆被 React 打回,**打不贏這場 re-render 競賽** → 圖說最終仍卡英文。cage 實機截圖(2.0.2.1)驗證:guard reapply log 只 fire 一次,之後 NYT 持續重繪,圖說停在英文。
+- **為什麼 path B**:CLAUDE.md §15「對抗 framework re-render… 救不回的場景進 PENDING,不改架構」。Playwright fixture 模擬不出 NYT React 的「持續高頻重繪 + 圖片 lazy-load 時序」;renderer 在真頁重負載下易 freeze,無法穩定自動迭代。已修的偵測缺口那層走 path A 有 spec;打不贏的競賽這層無法在 harness 重現。
+- **日後評估方向(架構級,非本輪)**:靜態圖說(無 click 互動)可考慮不走 framework-managed 的 nvMutate 路徑,改走 innerHTML content guard(`runContentGuard`,對非互動元素的重繪還原較強韌);但這動到「framework-managed 元素該走哪條注入路徑」的判斷,屬架構決策,需另案設計 + 完整 X/Reddit/Threads click 互動回歸驗證。
+
 ### 回復預設設定排除 Instapaper 帳號連結(2026-06-22,dev tail 1.10.68.1 修,path B)
 - **症狀**:options「回復預設設定」按鈕(`storage.sync.clear()`)會把 Instapaper 帳號連結(`instapaperToken` / `instapaperTokenSecret` / `instapaperUsername`)一起清掉,使用者得重新輸入密碼連結。帳號連結是一次性 OAuth 授權,不該被「回復偏好」清掉。
 - **修在**:`shinkansen/options/options.js` `reset-defaults` handler —— clear 前先 `sync.get(RESET_PRESERVE_KEYS)`、clear 後把實際存在的 key 寫回。

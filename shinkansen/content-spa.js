@@ -681,6 +681,27 @@
   // 每元素干預上限 8 次:防 framework 持續重 render 的無限 ping-pong(重套免
   // API 成本低,上限放寬到足以撐過 Medium hydration 多波重 render)。
   const nvGuardInterveneCount = new WeakMap();
+
+  // 2026-07-02: 判斷 nv-mutate 元素「譯文被 framework 打回原文(全部或部分)」。
+  // 以「症狀」為準,涵蓋 framework 重繪的各種節點處理方式:
+  //   - 換新 node(backup 全 detach)、reuse node 只 reset nodeValue(backup 仍 connected)、
+  //     只重繪「部分」text node(多 text node 元素常見:圖說「說明 span + 來源 span」,
+  //     framework 只把說明 span 打回英文,來源 span 仍是譯文 → 混合)。
+  // 判準:元素現在的可見文字含有「某個 backup 節點的原文值」(說明該段回到原文),
+  //   且整體長度沒明顯變長(排除 X show-more 這類「原文還在 + 新增大量內容」→ 那要重翻,
+  //   不是重套舊譯文)。健康譯文(顯示中文、無原文值)與換新內容(不含 backup 原文值)
+  //   都不會命中,故不會誤把好譯文或新內容重套。
+  // Why 不是只比 curText === origText:真實案例(NYT React figcaption)是「部分還原」,
+  //   curText 是「英文說明 + 中文來源」的混合,不等於全英文 origText,舊判準漏接 → 卡英文。
+  function nvMutateRevertedToOriginal(backup, origText, curText) {
+    if (!origText || !curText) return false;
+    if (curText.length > origText.length * 1.3) return false; // 明顯變長 = 展開/新增,非還原
+    return backup.some(e => {
+      const ov = (e && typeof e.originalValue === 'string') ? e.originalValue.trim() : '';
+      return ov.length >= 4 && curText.includes(ov);
+    });
+  }
+
   function runContentGuardNvMutate(ignoreViewport) {
     if (!STATE.nodeValueMutateBackup || STATE.nodeValueMutateBackup.size === 0) return 0;
     let reapplied = 0;
@@ -688,8 +709,19 @@
     for (const [el, backup] of STATE.nodeValueMutateBackup) {
       if (!el || !el.isConnected) continue;
       if (!backup || backup.length === 0) continue;
-      // 任一 backup node 還連著 → 不是「整批換新」場景,交給 A4
-      if (!backup.every(entry => !entry?.node?.isConnected)) continue;
+      const origText = STATE.originalText?.get?.(el);
+      const savedTranslation = STATE.nvMutateTranslation?.get?.(el);
+      const curText = (el.textContent || '').trim();
+      const allDetached = backup.every(entry => !entry?.node?.isConnected);
+      // reverted:譯文被 framework 打回原文(全部或部分,不論換新 node / reset nodeValue /
+      // 只重繪部分節點)。取代原本只認「backup 全 detach」的判準——後者漏掉多 text node
+      // 元素被「部分重繪 / reuse-node reset」打回原文的形(2026-07-02 NYT figcaption 實測)。
+      const reverted = nvMutateRevertedToOriginal(backup, origText, curText);
+      // 介入條件:framework 換過整批 node(allDetached)或元素顯示出原文(reverted)。
+      // 健康譯文(沒被框架動過、顯示中文)兩者皆不成立 → 跳過維持 no-op。
+      // 「全 detach + 內容換新(非還原)」落到下方 path 2 unmark 重翻;
+      // 「部分 detach + 展開新內容(X show-more)」reverted=false 且 allDetached=false → 跳過,交給 A4。
+      if (!allDetached && !reverted) continue;
       if (!ignoreViewport) {
         const rect = el.getBoundingClientRect();
         if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
@@ -698,12 +730,9 @@
       if (n >= 8) continue;
       nvGuardInterveneCount.set(el, n + 1);
 
-      const origText = STATE.originalText?.get?.(el);
-      const savedTranslation = STATE.nvMutateTranslation?.get?.(el);
-      const curText = (el.textContent || '').trim();
-      if (origText && savedTranslation && curText === origText) {
-        // 路徑 1:同內容重 render → 重套譯文。先清 stale backup 讓
-        // tryInjectNodeValueMutate 以「現在的英文 node」重建 backup。
+      if (savedTranslation && (reverted || curText === origText)) {
+        // 路徑 1:譯文被打回原文 → 重套譯文。先清 stale backup 讓
+        // tryInjectNodeValueMutate 以「現在的原文 node」重建 backup。
         STATE.nodeValueMutateBackup.delete(el);
         if (SK.tryInjectNodeValueMutate?.(el, savedTranslation, [])) {
           el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
@@ -1084,20 +1113,24 @@
 
       if (!trigger) continue;
 
-      // v1.10.49: unmark 前先試「重套譯文」——framework 同內容重 render(backup
-      // node 全 detach + 現在的 textContent 仍等於原文)時,直接把記錄的純文字
-      // 譯文套回新 node(零 API)。Medium 劃線 highlight hydration 實測:hydration
-      // 多波重 render,unmark→rescan→重打 API 的循環在波內反覆被還原直到重試
-      // 上限耗盡,留下「標 translated 但顯示英文」;重套是冪等操作,跟 guard 的
-      // 1s sweep(runContentGuardNvMutate)同款,sweep 到 framework 收手為止。
+      // v1.10.49: unmark 前先試「重套譯文」——framework 把譯文重 render 回原文
+      // (現在的 textContent 仍等於原文)時,直接把記錄的純文字譯文套回(零 API)。
+      // Medium 劃線 highlight hydration 實測:hydration 多波重 render,
+      // unmark→rescan→重打 API 的循環在波內反覆被還原直到重試上限耗盡,留下
+      // 「標 translated 但顯示英文」;重套是冪等操作,跟 guard 的 1s sweep
+      // (runContentGuardNvMutate)同款,sweep 到 framework 收手為止。
       // 內容已變(X show-more 等)不重套——curText !== origText 自然走 unmark。
+      // 2026-07-02:重套判準改用 nvMutateRevertedToOriginal——不再硬要求 backup node
+      // 全 detach、也不再只認「全等於 origText」。framework 重用 node 只 reset nodeValue、
+      // 或只重繪「部分」text node(多 text node 圖說常見:說明 span 回英文、來源 span 仍中文)
+      // 時,舊條件(_allDetached / _cur === origText)都不成立 → 卡「標 translated 顯示原文」。
       {
-        const _b = STATE.nodeValueMutateBackup.get(el);
-        const _allDetached = _b && _b.length > 0 && _b.every(e2 => !e2?.node?.isConnected);
         const _saved = STATE.nvMutateTranslation?.get?.(el);
         const _cur = (el.textContent || '').trim();
+        const _backupNow = STATE.nodeValueMutateBackup.get(el);
         const _n = nvGuardInterveneCount.get(el) || 0;
-        if (_allDetached && _saved && _cur === origText && _n < 8) {
+        if (_saved && _backupNow && _n < 8
+            && (_cur === origText || nvMutateRevertedToOriginal(_backupNow, origText, _cur))) {
           nvGuardInterveneCount.set(el, _n + 1);
           STATE.nodeValueMutateBackup.delete(el);
           if (SK.tryInjectNodeValueMutate?.(el, _saved, [])) {

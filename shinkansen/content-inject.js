@@ -398,6 +398,17 @@
     // 導致字面 \n 殘留可見 DOM 字元。在此入口統一處理，覆蓋所有後續路徑。
     if (translation.includes('\\n')) translation = translation.replace(/\\n/g, '\n');
 
+    // 空 slots 不變量守門(佔位符外洩防線):element / fragment / dual / framework-nvMutate
+    // 四條 no-slots 路徑都不經 deserializeWithPlaceholders,不會消耗佔位符 ⟦N⟧。序列化端
+    // 「placeholders ⟺ slots」本是不變量,但快取值存的是帶佔位符的原始譯文,一旦「帶佔位符
+    // 譯文 + 空 slots」配對出現(實例:NYT React 重排後某 <p> 重新序列化成空 slots,卻命中
+    // 帶佔位符的 tc_ 快取值),下游 sink 會把 ⟦N⟧ 原封寫進 DOM 被使用者看到。此處統一 strip
+    // 把不變量在注入端「強制成立」而非假設成立;slots>0 路徑交給 deserialize,不在此動。
+    if ((!slots || slots.length === 0) && typeof translation === 'string'
+        && SK.stripStrayPlaceholderMarkers) {
+      translation = SK.stripStrayPlaceholderMarkers(translation);
+    }
+
     // 輸出語言守門:目標為拉丁字母語言(en/es/fr/de)時,若整段譯文是東亞文字,判定為
     // LLM 掉語言(間歇性,見 content-detect.js SK.isWrongLanguageOutput 說明),不注入 →
     // 保留原文,避免使用者看到與目標語言不符的中文。single / dual / fragment / streaming /
@@ -1637,6 +1648,15 @@
       }
       for (const m of mutations) m.node.nodeValue = m.newValue;
       return true;
+    }
+
+    // 空 slots 不變量守門(佔位符外洩防線):此段(Case 2/3/3b)不經 deserialize,直接把
+    // translation / chunks 寫進 text node nodeValue,並存進 nodeValueMutateBackup 供 guard
+    // 重放。若譯文因快取殘留 / reflow 帶了佔位符 ⟦N⟧,必須在寫入 + backup 前先剝除,否則
+    // 佔位符不只漏進畫面,還會被 guard 當「乾淨譯文」反覆重放。guard 直呼本函式(content-spa
+    // 的 nvMutate guard)也經此,故這道防線與 injectTranslation 入口那道互補、不重複。
+    if (typeof translation === 'string' && SK.stripStrayPlaceholderMarkers) {
+      translation = SK.stripStrayPlaceholderMarkers(translation);
     }
 
     const textNodes = SK.collectVisibleTextNodes?.(el);
