@@ -738,12 +738,39 @@ if (window.__shinkansen_loaded) {
   };
 
   // 判斷一個 node 是否可以納入 inline-run
+  // v2.0.6:「無文字 + 含媒體 + block-level display」= 結構性媒體群組,不是行內文字流。
+  // 典型:讀者頭像列 `<div class="reader" style="display:flex"><span><img>×N</span></div>`,
+  // 媒體尺寸靠祖先範圍 CSS(`.reader img { width:0.2rem }`)撐。若被 extractInlineFragments
+  // 併進 inline run,fragment 序列化把 IMG 當 atomic slot deep clone、把 .reader / span
+  // 包裹層當透明容器拍平,注入時 clean-rebuild 成扁平 IMG siblings → `.reader img` 祖先
+  // 鏈斷掉 → 媒體失去尺寸(頭像從 18px 爆成原生 110px)。
+  //
+  // 行內 emoji(`<span style="display:inline"><img></span>` 夾在 prose text 之間)display
+  // 是 inline-level → 不符本條 → 仍留在 run 走 atomic slot 保留位置。差別在 computed
+  // display:block-level(block/flex/grid/table…)是媒體「群組」,inline-level 才是行內媒體。
+  //
+  // 結構性通則(§8):依「無 translatable 文字 + 含保留媒體 + block-level display」判斷,
+  // 不綁站點 / class / hostname。任何用 block 容器分組頭像 / 縮圖 / icon 列的站點都套用。
+  SK.isTextlessBlockMediaGroup = function isTextlessBlockMediaGroup(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if ((el.textContent || '').trim().length > 0) return false;
+    if (!SK.containsMedia(el)) return false;
+    const cs = el.ownerDocument?.defaultView?.getComputedStyle?.(el);
+    if (!cs) return false;
+    const d = cs.display;
+    // inline-level display → 行內媒體,不排除;其餘(block-level)→ 媒體群組,排除
+    if (d === 'inline' || d === 'inline-block' || d === 'inline-flex'
+        || d === 'inline-grid' || d === 'inline-table' || d === 'contents') return false;
+    return true;
+  };
+
   SK.isInlineRunNode = function isInlineRunNode(child) {
     if (child.nodeType === Node.TEXT_NODE) return true;
     if (child.nodeType !== Node.ELEMENT_NODE) return false;
     if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) return false;
     if (SK.BLOCK_TAGS_SET.has(child.tagName)) return false;
     if (SK.containsBlockDescendant(child)) return false;
+    if (SK.isTextlessBlockMediaGroup(child)) return false;
     return true;
   };
 
