@@ -143,7 +143,9 @@ const FETCH_TIMEOUT_MS = 15_000;
  * - 爆的是 RPD → 丟 DailyQuotaExceededError,不 retry
  * - 重試次數超過 maxRetries → 丟原錯誤
  */
-async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
+// opts.headers:額外 request headers(API key 走 `x-goog-api-key` header 而非 URL
+// query string,避免金鑰漏進 proxy / 網路設備 / 錯誤訊息等會記 URL 的地方)
+async function fetchWithRetry(url, body, { maxRetries = 3, headers = {} } = {}) {
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -160,7 +162,7 @@ async function fetchWithRetry(url, body, { maxRetries = 3 } = {}) {
       try {
         resp = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...headers },
           body: JSON.stringify(body),
           signal: controller.signal,
         });
@@ -312,7 +314,8 @@ export async function extractGlossary(compressedText, settings) {
     body.service_tier = serviceTier.toLowerCase();
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // API key 走 x-goog-api-key header,不放 URL(見 fetchWithRetry 註解)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
   await debugLog('info', 'glossary', 'glossary extraction request', { model, chars: compressedText.length, fetchTimeoutMs, maxOutputTokens: glossaryMaxOutput, settingsMaxOutput: maxOutputTokens });
 
@@ -326,7 +329,7 @@ export async function extractGlossary(compressedText, settings) {
   try {
     resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -488,7 +491,8 @@ export async function summarizeArticle({ text, targetLangLabel, apiKey, model, s
     body.service_tier = serviceTier.toLowerCase();
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // API key 走 x-goog-api-key header,不放 URL(見 fetchWithRetry 註解)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
   await debugLog('info', 'summary', 'instapaper summary request', { model, chars: input.length, targetLang: lang });
 
@@ -500,7 +504,7 @@ export async function summarizeArticle({ text, targetLangLabel, apiKey, model, s
   try {
     resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -653,7 +657,8 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     body.service_tier = serviceTier.toLowerCase(); // "flex" / "standard" / "priority"
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // API key 走 x-goog-api-key header,不放 URL(見 fetchWithRetry 註解)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
   await debugLog('info', 'api', 'gemini request', {
     model, serviceTier, segments: texts.length, chars: joined.length,
@@ -668,7 +673,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   const t0 = Date.now();
   const maxRetries = typeof settings?.maxRetries === 'number' ? settings.maxRetries : 3;
-  const resp = await fetchWithRetry(url, body, { maxRetries });
+  const resp = await fetchWithRetry(url, body, { maxRetries, headers: { 'x-goog-api-key': apiKey } });
 
   // v0.84: resp.json() 加 try-catch。API 回傳非 JSON 時（HTML 錯誤頁、空回應、
   // CDN 擋下的 502 HTML 頁面等）原本會直接 crash，現在包成可讀的錯誤訊息。
@@ -851,7 +856,8 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   if (serviceTier && serviceTier !== 'DEFAULT') body.service_tier = serviceTier.toLowerCase();
 
   // streamGenerateContent endpoint with alt=sse
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+  // API key 走 x-goog-api-key header,不放 URL(見 fetchWithRetry 註解)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
 
   await debugLog('info', 'api', 'gemini stream request', {
     model, segments: texts.length, chars: joined.length,
@@ -878,7 +884,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   try {
     resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),
       signal: ac.signal,
     });

@@ -978,7 +978,7 @@ const messageHandlers = {
     },
   },
   // v1.5.7: API Key 測試 — 設定頁「測試」按鈕觸發。
-  // Gemini 走 GET models/<model>?key=<key> 不耗 token；
+  // Gemini 走 GET models/<model>（key 走 x-goog-api-key header）不耗 token；
   // OpenAI-compat 走 POST /chat/completions ping(v1.8.43 起不帶 max_tokens)，耗 ~1-3 token。
   TEST_GEMINI_KEY: {
     async: true,
@@ -1879,7 +1879,7 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
 
 /**
  * 測試 Gemini API Key 有效性。
- * 走 `GET models/<model>?key=<apiKey>`——不耗 token，能驗 key 有效 + model 存在。
+ * 走 `GET models/<model>`（key 走 `x-goog-api-key` header）——不耗 token，能驗 key 有效 + model 存在。
  */
 // 測試按鈕 / 一次性 fetch 共用的 timeout 包裝——對已掛掉 / 防火牆 drop 封包的
 // endpoint，裸 fetch 會吊在瀏覽器預設逾時（可達數分鐘），按鈕卡「測試中」無回饋。
@@ -1898,9 +1898,10 @@ async function testGeminiKey(payload) {
   const apiKey = (payload?.apiKey || '').trim();
   const model = (payload?.model || 'gemini-3-flash-preview').trim();
   if (!apiKey) return { ok: false, message: 'API Key 為空，請先填入再測試。' };
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}?key=${encodeURIComponent(apiKey)}`;
+  // API key 走 x-goog-api-key header,不放 URL(避免金鑰漏進會記 URL 的 proxy / log)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`;
   try {
-    const resp = await fetchWithTimeout(url, { method: 'GET' }, 10000);
+    const resp = await fetchWithTimeout(url, { method: 'GET', headers: { 'x-goog-api-key': apiKey } }, 10000);
     if (resp.ok) {
       const j = await resp.json().catch(() => ({}));
       return { ok: true, status: resp.status, message: `連線成功（model: ${j?.name || model}）` };
