@@ -964,6 +964,48 @@
   }
   SK._detectThemeForElement = detectThemeForElement; // 給 spec 測試讀
 
+  /**
+   * 中和 wrapper 從站點祖先繼承到的「軸對齊翻轉」transform。
+   *
+   * 某些站點（實例：Google 搜尋結果標題）用「祖先 scaleY(-1) + 該元素自身 scaleY(-1)」
+   * 雙重翻轉互相抵消來反爬蟲——原標題文字經兩層翻轉後正立，但 dual wrapper 是以
+   * sibling 身分插進「只有祖先那層翻轉」的位置，少吃一次翻轉 → 譯文上下顛倒。
+   *
+   * 修法：累乘 wrapper 所有祖先（不含自身）的 2D transform 對角線（a = 水平 scale、
+   * d = 垂直 scale），若淨值任一軸為負（奇數次軸對齊翻轉）→ 對 wrapper 補一次對應軸的
+   * scale(-1) 抵消。只處理「軸對齊、無旋轉／skew」（off-diagonal ≈ 0）的純翻轉；遇
+   * rotate / skew / matrix3d 等一律不動（保守，避免對正常 transform 動手）。結構性通則
+   * （§8）：描述「注入元素繼承到未被抵消的軸翻轉」這個 DOM/CSS 結構，不綁站點 / class。
+   *
+   * 只在 dual wrapper 需要（single mode 譯文注入回原元素，跟原文吃到相同層數的翻轉，
+   * 天然正立，不需也不可補償）。
+   */
+  function neutralizeInheritedFlip(wrapper) {
+    const win = wrapper.ownerDocument?.defaultView;
+    if (!win) return;
+    const root = wrapper.ownerDocument.documentElement;
+    let netA = 1, netD = 1;
+    let node = wrapper.parentElement;
+    while (node && node !== root) {
+      const t = win.getComputedStyle(node).transform;
+      if (t && t !== 'none') {
+        const m = /^matrix\(([^)]+)\)$/.exec(t);
+        if (!m) return;  // matrix3d / 非預期格式 → 保守不動
+        const p = m[1].split(',').map(Number);
+        const [a, b, c, d] = p;
+        if (Math.abs(b) > 1e-6 || Math.abs(c) > 1e-6) return; // 含旋轉/skew → 不動
+        netA *= a; netD *= d;
+      }
+      node = node.parentElement;
+    }
+    if (netA >= 0 && netD >= 0) return;
+    const parts = [];
+    if (netA < 0) parts.push('scaleX(-1)');
+    if (netD < 0) parts.push('scaleY(-1)');
+    wrapper.style.transform = parts.join(' ');
+  }
+  SK._neutralizeInheritedFlip = neutralizeInheritedFlip; // 給 spec 測試讀
+
   /** 主入口:把譯文以雙語 wrapper 形式注入 DOM */
   SK.injectDual = function injectDual(unit, translation, slots) {
     if (!translation) return;
@@ -1172,6 +1214,9 @@
         insertMode = 'afterend';
       }
     }
+
+    // wrapper 已插入 DOM，祖先鏈就位——中和站點反爬蟲翻轉（見 neutralizeInheritedFlip）。
+    neutralizeInheritedFlip(wrapper);
 
     original.setAttribute('data-shinkansen-dual-source', '1');
     STATE.translationCache.set(original, { wrapper, insertMode });
