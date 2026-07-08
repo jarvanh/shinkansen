@@ -93,11 +93,23 @@ async function hashText(text) {
 
 /**
  * 估算一個 storage entry 的大小（bytes）。
- * browser.storage.local 的計費方式是 JSON.stringify(key) + JSON.stringify(value)。
+ * browser.storage.local 的計費方式是 JSON.stringify(key) + JSON.stringify(value)，
+ * 且配額以 UTF-8 bytes 計——CJK 字元一個佔 3 bytes，不能用 string.length（UTF-16
+ * code unit 數）直接當 bytes，否則譯文以繁中為主的 entry 會低估 ~3 倍，
+ * evictOldest 一次多刪 ~2 倍的已付費快取、stats() 顯示值也失真。
+ * 單次遍歷近似（不跑 TextEncoder 省 allocation）：ASCII 1 byte、其餘 3 bytes。
  */
+function estimateUtf8Bytes(str) {
+  let bytes = 0;
+  for (let i = 0; i < str.length; i++) {
+    bytes += str.charCodeAt(i) > 0x7f ? 3 : 1;
+  }
+  return bytes;
+}
+
 function estimateEntrySize(key, value) {
   const valStr = typeof value === 'string' ? value : JSON.stringify(value);
-  return key.length + valStr.length;
+  return estimateUtf8Bytes(key) + estimateUtf8Bytes(valStr);
 }
 
 /**
@@ -438,14 +450,19 @@ export async function stats() {
  * W7:清除所有文件翻譯快取(cacheTag '_doc' 的 entries),不影響網頁 / 字幕 /
  * 術語表快取。translate-doc/settings.html「進階」區塊用。
  *
- * cache key 結構:tc_<sha1>_<glossarySuffix>_doc_m<model>
- * 用 regex `/_doc(_m|$)/` 比對,精準分出文件路徑寫的 entries
+ * cache key 結構（見 background.js buildCacheKeySuffix）:
+ *   tc_<sha1(40hex)> + cacheTag（'_doc' / '_oc_doc'）+ 可選 '_g<hash>' + 可選 '_b<hash>'
+ *   + '_m<model>' + 可選 '_lang<tl>' + 可選 '_t<temp>'
+ * cacheTag 緊接在 sha1 之後，用錨定 regex 比對——不可用 /_doc(_m|$)/ 這種
+ * 「_doc 後面必接 _m」的假設：forbiddenTerms / glossary 非空時 '_doc' 後接的是
+ * '_b' / '_g'，會整批漏清（zh-TW 預設就有 26 條 forbiddenTerms，等於預設使用者
+ * 按「清除文件翻譯記憶」實際清 0 筆）。
  *
  * @returns {Promise<number>} 清除的 entry 數
  */
 export async function clearDocTranslationCache() {
   const all = await browser.storage.local.get(null);
-  const docKeys = Object.keys(all).filter((k) => k.startsWith(KEY_PREFIX) && /_doc(_m|$)/.test(k));
+  const docKeys = Object.keys(all).filter((k) => /^tc_[0-9a-f]{40}(?:_oc)?_doc(?:_|$)/.test(k));
   if (docKeys.length > 0) {
     await browser.storage.local.remove(docKeys);
   }

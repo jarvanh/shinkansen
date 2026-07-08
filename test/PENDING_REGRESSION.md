@@ -17,6 +17,44 @@
 
 ## 條目
 
+### code review 2026-07-08 R1 — streaming 路徑 rate limiter + 失敗路徑記帳(dev tail 2.0.7.1 修)
+- **症狀**:(a) handleTranslateStream 完全 bypass rate limiter——RPM/TPM 視窗低估、RPD 每頁少計 1，免費層連續翻頁 batch 1+ 撞 429;(b) streaming 取消 / 中途失敗 / hadMismatch 丟棄結果時，SSE 已解析的已付費 usage 無人記帳(對帳系統性低估，v1.10.46 批次 2-5 只修了 non-streaming);(c) openai-compat 多 chunk 中途失敗 / 逐段 fallback 半途失敗同樣不掛 err.usage、handleTranslateCustom 無 partialFailure 記帳(多引擎 drift)。
+- **修在**:`background.js` handleTranslateStream(limiter.acquire + logDiscardedStreamUsage 三處)/ handleTranslateCustom(catch 記帳);`lib/gemini.js` translateBatchStream(err.usage 掛載，含 blocked / emptyContent);`lib/openai-compat.js` translateBatch chunk 迴圈 + 逐段 fallback(err.usage)。
+- **為什麼還不能寫測試**:streaming 記帳要 mock SSE reader + usage-db + limiter 三方，現有 `limiter-init-lock-partial-usage.test.cjs` 的 brace-counting 手法可延伸(抽 handleTranslateStream 太大，建議只鎖「translateBatchStream 的 catch 有掛 err.usage」source 斷言 + logDiscardedStreamUsage 行為)。
+- **建議 spec 位置**:test/jest-unit/streaming-partial-usage.test.cjs
+
+### code review 2026-07-08 R2 — YT/Drive 換片 race 與字幕注入守門(dev tail 2.0.7.1 修;(c) 已清)
+- ★ **(c) 已清(2026-07-08,走路徑 A)**:`test/regression/youtube-cjk-source-inject.spec.js`——isolated world 直接驅動 `SK._replaceSegmentEl`,假 captionMap ja 原文→中譯斷言 segment 被替換;注入後同 el 再回呼斷言不進 onTheFly(pendingQueue / onTheFlyTotal 不增)。SANITY 兩輪已驗(①加回 RE_CJK 式防禦 → Case 1 fail;②拿掉 `_injectedSegmentText` 自我迴圈 guard → Case 2 fail;還原皆 pass)。訊號層:不驗 YouTube 真實 caption MutationObserver 觸發時序 / overlay 視覺。餘 (a)(b)(d) 維持 path B(見下)。
+- **症狀**:(a) stopYouTubeTranslation 不 bump captionSourceGen → SPA 換片後舊影片 in-flight 批次把譯文 / displayCues 寫進新影片 session(_runAsrSubBatch / heuristic _runBatch / _injectBatchResult 三個寫回點原本無 active/gen 檢查);(b) activation 的 tick1/tick5/65s timer 是 closure 變數，stop 清不到，跨 session 誤報「沒有字幕」;(c) replaceSegmentEl 用 RE_CJK 一刀擋含 CJK 原文 → ja/ko 源語人工字幕單語模式譯文永遠注入不進去(API 照燒),target=en 時該防禦也無效——改 _injectedSegmentText WeakMap 快照比對；(d) Drive 換軌不清舊 entries(新舊軌譯文疊加)、currentEntryIdx 純索引在 push+sort 後失效、_findActiveEntryIdx 無 nextStart clamp(與 YT _findActiveCue drift)。
+- **修在**:`content-youtube.js`(stop bump gen + 三寫回點守門 + _sessionAlive timer gate + _injectedSegmentText)/ `content-drive.js`(fingerprint 換軌清 entries、sort 後 idx sentinel、effectiveEnd clamp)。
+- **為什麼其餘還不能寫測試**:(a)(b) SPA 換片 race 需要「in-flight 批次跨 stop-restart」時序，fixture 難穩定重現;(d) Drive 換軌需真 timedtext 多軌時序。視需要再補。
+
+### code review 2026-07-08 R3 — 序列化/注入路徑 drift 六條(dev tail 2.0.7.1 修;(a)(f) 已清)
+- ★ **(a) 已清(2026-07-08,走路徑 A)**:`test/regression/dual-inline-button-preserved.spec.js`(2 case:dual 注入後原段落 BUTTON 仍在原位 + wrapper 內是 clone;echo skip 不把按鈕吃進 throwaway frag)。SANITY 兩輪已驗(①deserializer cloneReuse 分支改 `if (false)` → Case 1 fail;②只拿掉 echo 比對呼叫點的 `{cloneReuse:true}` → 兩 case 各自獨立 fail;還原皆 pass)。A3 探測呼叫點共用同一 cloneReuse 分支,由 SANITY ① 覆蓋。
+- ★ **(f) 已清(2026-07-08,走路徑 A)**:`test/regression/spa-bytext-reuse-restore.spec.js`——驅動 `SK.spaByTextReuse` 斷言注入前有 snapshotOnce(STATE.originalHTML 有 entry 且為原文),並走 Debug Bridge RESTORE 驗還原後不殘留殭屍譯文。SANITY 已驗(註解掉 snapshotOnce → 兩斷言 fail,還原 pass)。餘 (b)(c)(d)(e) 維持 path B(見下)。
+- **症狀**:(a) deserializeWithPlaceholders 的 reuseNode(inline BUTTON)在「frag 不注回原 el」的三個呼叫點(dual 重建 / echo 比對 / A3 探測)把活的原按鈕 detach 走——dual 模式原段落失去互動按鈕、echo skip 時按鈕永久消失；(b) countPairedInlineForGT 漏計 BUTTON 與「block 唯一子 A」兩種 paired 來源，>5 對 cap 被繞過 → Google MT garbage token;(c) plainTextFallback / fragment ok=false fallback 不做 \n→`<br>` 還原；(d) _revertEcho 不清 nodeValueMutateBackup → guard 把 echo 防重送標記拆掉；(e) restoreOnInnerMutation 缺 contenteditable 守門(使用者編輯內容被第三方 mutation 觸發的回寫蓋掉);(f) spaByTextReuse 不 snapshotOnce → 還原後殭屍譯文段。
+- **修在**:`content-serialize.js`(cloneReuse 選項 + count 鏡像)/ `content-inject.js`(三呼叫點傳 cloneReuse、兩處 br fallback、_revertEcho 清 backup)/ `content-spa.js`(contenteditable + snapshotOnce)。
+- **為什麼其餘還不能寫測試**:(b) 需 jsdom 驅動內部函式或真 fixture 過 GT 序列化;(c)(d)(e) 為防禦性小修,單條 ROI 低,對應區域出 bug 再按需補。
+
+### code review 2026-07-08 R4 — content 主流程狀態機四條(dev tail 2.0.7.1 修;(a) 已清)
+- ★ **(a) 已清(2026-07-08,走路徑 A)**:`test/regression/translate-all-failed-no-mark.spec.js`——mock 訊息層全批回 error,走真實 `translatePage`:斷言 STATE.translated=false、DOM 無 translated 標記、CLEAR_BADGE 已送、第二次呼叫走重翻(批次計數增加)而非 restorePage。SANITY 已驗(guard 改 `if (false && …)` → 三斷言 fail,還原 pass)。訊號層:驗 Gemini 主路徑;Google 路徑同款 guard 為同形鏡像不重複驅動。餘 (b)(c)(d) 維持 path B(見下)。
+- **症狀**:(a) 全數批次失敗(done=0，如 API key 沒填)仍標 STATE.translated=true + sticky + rescan + SPA observer——下次快速鍵誤走 restorePage、對注定失敗頁反覆重送 API、badge 紅點殘留(Gemini / Google 兩路徑同修；units=0 早退與 catch 路徑也補 CLEAR_BADGE);(b) streaming batch 0 mid-failure fallback 重跑整批時 done 重複累計(進度顯示 32/25);(c) 空字串 unit 防護只在 Gemini 路徑，translateUnitsGoogle 漏(protocol 層雙路徑 drift);(d) glossary 的 SK.sha1 在 http:// 頁(無 crypto.subtle)throw 在 try/finally 保護區之前，STATE.translating 永久卡死。
+- **修在**:`content.js`(done===0 guard ×2、CLEAR_BADGE ×4、batch0StreamDone 扣回、Google 路徑 _kept 過濾、crypto.subtle gate)。
+- **為什麼其餘還不能寫測試**:(b)(d) 需特定失敗時序 mock(streaming 中途斷 / http:// insecure context);(c) Google 路徑空 unit 過濾可延伸既有 google-translate spec,視需要再補。
+
+### ~~code review 2026-07-08 R5 — 偵測層三條(dev tail 2.0.7.1 修；結構性，bump 輪必跑 full suite)~~
+- ★ **已清(2026-07-08,三條全走路徑 A)**:
+  - (a) `test/regression/detect-svg-anchor-skip.spec.js` + fixture——SVG `<a><text>` 不進 units、所有 element unit 皆 HTMLElement、HTML leaf `<a>` 對照組照常補抓。SANITY 已驗(註解掉 instanceof gate → svgAnchorCollected=true fail,還原 pass)。訊號層:驗偵測端;content.js `innerText ?? textContent` 兜底屬防禦層不驗(序列化 map 為內部閉包)。
+  - (b) `test/regression/detect-hidden-container-skip.spec.js` + fixture——display:none Case B 容器不進 units、可見對照組 containerWithBr=1。SANITY 已驗(拿掉 `SK.isVisible(el) &&` → hiddenCollected=true fail,還原 pass)。
+  - (c) `test/regression/extract-svg-keep.spec.js`(host 頁重用 extract-page-html fixture)——hardenExtractedHtml 保留無文字 inline svg、仍刪真正空殼。SANITY 已驗(改回 `KEEP.has(node.tagName)` → keptSvg=false fail,還原 pass)。
+- ~~**症狀**:(a) leaf-anchor 補抓收 SVG `<a>`(querySelectorAll('a') 也匹配 SVGAElement，無 innerText)→ translateUnits 序列化 TypeError 整頁翻譯失敗(probe 實測重現);(b) 非 block 容器 Case A-F 全程不查 SK.isVisible,display:none 容器照收照翻燒 token(probe 實測);(c) content-ns hardenExtractedHtml 的 KEEP 集合寫大寫 'SVG' 但 SVG tagName 是小寫 → 送 Instapaper 的擷取 HTML 裡 inline SVG 圖整顆被空殼修剪刪掉。~~
+- ~~**修在**:`content-detect.js`(HTMLElement instanceof gate + isVisible gate)/ `content.js`(innerText ?? textContent 兜底)/ `content-ns.js`(tagName.toUpperCase())。~~
+
+### code review 2026-07-08 R6 — UI / PDF / lib 雜項(dev tail 2.0.7.1 修，多數低風險)
+- **內容**:options 跨頁 stale 覆寫(glossary.enabled / ytSubtitle.autoTranslate 加 storage.onChanged 反向同步)、懸浮按鈕短按 400ms 冷卻(雙擊誤觸 abort)、update banner URL 抽 lib/update-check.js buildUpdateDownloadUrl 單一資料源(options 版補上 Safari 直下 .pkg)、log-search 150ms debounce、log 明細 DOM id 改穩定三元組 key、fw-detect 'none' 不進 WeakMap 快取(SSR hydration 前誤釘死)、sticky onRemoved 先 hydrate、testGeminiKey / testCustomProvider / Drive timedtext fetch 補 timeout、usage-db CSV 公式注入中和、cache estimateEntrySize 改 UTF-8 bytes 估算、logger persistLog 300ms debounce 批次 flush、translate-doc resolvePreset 改 find-by-slot、handleFile 換檔 abort 舊 parse、cachedPresets storage.onChanged 失效、openReader gen token、reader destroyed flag、preset row innerHTML 改 createElement、pdf-renderer dead code 移除。
+- **已有覆蓋**:cache 清 doc regex(`cache-clear-doc-regex.test.cjs`,SANITY 過)、sanitizeImport instapaper 兩鍵(`options-sanitize-import-missing-fields.test.cjs` 新 describe,SANITY 過)。
+- **為什麼其餘還不能寫測試**：多為 UI 事件 / storage 監聽 / timeout 行為，單條 ROI 低；若日後對應區域出 bug 再按需補。
+
 ### ~~NYT 類猛重繪 React 站:nv-mutate 圖說被 framework 反覆重繪打回英文(2026-07-02,dev tail 2.0.2.1)~~
 - ★ **關閉(2026-07-02,Jimmy 決定)**:偵測缺口那層已走 path A 修好(`spa-nv-guard-multinode-revert.spec.js`);殘留「打不贏 NYT 持續高頻重繪競賽 → 圖說仍卡英文」接受為**已知限制**(§15「救不回的場景不改架構」),Playwright 也模擬不出 NYT 的持續重繪 + lazy-load 時序。已移入 **SPEC-PRIVATE §28.3 已知殘餘**(含日後架構級評估方向),不再佔活動 queue。
 

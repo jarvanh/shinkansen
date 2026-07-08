@@ -5,7 +5,7 @@ import { formatBytes, formatTokens, formatUSD, formatMoney } from '../lib/format
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 import { RELEASE_HIGHLIGHTS } from '../lib/release-highlights.js';
 import { shouldShowWelcomeNotice } from '../lib/welcome-notice.js';
-import { isWorthNotifying } from '../lib/update-check.js';
+import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js';
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 import { isTouchScreenDevice } from '../lib/platform.js';
 import { pickPopupSlot, presetsRequireGemini, TARGET_LANGUAGES, DEFAULT_SETTINGS } from '../lib/storage.js';
@@ -238,19 +238,9 @@ document.addEventListener('click', async (e) => {
   e.preventDefault();
   try {
     const { updateAvailable } = await browser.storage.local.get('updateAvailable');
-    const version = updateAvailable?.version;
     const isSafari = browser.runtime.getURL('').startsWith('safari-web-extension://');
-    let url;
-    if (isSafari && version) {
-      url = `https://github.com/jimmysu0309/shinkansen/releases/download/v${version}/shinkansen-macos-v${version}.pkg`;
-    } else {
-      // 三層 fallback:storage.releaseUrl > 用 version 組 tag URL > releases 索引頁
-      // 即使 storage 內缺 releaseUrl 或損壞也能跳到合理頁面
-      url = updateAvailable?.releaseUrl
-        || (version
-          ? `https://github.com/jimmysu0309/shinkansen/releases/tag/v${version}`
-          : 'https://github.com/jimmysu0309/shinkansen/releases');
-    }
+    // URL 規則單一資料源：lib/update-check.js buildUpdateDownloadUrl(options banner 同用)
+    const url = buildUpdateDownloadUrl(updateAvailable, isSafari);
     await browser.tabs.create({ url });
     closePopup();
   } catch (err) {

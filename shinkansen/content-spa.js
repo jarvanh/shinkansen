@@ -558,6 +558,10 @@
       const savedHTML = STATE.translatedHTMLByText.get(text);
       if (!savedHTML) { remaining.push(unit); continue; }
       try {
+        // 覆寫前先快照原文——此刻 el 顯示的正是 remount 後的原文。少這步的話
+        // restorePage / resetForSpaNavigation 都以 STATE.originalHTML 為迭代源，
+        // reuse 注入的元素不在其中 → 按還原後殘留殭屍譯文段
+        SK.snapshotOnce?.(unit.el);
         // AMO source review: savedHTML 來自 STATE.translatedHTMLByText(本 extension 自存
         // 的 inject 後 innerHTML),無 user input 流入。see BUILD.md §innerHTML
         unit.el.innerHTML = savedHTML;
@@ -1323,6 +1327,10 @@
       if (savedHTML == null) continue;
       if (!target.isConnected) continue;
       if (target.innerHTML === savedHTML) continue;
+      // v1.5.5 對齊 runContentGuard / testRunContentGuard：編輯模式元素不回寫——
+      // interaction blackout 只蓋得住「使用者打字引發」的 mutation，第三方 framework
+      // 背景 mutation 進到這裡會把使用者編輯內容整段蓋掉
+      if (target.getAttribute('contenteditable') === 'true') continue;
       // AMO source review: savedHTML 來自 STATE.translatedHTML(本 extension 自存),無 user input。
       target.innerHTML = savedHTML;
       _justRestoredAt.set(target, now);

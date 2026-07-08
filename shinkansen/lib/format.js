@@ -1,5 +1,10 @@
 // format.js — 共用格式化工具函式
 // 由 popup.js 與 options.js 共用，消除重複程式碼。
+//
+// 注意：金額邏輯(formatUSD / formatTWD)與 lib/format-currency.js(content script
+// 用的 UMD 版)是同一份事實的雙實作，改任一份要兩份一起改(drift guard 見
+// test/jest-unit/exchange-rate-and-format.test.cjs)。唯一刻意差異：formatMoney
+// 對缺 rate 的 TWD——ESM 版顯示 NT$ 0、UMD 版 fallback 31.6(2026-06-09 評估保留)。
 
 /**
  * 格式化 bytes 為人類可讀的 B / KB / MB 字串。

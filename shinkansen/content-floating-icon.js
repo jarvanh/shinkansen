@@ -527,7 +527,14 @@
     }
   }
 
+  // v1.8.20 popup 按鈕同型修法：短按冷卻——觸控使用者習慣性快速連點兩下時，
+  // 第二下會被 toggle 語意解讀成「翻譯中 → 中止」，體感是「按了沒反應 / 翻譯自己停了」
+  let _shortPressCooldown = false;
+
   async function handleShortPress() {
+    if (_shortPressCooldown) return;
+    _shortPressCooldown = true;
+    setTimeout(() => { _shortPressCooldown = false; }, 400);
     let slot = 2;
     try {
       const { popupButtonSlot } = await browser.storage.sync.get('popupButtonSlot');
@@ -639,6 +646,9 @@
     host, btn, menuEl,
     openMenu, closeMenu, buildMenu,
     handleShortPress,
+    // 測試 seam:讓 spec 在連續兩次 handleShortPress 之間重置冷卻(真實使用者的
+    // 快速連點就是要被冷卻擋下,spec 驗路由時需繞過)
+    _resetShortPressCooldown: () => { _shortPressCooldown = false; },
     runPreset,
     toggleYtSubtitle,
     applyEnabled, applyOpacity, applySize, applyPos,

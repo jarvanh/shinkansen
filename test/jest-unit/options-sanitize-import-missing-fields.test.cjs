@@ -121,3 +121,26 @@ describe('5-2: translateDoc.applyFixedGlossary 匯入收留', () => {
     expect(clean.translateDoc).toEqual({ applyGlossary: true, systemPrompt: 'p', applyFixedGlossary: true });
   });
 });
+
+// 2026-07-08 code review UI-4：instapaperEnabled / instapaperSummaryEnabled 漏列
+// topRules（同 issue #48 / 批次 5-2 的第三次同型漏列）。症狀：開啟 Instapaper 的
+// 使用者匯出→匯入備份後兩鍵默默消失,popup「送到 Instapaper」按鈕不見,以為連結壞了。
+// SANITY 紀錄（已驗證,2026-07-08）：暫時把 topRules 的 instapaperEnabled 條目移除 →
+// 「boolean 進 clean」case fail；還原 → pass。
+describe('2026-07-08: instapaper 兩鍵匯入收留', () => {
+  test('instapaperEnabled / instapaperSummaryEnabled boolean 進 clean', () => {
+    const { clean, warnings } = sanitizeImport({
+      instapaperEnabled: true,
+      instapaperSummaryEnabled: false,
+    });
+    expect(clean.instapaperEnabled).toBe(true);
+    expect(clean.instapaperSummaryEnabled).toBe(false);
+    expect(warnings).toEqual([]);
+  });
+
+  test('非 boolean → 跳過 + 警告,不污染 clean', () => {
+    const { clean, warnings } = sanitizeImport({ instapaperEnabled: 'yes' });
+    expect('instapaperEnabled' in clean).toBe(false);
+    expect(warnings.length).toBeGreaterThan(0);
+  });
+});

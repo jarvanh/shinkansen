@@ -275,8 +275,15 @@
 
   /**
    * slot 配對失敗 fallback 用的純文字注入。
+   * \n → <br> 還原對齊 replaceTextInPlace——serialize 端把 <br> 轉 \n 送 LLM,
+   * fallback 不還原的話多行段落在非 pre-wrap 站點視覺換行全塌成空格。
    */
   function plainTextFallback(el, cleaned) {
+    if (cleaned && cleaned.includes('\n')) {
+      const frag = buildFragmentFromTextWithBr(cleaned);
+      replaceNodeInPlace(el, frag);
+      return;
+    }
     const target = resolveWriteTarget(el);
     injectIntoTarget(target, cleaned);
   }
@@ -383,6 +390,11 @@
     // 單一資料源生效;restorePage / SPA reset 照常清標記,使用者清快取重翻(必經
     // restore toggle)仍會重送這些段。
     el.setAttribute('data-shinkansen-translated', '1');
+    // innerHTML 還原讓剛建立的 nv-mutate backup 全數 detach——不清 entry 的話
+    // runContentGuardNvMutate 會看到 allDetached 走 unmark path 把上面那行
+    // translated 標記又拔掉，echo 防重送失效(標記/rescan 反覆震盪)
+    STATE.nodeValueMutateBackup?.delete(el);
+    STATE.nvMutateTranslation?.delete?.(el);
     // by-text reuse 也記一筆(value = 原文 innerHTML):SPA virtualization 同文字段
     // remount 成新元素時直接 reuse,不再進 API 候選。
     SK._recordTranslatedByText?.(el, el.innerHTML);
@@ -684,7 +696,10 @@
         newContent = frag;
       } else {
         const cleaned = SK.stripStrayPlaceholderMarkers(translation);
-        newContent = document.createTextNode(cleaned);
+        // \n → <br> 還原對齊下方 no-slots 路徑(fallback 不還原會塌成空格)
+        newContent = cleaned.includes('\n')
+          ? buildFragmentFromTextWithBr(cleaned)
+          : document.createTextNode(cleaned);
       }
     } else {
       // v1.4.8: 無 slots 時也要把 \n 還原為 <br>（字面 \n 已在 injectTranslation 入口轉換完畢）
@@ -844,7 +859,9 @@
 
     // 譯文內容：有 slots 走 deserializer 重建 inline 結構，否則純文字 / br fragment
     if (slots && slots.length > 0) {
-      const result = SK.deserializeWithPlaceholders(translation, slots);
+      // cloneReuse:dual wrapper 是原段落的「譯文複本」,reuseNode 不 clone 會把原段落
+      // 的 inline BUTTON 搬進 wrapper(原段落失去互動按鈕，違反 dual 不動原文的前提)
+      const result = SK.deserializeWithPlaceholders(translation, slots, { cloneReuse: true });
       if (result.ok) {
         inner.appendChild(result.frag);
       } else {
@@ -1075,7 +1092,9 @@
     const originalText = normalizeWs(getVisibleText(original));
     let translationText;
     if (slots && slots.length > 0 && translation) {
-      const dsResult = SK.deserializeWithPlaceholders(translation, slots);
+      // cloneReuse：這裡只為取 textContent 做「譯文==原文」比對，frag 用完即丟——
+      // 不 clone 的話 reuseNode 會把原按鈕 detach 進 throwaway frag，按鈕從頁面永久消失
+      const dsResult = SK.deserializeWithPlaceholders(translation, slots, { cloneReuse: true });
       translationText = dsResult.ok
         ? (dsResult.frag.textContent || '')
         : (SK.stripStrayPlaceholderMarkers ? SK.stripStrayPlaceholderMarkers(translation) : translation);
@@ -1670,7 +1689,8 @@
     // 配對失敗(序列長度不一 / type 不對 / inline tag 不對)→ return false 走 fallback dual。
     if (slots && slots.length > 0) {
       if (!SK.deserializeWithPlaceholders) return false;
-      const { frag, ok } = SK.deserializeWithPlaceholders(translation, slots);
+      // cloneReuse:A3 對齊探測用 frag，不注回 el——不 clone 會在探測前就把按鈕搬離 el
+      const { frag, ok } = SK.deserializeWithPlaceholders(translation, slots, { cloneReuse: true });
       if (!ok || !frag) return false;
       // 快速 short-circuit:source 沒任何 visible content → 不適合 mutate
       if (extractA3Seq(el).length === 0) return false;

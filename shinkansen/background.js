@@ -590,6 +590,10 @@ if (browser.webNavigation && browser.webNavigation.onCreatedNavigationTarget) {
 }
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
+  // SW 重啟後 in-memory Map 是空的，不先 hydrate 就 has() 檢查會永遠 early return,
+  // storage 內的 entry 清不掉（Firefox storage.local fallback 時 entry 跨重啟持久，
+  // 重啟後 tab ID 重配可能對到無關新 tab → 誤觸發自動翻譯）。
+  await hydrateStickyTabs();
   if (!stickyTabs.has(tabId)) return;
   stickyTabs.delete(tabId);
   await persistStickyTabs();
@@ -800,7 +804,8 @@ const messageHandlers = {
         url: url.slice(0, 200),
       });
       try {
-        const res = await fetch(url, { credentials: 'omit' });
+        // 15s timeout 自保——timedtext host 卡住時別讓 sendResponse 通道一直懸著
+        const res = await fetchWithTimeout(url, { credentials: 'omit' }, 15000);
         if (!res.ok) {
           debugLog('warn', 'drive', 'timedtext fetch failed', { status: res.status });
           return { ok: false, error: `http ${res.status}` };
@@ -1399,6 +1404,43 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
   if (!effectivePricing && overrides.model) effectivePricing = getPricingForModel(overrides.model, settings);
   if (!effectivePricing) effectivePricing = settings.pricing;
 
+  // v1.10.46 批次 2-5 的「失敗路徑記帳」同型修法(streaming 版)：中途失敗 / 取消 /
+  // hadMismatch 丟棄結果時，SSE 已解析出的 usage 是已付費 token,content 端不會發
+  // LOG_USAGE(error 路徑)或會在累計前 reject(mismatch 重翻)，不在這裡記就永遠漏帳。
+  const logDiscardedStreamUsage = async (usage, why, segments) => {
+    if (!usage || !(usage.inputTokens > 0 || usage.outputTokens > 0)) return;
+    try {
+      const cachedRate = pricingToCachedRate(effectivePricing) ?? 0.10;
+      const cachedSavedRatio = 1 - cachedRate;
+      await usageDB.logTranslation({
+        url: sender?.tab?.url || '',
+        title: sender?.tab?.title || '',
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cachedTokens: usage.cachedTokens || 0,
+        billedInputTokens: Math.max(0, Math.round(
+          usage.inputTokens - (usage.cachedTokens || 0) * cachedSavedRatio,
+        )),
+        billedCostUSD: computeBilledCostUSD(
+          usage.inputTokens,
+          usage.cachedTokens || 0,
+          usage.outputTokens,
+          effectivePricing,
+          cachedRate,
+        ),
+        segments: segments || 0,
+        cacheHits: 0,
+        timestamp: Date.now(),
+        engine: 'gemini',
+        model: effectiveSettings.geminiConfig?.model || 'unknown',
+        partialFailure: true,
+      });
+      debugLog('warn', 'api', 'streaming usage logged on discard path', {
+        streamId, why, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+      });
+    } catch (_) { /* 記帳失敗不影響原流程 */ }
+  };
+
   // 固定術語表 / 禁用詞清單。字幕路徑預設不套用（applyFixedGlossary/applyForbiddenTerms=false),
   // 跟 handleTranslate 對 ytSubtitle 的處理一致。
   // v1.10.46: 改走 buildFixedGlossaryEntries + preferArticleGlossaryEntries 共用邏輯——
@@ -1499,6 +1541,16 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     onFirstChunk();
     for (const seg of cachedSegments) onSegment(seg.idx, seg.translation, false);
 
+    // 與 handleTranslate 對齊：streaming 請求同樣過 rate limiter(RPM/TPM 視窗記帳 +
+    // RPD 計數)。不過的話 batch 0 每頁繞過視窗統計 → batch 1+ 的節流基於低估的視窗，
+    // 免費層連續翻頁實際請求數超 cap 撞 429(translateBatchStream 明文不 retry，整批
+    // fallback 重跑 non-streaming 多等一輪);popup 顯示的 RPD 用量也每頁少計一筆。
+    if (!limiter) await initLimiter();
+    const streamAcquire = await limiter.acquire(estimateInputTokens(missingTexts), /* priority */ 1);
+    if (streamAcquire?.rpdExceeded) {
+      debugLog('warn', 'rate-limit', 'RPD exceeded (streaming batch)', { streamId });
+    }
+
     const result = await translateBatchStream(
       missingTexts,
       effectiveSettings,
@@ -1546,6 +1598,13 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
       cachedRate,
     );
 
+    // hadMismatch:content 端會在累計 pageUsage 之前 reject 觸發 non-streaming 重翻，
+    // 這批 full generation 的 usage 沒人記——由 background 直接入帳(重翻那輪照常由
+    // content LOG_USAGE，不重複計)。
+    if (result.hadMismatch) {
+      await logDiscardedStreamUsage(result.usage, 'mismatch-discarded', missingTexts.length);
+    }
+
     browser.tabs.sendMessage(tabId, {
       type: 'STREAMING_DONE',
       payload: {
@@ -1564,6 +1623,8 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
       },
     }).catch(() => {});
   } catch (err) {
+    // 取消 / 中途失敗都可能已產生計費 token(translateBatchStream 掛在 err.usage)
+    await logDiscardedStreamUsage(err?.usage, ac.signal.aborted ? 'aborted' : 'error', missingTexts.length);
     if (ac.signal.aborted || /aborted/i.test(err?.message || '')) {
       browser.tabs.sendMessage(tabId, {
         type: 'STREAMING_ABORTED',
@@ -1820,13 +1881,26 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
  * 測試 Gemini API Key 有效性。
  * 走 `GET models/<model>?key=<apiKey>`——不耗 token，能驗 key 有效 + model 存在。
  */
+// 測試按鈕 / 一次性 fetch 共用的 timeout 包裝——對已掛掉 / 防火牆 drop 封包的
+// endpoint，裸 fetch 會吊在瀏覽器預設逾時（可達數分鐘），按鈕卡「測試中」無回饋。
+// 主翻譯路徑各自有 fetchWithRetry / AbortController，這裡只給輔助請求用。
+async function fetchWithTimeout(url, init = {}, timeoutMs = 15000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function testGeminiKey(payload) {
   const apiKey = (payload?.apiKey || '').trim();
   const model = (payload?.model || 'gemini-3-flash-preview').trim();
   if (!apiKey) return { ok: false, message: 'API Key 為空，請先填入再測試。' };
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}?key=${encodeURIComponent(apiKey)}`;
   try {
-    const resp = await fetch(url, { method: 'GET' });
+    const resp = await fetchWithTimeout(url, { method: 'GET' }, 10000);
     if (resp.ok) {
       const j = await resp.json().catch(() => ({}));
       return { ok: true, status: resp.status, message: `連線成功（model: ${j?.name || model}）` };
@@ -1835,6 +1909,7 @@ async function testGeminiKey(payload) {
     try { const j = await resp.json(); errMsg = j?.error?.message || errMsg; } catch { /* noop */ }
     return { ok: false, status: resp.status, message: errMsg };
   } catch (err) {
+    if (err?.name === 'AbortError') return { ok: false, message: '連線逾時，請確認網址與網路狀態。' };
     return { ok: false, message: '網路錯誤：' + (err?.message || String(err)) };
   }
 }
@@ -1869,11 +1944,11 @@ async function testCustomProvider(payload) {
       stream: false,
     };
     if (model) reqBody.model = model;
-    const resp = await fetch(url, {
+    const resp = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(reqBody),
-    });
+    }, 10000);
     if (resp.ok) {
       const j = await resp.json().catch(() => ({}));
       const used = j?.usage?.total_tokens || j?.usage?.prompt_tokens || 0;
@@ -1887,6 +1962,7 @@ async function testCustomProvider(payload) {
     } catch { /* noop */ }
     return { ok: false, status: resp.status, message: errMsg };
   } catch (err) {
+    if (err?.name === 'AbortError') return { ok: false, message: '連線逾時，請確認網址與網路狀態。' };
     return { ok: false, message: '網路錯誤：' + (err?.message || String(err)) };
   }
 }
@@ -1978,7 +2054,50 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
     // P1 (v1.8.59):translateBatchCustom 內部讀 settings.customProvider.systemPrompt,
     // 把已 wrap 過 effective prompt 的 cp 寫回 settings.customProvider 才能讓 LLM 端拿到對的 prompt。
     const effSettings = { ...settings, customProvider: cp };
-    const res = await translateBatchCustom(missingTexts, effSettings, glossary, fixedGlossaryEntries, forbiddenTermsList);
+    let res;
+    try {
+      res = await translateBatchCustom(missingTexts, effSettings, glossary, fixedGlossaryEntries, forbiddenTermsList);
+    } catch (err) {
+      // 對齊 handleTranslate 的 v1.10.46 批次 2-5 修法：多 chunk 中途失敗時前面 chunk
+      // 已付費(translateBatchCustom 把累積 usage 掛在 err.usage)。content 端收到 error
+      // 不會發 LOG_USAGE，不在這裡記進 usage-db 就永遠漏帳。記完原樣 rethrow。
+      const partialUsage = err?.usage;
+      if (partialUsage && (partialUsage.inputTokens > 0 || partialUsage.outputTokens > 0)) {
+        try {
+          const pricingCp = { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 };
+          const rateCp = resolveCustomProviderCachedRate(cp);
+          await usageDB.logTranslation({
+            url: sender?.tab?.url || '',
+            title: sender?.tab?.title || '',
+            inputTokens: partialUsage.inputTokens,
+            outputTokens: partialUsage.outputTokens,
+            cachedTokens: partialUsage.cachedTokens || 0,
+            billedInputTokens: Math.max(0, Math.round(
+              partialUsage.inputTokens - (partialUsage.cachedTokens || 0) * (1 - rateCp),
+            )),
+            billedCostUSD: computeBilledCostUSD(
+              partialUsage.inputTokens,
+              partialUsage.cachedTokens || 0,
+              partialUsage.outputTokens,
+              pricingCp,
+              rateCp,
+            ),
+            segments: missingTexts.length,
+            cacheHits,
+            timestamp: Date.now(),
+            engine: 'openai-compat',
+            model: cp.model || 'server-default',
+            partialFailure: true,
+          });
+          debugLog('warn', 'api', 'openai-compat translateBatch failed mid-way — partial usage logged', {
+            inputTokens: partialUsage.inputTokens,
+            outputTokens: partialUsage.outputTokens,
+            error: err?.message,
+          });
+        } catch (_) { /* 記帳失敗不影響原錯誤回報 */ }
+      }
+      throw err;
+    }
     fresh = res.translations;
     batchUsage = res.usage;
     batchHadMismatch = res.hadMismatch || false;

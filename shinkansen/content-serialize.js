@@ -54,15 +54,47 @@
   // Atomic 標記(【*N】)不受影響——probe 顯示連 8 個 atomic 都不會亂。
   const GT_MAX_PAIRED_SLOTS = 5;
 
+  // 鏡像 serializeNodeIterableForGoogle 的分支順序估算「非 degrade 模式下會產出的
+  // paired marker 對數」。兩者是同一份事實的雙面——序列化端改 paired 產出規則時本函式
+  // 必須同步，否則 cap 會被繞過(count 少算 → 判不降級 → 實送 >5 對 → Google MT
+  // hallucinate garbage token，正是 GT_MAX_PAIRED_SLOTS 要防的症狀)。
+  // 2026-07-08 review：補上先前漏計的 BUTTON(serialize 端 BUTTON 分支在 HARD_EXCLUDE
+  // 之前產 paired)與「block 唯一子 A」(v1.9.31 起走 paired + 內部 walk)兩種來源。
   function countPairedInlineForGT(topLevelNodes) {
     let count = 0;
     function walk(nodeList) {
       for (const child of nodeList) {
+        if (count > GT_MAX_PAIRED_SLOTS) return;
         if (child.nodeType !== Node.ELEMENT_NODE) continue;
+        // inline CODE → atomic(不計)，同 serialize 端先於 HARD_EXCLUDE 開洞
+        if (child.tagName === 'CODE'
+            && !(child.parentElement && child.parentElement.tagName === 'PRE')) continue;
+        // inline BUTTON → paired + 遞迴內部(serialize 端在 HARD_EXCLUDE 之前)
+        if (child.tagName === 'BUTTON' && SK.hasSubstantiveContent(child)) {
+          count++;
+          walk(child.childNodes);
+          continue;
+        }
         if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
+        if (child.tagName === 'BR') continue;
         if (SK.isAtomicPreserve(child)) continue;
-        // v1.9.31: 含 element child 的 A 在 serialize 走 atomic,不算 paired。
-        if (child.tagName === 'A' && hasElementChild(child)) continue;
+        if (child.tagName === 'A' && hasElementChild(child)) {
+          // block 唯一子 A → paired + 內部混合(atomic child 不計，可翻 child 遞迴);
+          // 其餘含 element child 的 A → atomic 不計(v1.9.31)
+          const _p = child.parentElement;
+          if (_p && SK.BLOCK_TAGS_SET.has(_p.tagName) && _p.children.length === 1) {
+            count++;
+            for (const ac of child.childNodes) {
+              if (ac.nodeType !== Node.ELEMENT_NODE) continue;
+              if (SK.HARD_EXCLUDE_TAGS.has(ac.tagName)) continue;
+              if (ac.tagName === 'BR') continue;
+              if (hasElementChild(ac) || !(ac.textContent || '').trim()) continue; // atomic
+              walk([ac]);
+            }
+          }
+          continue;
+        }
+        if (child.tagName === 'IMG') continue; // atomic(v1.9.31)
         if (SK.GT_INLINE_TAGS.has(child.tagName)) {
           count++;
           if (count > GT_MAX_PAIRED_SLOTS) return;
@@ -499,7 +531,12 @@
 
   // ─── 反序列化 ─────────────────────────────────────────
 
-  SK.deserializeWithPlaceholders = function deserializeWithPlaceholders(translation, slots) {
+  // opts.cloneReuse：比對 / 探測 / dual 重建等「frag 不會注回原 el」的用途必須傳 true——
+  // reuseNode 分支預設會把活的原 DOM node(inline BUTTON)從頁面 detach 進 frag,
+  // 只有標準 single 注入(frag 注回同一 el,node 等同 detach+re-attach)可以安全 reuse;
+  // 其他用途不 clone 的話，原按鈕會從頁面永久消失或被搬進 <shinkansen-translation> wrapper
+  SK.deserializeWithPlaceholders = function deserializeWithPlaceholders(translation, slots, opts) {
+    const cloneReuse = !!(opts && opts.cloneReuse);
     if (!translation) {
       return { frag: document.createDocumentFragment(), ok: false, matched: 0 };
     }
@@ -518,7 +555,7 @@
     translation = SK.selectBestSlotOccurrences(translation);
 
     const matchedRef = { count: 0 };
-    const frag = parseSegment(translation, slots, matchedRef);
+    const frag = parseSegment(translation, slots, matchedRef, cloneReuse);
     const ok = matchedRef.count > 0;
     return { frag, ok, matched: matchedRef.count };
   };
@@ -582,7 +619,7 @@
     frag.appendChild(document.createTextNode(' '));
   }
 
-  function parseSegment(text, slots, matchedRef) {
+  function parseSegment(text, slots, matchedRef, cloneReuse) {
     const frag = document.createDocumentFragment();
     if (!text) return frag;
 
@@ -630,7 +667,14 @@
         const idx = Number(m[1]);
         const inner = m[2];
         const slot = slots[idx];
-        if (slot && slot.reuseNode && slot.node) {
+        if (slot && slot.reuseNode && slot.node && cloneReuse) {
+          // 非注回原 el 的用途：clone 殼重建，不動原 node(見 deserializeWithPlaceholders 註解)
+          const shell = slot.node.cloneNode(false);
+          shell.appendChild(parseSegment(inner, slots, matchedRef, cloneReuse));
+          _maybePadCjkLatinSpace(frag, shell);
+          frag.appendChild(shell);
+          matchedRef.count++;
+        } else if (slot && slot.reuseNode && slot.node) {
           // reuseNode 機制(目前用於 inline BUTTON):直接 reuse 原 DOM node,
           // 不 cloneNode → 原 node 上的 React private key(__reactFiber$ / __reactProps$)
           // 與 native listener 保留,React 18 root-level event delegation 仍能透過
@@ -644,14 +688,14 @@
           // 兩處」的 DOM 例外。
           const reuse = slot.node;
           while (reuse.firstChild) reuse.removeChild(reuse.firstChild);
-          const innerFrag = parseSegment(inner, slots, matchedRef);
+          const innerFrag = parseSegment(inner, slots, matchedRef, cloneReuse);
           reuse.appendChild(innerFrag);
           _maybePadCjkLatinSpace(frag, reuse);
           frag.appendChild(reuse);
           matchedRef.count++;
         } else if (slot && slot.nodeType === Node.ELEMENT_NODE) {
           const shell = slot.cloneNode(false);
-          const innerFrag = parseSegment(inner, slots, matchedRef);
+          const innerFrag = parseSegment(inner, slots, matchedRef, cloneReuse);
           shell.appendChild(innerFrag);
           _maybePadCjkLatinSpace(frag, shell);
           frag.appendChild(shell);
@@ -666,7 +710,7 @@
           }
           matchedRef.count++;
         } else {
-          const innerFrag = parseSegment(inner, slots, matchedRef);
+          const innerFrag = parseSegment(inner, slots, matchedRef, cloneReuse);
           frag.appendChild(innerFrag);
         }
       }

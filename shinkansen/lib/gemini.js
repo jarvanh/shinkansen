@@ -977,9 +977,15 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
       }
     }
   } catch (err) {
+    // 中途失敗 / 使用者取消時，SSE 已解析出的 usage(每個 event 都帶 usageMetadata)
+    // 是已付費 token——掛在 err.usage 讓呼叫端記帳(對齊 translateBatch 的
+    // err.usage 慣例)，否則取消一次 streaming 這筆錢就永遠漏帳。
     if (signal?.aborted || err?.name === 'AbortError') {
-      throw new Error('streaming aborted');
+      const abortErr = new Error('streaming aborted');
+      abortErr.usage = lastUsage;
+      throw abortErr;
     }
+    if (err && typeof err === 'object' && !err.usage) err.usage = lastUsage;
     throw err;
   } finally {
     try { reader.releaseLock?.(); } catch (_) {}
@@ -1008,8 +1014,10 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   });
 
   if (blockReason) {
-    throw codedError('blocked', { reason: blockReason },
+    const err = codedError('blocked', { reason: blockReason },
       `Gemini 拒絕處理此請求(promptFeedback.blockReason: ${blockReason})`);
+    err.usage = lastUsage; // blocked 前的 input token 已計費，交呼叫端記帳
+    throw err;
   }
 
   if (allText.length === 0) {
@@ -1019,8 +1027,10 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
       MAX_TOKENS: '輸出超過 maxOutputTokens 上限',
       OTHER: 'Gemini 回傳空內容(finishReason: OTHER)',
     };
-    throw codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason },
+    const err = codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason },
       reasonMsg[finishReason] || `Gemini 回傳空內容(finishReason: ${finishReason})`);
+    err.usage = lastUsage; // 空輸出時 input(+thinking)token 已計費，交呼叫端記帳
+    throw err;
   }
 
   // 計算對齊後的譯文 array(跟 non-streaming 一致),hadMismatch 留給呼叫端決定如何處理

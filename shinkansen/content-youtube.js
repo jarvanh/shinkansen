@@ -1103,10 +1103,17 @@
   // 譯文中文化後常比英文原文長 1.3-1.8 倍,YouTube 原生 caption-window 視覺寬度
   // 不夠時 expandCaptionLine 會把外層 max-content 撐開但同時 segment 設 nowrap,
   // 導致中文長句沖出畫面。比照 ASR overlay 改用 _wrapTargetText 計算切點 + <br> 注入。
+  // el → 我們最後注入的可見文字(el.textContent 快照)。replaceSegmentEl 用來判斷
+  // 「這次 characterData 回呼是不是自己注入觸發的」——取代舊的 RE_CJK 字元集猜測
+  // (那會誤殺 ja/ko 源語的原文：單語模式譯文永遠注入不進去但 API 照燒；target=en
+  // 時注入的英文根本不含 CJK，防自我迴圈也完全失效)
+  const _injectedSegmentText = new WeakMap();
+
   function _setSegmentText(el, text) {
     const str = text == null ? '' : String(text);
     if (!str) {
       if (el.textContent !== '') el.textContent = '';
+      _injectedSegmentText.set(el, '');
       return;
     }
     const wrapped = _wrapTargetText(str);
@@ -1122,6 +1129,7 @@
     }
     // 套用使用者「字幕大小」scale 到原生 segment（內建字幕單語 path 也吃旋鈕,scale=100 不碰）
     _applyScaleToSegment(el);
+    _injectedSegmentText.set(el, el.textContent);
   }
 
   // 暴露給 spec 用
@@ -1404,7 +1412,7 @@
     }
     // non-ASR 退出雙語回純中文:對 visible segment 重跑 replaceSegmentEl
     // (此時雙語=false,replaceSegmentEl 會走 _setSegmentText 把英文換成中文)。
-    // RE_CJK guard 確保已是中文的不會被誤改。
+    // _injectedSegmentText 比對確保已是我們注入譯文的不會被誤改。
     if (!bilingual && !SK.YT.isAsr && SK.YT.active) {
       document.querySelectorAll('.ytp-caption-segment').forEach((el) => {
         try { replaceSegmentEl(el); } catch (_) {}
@@ -1989,6 +1997,9 @@
   // 套用跟原 _runBatch 同樣的串流注入 pattern。
   async function _runAsrSubBatch(subSegs, batchIdx, _t0Window, batchApiMsRef) {
     const YT = SK.YT;
+    // 世代快照：await 回來後 SPA 換片 / stop-restart 會換掉 captionMap / displayCues
+    // (物件同一個 YT，屬性換新)，不比對就把舊影片的譯文與 cue 寫進新影片 session
+    const _myGen = YT.captionSourceGen || 0;
     const startMsSet = new Set(subSegs.map(s => s.startMs));
     const lastSeg = subSegs[subSegs.length - 1];
     const inputArr = subSegs.map((seg, i) => {
@@ -2016,6 +2027,13 @@
     if (batchApiMsRef) batchApiMsRef[batchIdx] = elapsed;
 
     if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || 'ASR translation failed');
+    // 對齊 STREAMING_SEGMENT / flushOnTheFly 的防禦：session 已停或世代已換 → 丟棄結果
+    if (!YT.active || _myGen !== (YT.captionSourceGen || 0)) {
+      SK.sendLog('info', 'youtube', 'asr sub-batch result discarded (session changed)', {
+        batchIdx, gen: _myGen, currentGen: YT.captionSourceGen, active: YT.active,
+      });
+      return;
+    }
     _logWindowUsage(subSegs.length, res.usage);
 
     const rawText = res.result?.[0] || '';
@@ -2186,6 +2204,8 @@
     if (!YT.active) return;
     const _t0 = Date.now();
     const _batchApiMs = new Array(batches.length).fill(0);
+    // 世代快照——await 回來後 SPA 換片 / stop-restart 時丟棄結果(同 _runAsrSubBatch)
+    const _myGen = YT.captionSourceGen || 0;
 
     // 依 ytSubtitle.engine 路由(同非 ASR 字幕，單元已是英文整句不走 ASR JSON 模式)
     const _heuristicMsgType = SK.getSubtitleBatchType(SK.YT.config?.engine, false);
@@ -2198,6 +2218,12 @@
         const elapsed = Date.now() - _t0;
         _batchApiMs[b] = elapsed;
         if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || SK.t('common.errorUnknown'));
+        if (!YT.active || _myGen !== (YT.captionSourceGen || 0)) {
+          SK.sendLog('info', 'youtube', 'asr heuristic batch result discarded (session changed)', {
+            batchIdx: b, gen: _myGen, currentGen: YT.captionSourceGen, active: YT.active,
+          });
+          return;
+        }
         _logWindowUsage(batchUnits.length, res.usage);
         // v1.10.39(code review 2026-06-09 M8):防 res.ok=true 但 res.result 缺失時
         // res.result[j] 直接 throw(對齊非 ASR 主路徑 _injectBatchResult 的 res.result || [])
@@ -2533,6 +2559,14 @@
         const _subtitleMsgType = SK.getSubtitleBatchType(config.engine, false);
 
         const _injectBatchResult = (batchUnits, results, b, elapsed) => {
+          // await 後才被呼叫——session 已停或世代已換(SPA 換片 / 軌道切換)就丟棄，
+          // 不把舊影片譯文寫進新 session 的 captionMap(對齊 ASR 兩條路徑的守門)
+          if (!YT.active || _myCaptionGen !== (YT.captionSourceGen || 0)) {
+            SK.sendLog('info', 'youtube', 'non-asr batch result discarded (session changed)', {
+              batchIdx: b, gen: _myCaptionGen, currentGen: YT.captionSourceGen, active: YT.active,
+            });
+            return;
+          }
           for (let j = 0; j < batchUnits.length; j++) {
             const unit     = batchUnits[j];
             // v1.8.10 A:寫 captionMap 之前先 strip LLM 偷懶殘留的 SEP / «N» 標記
@@ -3022,11 +3056,6 @@
 
   // ─── MutationObserver：即時替換字幕 ──────────────────────
 
-  // 判斷字串是否已含中日韓字元（表示已翻譯完成）
-  // 用途：el.textContent 賦值會觸發 characterData mutation，若不跳過中文譯文會形成迴圈
-  const RE_CJK = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/;
-
-
   // ─── 字幕行展開（防止長譯文折行 + 維持置中）──────────────────────
   // 注入中文譯文後無條件展開字幕框：
   //   方法 A：segment 設 nowrap，確保文字不在 segment 內折行
@@ -3068,12 +3097,17 @@
     if (SK.YT.config?.bilingualMode === true && SK.YT.isAsr === true) return;
     const original = el.textContent.trim();
     if (!original) return;
-    // 已含中日韓字元 → 這是我們設置的譯文被 characterData mutation 觸發回呼，直接跳過
-    if (RE_CJK.test(original)) return;
     const key = normText(original);
 
-    // 快取命中 → 瞬間替換
+    // 快取命中(= 已知原文)→ 瞬間替換。先查 captionMap 再做自我迴圈判斷——
+    // 舊寫法用 RE_CJK 一刀擋「含 CJK 的 original」防自己注入的譯文觸發回呼，但
+    // ja/ko 源語的人工字幕原文本身就含 CJK，單語模式譯文永遠注入不進去(token 照燒
+    // 字幕卻停在原文);target=en 時注入的英文不含 CJK，該防禦其實也擋不到。改比對
+    // _injectedSegmentText(el 上最後注入的可見文字快照)，語言無關。
     const cached = SK.YT.captionMap.get(key);
+    if (cached === undefined && _injectedSegmentText.get(el) === el.textContent) {
+      return; // 自己注入譯文觸發的 characterData 回呼
+    }
     if (cached !== undefined) {
       const YT = SK.YT;
       const isBilingual = YT.config?.bilingualMode === true;
@@ -3359,6 +3393,11 @@
       YT.videoEl = null;
     }
     YT.active             = false;
+    // 世代 bump:stop / SPA 換片後 500ms auto-restart 會把 active 翻回 true,
+    // 只靠 active 檢查擋不住舊影片 in-flight 批次寫進新 session——所有 async
+    // 寫回點(_runAsrSubBatch / heuristic _runBatch / _injectBatchResult /
+    // translateWindowFrom 收尾)都比對此世代，失配即丟棄
+    YT.captionSourceGen   = (YT.captionSourceGen || 0) + 1;
     YT.translatingWindows = new Set();  // v1.2.54
     YT.translatedWindows  = new Set();  // v1.3.5: 補齊（原僅在 translateYouTubeSubtitles 重置）
     YT.translatedUpToMs   = 0;
@@ -3537,6 +3576,12 @@
       const MAX_BRIDGE_ATTEMPTS = 4;
       const BRIDGE_RETRY_MS = 200;
       const activateVideoId = getVideoIdFromUrl();
+      // 世代快照：tick1/tick5/65s timer 是 closure 區域變數，stop 拿不到——SPA 換片
+      // stop → 500ms auto-restart 後 active 又是 true，舊 session 的 timer 光看 active
+      // 擋不住，會拿舊 session 的 captionsConfirmedByBridge 對新影片誤判「沒有字幕」。
+      // 靠 stop 的 captionSourceGen bump 讓舊 timer fire 時自我作廢
+      const _sessionGen = SK.YT.captionSourceGen || 0;
+      const _sessionAlive = () => SK.YT.active && (SK.YT.captionSourceGen || 0) === _sessionGen;
 
       const showWaitingStatus = () => {
         // 只有「已確認沒字幕」才該禁止 show;「有字幕」決定要 show 等待是預期行為
@@ -3546,7 +3591,7 @@
       };
 
       const queryAndDecide = () => {
-        if (bridgeFinalDecision || !SK.YT.active) return;
+        if (bridgeFinalDecision || !_sessionAlive()) return;
         if (bridgeAttempts >= MAX_BRIDGE_ATTEMPTS) {
           showWaitingStatus(); // 給上 → 顯示等待狀態,讓 1s/5s tick 接手
           return;
@@ -3590,7 +3635,7 @@
         // bridge listener 沒回(test fixture without bridge) safety net
         setTimeout(() => {
           window.removeEventListener('shinkansen-yt-player-response', handler);
-          if (bridgeFinalDecision || !SK.YT.active) return;
+          if (bridgeFinalDecision || !_sessionAlive()) return;
           if (bridgeAttempts >= MAX_BRIDGE_ATTEMPTS) {
             showWaitingStatus();
             return;
@@ -3604,14 +3649,14 @@
       // (noCaptionsConfirmed 在 no-captions branch 已 cancel 此 tick;走到 = 有字幕 / 未決,
       //  讓 forceSubtitleReload 觸發 XHR)
       tick1Handle = setTimeout(() => {
-        if (SK.YT.active && SK.YT.rawSegments.length === 0) {
+        if (_sessionAlive() && SK.YT.rawSegments.length === 0) {
           forceSubtitleReload();
         }
       }, 1000);
 
       // 5 秒後若仍無資料 → fallback 判定「沒字幕」並考慮 toast
       tick5Handle = setTimeout(() => {
-        if (SK.YT.active && SK.YT.rawSegments.length === 0) {
+        if (_sessionAlive() && SK.YT.rawSegments.length === 0) {
           // v1.10.46: bridge 已確認本影片有字幕軌（常見：preroll 廣告期播放器還沒發
           // timedtext XHR)→ 不彈「沒有字幕」誤報，維持等待狀態，交給有界 CC retry
           // 繼續催（rawSegments 一進來自動停；上限 60s，擋無限重試）。
@@ -3619,7 +3664,7 @@
             _scheduleMwebCcRetry();
             // retry 預算（60s）跑完的最後檢查：仍沒字幕才收尾，不讓「等待字幕資料…」掛死
             tick5Handle = setTimeout(() => {
-              if (SK.YT.active && SK.YT.rawSegments.length === 0) {
+              if (_sessionAlive() && SK.YT.rawSegments.length === 0) {
                 hideCaptionStatus();
                 _maybeShowNoSubtitleToast();
               }

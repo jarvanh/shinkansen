@@ -153,8 +153,9 @@ test('translateBatchStream 把外部 signal 的 abort 事件 forward 到 interna
 
 test('translateBatchStream 用 try/finally 清掉外部 signal listener(避免 leak)', () => {
   const fnStart = SRC.indexOf('export async function translateBatchStream');
-  // 函式較長(>4000 字),讀 9000 字確保涵蓋尾端 finally
-  const fnBody = SRC.slice(fnStart, fnStart + 9000);
+  // 函式較長,讀 12000 字確保涵蓋尾端 finally(2026-07-08 streaming 失敗路徑記帳
+  // 加了 err.usage 掛載註解與程式碼,原 9000 字窗剛好把 finally 切在邊界上)
+  const fnBody = SRC.slice(fnStart, fnStart + 12000);
   expect(
     fnBody,
     'translateBatchStream 缺 `signal?.removeEventListener(\'abort\', ...)`(listener leak risk)',

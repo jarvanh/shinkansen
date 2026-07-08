@@ -360,7 +360,9 @@
       // 含媒體元素（如 <img> emoji + <a> 連結）的段落應正常序列化 slots，
       // 讓 LLM 能保留 <a> 佔位符，injection path B 的 fragment 注入已支援此情境。
       if (!SK.hasPreservableInline(el)) {
-        return { text: el.innerText.trim(), slots: [] };
+        // innerText 兜底：SVG 等非 HTML 元素沒有 innerText(偵測端已擋，這裡防禦
+        // 其他來源的 unit),undefined.trim() 會讓整批序列化 throw、全頁翻譯失敗
+        return { text: (el.innerText ?? el.textContent ?? '').trim(), slots: [] };
       }
       return SK.serializeWithPlaceholders(el);
     });
@@ -448,6 +450,9 @@
     SK.sendLog('info', 'translate', 'milestone:tu_storage_loaded', { t: Date.now() - tu_entry, partialMode });
 
     let done = 0;
+    // streaming batch 0 已注入的 done 計數——mid-failure fallback 重跑整批前要扣回，
+    // 否則 done 重複累計會讓進度 toast 顯示超過 total(例 32/25)
+    let batch0StreamDone = 0;
     const pageUsage = {
       inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUSD: 0,
       billedInputTokens: 0, billedCostUSD: 0,
@@ -690,19 +695,21 @@
                     const u = units[origIdx];
                     if (u?.el) {
                       if (u.kind === 'element') {
-                        if (injectedEls.has(u.el) || fragmentInjectedEls.has(u.el)) { done += 1; continue; }
+                        if (injectedEls.has(u.el) || fragmentInjectedEls.has(u.el)) { done += 1; batch0StreamDone += 1; continue; }
                         injectedEls.add(u.el);
                       } else if (u.kind === 'fragment') {
-                        if (injectedEls.has(u.el)) { done += 1; continue; }
+                        if (injectedEls.has(u.el)) { done += 1; batch0StreamDone += 1; continue; }
                         fragmentInjectedEls.add(u.el);
                       }
                     }
                     SK.injectTranslation(u, tr, slotsList[origIdx]);
                     done += 1;
+                    batch0StreamDone += 1;
                   }
                 } else {
                   SK.injectTranslation(job.units[idx], tr, job.slots[idx]);
                   done += 1;
+                  batch0StreamDone += 1;
                 }
                 if (onProgress) onProgress(done, total, hadAnyMismatch);
                 if (firstSegmentInjectedT === null) {
@@ -835,7 +842,11 @@
             await stream.donePromise;
             SK.sendLog('info', 'translate', 'after await stream.donePromise', { t: Date.now() - tu_entry });
           } catch (streamErr) {
-            // streaming 中途失敗 — fallback 對 batch 0 重送 non-streaming
+            // streaming 中途失敗 — fallback 對 batch 0 重送 non-streaming。
+            // 先扣回 streaming 已計入的 done(runBatch 會對整批重新累計)，否則
+            // done 重複累計讓進度顯示超過 total
+            done -= batch0StreamDone;
+            batch0StreamDone = 0;
             SK.sendLog('warn', 'translate', 'streaming mid-failure, retrying batch 0 non-streaming', { error: streamErr.message });
             await runBatch(jobs[0]);
           }
@@ -1019,6 +1030,7 @@
     let units = SK.collectParagraphs();
     if (units.length === 0) {
       SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
+      SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {}); // run 開頭已 SET_BADGE，沒翻成不可留紅點
       releaseRunState(myAbortController);
       return;
     }
@@ -1137,7 +1149,14 @@
     let glossary = null;
     SK.sendLog('info', 'translate', 'milestone:glossary_decision', { t: Date.now() - entryTime, glossaryEnabled, skip: !glossaryEnabled || batchCount <= skipThreshold, batchCount, skipThreshold, blockingThreshold });
 
-    if (glossaryEnabled && batchCount > skipThreshold) {
+    // crypto.subtle 只在 secure context 存在——http:// 頁面上 SK.sha1 會 throw,
+    // 而這裡還在 try/finally 保護區之前，炸掉會讓 STATE.translating 永久卡 true
+    // (loading toast 掛死、下一次快速鍵只會走 abort)。無法算 hash 就跳過術語表，
+    // 主翻譯照常走。
+    if (glossaryEnabled && batchCount > skipThreshold && !(crypto && crypto.subtle)) {
+      SK.sendLog('warn', 'glossary', 'crypto.subtle unavailable (insecure context) — skipping glossary');
+    }
+    if (glossaryEnabled && batchCount > skipThreshold && crypto && crypto.subtle) {
       const compressedText = SK.extractGlossaryInput(units);
       const inputHash = await SK.sha1(compressedText);
       SK.sendLog('info', 'glossary', 'glossary preprocessing', { batchCount, mode: batchCount > blockingThreshold ? 'blocking' : 'fire-and-forget', compressedChars: compressedText.length, hash: inputHash.slice(0, 8) });
@@ -1258,6 +1277,15 @@
           stopTimer: true,
           detail: firstErr.slice(0, 120),
         });
+      }
+
+      // 全數批次失敗(done=0，典型：API key 沒填 / 失效)→ 頁面實際一段都沒翻，
+      // 不可走成功後流程：標 translated 會讓下一次快速鍵誤走 restorePage(對乾淨頁
+      // 跳「已還原」要按兩次才重翻);sticky / rescan / SPA observer 會對注定失敗的
+      // 頁面反覆重送 API;badge 紅點也不該亮著。
+      if (done === 0 && failures.length > 0) {
+        SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+        return;
       }
 
       STATE.translated = true;
@@ -1395,6 +1423,8 @@
       if (!abortSignal.aborted) {
         SK.showToast('error', SK.t('toast.translateFailed', { error: err.message }), { stopTimer: true });
       }
+      // run 開頭已 SET_BADGE；整輪 throw 且頁面未標 translated → 紅點不可殘留
+      if (!STATE.translated) SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     } finally {
       _progressClosed = true;
       releaseRunState(myAbortController);
@@ -1573,17 +1603,34 @@
   // 相比 v1.4.1 的 serializeWithPlaceholders+⟦→【 轉換，本版大幅減少標記數量
   // （通常 2-4 個，而非 10+），Google MT 不再被過多標記搞亂位置。
   SK.translateUnitsGoogle = async function translateUnitsGoogle(units, { onProgress, signal } = {}) {
-    const total = units.length;
-
     // ── 序列化：只標 <a> 連結與 atomic 元素（footnote sup 等），其餘取純文字 ──
     // 使用 Google Translate 專用序列化（【N】標記），避免 Gemini 路徑的 ⟦N⟧ 標記
     // 在 Google MT 下位置錯亂（⟦⟧ 是數學符號；【】是 CJK 標點，Google MT 原樣保留）。
-    const serialized = units.map(unit => {
+    let serialized = units.map(unit => {
       if (unit.kind === 'fragment') {
         return SK.serializeFragmentForGoogleTranslate(unit);
       }
       return SK.serializeForGoogleTranslate(unit.el);
     });
+
+    // 空字串 unit 防護(v1.10.50 協定層通則，與 Gemini 路徑 translateUnits 對齊——
+    // 該防護是雙層設計的 protocol 層，只做在單一 engine 會 drift)：序列化後為空的
+    // 段不送 API、不注入、不標 translated
+    {
+      const _preFilter = units.length;
+      const _kept = [];
+      for (let i = 0; i < serialized.length; i++) {
+        if ((serialized[i].text || '').trim()) _kept.push(i);
+      }
+      if (_kept.length < _preFilter) {
+        units = _kept.map(i => units[i]);
+        serialized = _kept.map(i => serialized[i]);
+        SK.sendLog('warn', 'translate', 'empty-text units dropped before API (google)', {
+          dropped: _preFilter - _kept.length, kept: _kept.length,
+        });
+      }
+    }
+    const total = units.length;
 
     const texts = serialized.map(s => s.text);
     const slotsList = serialized.map(s => s.slots);
@@ -1776,6 +1823,7 @@
     }
     if (units.length === 0) {
       SK.showToast('error', SK.t('toast.noContent'), { autoHideMs: 3000 });
+      SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {}); // 同 Gemini 路徑
       releaseRunState(myAbortController);
       return;
     }
@@ -1841,6 +1889,12 @@
         });
       }
 
+      // 全數批次失敗 → 不標 translated / 不 sticky / 不 rescan(同 Gemini 路徑)
+      if (done === 0 && failures.length > 0) {
+        SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+        return;
+      }
+
       STATE.translated = true;
       STATE.translatedBy = 'google';  // v1.4.0
       // 同 Gemini 路徑記錄 provider context 供 rescan / SPA nav replay。Google MT 無 model / glossary 參數。
@@ -1882,6 +1936,7 @@
       if (!abortSignal.aborted) {
         SK.showToast('error', SK.t('toast.translateFailed', { error: err.message }), { stopTimer: true });
       }
+      if (!STATE.translated) SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
     } finally {
       _progressClosed = true;
       releaseRunState(myAbortController);

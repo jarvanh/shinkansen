@@ -47,6 +47,9 @@ let currentDoc = null;       // analyzeLayout 輸出
 let currentPdfDoc = null;    // PDF.js PDFDocumentProxy（記得 destroy）
 let currentDebugPage = 0;
 let currentReaderHandle = null;
+// openReader 的 in-flight 守門(比照 parseGeneration):renderReader await 期間
+// currentReaderHandle 為 null,releaseCurrentDoc 摸不到，靠 gen 比對丟棄舊輪
+let readerGeneration = 0;
 let currentModelOverride = null;
 let currentEngine = 'gemini';
 let currentOriginalArrayBuffer = null; // W6：留 PDF 原 ArrayBuffer 給 pdf-lib 重組譯文 PDF 用
@@ -111,6 +114,10 @@ function setParsingDetail(text) {
 }
 
 function releaseCurrentDoc() {
+  // bump generation:openReader 的 renderReader 可能還 in-flight(大 PDF 全頁 canvas
+  // render 可達 10 秒+,await 期間 currentReaderHandle 是 null，這裡摸不到它)——
+  // gen 失配讓那輪完成後自行 destroy，不把舊檔的 handle / DOM 寫進新檔的欄位
+  readerGeneration++;
   if (currentReaderHandle) {
     try { currentReaderHandle.destroy(); } catch (_) { /* ignore */ }
     currentReaderHandle = null;
@@ -146,6 +153,9 @@ async function handleFile(file) {
 
   // generation token + AbortController:取消時 abort 真的停掉 parsePdf page loop,
   // gen 比對讓已 resume 的舊輪丟棄結果(不蓋掉取消後的 upload 畫面 / 不寫壞 state)
+  // 直接換檔(未按取消)時也要 abort 前一輪——否則舊 parse 的 page loop
+  // (getTextContent + getOperatorList，重)會跟新 parse 並行跑到底才被 gen 比對丟棄
+  if (parseAbortController) parseAbortController.abort();
   const myGen = ++parseGeneration;
   parseAbortController = new AbortController();
   const parseSignal = parseAbortController.signal;
@@ -1168,8 +1178,10 @@ async function sha1(text) {
 // 其他 engine（google / openai-compat）不走 Gemini model override。
 async function resolvePreset() {
   const presets = await loadPresets();
-  const idx = (currentPresetSlot || 1) - 1;
-  const p = presets[idx];
+  // find-by-slot 與全 codebase 其他路徑(openSettingsDialog / content.js / options.js /
+  // background.js)一致——匯入的設定允許 slot 順序亂 / 不足 3 條，用陣列 index 查
+  // 會拿錯 preset(dialog 顯示 slot 2、實際用到 slot 1 的 engine/model)
+  const p = presets.find((x) => x && x.slot === (currentPresetSlot || 1));
   if (!p) return { engine: 'gemini', modelOverride: undefined };
   const engine = p.engine || 'gemini';
   const modelOverride = (engine === 'gemini' && p.model) ? p.model : undefined;
@@ -1187,6 +1199,14 @@ async function loadPresets() {
   }
   return cachedPresets;
 }
+
+// 設定 dialog 有「進階設定 →」動線開 options 改 preset；不失效 cache 的話，改完
+// 回來按翻譯仍用舊 model 打 API(花錯錢),dialog 的 engine 標籤也停留舊值到 reload
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.translatePresets) cachedPresets = null;
+  });
+} catch (_) { /* storage API 不可用時(單元測試環境)略過 */ }
 
 async function loadCurrentPresetSlot() {
   try {
@@ -1228,11 +1248,20 @@ async function openSettingsDialog() {
       shortcut,
       presetLabel: p.label || t('doc.settings.preset.unnamed'),
     });
-    row.innerHTML = `
-      <input type="radio" name="preset-slot" value="${slot}" ${slot === currentPresetSlot ? 'checked' : ''}>
-      <span class="preset-label">${presetLabel}</span>
-      <span class="preset-engine">${engineLabel}</span>
-    `;
+    // createElement + textContent 組 row(同 setBlockDetail 慣例)——p.label / p.model
+    // 是使用者可控字串(設定匯入只驗 typeof string)，不可直接插 innerHTML
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'preset-slot';
+    radio.value = String(slot);
+    radio.checked = (slot === currentPresetSlot);
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'preset-label';
+    labelSpan.textContent = presetLabel;
+    const engineSpan = document.createElement('span');
+    engineSpan.className = 'preset-engine';
+    engineSpan.textContent = engineLabel;
+    row.append(radio, labelSpan, engineSpan);
     row.addEventListener('click', () => {
       list.querySelectorAll('.settings-preset-row').forEach((el) => el.classList.remove('is-selected'));
       row.classList.add('is-selected');
@@ -1483,7 +1512,8 @@ async function openReader() {
     try { currentReaderHandle.destroy(); } catch (_) { /* ignore */ }
     currentReaderHandle = null;
   }
-  currentReaderHandle = await renderReader(
+  const myGen = ++readerGeneration;
+  const handle = await renderReader(
     currentDoc,
     currentPdfDoc,
     currentOriginalArrayBuffer,
@@ -1495,6 +1525,13 @@ async function openReader() {
       glossary: currentArticleGlossary,
     },
   );
+  // await 期間使用者換檔 / 重新上傳(releaseCurrentDoc bump gen)→ 這輪作廢：
+  // destroy 剛建好的 handle 釋放 PDF.js doc，不寫回 state、不掛 scroll sync
+  if (myGen !== readerGeneration) {
+    try { handle?.destroy(); } catch (_) { /* ignore */ }
+    return;
+  }
+  currentReaderHandle = handle;
   // 套用 sync toggle + 重設 zoom 顯示
   if (currentReaderHandle) {
     currentReaderHandle.setSyncEnabled($('reader-sync-toggle').checked);

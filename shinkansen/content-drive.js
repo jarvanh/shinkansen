@@ -135,7 +135,12 @@
     const entries = DRIVE.entries;
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      if (t >= e.startMs && t < e.endMs) return i;
+      // effectiveEnd clamp 到下一條 startMs(對齊 content-youtube.js _findActiveCue):
+      // 批尾 fallback endMs(+1500ms)或 LLM 給的 e 值跨 entry 重疊時，first-match 會
+      // 讓上一句多掛、吃掉下一句開頭
+      const nextStart = entries[i + 1] ? entries[i + 1].startMs : Infinity;
+      const effectiveEnd = Math.min(e.endMs, nextStart);
+      if (t >= e.startMs && t < effectiveEnd) return i;
     }
     return -1;
   }
@@ -311,6 +316,9 @@
       pushedCount++;
     }
     DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+    // 並行批次 push+sort 會移動既有索引——currentEntryIdx 是純數字索引，不失效的話
+    // 可能命中「同索引不同 entry」而跳過重繪(overlay 卡舊譯文)。設 sentinel 讓下一幀必走完整路徑
+    DRIVE.currentEntryIdx = -2;
 
     SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (${engineLabel})`, {
       llmEntryCount: entries.length,
@@ -360,6 +368,9 @@
       pushedCount++;
     }
     DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
+    // 並行批次 push+sort 會移動既有索引——currentEntryIdx 是純數字索引，不失效的話
+    // 可能命中「同索引不同 entry」而跳過重繪(overlay 卡舊譯文)。設 sentinel 讓下一幀必走完整路徑
+    DRIVE.currentEntryIdx = -2;
 
     SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} done (google)`, {
       inputCount: batch.length,
@@ -402,6 +413,12 @@
       return;
     }
     DRIVE._lastCaptionsFp = _fp;
+
+    // 換軌(fingerprint 不同的新 payload)時清舊軌譯文——不清的話新舊兩軌 entries
+    // 疊加共存，同一時間點重疊區間 first-match 隨排序交錯命中，overlay 在新舊譯文
+    // 之間跳動；雙語 .src 又從新軌 rawSegments 撈，出現源文配舊軌譯文的錯配
+    DRIVE.entries = [];
+    DRIVE.currentEntryIdx = -2;
 
     // v1.8.54:存 raw segments 給雙語 overlay .src 撈對應時段原文
     DRIVE.rawSegments = rawSegments;

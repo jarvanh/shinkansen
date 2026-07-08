@@ -5,7 +5,7 @@ import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault } from '../lib/storage.js';
 import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
-import { isWorthNotifying } from '../lib/update-check.js'; // v1.6.5
+import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
 import { isTouchScreenDevice } from '../lib/platform.js';
 import { instapaperXAuth, hasInstapaperConsumerKeys } from '../lib/instapaper.js'; // 送到 Instapaper
@@ -575,11 +575,11 @@ document.addEventListener('click', async (e) => {
   e.preventDefault();
   try {
     const { updateAvailable } = await browser.storage.local.get('updateAvailable');
-    // 三層 fallback：storage.releaseUrl > 用 version 組 tag URL > releases 索引頁
-    const url = updateAvailable?.releaseUrl
-      || (updateAvailable?.version
-        ? `https://github.com/jimmysu0309/shinkansen/releases/tag/v${updateAvailable.version}`
-        : 'https://github.com/jimmysu0309/shinkansen/releases');
+    // URL 規則單一資料源：lib/update-check.js buildUpdateDownloadUrl(popup banner 同用)。
+    // 2026-07-08 前這裡少了 Safari 直下 .pkg 分支，macOS Safari 使用者點 options banner
+    // 只會到 release 索引頁要自己找 asset。
+    const isSafari = browser.runtime.getURL('').startsWith('safari-web-extension://');
+    const url = buildUpdateDownloadUrl(updateAvailable, isSafari);
     await browser.tabs.create({ url });
   } catch (err) {
     console.error('[shinkansen] update-banner click failed', err);
@@ -1278,6 +1278,22 @@ browser.storage.onChanged.addListener((changes, area) => {
   _syncForbiddenTermsToTarget(nv);
 });
 
+// 2026-07-08 review:popup 也會寫 glossary.enabled / ytSubtitle.autoTranslate(popup
+// 快速 toggle)。options 開著時若不反向同步 checkbox，下一次 autosave 會用「開頁時
+// 載入的 stale checkbox 值」把 popup 剛寫的值蓋回去(同一份事實兩條 path,§5)。
+// 程式化改 .checked 不會 fire change event，不會觸發 autosave 迴圈。
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync') return;
+  const gEnabled = changes.glossary?.newValue?.enabled;
+  if (typeof gEnabled === 'boolean' && $('glossaryEnabled')) {
+    $('glossaryEnabled').checked = gEnabled;
+  }
+  const ytAuto = changes.ytSubtitle?.newValue?.autoTranslate;
+  if (typeof ytAuto === 'boolean' && $('ytAutoTranslate')) {
+    $('ytAutoTranslate').checked = ytAuto;
+  }
+});
+
 // P2 (v1.8.60):#uiLanguage picker change handler — 立刻寫 storage(UI 跟著切),
 // 不需等「儲存設定」。subscribe callback 會 reapply applyI18n + refreshSlotDropdownLabels。
 $('uiLanguage')?.addEventListener('change', async () => {
@@ -1814,6 +1830,9 @@ function sanitizeImport(raw) {
     toastOpacity:        { type: 'number', min: 0.1, max: 1 },
     toastPosition:       { type: 'string', oneOf: ['bottom-right', 'bottom-left', 'top-right', 'top-left'] },
     disableUpdateNotice: { type: 'boolean' },
+    // 2026-07-08 review：之前漏列導致匯入時被默默丟掉（同 issue #48 / 批次 5-2 的同型漏列）
+    instapaperEnabled:        { type: 'boolean' },
+    instapaperSummaryEnabled: { type: 'boolean' },
   };
 
   for (const [key, rule] of Object.entries(topRules)) {
@@ -3181,7 +3200,10 @@ function renderLogTable() {
     let dataHtml = '';
     if (entry.data && Object.keys(entry.data).length > 0) {
       const dataJson = JSON.stringify(entry.data, null, 2);
-      const dataId = `log-data-${entry.seq}`;
+      // v1.8.56 dedup 已知 SW 重啟後 seq 會撞號，DOM id 同理不能用裸 seq(persisted 與
+      // 新 buffer 同 seq → 重複 id,toggle / openSet 還原會操作到錯誤的列)。改用與
+      // logKey 相同的穩定三元組 encode 成 id-safe 字串。
+      const dataId = `log-data-${encodeURIComponent(logKey(entry)).replace(/%/g, '_')}`;
       // v1.5.7: 「使用者手動展開過」或「搜尋只在 data 命中」兩種情況都展開
       const isOpen = openSet.has(dataId) || entry._searchHitInData;
       const dataInner = highlightSearch(dataJson, searchLower);
@@ -3228,7 +3250,13 @@ $('log-table-wrapper').addEventListener('scroll', () => {
 // ─── Log 事件綁定 ───────────────────────────────────────
 $('log-category-filter').addEventListener('change', renderLogTable);
 $('log-level-filter').addEventListener('change', renderLogTable);
-$('log-search').addEventListener('input', renderLogTable);
+// 150ms debounce——同 usage-search 的 v1.8.14 修法：allLogs 滿 2000 筆時每個 keystroke
+// 都對全量 JSON.stringify + 重建 500 列 innerHTML，不 debounce 打字明顯卡頓
+let _logSearchTimer = null;
+$('log-search').addEventListener('input', () => {
+  clearTimeout(_logSearchTimer);
+  _logSearchTimer = setTimeout(renderLogTable, 150);
+});
 
 // 清除
 // v1.8.56: 同時清記憶體 buffer 與 persisted yt_debug_log。原本只送 CLEAR_LOGS

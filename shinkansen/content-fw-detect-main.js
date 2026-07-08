@@ -36,7 +36,11 @@
     if (result === 'none' && (el.__vue_app__ || el.__vueParentComponent || el.__vue__)) {
       result = 'vue';
     }
-    cache.set(el, result);
+    // 只快取正向結果：hydration 前查過的 element 若把 'none' 也永久釘死，SSR React 頁
+    // (document_idle 早於 hydration 完成)之後 rescan 拿到 stale 'none' → 走 single
+    // 注入 React 子樹 → click handler 失效，正是本 bridge 要防的 bug。偵測本身是
+    // for-in + 兩個屬性讀取，對 'none' 重跑成本極低。
+    if (result !== 'none') cache.set(el, result);
     return result;
   }
 

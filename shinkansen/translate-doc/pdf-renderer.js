@@ -49,8 +49,6 @@ import { TRANSLATABLE_TYPES } from './block-types.js';
 const FONT_PATH_REGULAR = 'lib/vendor/fonts/NotoSansTC-Regular.ttf';
 const FONT_PATH_BOLD = 'lib/vendor/fonts/NotoSansTC-Bold.ttf';
 
-let cachedRegularBytes = null;
-let cachedBoldBytes = null;
 async function loadFontBytes(path, cacheRef) {
   if (cacheRef.value) return cacheRef.value;
   const url = chrome.runtime.getURL(path);
@@ -446,11 +444,7 @@ function fitSegmentsToBox(segments, fontRegular, fontBold, originalFontSize, cur
   // 改成 scale 1.0 先全試擴 box variant,fontSize 100% 沒副作用優先
   for (const v of variants) {
     const r = tryFit(v, 1.0);
-    if (r) {
-      // 接受擴後 box 給之後 phase 用(fallback 路徑會用)
-      if (v !== box) box = v;
-      return r;
-    }
+    if (r) return r;
   }
 
   // Phase A: 原 box,scale 0.95 → 0.7(scale 1.0 已在 Phase 0 試過)

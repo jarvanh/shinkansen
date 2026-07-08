@@ -59,8 +59,13 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
   let translatedBytes = null;
   let translatedFilename = null;
   let translatedPdfDoc = null;
+  // destroy 後的 async 收尾守門：retryAllFailed 逐 block 打付費 API 可跑數十秒，
+  // 使用者中途「重新上傳」換檔 → destroy() 只 null 掉變數擋不住 loop 續跑
+  // (照燒 API + regenerate 在已死 handle 上重建 PDF.js doc 永久洩漏)
+  let destroyed = false;
 
   async function regenerateTranslatedPdf() {
+    if (destroyed) return;
     if (translatedPdfDoc) {
       try { await translatedPdfDoc.destroy(); } catch (_) { /* ignore */ }
       translatedPdfDoc = null;
@@ -133,6 +138,7 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
 
   // 重 render 右欄(retry 後譯文 PDF 重新生成,canvas 重畫)
   async function rerenderRightColumn() {
+    if (destroyed || !translatedPdfDoc) return;
     const rightPages = translatedCol.querySelectorAll('.reader-page-translated');
     const n = Math.min(rightPages.length, translatedPdfDoc.numPages);
     for (let i = 0; i < n; i++) {
@@ -179,18 +185,20 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       }
       let success = 0;
       for (const block of failed) {
+        if (destroyed) return { total: failed.length, success }; // 已換檔，停止燒 API
         const r = await translateSingleBlock(block, { modelOverride, engine, glossary });
         if (r.ok) success++;
       }
       // 至少有 1 個重翻成功 → 重建譯文 PDF + 重 render 右欄
-      if (success > 0) {
+      if (success > 0 && !destroyed) {
         await regenerateTranslatedPdf();
-        await rerenderRightColumn();
+        if (!destroyed) await rerenderRightColumn();
       }
-      emitFailedCount();
+      if (!destroyed) emitFailedCount();
       return { total: failed.length, success };
     },
     destroy() {
+      destroyed = true;
       sync.destroy();
       if (translatedPdfDoc) {
         translatedPdfDoc.destroy().catch(() => {});

@@ -180,7 +180,15 @@ export async function translateBatch(texts, settings, glossary, fixedGlossary, f
   });
   for (const { start, end } of chunks) {
     const slice = texts.slice(start, end);
-    const result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
+    let result;
+    try {
+      result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
+    } catch (err) {
+      // 多 chunk 中途失敗：前面 chunk 已付費——把累積 usage 掛上 err 讓呼叫端記帳
+      // (對齊 lib/gemini.js translateBatch 的 err.usage 慣例，兩引擎對帳準確度一致)
+      if (err && typeof err === 'object' && !err.usage) err.usage = { ...usage };
+      throw err;
+    }
     for (let j = 0; j < result.parts.length; j++) out[start + j] = result.parts[j];
     usage.inputTokens += result.usage.inputTokens;
     usage.outputTokens += result.usage.outputTokens;
@@ -321,7 +329,14 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     const aligned = [];
     const aggUsage = { ...chunkUsage };
     for (let fi = 0; fi < texts.length; fi++) {
-      const r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary, forbiddenTerms);
+      let r;
+      try {
+        r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary, forbiddenTerms);
+      } catch (err) {
+        // 逐段 fallback 半途失敗：整批 + 已完成段的 usage 掛上 err(對齊 gemini.js 慣例)
+        if (err && typeof err === 'object' && !err.usage) err.usage = { ...aggUsage };
+        throw err;
+      }
       aligned.push(r.parts[0] || '');
       aggUsage.inputTokens += r.usage.inputTokens;
       aggUsage.outputTokens += r.usage.outputTokens;

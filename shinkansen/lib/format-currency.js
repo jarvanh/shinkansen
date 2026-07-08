@@ -23,8 +23,9 @@
   }
 
   // v1.8.41：TWD 格式化（USD × rate → NT$，一位小數；極小值 < NT$ 0.1 用 3 位）
+  // rate 防禦與 lib/format.js formatTWD 對齊——直呼且 rate undefined 時不可顯示 NT$ NaN
   function formatTWD(usd, rate) {
-    if (!usd) return 'NT$ 0';
+    if (!usd || !rate) return 'NT$ 0';
     var twd = usd * rate;
     if (twd < 0.1) return 'NT$ ' + twd.toFixed(3);
     return 'NT$ ' + twd.toFixed(1);

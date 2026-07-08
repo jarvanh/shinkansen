@@ -413,10 +413,14 @@ function fillGaps(buckets, fromTs, toTs, groupBy) {
 }
 
 function csvEscape(str) {
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return '"' + str.replace(/"/g, '""') + '"';
+  let s = str;
+  // 防 CSV 公式注入：title/url 來自任意網頁(<title> 攻擊者可控),Excel 對
+  // =/+/-/@ 開頭的 cell 會當公式解析(=HYPERLINK / =cmd| 類)。前置單引號中和。
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
   }
-  return str;
+  return s;
 }
 
 /**

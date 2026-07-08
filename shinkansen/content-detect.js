@@ -836,7 +836,11 @@
           //   Case A: "intro"<br>"Pros:"<ul><li>...</li></ul>"Overall..."
           //   Case B: "段落一"<br><br>"段落二"
           // DIV 不在 BLOCK_TAGS_SET → 以前直接 FILTER_SKIP，text node 完全不可見。
-          if (!fragmentExtracted.has(el) && !isInsideExcludedContainer(el, excludedMemo)) {
+          // SK.isVisible gate(2026-07-08)：容器級 Case A-F 原本不查可見性(葉節點補抓
+          // 路徑都有查，不對稱漏檢),display:none 的 template / 未展開 modal / prerender
+          // 內容照收照翻純燒 token。block 路徑的 isVisible REJECT 只擋得住 block 元素
+          // 自身隱藏，擋不住非 block 隱藏容器直接成 unit。
+          if (!fragmentExtracted.has(el) && SK.isVisible(el) && !isInsideExcludedContainer(el, excludedMemo)) {
             let hasDirectText = false;
             for (const child of el.childNodes) {
               if (child.nodeType === Node.TEXT_NODE && child.nodeValue.trim().length >= 2) {
@@ -1456,6 +1460,10 @@
 
     // v0.42: leaf content anchor 補抓
     scopeRoot.querySelectorAll('a').forEach(a => {
+      // querySelectorAll('a') 也匹配 SVG <a>(SVGAElement)。SVG 元素沒有 innerText,
+      // 收進 unit 後 translateUnits 序列化直接 TypeError 讓整頁翻譯失敗；非 HTML
+      // 元素本就不該走 HTML 注入路徑，結構性排除。
+      if (!(a instanceof HTMLElement)) return;
       if (seen.has(a)) return;
       if (a.hasAttribute('data-shinkansen-translated')) return;
       if (hasBlockAncestor(a)) return;

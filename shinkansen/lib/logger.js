@@ -40,31 +40,60 @@ const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'rate-limit', 'translate']
 const PERSIST_KEY = 'yt_debug_log';
 const PERSIST_MAX = 100;
 
-// v1.8.20: 序列化 persistLog 寫入,避免平行 log 踩 read-modify-write race。
-// 多筆 log 在短時間內進來時(rate-limit + api 同時觸發很常見),原本 N 個獨立的
-// get → set 會互相覆蓋,後寫的吃掉前寫的 → log 遺失。改 promise chain 排隊。
+// v1.8.20: 序列化寫入避免平行 read-modify-write race(promise chain 排隊)。
+// 2026-07-08: 加 debounce 批次 flush——翻譯熱路徑每批產多筆 translate/api/rate-limit
+// log，原本每筆都是「get 整包 100 筆陣列 → push → set 整包寫回」，一分鐘內上百次
+// 全陣列重寫(每次 set 還 fire storage.onChanged 到所有 context)。改記憶體累積
+// 300ms 統一 flush 一次(一次 get + 一次 set 寫入全部 pending)。SW 被殺時最後一批
+// pending 可能掉，persisted log 本就 best-effort，可接受。
 let _persistQueue = Promise.resolve();
-function persistLog(entry) {
-  if (!PERSIST_CATEGORIES.has(entry.category)) return;
+let _pendingPersist = [];
+let _persistFlushTimer = null;
+const PERSIST_FLUSH_MS = 300;
+
+function flushPersistLogs() {
+  _persistFlushTimer = null;
+  if (_pendingPersist.length === 0) return;
+  const batch = _pendingPersist;
+  _pendingPersist = [];
   _persistQueue = _persistQueue.then(async () => {
     try {
       const result = await browser.storage.local.get(PERSIST_KEY);
       const logs = result[PERSIST_KEY] || [];
-      logs.push(entry);
+      logs.push(...batch);
       if (logs.length > PERSIST_MAX) logs.splice(0, logs.length - PERSIST_MAX);
       await browser.storage.local.set({ [PERSIST_KEY]: logs });
     } catch (_) { /* 寫入失敗不影響記憶體 buffer 也不卡 queue */ }
   });
 }
 
+function persistLog(entry) {
+  if (!PERSIST_CATEGORIES.has(entry.category)) return;
+  _pendingPersist.push(entry);
+  if (_pendingPersist.length > PERSIST_MAX) {
+    _pendingPersist.splice(0, _pendingPersist.length - PERSIST_MAX);
+  }
+  if (!_persistFlushTimer) {
+    _persistFlushTimer = setTimeout(flushPersistLogs, PERSIST_FLUSH_MS);
+  }
+}
+
 /** 取得持久化 log 並清除 storage。 */
 export async function getPersistedLogs() {
+  // 先 flush pending(300ms debounce 中的批次)，讀取端才不會少最後幾筆
+  if (_persistFlushTimer) { clearTimeout(_persistFlushTimer); }
+  flushPersistLogs();
+  await _persistQueue;
   const result = await browser.storage.local.get(PERSIST_KEY);
   return result[PERSIST_KEY] || [];
 }
 
 /** 清除持久化 log storage。 */
 export async function clearPersistedLogs() {
+  // pending 批次一併丟棄——否則清除後 300ms flush 會把剛清掉的 log 寫回 storage
+  _pendingPersist = [];
+  if (_persistFlushTimer) { clearTimeout(_persistFlushTimer); _persistFlushTimer = null; }
+  await _persistQueue;
   await browser.storage.local.remove(PERSIST_KEY);
 }
 

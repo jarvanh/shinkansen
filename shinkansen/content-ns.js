@@ -1070,7 +1070,10 @@ if (window.__shinkansen_loaded) {
     (function prune(node) {
       Array.from(node.children).forEach(prune);
       if (node === root) return;
-      if (KEEP.has(node.tagName)) return;
+      // SVG(及其他 foreignObject 類)元素的 tagName 是小寫，不 toUpperCase 的話
+      // KEEP 的 'SVG' 永遠比不中 → 無文字的 inline SVG 圖整顆被空殼修剪刪掉
+      // (MEDIA_SEL querySelector 只查後代，護不住 svg 自身)
+      if (KEEP.has(node.tagName.toUpperCase())) return;
       if ((node.textContent || '').trim()) return;
       if (node.querySelector(MEDIA_SEL)) return;
       node.remove();

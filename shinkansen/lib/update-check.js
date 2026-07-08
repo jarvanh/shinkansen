@@ -198,6 +198,26 @@ export async function markUpdateNoticeShown() {
 }
 
 /**
+ * updateAvailable → 使用者點更新提示後要開的 URL(單一資料源——popup 與 options
+ * 的 banner click handler 共用；2026-07-08 前兩邊各自實作，Safari 直下 .pkg 的
+ * 分支只存在 popup 版，options 版點了只到 release 索引頁)。
+ *
+ * @param {object|null} updateAvailable storage.local 的 updateAvailable 物件
+ * @param {boolean} isSafari Safari runtime(直接給 .pkg 下載連結)
+ * @returns {string} 目標 URL(三層 fallback:releaseUrl > tag URL > releases 索引頁)
+ */
+export function buildUpdateDownloadUrl(updateAvailable, isSafari) {
+  const version = updateAvailable?.version;
+  if (isSafari && version) {
+    return `https://github.com/jimmysu0309/shinkansen/releases/download/v${version}/shinkansen-macos-v${version}.pkg`;
+  }
+  return updateAvailable?.releaseUrl
+    || (version
+      ? `https://github.com/jimmysu0309/shinkansen/releases/tag/v${version}`
+      : 'https://github.com/jimmysu0309/shinkansen/releases');
+}
+
+/**
  * 是否「今日尚未顯示過 toast 提示」——content-toast.js 用此判斷是否在成功 toast
  * 加更新通知一行。
  */
