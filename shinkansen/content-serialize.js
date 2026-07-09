@@ -161,6 +161,14 @@
             }
             continue;
           }
+          // 零文字 BUTTON → atomic + reuseNode，同 LLM path(atomic 標記不受 GT paired
+          // 上限影響，degrade 模式也照走 — probe 實測 8 個 atomic 都不亂)
+          if (child.tagName === 'BUTTON') {
+            const idx = slots.length;
+            slots.push({ atomic: true, reuseNode: true, node: child });
+            out += '【*' + idx + '】';
+            continue;
+          }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
           if (child.tagName === 'BR') { out += '\u0001'; continue; }
           // Atomic 元素（footnote sup 等）→ 單一標記，不翻內容
@@ -375,6 +383,17 @@
             out += PH_OPEN + '/' + idx + PH_CLOSE;
             continue;
           }
+          // 零文字 BUTTON(icon-only:bigfoot.js 註腳鈕內只有 SVG 圓點 / icon 按鈕):
+          // 無可翻內容，原本掉進下行 HARD_EXCLUDE 被整顆丟掉 → clean-slate 重建後按鈕
+          // 消失(leancrew 句中註腳實測，probe-leancrew-deserialize.js)。改 atomic +
+          // reuseNode:LLM 看到 ⟦*N⟧ 不翻，deserialize 放回活的原 node(保留 listener /
+          // fiber);LLM 把 token 吃掉時由佔位符遺失回收撈回。
+          if (child.tagName === 'BUTTON') {
+            const idx = slots.length;
+            slots.push({ atomic: true, reuseNode: true, node: child });
+            out += PH_OPEN + '*' + idx + PH_CLOSE;
+            continue;
+          }
           if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) continue;
           if (child.tagName === 'PRE' && child.querySelector('code')) continue;
           if (child.tagName === 'BR') {
@@ -554,9 +573,32 @@
     translation = SK.collapseCjkSpacesAroundPlaceholders(translation);
     translation = SK.selectBestSlotOccurrences(translation);
 
-    const matchedRef = { count: 0 };
+    const matchedRef = { count: 0, used: new Set() };
     const frag = parseSegment(translation, slots, matchedRef, cloneReuse);
     const ok = matchedRef.count > 0;
+    // 佔位符遺失回收(2026-07-09):LLM 重組句子時偶爾把整組佔位符吃掉——句中註腳
+    // (bigfoot.js 類 <div><button>)的 ⟦N⟧⟦M⟧…⟦/M⟧⟦/N⟧ 最常見(leancrew 實測：
+    // 句尾註腳存活、句中註腳被吃)。「載體型」slot(reuseNode 活按鈕 / atomic 保留
+    // 子樹如 SUP.reference / HR / emoji IMG)佔位符沒出現 = 原內容會在注入 clean-slate
+    // 時被銷毀 → 補到 frag 尾端(位置資訊已隨譯文遺失，尾端是無資訊下的最小破壞)。
+    // 純格式 shell(A / EM / SPAN 的 bare cloneNode,slot 本身是 Element)不回收：
+    // 其文字仍在譯文裡，補空殼沒有內容意義。
+    // 只在 ok(frag 會被注入)時回收：ok=false 時 caller 走 fallback 不用 frag,
+    // 把 reuseNode 活節點 detach 進被丟棄的 frag 反而讓按鈕直接消失。
+    if (ok) {
+      for (let i = 0; i < slots.length; i++) {
+        if (matchedRef.used.has(i)) continue;
+        const slot = slots[i];
+        if (!slot || !slot.node) continue; // 格式 shell:slot 自身是 Element，無 .node
+        if (slot.reuseNode) {
+          frag.appendChild(cloneReuse ? slot.node.cloneNode(true) : slot.node);
+        } else if (slot.atomic) {
+          const n = slot.node.cloneNode(true);
+          if (n.nodeType === Node.ELEMENT_NODE && n.tagName === 'IMG') _appendInlineImg(frag, n);
+          else frag.appendChild(n);
+        }
+      }
+    }
     return { frag, ok, matched: matchedRef.count };
   };
 
@@ -653,8 +695,11 @@
       if (m[3] !== undefined) {
         const idx = Number(m[3]);
         const slot = slots[idx];
+        if (slot && matchedRef.used) matchedRef.used.add(idx);
         if (slot && slot.atomic && slot.node) {
-          const cloned = slot.node.cloneNode(true);
+          // atomic + reuseNode(零文字 BUTTON)：注回原 el 的用途放活的原 node
+          //(保留 listener / fiber)；比對 / 探測等 cloneReuse 用途仍走 clone
+          const cloned = (slot.reuseNode && !cloneReuse) ? slot.node : slot.node.cloneNode(true);
           if (cloned.nodeType === Node.ELEMENT_NODE && cloned.tagName === 'IMG') {
             _appendInlineImg(frag, cloned);
           } else {
@@ -667,6 +712,7 @@
         const idx = Number(m[1]);
         const inner = m[2];
         const slot = slots[idx];
+        if (slot && matchedRef.used) matchedRef.used.add(idx);
         if (slot && slot.reuseNode && slot.node && cloneReuse) {
           // 非注回原 el 的用途：clone 殼重建，不動原 node(見 deserializeWithPlaceholders 註解)
           const shell = slot.node.cloneNode(false);
@@ -701,7 +747,8 @@
           frag.appendChild(shell);
           matchedRef.count++;
         } else if (slot && slot.atomic && slot.node) {
-          const cloned = slot.node.cloneNode(true);
+          // 同上 m[3] 臂：atomic + reuseNode 在非 cloneReuse 用途放活節點
+          const cloned = (slot.reuseNode && !cloneReuse) ? slot.node : slot.node.cloneNode(true);
           if (cloned.nodeType === Node.ELEMENT_NODE && cloned.tagName === 'IMG') {
             _appendInlineImg(frag, cloned);
           } else {

@@ -1187,6 +1187,14 @@ async function _saveImpl() {
       useStrongSegMarker: $('cp-strong-seg-marker')?.checked !== false,
     },
   };
+  // 2026-07-09「未客製不物化」：禁用詞表內容等於當前 target 的預設(zh-TW=DEFAULT 26 條 /
+  // 其他 target=空表)就不寫 key，並回收既有物化殘留 —— 否則任一 autosave 都會把預設
+  // 寫死進 storage.sync，擊穿 getSettings「未寫入才依 target 給預設」設計(使用者吃不到
+  // 預設表更新、切 target 後 prompt 仍帶舊 target 的替換規則)。zh-TW 空表(刻意停用)照寫。
+  if (isForbiddenTermsDefaultFor(settings.forbiddenTerms, _currentTargetLang, DEFAULT_FORBIDDEN_TERMS)) {
+    delete settings.forbiddenTerms;
+    await browser.storage.sync.remove('forbiddenTerms');
+  }
   // v1.5.7: customProvider.apiKey 走 storage.local（與主 apiKey 同樣設計），先抽出再寫 sync
   const cpApiKeyValue = ($('cp-apiKey').value || '').trim();
   await browser.storage.local.set({ customProviderApiKey: cpApiKeyValue });
@@ -1270,12 +1278,13 @@ browser.storage.onChanged.addListener((changes, area) => {
   const nv = changes.targetLanguage.newValue;
   if (typeof nv !== 'string' || !TARGET_LANGUAGES.includes(nv)) return;
   if (nv === _currentTargetLang) return;
+  const prevTl = _currentTargetLang;
   _currentTargetLang = nv;
   updateAllPromptTargetHints();
-  // 禁用詞清單依 target 重對:目前內容 == DEFAULT_FORBIDDEN_TERMS(視為未客製)
+  // 禁用詞清單依 target 重對：目前內容視為未客製(以舊 target 的預設判斷)
   // 切到非 zh-TW → 清空(en/zh-CN 不需要禁用中國用語);切到 zh-TW → 還原預設。
-  // 已客製化(內容跟 DEFAULT 不同)不動,保留使用者手動編輯結果。
-  _syncForbiddenTermsToTarget(nv);
+  // 已客製化(含 zh-TW 刻意清空的停用空表)不動，保留使用者手動編輯結果。
+  _syncForbiddenTermsToTarget(nv, prevTl);
 });
 
 // 2026-07-08 review:popup 也會寫 glossary.enabled / ytSubtitle.autoTranslate(popup
@@ -1324,16 +1333,19 @@ $('uiLanguage')?.addEventListener('change', async () => {
   }
 });
 
-// 判斷目前 forbiddenTerms 是否「視為未客製」:
-//   完全等於 DEFAULT_FORBIDDEN_TERMS(同長度 + 每筆 forbidden/replacement 對齊),
-//   或為空陣列(代表 zh-CN/en 的預設)
-function _isForbiddenTermsUnchangedFromDefault() {
-  if (!Array.isArray(forbiddenTerms)) return false;
-  if (forbiddenTerms.length === 0) return true;
-  if (forbiddenTerms.length !== DEFAULT_FORBIDDEN_TERMS.length) return false;
-  for (let i = 0; i < forbiddenTerms.length; i++) {
-    const a = forbiddenTerms[i];
-    const b = DEFAULT_FORBIDDEN_TERMS[i];
+// 判斷 terms 是否「視為未客製」(純函式，jest 抽測用；2026-07-09 target-aware 化):
+//   任何 target：逐條等於 defaults(DEFAULT_FORBIDDEN_TERMS)→ 未客製
+//     (含「autosave 物化殘留 26 條後才把 target 切走」的情形，可回收)
+//   非 zh-TW target：空表 = 該 target 的預設 → 未客製
+//   zh-TW target：空表 = 使用者刻意清空(停用黑名單，v1.5.6 語意)→ 已客製，必須寫入。
+//     舊版把空表一律視為未客製，zh-TW 使用者清空停用會在下一次判斷被還原成預設。
+function isForbiddenTermsDefaultFor(terms, tl, defaults) {
+  if (!Array.isArray(terms)) return false;
+  if (terms.length === 0) return tl !== 'zh-TW';
+  if (terms.length !== defaults.length) return false;
+  for (let i = 0; i < terms.length; i++) {
+    const a = terms[i];
+    const b = defaults[i];
     if ((a?.forbidden || '') !== b.forbidden || (a?.replacement || '') !== b.replacement) {
       return false;
     }
@@ -1341,10 +1353,15 @@ function _isForbiddenTermsUnchangedFromDefault() {
   return true;
 }
 
-function _syncForbiddenTermsToTarget(tl) {
-  if (!_isForbiddenTermsUnchangedFromDefault()) return; // 已客製化不動
-  forbiddenTerms = tl === 'zh-TW' ? DEFAULT_FORBIDDEN_TERMS.map(t => ({ ...t })) : [];
+function _syncForbiddenTermsToTarget(newTl, oldTl) {
+  // 切換當下表格內容還對應舊 target,「未客製」必須以舊 target 的預設判斷
+  //(否則 en→zh-TW 時空表會被誤判成「zh-TW 刻意停用」而不給預設)
+  if (!isForbiddenTermsDefaultFor(forbiddenTerms, oldTl, DEFAULT_FORBIDDEN_TERMS)) return; // 已客製化不動
+  forbiddenTerms = newTl === 'zh-TW' ? DEFAULT_FORBIDDEN_TERMS.map(t => ({ ...t })) : [];
   renderForbiddenTermsTable();
+  // 未客製 → storage 不該殘留 key：回收既有物化殘留 + 修「listener 只改 UI 不寫
+  // storage」的 desync，讓 getSettings「未寫入才依 target 給預設」立即恢復生效
+  browser.storage.sync.remove('forbiddenTerms');
 }
 
 $('yt-reset-prompt').addEventListener('click', () => {

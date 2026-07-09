@@ -446,6 +446,16 @@
       if (!isCodeUtility) nonUtilityCount++;
     }
     if (nonUtilityCount === 0) return false;
+    // 2026-07-09:prose 段落內嵌註腳按鈕不是 widget 容器。bigfoot.js 類註腳 lib 會把
+    // <sup><a rel="footnote"> 改造成 <div><button> 塞進 <p>，原本整段 P 被當互動
+    // widget 跳過，一個字都翻不到(leancrew 實測，probe-leancrew-footnote.js 重現)。
+    // 結構性區分(§8):widget 容器(工具列 / 卡片 / nav)的文字都住在子元素裡，
+    // 直接 text node 幾乎為空；prose 段落的正文就是 el 自己的直接 text node。
+    // 直接文字 >= 100 字 = prose 主體、按鈕只是內嵌註記 → 放行(序列化端 BUTTON 走
+    // PRESERVE / reuse-node 佔位符，譯文注入後原按鈕 DOM 與事件監聽保留)。
+    // 100 字門檻刻意高於 Case 系列的 20 字：短文字 + 按鈕的容器(toast / Follow 卡)
+    // 維持 widget 跳過的既有行為。
+    if (directTextLength(el) >= 100) return false;
     // v1.6.9: 此處刻意保留 innerText（不改 textContent）。語意上「>=300 字
     // 視為非 widget」要的是「使用者實際看得到的字數」，改成 textContent 會把
     // 隱藏 modal/menu/dropdown 的字也算進來，可能讓本應被視為 widget 的元件
@@ -906,6 +916,12 @@
               } else {
                 results.push({ kind: 'element', el });
                 seen.add(el);
+                // 巢狀雙收守門(2026-07-09)：整顆收成 element unit 後，後代 <b> / SPAN
+                // 若不標 fragmentExtracted,INLINE_PROSE / Case D/E 的 hasAncestorExtracted
+                // 查不到祖先已被收，同段文字會再收一次(兩次序列化字串不同繞過 dedup →
+                // 同段送 API 兩次、dual mode 雙譯文)。Case B 無 block 子孫，整顆 unit
+                // 涵蓋全部後代，標記安全。
+                fragmentExtracted.add(el);
                 if (stats) stats.containerWithBr = (stats.containerWithBr || 0) + 1;
               }
             } else if (
@@ -1257,15 +1273,27 @@
               while (_n) { if (_n.nodeType === 1) seen.add(_n); if (_n === f.endNode) break; _n = _n.nextSibling; }
               if (stats) stats.blockBrSplit = (stats.blockBrSplit || 0) + 1;
             }
-            // node 與內層 wrapper 都標記,避免 walker 後續訪問 wrapper 時 Case B 重複收集
+            // node 與內層 wrapper 都標記，避免 walker 後續訪問 wrapper 時 Case B 重複收集。
+            // brTarget 一律進 fragmentExtracted(含 brTarget === node 的情形):split fragment
+            // 已涵蓋其子樹的 inline run，不標的話 run 內巢狀 SPAN 會被 Case D/E 再收一次
+            //(巢狀雙收守門，2026-07-09)。只標 brTarget 不標 node(兩者不同時):node 在
+            // brTarget 之外可能還有未被 fragment 涵蓋的內容，不可整顆封鎖。
             seen.add(node);
-            if (brTarget !== node) { seen.add(brTarget); fragmentExtracted.add(brTarget); }
+            fragmentExtracted.add(brTarget);
+            if (brTarget !== node) seen.add(brTarget);
             continue;
           }
         }
       }
       results.push({ kind: 'element', el: node });
       seen.add(node);
+      // 巢狀雙收守門(2026-07-09):FILTER_ACCEPT 不阻擋 TreeWalker 走訪子節點，
+      // 整顆收成 element unit 的 block(P/LI/H1-6…)其後代 SPAN 仍會進非-block 分支。
+      // 不標 fragmentExtracted 的話，Case D/E 的 hasAncestorExtracted 查不到祖先已被收，
+      // 同段文字會再抽一次 fragment(P>SPAN 變體，probe 實測重現)。被 accept 的 block
+      // 必無 block 子孫(containsBlockDescendant 分支先擋)，整顆 unit 涵蓋全部後代，
+      // 標記安全，hasAncestorExtracted 的 crossedBlock 豁免也不會誤觸發。
+      fragmentExtracted.add(node);
     }
 
     // BUTTON 內部 leaf 補抓:acceptNode 以 FILTER_SKIP 放行的 BUTTON,
