@@ -99,6 +99,23 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.0.9 <span class="release-date">Released 2026-07-09</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.0.0</p>
+
+  <p class="lead">This release focuses on stability, with a large batch of fixes across page translation, YouTube subtitles, and bilingual mode.</p>
+
+  <ul>
+    <li><strong>Several YouTube subtitle fixes</strong>: when switching videos quickly, in-flight subtitle translations for the previous video no longer bleed into the new one; fixed translations failing to appear for Japanese / Korean source subtitles in single-language mode; on video pages, the floating button's long-press menu gains a new row to toggle subtitle translation for the current video with one tap.</li>
+
+    <li><strong>Bilingual mode fixes</strong>: on pages that use "anti-scraping flips" (e.g. Google Search results), translations are no longer rendered upside down; the translation block no longer steals interactive buttons (such as a "show more" expander) from the original paragraph — the original stays intact.</li>
+
+    <li><strong>The floating button is no longer printed when printing / saving to PDF</strong>: previously, printing a page or saving it as a PDF would paint the floating button into the output; it is now hidden automatically when printing, with on-screen display unaffected.</li>
+
+    <li><strong>Target-language guard</strong>: with the translation target set to a Latin-script language (English, German, etc.), paragraphs that occasionally come back in Chinese now keep the original text instead of showing the wrong language; internal placeholder markers leaking into the visible page are also fixed.</li>
+
+    <li><strong>Other fixes</strong>: when every request on a page fails (e.g. the API key is missing or invalid), the page is no longer incorrectly marked as translated (previously this left a stale toolbar badge and required pressing the shortcut twice to re-translate); Gemini calls now send the API key in a request header instead of the URL (Google's recommended form — more secure; translation behavior and cost are completely unchanged); fixed a layout issue where rows of small avatars or thumbnails on some article pages exploded to full size after translation; hidden (display:none) content is no longer translated (wasting tokens); links inside SVG graphics no longer break full-page translation; fixed the glossary running silently on fresh installs even though it shows "off".</li>
+  </ul>
+
   <h2>v2.0.0 <span class="release-date">Released 2026-06-23</span></h2>
   <p class="release-meta">Compared with the previous store version v1.10.42</p>
 

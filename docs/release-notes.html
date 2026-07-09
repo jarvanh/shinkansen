@@ -99,6 +99,23 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons 與 App Store（iOS / iPadOS Safari）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v2.0.9 <span class="release-date">2026-07-09 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.0.0</p>
+
+  <p class="lead">這版以穩定性收斂為主軸，累積修復大量網頁翻譯、YouTube 字幕與雙語對照問題</p>
+
+  <ul>
+    <li><strong>YouTube 字幕多項修正</strong>：快速換影片時，上一支影片還在路上的字幕譯文不再寫進新影片；日文 / 韓文原文字幕在單語模式下譯文注入不進去的問題修正；影片頁長按懸浮按鈕的選單新增「啟動 / 關閉字幕翻譯」列，一鍵切換當前影片的字幕翻譯</li>
+
+    <li><strong>雙語對照修正</strong>：Google 搜尋等使用「反爬蟲翻轉」的頁面，譯文不再上下顛倒；譯文區塊不再把原段落的互動按鈕（例如「顯示更多」展開鈕）搬走，原文原封不動</li>
+
+    <li><strong>列印 / 存 PDF 時不再印出懸浮按鈕</strong>：先前列印網頁或存成 PDF 時，懸浮按鈕會被一起畫進輸出；這版列印時自動隱藏，螢幕顯示不受影響</li>
+
+    <li><strong>目標語言守門</strong>：翻譯目標設英文 / 德文等拉丁字母語言時，偶發收到中文譯文的段落改為保留原文，不再顯示與目標語言不符的文字；內部佔位符標記漏出顯示在畫面上的問題也一併修正</li>
+
+    <li><strong>其他修正</strong>：API Key 沒填或失效導致整頁翻譯全數失敗時，頁面不再被誤標成已翻譯（先前會殘留工具列紅點、快速鍵要按兩次才會重翻）；呼叫 Gemini 的 API 金鑰改以 request header 傳送、不再出現在網址中（Google 官方建議形式，更安全；翻譯行為與費用完全不變）；部分文章頁翻譯後一排小頭像或縮圖爆成滿版大圖的版面問題修正；隱藏（display:none）的內容不再被翻譯、白白消耗 token；SVG 圖內的連結不再導致整頁翻譯失敗；全新安裝時術語表顯示「關」卻自行執行的問題修正</li>
+  </ul>
+
   <h2>v2.0.0 <span class="release-date">2026-06-23 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v1.10.42</p>
 
