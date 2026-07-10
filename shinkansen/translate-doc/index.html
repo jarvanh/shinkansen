@@ -92,6 +92,13 @@
         <button id="chapters-glossary-btn" class="secondary-btn" type="button" title="逐章掃描全書、抽出人名 / 地名 / 術語對照表，編輯鎖定後翻譯，確保譯名跨章節一致" data-i18n="doc.epub.btn.glossary" data-i18n-attr-title="doc.epub.btn.glossary.title">先建立全書術語表</button>
         <button id="chapters-preview-all-btn" class="secondary-btn" type="button" hidden data-i18n="doc.epub.btn.previewAll">全書預覽</button>
         <button id="chapters-download-btn" class="secondary-btn" type="button" hidden data-i18n="doc.epub.btn.download">下載譯本 EPUB</button>
+        <label id="epub-dual-wrap" class="epub-output-format" hidden title="單語譯文：譯文取代原文。雙語對照：原文段落保留（縮小顯示），譯文接在每段後面，適合對照閱讀或語言學習" data-i18n-attr-title="doc.epub.dual.title">
+          <span data-i18n="doc.epub.dual.label">譯本內容</span>
+          <select id="epub-dual-mode">
+            <option value="single" data-i18n="doc.epub.dual.single">單語譯文</option>
+            <option value="dual" data-i18n="doc.epub.dual.dual">雙語對照</option>
+          </select>
+        </label>
         <label id="epub-output-format-wrap" class="epub-output-format" hidden>
           <span data-i18n="doc.epub.outputFormat.label">輸出格式</span>
           <select id="epub-output-format">
@@ -231,6 +238,19 @@
       </div>
     </dialog>
 
+    <!-- 術語表匯入 modal：現有表非空時三選（合併 / 覆蓋 / 取消）。合併是系列作
+         續集沿用前作譯名的主路徑（原文相同以匯入為準、本集新抽取條目保留） -->
+    <dialog id="glossary-import-dialog" class="summary-dialog">
+      <h2 class="result-title" data-i18n="doc.glossary.import.title">匯入術語表</h2>
+      <p id="glossary-import-desc" class="settings-hint"></p>
+      <p class="settings-hint" data-i18n="doc.glossary.import.hint">合併：原文相同時以匯入的譯名為準，其餘條目全部保留（適合系列作沿用前作譯名）。覆蓋：丟棄現有內容，只留匯入條目</p>
+      <div class="result-actions">
+        <button id="glossary-import-merge-btn" class="primary-btn" type="button" data-i18n="doc.glossary.import.btn.merge">合併</button>
+        <button id="glossary-import-overwrite-btn" class="secondary-btn" type="button" data-i18n="doc.glossary.import.btn.overwrite">覆蓋</button>
+        <button id="glossary-import-cancel-btn" class="secondary-btn" type="button" data-i18n="doc.glossary.btn.cancel">取消</button>
+      </div>
+    </dialog>
+
     <!-- 階段 6：雙頁並排閱讀器（W4） -->
     <section id="stage-reader" class="stage" hidden>
       <div class="reader-toolbar">
@@ -291,7 +311,7 @@
         <span class="glossary-toolbar-title" data-i18n="doc.glossary.title">文章術語表</span>
         <span id="glossary-count" class="glossary-count">0 條</span>
         <span class="edit-toolbar-spacer"></span>
-        <button id="glossary-import-btn" class="secondary-btn" type="button" title="從 JSON 檔匯入術語表（覆蓋現有內容）" data-i18n="doc.glossary.btn.import" data-i18n-attr-title="doc.glossary.btn.import.title">匯入 JSON</button>
+        <button id="glossary-import-btn" class="secondary-btn" type="button" title="從 JSON 檔匯入術語表（可與現有內容合併或覆蓋）" data-i18n="doc.glossary.btn.import" data-i18n-attr-title="doc.glossary.btn.import.title">匯入 JSON</button>
         <button id="glossary-export-btn" class="secondary-btn" type="button" title="把目前術語表存成 JSON 檔" data-i18n="doc.glossary.btn.export" data-i18n-attr-title="doc.glossary.btn.export.title">匯出 JSON</button>
         <button id="glossary-reextract-btn" class="secondary-btn" type="button" title="重新請 AI 抽取（覆蓋現有內容）" data-i18n="doc.glossary.btn.reextract" data-i18n-attr-title="doc.glossary.btn.reextract.title">重新抽取</button>
         <button id="glossary-clear-btn" class="secondary-btn" type="button" title="清空整份術語表" data-i18n="doc.glossary.btn.clear" data-i18n-attr-title="doc.glossary.btn.clear.title">清空</button>

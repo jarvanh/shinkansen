@@ -14,6 +14,7 @@
 
 const XML_SER = new XMLSerializer();
 const XML_DECL = '<?xml version="1.0" encoding="utf-8"?>\n';
+const XHTML_NS = 'http://www.w3.org/1999/xhtml';
 
 function getSK() {
   const SK = window.__SK;
@@ -44,30 +45,106 @@ function editedHtmlToFrag(html) {
 //   2. override?.translationRaw ?? block.translationRaw 反序列化（機器譯文，含 ⟦N⟧）
 //   3. 純文字 fallback（override?.translation ?? block.translation，已去除標記）
 // override 來自 computeAnnotationDedupe（「對照只出現一次」後處理版本），
-// raw 與 plain 兩路都要吃 override——反序列化失敗走 fallback 時不可漏掉後處理
-function applyBlockTranslation(SK, xhtmlDoc, block, override) {
+// raw 與 plain 兩路都要吃 override——反序列化失敗走 fallback 時不可漏掉後處理。
+// bilingual = true 時原文保留、譯文以 sibling / 內嵌 div 插入（見 insertDualTranslation）
+function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual = false) {
   const el = block.el;
   if (!el) return false;
-  if (typeof block.editedHtml === 'string' && block.editedHtml.length > 0) {
-    el.replaceChildren(xhtmlDoc.importNode(editedHtmlToFrag(block.editedHtml), true));
-    return true;
+  // 同一份 xhtmlDoc 會被重複下載重複套用（單語 replaceChildren 會毀掉 DOM 內
+  // 原文；雙語需要原文還在）：首次套用前快照原文子節點，之後每次先還原再套，
+  // 讓「下載單語 → 切雙語重下載」與重複下載都 idempotent
+  if (!block._srcChildNodes) {
+    block._srcChildNodes = [...el.childNodes].map((n) => n.cloneNode(true));
+  } else {
+    el.replaceChildren(...block._srcChildNodes.map((n) => n.cloneNode(true)));
   }
-  const raw = override?.translationRaw ?? block.translationRaw;
-  if (typeof raw === 'string' && raw.length > 0 && Array.isArray(block.slots)) {
-    // cloneReuse：frag 不注回序列化來源（HTML clone），slot 一律 clone 殼重建
-    const { frag, ok } = SK.deserializeWithPlaceholders(raw, block.slots, { cloneReuse: true });
-    if (ok || (block.slots.length === 0 && frag.childNodes.length > 0)) {
-      const imported = xhtmlDoc.importNode(frag, true);
-      el.replaceChildren(imported);
-      return true;
+  let content = null;
+  if (typeof block.editedHtml === 'string' && block.editedHtml.length > 0) {
+    content = xhtmlDoc.importNode(editedHtmlToFrag(block.editedHtml), true);
+  }
+  if (!content) {
+    const raw = override?.translationRaw ?? block.translationRaw;
+    if (typeof raw === 'string' && raw.length > 0 && Array.isArray(block.slots)) {
+      // cloneReuse：frag 不注回序列化來源（HTML clone），slot 一律 clone 殼重建
+      const { frag, ok } = SK.deserializeWithPlaceholders(raw, block.slots, { cloneReuse: true });
+      if (ok || (block.slots.length === 0 && frag.childNodes.length > 0)) {
+        content = xhtmlDoc.importNode(frag, true);
+      }
     }
   }
-  const plain = override?.translation ?? block.translation;
-  if (typeof plain === 'string' && plain.length > 0) {
-    el.replaceChildren(xhtmlDoc.createTextNode(plain));
-    return true;
+  if (!content) {
+    const plain = override?.translation ?? block.translation;
+    if (typeof plain === 'string' && plain.length > 0) {
+      content = xhtmlDoc.createTextNode(plain);
+    }
   }
-  return false;
+  if (!content) return false;
+  if (bilingual) return insertDualTranslation(xhtmlDoc, el, content);
+  el.replaceChildren(content);
+  return true;
+}
+
+// ─── 雙語對照輸出（原譯段落交錯）───────────────────────────
+// 網頁 dual mode 的 EPUB 版（SPEC §4.1 哲學延伸；§15 管的是網頁注入路徑）。
+// EPUB 是嚴格 XHTML：不用 <shinkansen-translation> 自訂標籤（epubcheck 不過、
+// 閱讀器渲染不可預期），改標準標籤 + class + 注入 <style>。
+// 位置策略比照網頁 dual mode 的結構表：
+//   - 一般 block（p / div / blockquote / heading）→ 同 tag sibling 插在原文後
+//   - li / td / th / dd / dt / caption / figcaption → 內嵌 <span>（sibling 會弄壞
+//     列表編號 / 表格結構 / dl 配對 / figure 單一 figcaption 限制）。用 span 不用
+//     div：XHTML 1.1 DTD 的 dt / caption 只允許 inline 內容，內嵌 div 對 EPUB2
+//     來源是無效 XHTML（epubcheck 不過）；span + CSS display:block 兩代皆合法、
+//     渲染等價
+// 譯文副本一律剝掉 id（原文保留錨點；重複 id = 無效 XHTML，會破註腳 / 頁碼跳轉）
+const DUAL_INNER_TAGS = new Set(['li', 'td', 'th', 'dd', 'dt', 'caption', 'figcaption']);
+const DUAL_STYLE_ID = 'sk-dual-style';
+// 原文用「縮小 + 降透明度」雙通道區分（不用固定色值——閱讀器深色主題下固定色
+// 會不可讀，opacity 兩種主題皆安全）；譯文維持原樣式為主要閱讀內容
+const DUAL_CSS = '\n.sk-dual-src { font-size: 0.9em; opacity: 0.72; }\nspan.sk-dual-tr { display: block; margin-top: 0.2em; }\n';
+
+export function insertDualTranslation(xhtmlDoc, el, content) {
+  const tag = (el.localName || '').toLowerCase();
+  const inner = DUAL_INNER_TAGS.has(tag);
+  const holder = xhtmlDoc.createElementNS(XHTML_NS, inner ? 'span' : (tag || 'div'));
+  holder.setAttribute('class', 'sk-dual-tr');
+  holder.appendChild(content);
+  for (const n of [...holder.querySelectorAll('[id]')]) n.removeAttribute('id');
+  const cls = el.getAttribute('class');
+  if (!(cls || '').split(/\s+/).includes('sk-dual-src')) {
+    el.setAttribute('class', cls ? `${cls} sk-dual-src` : 'sk-dual-src');
+  }
+  if (inner) {
+    el.appendChild(holder);
+  } else if (el.parentNode) {
+    el.parentNode.insertBefore(holder, el.nextSibling);
+  } else {
+    return false;
+  }
+  return true;
+}
+
+// 清掉前一次雙語套用的殘留（重複下載 / 單雙語切換都先清再套）
+function removeDualArtifacts(xhtmlDoc) {
+  for (const n of [...xhtmlDoc.querySelectorAll('.sk-dual-tr')]) n.remove();
+  for (const n of [...xhtmlDoc.querySelectorAll('.sk-dual-src')]) {
+    const rest = (n.getAttribute('class') || '')
+      .split(/\s+/).filter((c) => c && c !== 'sk-dual-src').join(' ');
+    if (rest) n.setAttribute('class', rest);
+    else n.removeAttribute('class');
+  }
+}
+
+function applyDualStyle(xhtmlDoc, enabled) {
+  const existing = xhtmlDoc.getElementById ? xhtmlDoc.getElementById(DUAL_STYLE_ID) : null;
+  if (existing) existing.remove();
+  if (!enabled) return;
+  const head = xhtmlDoc.getElementsByTagNameNS('*', 'head')[0];
+  if (!head) return;
+  const style = xhtmlDoc.createElementNS(XHTML_NS, 'style');
+  style.setAttribute('id', DUAL_STYLE_ID);
+  style.setAttribute('type', 'text/css');
+  style.textContent = DUAL_CSS;
+  head.appendChild(style);
 }
 
 // ─── 「譯文（原文）」對照只出現一次（v2.0.11）───────────────
@@ -309,12 +386,15 @@ ${items}
  * @param {Array}   [opts.glossary] — 術語表原始 entries（含 dedupeAnnotation flag，
  *   「對照只出現一次」後處理用；不傳 = 不後處理）
  * @param {boolean} [opts.paragraphSpacing] — 段落間距 0.5em 注入（設定 toggle）
+ * @param {boolean} [opts.bilingual] — 雙語對照輸出：原文段落保留（加 .sk-dual-src
+ *   縮小降透明度），譯文段落交錯插在後面（.sk-dual-tr）。dc:language / 章節 lang
+ *   仍標 target（譯文為主要閱讀內容）
  * @returns {{ bytes: Uint8Array, translatedChapters: number, appliedBlocks: number }}
  */
 export function buildTranslatedEpub(epubDoc, targetLanguage, opts = {}) {
   const SK = getSK();
   const { strToU8, zipSync } = window.fflate;
-  const { upgradeTo3 = false, glossary = null, paragraphSpacing = false } = opts;
+  const { upgradeTo3 = false, glossary = null, paragraphSpacing = false, bilingual = false } = opts;
 
   // 0)「譯文（原文）」對照只出現一次的後處理 map（不改動 block 存檔資料）
   const dedupe = computeAnnotationDedupe(epubDoc, glossary);
@@ -325,14 +405,17 @@ export function buildTranslatedEpub(epubDoc, targetLanguage, opts = {}) {
   let appliedBlocks = 0;
   for (const ch of epubDoc.chapters) {
     if (!ch.xhtmlDoc || ch.parseFailed) continue;
+    // 先清上一次雙語套用殘留，再逐 block 還原 + 套用（重複下載 idempotent）
+    removeDualArtifacts(ch.xhtmlDoc);
     let chApplied = 0;
     for (const b of ch.blocks) {
       if (b.translationStatus !== 'done') continue;
-      if (applyBlockTranslation(SK, ch.xhtmlDoc, b, dedupe.get(b.blockId))) chApplied++;
+      if (applyBlockTranslation(SK, ch.xhtmlDoc, b, dedupe.get(b.blockId), bilingual)) chApplied++;
     }
     if (chApplied > 0) {
       updateChapterLang(ch.xhtmlDoc, targetLanguage);
       applyParagraphSpacing(ch.xhtmlDoc, paragraphSpacing);
+      applyDualStyle(ch.xhtmlDoc, bilingual);
       modified.set(ch.href, serializeChapter(ch));
       translatedChapters++;
       appliedBlocks += chApplied;
@@ -373,7 +456,8 @@ export function buildTranslatedEpub(epubDoc, targetLanguage, opts = {}) {
   return { bytes, translatedChapters, appliedBlocks };
 }
 
-/** 下載檔名：<原檔名>-shinkansen.epub */
-export function translatedEpubFilename(originalName) {
-  return (originalName || 'book').replace(/\.epub$/i, '') + '-shinkansen.epub';
+/** 下載檔名：<原檔名>-shinkansen.epub（雙語版 -shinkansen-dual.epub，兩版可並存不互蓋） */
+export function translatedEpubFilename(originalName, { bilingual = false } = {}) {
+  const base = (originalName || 'book').replace(/\.epub$/i, '');
+  return base + (bilingual ? '-shinkansen-dual.epub' : '-shinkansen.epub');
 }

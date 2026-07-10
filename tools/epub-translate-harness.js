@@ -1,10 +1,11 @@
 // epub-translate-harness.js — EPUB 翻譯端到端自驗 harness（v2.0.11）
 //
 // 用法：
-//   EPUB_PATH=/path/to/book.epub node tools/epub-translate-harness.js [--glossary] [--chapter N]
+//   EPUB_PATH=/path/to/book.epub node tools/epub-translate-harness.js [--glossary] [--chapter N] [--dual]
 //
 //   --glossary   先跑全書術語表抽取（真 EXTRACT_GLOSSARY 多輪），再用它翻譯
 //   --chapter N  指定翻第 N 章（0-based index）；省略時自動挑字數最小的正文章節
+//   --dual       雙語對照輸出（下載前切「譯本內容」select，存 epub-translated-dual.epub）
 //
 // 行為：
 //   1. fresh profile 載入 unpacked extension，注入 ~/.shinkansen-test-key 到
@@ -29,6 +30,7 @@ const KEY_PATH = path.join(os.homedir(), '.shinkansen-test-key');
 
 const EPUB_PATH = process.env.EPUB_PATH;
 const WITH_GLOSSARY = process.argv.includes('--glossary');
+const WITH_DUAL = process.argv.includes('--dual'); // 雙語對照輸出（下載前切 select）
 const chapterArgIdx = process.argv.indexOf('--chapter');
 const FORCED_CHAPTER = chapterArgIdx !== -1 ? parseInt(process.argv[chapterArgIdx + 1], 10) : null;
 
@@ -159,11 +161,15 @@ if (await previewBtns.count() > 0) {
   await page.click('#epub-preview-back-btn');
 }
 
-// 下載譯本 EPUB（攔 download）
+// 下載譯本 EPUB（攔 download）。--dual 時先切「譯本內容」select 到雙語對照
+if (WITH_DUAL) {
+  await page.selectOption('#epub-dual-mode', 'dual');
+  console.log('[harness] 譯本內容 = 雙語對照');
+}
 const dlPromise = page.waitForEvent('download', { timeout: 120_000 });
 await page.click('#chapters-download-btn');
 const dl = await dlPromise;
-const outEpub = path.join(OUT_DIR, 'epub-translated.epub');
+const outEpub = path.join(OUT_DIR, WITH_DUAL ? 'epub-translated-dual.epub' : 'epub-translated.epub');
 await dl.saveAs(outEpub);
 console.log('[harness] 譯本已存：', outEpub, fs.statSync(outEpub).size, 'bytes');
 

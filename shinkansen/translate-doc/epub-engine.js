@@ -82,15 +82,6 @@ function getSerializerSK() {
 }
 
 // ─── 小工具 ───────────────────────────────────────────────
-// XMLSerializer 延遲建立：translate.js（node 端 unit spec 會 import）拉得進本
-// 模組，node 沒有 XMLSerializer——頂層 new 會讓 Playwright 收集階段整包炸。
-// 延遲到真正序列化（只在瀏覽器路徑發生）才 new
-let _xmlSer = null;
-function xmlSer() {
-  if (!_xmlSer) _xmlSer = new XMLSerializer();
-  return _xmlSer;
-}
-
 function parseXml(text, mime) {
   const doc = new DOMParser().parseFromString(text, mime);
   // Chrome 對 XML parse 失敗回帶 <parsererror> 的文件
@@ -172,11 +163,13 @@ function normalizeText(s) {
   return (s || '').replace(/\s+/g, ' ').trim();
 }
 
-// XHTML element → 頁面 HTML document 的 clone（tagName 大寫化，供序列化器使用）
+// XHTML element → 頁面 HTML document 的 clone（tagName 大寫化，供序列化器使用）。
+// 用 importNode 不用「XMLSerializer → innerHTML」reparse：HTML parser 在 div
+// context 會把 <td> / <th> / <caption> 這類表格 tag 整顆丟掉（firstElementChild
+// 變 null → 表格內文字永遠不進翻譯 block）。XHTML 與 HTML 同 namespace，
+// importNode 進 HTML document 後 tagName 即恢復大寫、屬性（含 epub:type）原樣保留
 function htmlCloneFromXhtml(el) {
-  const container = document.createElement('div');
-  container.innerHTML = xmlSer().serializeToString(el);
-  return container.firstElementChild;
+  return document.importNode(el, true);
 }
 
 /**
@@ -494,13 +487,22 @@ export function mergeBookGlossaries(lists, cap = BOOK_GLOSSARY_MAX_TERMS) {
         // target 過人名間隔號正規化（拉夫·舒馬克 → 拉夫・舒馬克）
         const entry = { source, target: normalizeNameSeparators(target) };
         if (typeof e.type === 'string' && e.type) entry.type = e.type;
+        // 選項 flag（不翻譯 / 對照一次）保留——抽取輪次不帶 flag（無影響），
+        // 「匯入 JSON 合併」路徑的條目會帶（editor / 匯出 JSON 的 entry 形狀）
+        if (e.noTranslate === true) entry.noTranslate = true;
+        if (e.dedupeAnnotation === true) {
+          entry.dedupeAnnotation = true;
+          entry.dedupeKeep = e.dedupeKeep === 'target' ? 'target' : 'source';
+        }
         bySource.set(key, entry);
       } else if (prev.target !== target) {
         conflicts++;
       }
     }
   }
-  return { entries: [...bySource.values()].slice(0, cap), conflicts };
+  // dropped：超過 cap 被捨棄的條數（匯入合併路徑要告知使用者，不可靜默丟）
+  const all = [...bySource.values()];
+  return { entries: all.slice(0, cap), conflicts, dropped: Math.max(0, all.length - cap) };
 }
 
 // 人名間隔號正規化（2026-07-10 Jimmy 指定）：CJK 之間的半形間隔號

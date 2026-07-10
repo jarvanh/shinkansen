@@ -16,6 +16,7 @@ import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 import {
   parseEpub, preflightEpubFile, estimateChapterCostUSD, EPUB_LIMITS,
   buildBookGlossaryRounds, mergeBookGlossaries, glossaryGroupOf, normalizeNameSeparators,
+  BOOK_GLOSSARY_MAX_TERMS,
 } from './epub-engine.js';
 import { buildTranslatedEpub, translatedEpubFilename, computeAnnotationDedupe } from './epub-writer.js';
 // 譯後一致性掃描（v2.0.11，SPEC §17.10.10）
@@ -146,6 +147,8 @@ function setParsingDetail(text) {
 }
 
 function releaseCurrentDoc() {
+  // 排程中的 EPUB session 存檔先落地再清 state（debounce 內的預覽編輯不掉失）
+  flushPendingSessionSave();
   // bump generation:openReader 的 renderReader 可能還 in-flight(大 PDF 全頁 canvas
   // render 可達 10 秒+,await 期間 currentReaderHandle 是 null，這裡摸不到它)——
   // gen 失配讓那輪完成後自行 destroy，不把舊檔的 handle / DOM 寫進新檔的欄位
@@ -2523,17 +2526,21 @@ function readGlossaryTable() {
     const targetInput = sourceInput.nextElementSibling;
     const target = (targetInput && targetInput.classList.contains('g-target'))
       ? targetInput.value.trim() : '';
-    // source + target 都有值才當有效 entry(只填 source 沒譯名 / 只填譯名沒原文都丟)
-    if (!source || !target) continue;
+    const optionsDiv = targetInput ? targetInput.nextElementSibling : null;
+    const hasOptions = !!(optionsDiv && optionsDiv.classList.contains('g-options'));
+    const noTranslate = hasOptions && optionsDiv.querySelector('.g-notranslate')?.checked === true;
+    // source 必填；target 唯一可空的情境是「不翻譯」——該狀態下譯文欄 disabled，
+    // 使用者填不了，要求非空會讓手動新增的不翻譯列在儲存時默默消失。
+    // 空 target 以 source 補（語意 = 原文照用，同 injectableArticleGlossary 映射）
+    if (!source || (!target && !noTranslate)) continue;
     // 人名間隔號正規化（手動輸入 / 編輯的條目也吃同一規則）
-    const entry = { source, target: normalizeNameSeparators(target) };
+    const entry = { source, target: normalizeNameSeparators(target || source) };
     // 分類保留（分組顯示 / 人名批次 toggle / 持久化都要）
     const rawType = sourceInput.dataset.rawtype
       || (sourceInput.dataset.gtype && sourceInput.dataset.gtype !== 'other' ? sourceInput.dataset.gtype : '');
     if (rawType) entry.type = rawType;
-    const optionsDiv = targetInput.nextElementSibling;
-    if (optionsDiv && optionsDiv.classList.contains('g-options')) {
-      if (optionsDiv.querySelector('.g-notranslate')?.checked) entry.noTranslate = true;
+    if (hasOptions) {
+      if (noTranslate) entry.noTranslate = true;
       const dedupeCb = optionsDiv.querySelector('.g-dedupe');
       if (!entry.noTranslate && dedupeCb?.checked && ANNOTATED_TARGET_RE.test(target)) {
         entry.dedupeAnnotation = true;
@@ -2580,6 +2587,22 @@ function exportGlossaryJSON() {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
 }
 
+// 匯入模式三選 dialog（現有表非空時）：resolve 'merge' / 'overwrite' / null（取消）。
+// 用 onclick / oncancel 直接賦值（非 addEventListener）——同一輪 session 多次匯入
+// 不會堆疊 listener
+function askGlossaryImportMode(existingCount, newCount) {
+  return new Promise((resolve) => {
+    const dlg = $('glossary-import-dialog');
+    $('glossary-import-desc').textContent = t('doc.glossary.import.desc', { existing: existingCount, new: newCount });
+    const done = (mode) => { dlg.close(); resolve(mode); };
+    $('glossary-import-merge-btn').onclick = () => done('merge');
+    $('glossary-import-overwrite-btn').onclick = () => done('overwrite');
+    $('glossary-import-cancel-btn').onclick = () => done(null);
+    dlg.oncancel = () => resolve(null); // Esc 關閉
+    dlg.showModal();
+  });
+}
+
 async function handleGlossaryFileImport(file) {
   if (!file) return;
   try {
@@ -2603,10 +2626,29 @@ async function handleGlossaryFileImport(file) {
       });
     if (valid.length === 0) throw new Error(t('doc.glossary.alert.noEntries'));
     const existing = readGlossaryTable();
+    let next = valid;
+    let mergeInfo = null;
     if (existing.length > 0) {
-      if (!confirm(t('doc.glossary.confirm.import', { existing: existing.length, new: valid.length }))) return;
+      const mode = await askGlossaryImportMode(existing.length, valid.length);
+      if (!mode) return;
+      // 合併：匯入輪在前 = 原文相同（大小寫不敏感）時匯入譯名優先，現有表獨有
+      // 條目附在後——系列作續集沿用前作譯名、本集新角色保留新抽取的主路徑。
+      // mergeBookGlossaries 保留 type 與選項 flag（勝出條目的為準）
+      if (mode === 'merge') {
+        mergeInfo = mergeBookGlossaries([valid, existing]);
+        next = mergeInfo.entries;
+      }
     }
-    buildGlossaryTable(valid);
+    buildGlossaryTable(next);
+    // 合併結果告知（2026-07-10）：衝突數（原文相同、譯名不同 → 匯入為準）要讓
+    // 使用者知道；超過上限被捨棄的條目更不可靜默丟
+    if (mergeInfo) {
+      let msg = t('doc.glossary.import.mergeResult', { n: mergeInfo.entries.length, conflicts: mergeInfo.conflicts });
+      if (mergeInfo.dropped > 0) {
+        msg += '\n' + t('doc.glossary.import.mergeDropped', { cap: BOOK_GLOSSARY_MAX_TERMS, dropped: mergeInfo.dropped });
+      }
+      alert(msg);
+    }
   } catch (err) {
     alert(t('doc.glossary.alert.importFail', { error: err.message || err }));
   }
@@ -2983,6 +3025,8 @@ async function renderChapterList() {
   // EPUB2 來源才顯示「輸出格式」選擇（EPUB3 來源兩個選項等價，不放干擾項）
   const isEpub2 = /^2(\.|$)/.test(doc.meta.epubVersion || '');
   $('epub-output-format-wrap').hidden = !(isEpub2 && epubHasAnyTranslation());
+  // 譯本內容（單語 / 雙語對照）：有任何翻譯（= 下載按鈕出現）才顯示
+  $('epub-dual-wrap').hidden = !epubHasAnyTranslation();
   const cumRow = $('chapters-cumulative-row');
   if (epubCumulativeCostUSD > 0) {
     cumRow.hidden = false;
@@ -3157,18 +3201,22 @@ async function downloadTranslatedEpub() {
     // EPUB2 來源可選升級輸出 EPUB3（select 只在 EPUB2 來源時顯示，見 renderChapterList）
     const upgradeTo3 = !$('epub-output-format-wrap').hidden
       && $('epub-output-format').value === 'epub3';
+    // 雙語對照輸出（writer 層下載時選項：譯文資料不變，已翻好的書切換模式
+    // 重新下載零重翻費用）
+    const bilingual = !$('epub-dual-wrap').hidden && $('epub-dual-mode').value === 'dual';
     const { bytes } = buildTranslatedEpub(currentDoc, settings.targetLanguage || 'zh-TW', {
       upgradeTo3,
       // 「對照只出現一次」後處理要吃原始 entries（含 dedupe flag)，不是注入用映射
       glossary: currentArticleGlossary,
       // 段落間距 toggle（2026-07-10）
       paragraphSpacing: settings.translateDoc?.epubParagraphSpacing === true,
+      bilingual,
     });
     const blob = new Blob([bytes], { type: 'application/epub+zip' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = translatedEpubFilename(currentDoc.meta.filename);
+    a.download = translatedEpubFilename(currentDoc.meta.filename, { bilingual });
     document.body.appendChild(a);
     a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
@@ -3511,7 +3559,7 @@ function renderScanResults() {
   // 依 entry 分組：同一條術語的違規列一行 + 章節統計
   const grouped = new Map();
   for (const v of tier1) {
-    const key = `${v.source} ${v.expected}`;
+    const key = `${v.source}\u0000${v.expected}`;
     let g = grouped.get(key);
     if (!g) {
       g = { source: v.source, expected: v.expected, count: 0, chapters: new Set(), excerpt: v.excerpt };
@@ -3744,6 +3792,20 @@ function scheduleEpubSessionSave() {
   }, 800);
 }
 
+// 排程中的 session 存檔立即落地（2026-07-10）：debounce 800ms 內按「重新上傳」/
+// 換檔 / 關頁會讓最後一筆預覽編輯掉失。persistEpubSession 在首個 await 前同步
+// 快照 currentDoc 資料，releaseCurrentDoc 隨後清 state 不影響已捕捉內容。
+// 放棄本書翻譯不受影響——discardBookTranslation 自己先清 timer 才走清除流程
+function flushPendingSessionSave() {
+  if (!_sessionSaveTimer) return;
+  clearTimeout(_sessionSaveTimer);
+  _sessionSaveTimer = null;
+  persistEpubSession();
+}
+// 關頁 / 分頁收合兜底（IndexedDB 寫入在 pagehide 屬 best-effort，
+// 主要保險是 releaseCurrentDoc 的同步 flush）
+window.addEventListener('pagehide', flushPendingSessionSave);
+
 // 術語表儲存 = 整包 session 存檔（glossary 隨 session 走）
 async function savePersistedBookGlossary(entries) {
   if (Array.isArray(entries)) currentArticleGlossary = entries;
@@ -3832,6 +3894,10 @@ async function importEpubSession(file) {
     for (const ch of currentDoc.chapters) {
       if (chapterDoneState(ch) === 'done') ch.selected = false;
     }
+    // 匯入 = 整包取代進度 → 舊掃描結果指向被取代的譯文，一併重置
+    //（gen++ 讓 in-flight 掃描丟棄結果；renderChapterList 會刷新入口按鈕）
+    epubScanGen++;
+    epubScanState = null;
     await persistEpubSession();
     await renderChapterList();
     console.log('[Shinkansen] epub session imported:', { blocks: restored });

@@ -22,13 +22,21 @@ function escapeRe(s) {
 }
 
 // 拉丁詞邊界（結構性通則：不讓 'Ann' 命中 'Announcement'）；
-// 非拉丁 term 用純 substring
-function sourceHasTerm(text, term) {
-  if (!text || !term) return false;
+// 非拉丁 term 用純 substring。
+// compileTermMatcher：term 只編譯一次回傳比對函式——checkGlossaryCompliance 是
+// entry × block 雙迴圈（大書 500 條 × 數千段 = 百萬次比對），逐次 new RegExp
+// 會造成主執行緒秒級卡頓；無 /g flag 的 RegExp.test 無狀態，可安全重用
+function compileTermMatcher(term) {
+  if (!term) return () => false;
   if (RE_ASCII_ONLY.test(term)) {
-    return new RegExp(`(?<![A-Za-z])${escapeRe(term)}(?![A-Za-z])`).test(text);
+    const re = new RegExp(`(?<![A-Za-z])${escapeRe(term)}(?![A-Za-z])`);
+    return (text) => !!text && re.test(text);
   }
-  return text.includes(term);
+  return (text) => !!text && text.includes(term);
+}
+
+function sourceHasTerm(text, term) {
+  return compileTermMatcher(term)(text);
 }
 
 export { sourceHasTerm };
@@ -68,8 +76,9 @@ export function checkGlossaryCompliance(chapters, glossary, { maxViolations = 20
       expected = (m ? m[1] : entry.target).trim();
     }
     if (!expected) continue;
+    const hasTerm = compileTermMatcher(source);
     for (const { ch, b } of blocks) {
-      if (!sourceHasTerm(b.plainText, source)) continue;
+      if (!hasTerm(b.plainText)) continue;
       if (b.translation.includes(expected)) continue;
       violations.push({
         source,
