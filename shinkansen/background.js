@@ -2279,6 +2279,17 @@ async function handleTranslateGoogle(payload, sender, cacheSuffix) {
   };
 }
 
+// 術語表抽取模型解析（2026-07-10）：glossary.model 空字串 =「與主翻譯模型相同」。
+// 「主翻譯」對文件翻譯是頁面 preset（payload.modelOverride），對網頁翻譯是全域
+// geminiConfig.model——先前一律 fallback 全域模型，文件翻譯用非預設 preset 時
+// 「與主翻譯模型相同」對不上實際翻譯模型
+function resolveGlossaryModel(settings, modelOverride) {
+  const own = (settings.glossary?.model || '').trim();
+  if (own) return own;
+  const override = (typeof modelOverride === 'string' && modelOverride.trim()) ? modelOverride.trim() : '';
+  return override || settings.geminiConfig?.model || '';
+}
+
 // ─── v0.70: 術語表擷取處理（v0.69 建立，v0.70 加強除錯與容錯） ──
 async function handleExtractGlossary(payload, sender) {
   debugLog('info', 'glossary', 'glossary extraction start', { inputHash: payload.inputHash, chars: payload.compressedText?.length });
@@ -2314,9 +2325,14 @@ async function handleExtractGlossary(payload, sender) {
   const promptSuffix = (typeof payload.promptSuffix === 'string' && payload.promptSuffix.trim())
     ? '\n\n' + payload.promptSuffix.trim().slice(0, 2000)
     : '';
+  const effGlossaryModel = resolveGlossaryModel(settings, payload.modelOverride);
   const glossaryEffSettings = {
     ...settings,
-    glossary: { ...settings.glossary, prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) + promptSuffix },
+    glossary: {
+      ...settings.glossary,
+      prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) + promptSuffix,
+      model: effGlossaryModel,
+    },
   };
 
   // 3. 呼叫 Gemini 擷取術語表
@@ -2333,7 +2349,7 @@ async function handleExtractGlossary(payload, sender) {
   //    billedCostUSD 同時回給 caller——EPUB 頁把抽取費用累進「本書累計費用」
   let glossaryBilledCostUSD = 0;
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
-    const glossaryModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model || 'unknown';
+    const glossaryModel = effGlossaryModel || 'unknown';
     const glossaryPricing = getPricingForModel(glossaryModel, settings) || settings.pricing;
     // v1.9.2: cache 命中折扣從 glossaryPricing.cachedDiscount 讀(預設 Gemini 90% off)
     const cachedRate = pricingToCachedRate(glossaryPricing) ?? 0.10;

@@ -1541,6 +1541,25 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
   cursor: pointer;
 }
 
+.scan-rendering-contexts {
+  margin: 0 0 8px 26px; /* 26px = radio 縮排對齊譯名文字 */
+}
+
+.scan-rendering-context {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* 譯名本體雙通道強調：字重 + 回到正文色階（周圍是 muted） */
+.scan-rendering-context strong { color: var(--text); }
+
+.scan-context-chapter {
+  margin-right: 6px;
+  white-space: nowrap;
+  color: var(--text-faint);
+}
+
 .scan-rendering-count {
   color: var(--text-muted);
   font-size: 13px;
@@ -1567,9 +1586,44 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
 
 .scan-compliance-row:last-child { border-bottom: none; }
 
-.scan-compliance-excerpt {
-  display: block;
-  margin-top: 2px;
-  font-size: 13px;
+/* 已自動替換 / 已略過列：已處理完的資訊揭露，降一階視覺權重與活動違規區隔 */
+.scan-autofixed-row,
+.scan-skipped-row {
   color: var(--text-muted);
+}
+
+.scan-skip-undo-btn {
+  margin-left: 8px;
+}
+
+/* 待處理違規列的「輸入實際譯名」欄：固定寬（UI 指引——不讓內容撐寬度） */
+.scan-term-input {
+  width: 200px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.scan-term-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+}
+
+.scan-compliance-contexts {
+  margin: 4px 0 2px;
+}
+
+.scan-compliance-item {
+  margin-top: 6px;
+}
+
+.scan-excerpt-label {
+  color: var(--text-faint);
+  margin-right: 4px;
+  white-space: nowrap;
 }

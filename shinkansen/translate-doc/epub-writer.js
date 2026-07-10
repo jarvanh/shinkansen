@@ -59,8 +59,10 @@ function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual = false)
     el.replaceChildren(...block._srcChildNodes.map((n) => n.cloneNode(true)));
   }
   let content = null;
-  if (typeof block.editedHtml === 'string' && block.editedHtml.length > 0) {
-    content = xhtmlDoc.importNode(editedHtmlToFrag(block.editedHtml), true);
+  // override.editedHtml = dedupe 後處理過的編輯版（2026-07-10）
+  const editedHtml = override?.editedHtml ?? block.editedHtml;
+  if (typeof editedHtml === 'string' && editedHtml.length > 0) {
+    content = xhtmlDoc.importNode(editedHtmlToFrag(editedHtml), true);
   }
   if (!content) {
     const raw = override?.translationRaw ?? block.translationRaw;
@@ -150,9 +152,11 @@ function applyDualStyle(xhtmlDoc, enabled) {
 // ─── 「譯文（原文）」對照只出現一次（v2.0.11）───────────────
 // glossary entry 帶 dedupeAnnotation 時：整本書（按 spine 閱讀順序）第一次出現
 // 「譯文（原文）」保留完整對照，後續出現替換成譯文或原文（dedupeKeep）。
-// 確定性後處理：不改已存的 block 資料，回傳 blockId → 替換後字串的 map，
+// 確定性後處理：不改已存的 block 資料，回傳 blockId → 替換後版本的 map
+//（未編輯段落 { translation, translationRaw }；編輯過段落 { editedHtml }），
 // 下載（buildTranslatedEpub）與預覽（openEpubPreview）共用同一份計算。
-// 手動編輯過（editedHtml）的 block 不套用——使用者文字為最終版。
+// 編輯過（editedHtml）的 block 也套用（2026-07-10 起）——掃描替換以 editedHtml
+// 身分存回，整段跳過會讓被替換過的段落永遠清不掉對照；以 text node 級處理。
 const ANNOTATED_RE = /^(.+)（(.+)）\s*$/;
 
 // 替換片段左右的 CJK↔拉丁邊界補空格（台灣排版慣例）。「後續用原文」時替換進去的
@@ -210,7 +214,30 @@ export function computeAnnotationDedupe(epubDoc, glossary) {
   for (const ch of epubDoc.chapters) {
     for (const b of ch.blocks) {
       if (b.translationStatus !== 'done') continue;
-      if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) continue;
+      if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) {
+        // 編輯過的段落不再整段跳過（2026-07-10 Jimmy 回報：掃描替換以 editedHtml
+        // 身分存回，被碰過的段落全數退出 dedupe，對照原文清不掉）——editedHtml
+        // 以 text node 級套用同一份規則，「首次出現保留」計數跨兩種段落統一。
+        // 已知限制：對照字串被行內標記從中切開時搆不到（罕見邊角）
+        const div = document.createElement('div');
+        div.innerHTML = b.editedHtml;
+        let editedChanged = false;
+        const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          if (!node.nodeValue) continue;
+          for (const rule of rules) {
+            const rt = replaceOccurrences(node.nodeValue, rule.full, rule.keep, !rule.seen);
+            if (rt.sawAny) rule.seen = true;
+            if (rt.changed) {
+              node.nodeValue = rt.text;
+              editedChanged = true;
+            }
+          }
+        }
+        if (editedChanged) out.set(b.blockId, { editedHtml: div.innerHTML });
+        continue;
+      }
       let t = b.translation || '';
       let raw = b.translationRaw || '';
       let changed = false;

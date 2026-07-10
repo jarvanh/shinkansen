@@ -22,6 +22,7 @@ import { buildTranslatedEpub, translatedEpubFilename, computeAnnotationDedupe } 
 // 譯後一致性掃描（v2.0.11，SPEC §17.10.10）
 import {
   checkGlossaryCompliance, mineCandidates, buildScanBatches, aggregateRenderings, sourceHasTerm,
+  replaceTermInText,
 } from './epub-scan.js';
 import {
   loadEpubSession, saveEpubSession, deleteEpubSession, collectSessionBlocks, hydrateSessionBlocks,
@@ -87,8 +88,14 @@ let glossaryEntryStage = 'result';
 let epubCumulativeCostUSD = 0;
 // 譯後一致性掃描（v2.0.11）：結果不持久化，每輪翻譯完成後重掃
 // （對照抽取有 scanr_ 內容快取，重掃不重複計費）
-let epubScanState = null; // { running, tier1: [violations], cases: [drift] }
+let epubScanState = null; // { running, tier1: [violations], cases: [drift], autoFixes }
 let epubScanGen = 0;      // 換檔 / 放棄時 ++，讓 in-flight 掃描丟棄結果
+// 略過清單（2026-07-10 Jimmy 指示）：人工 review 後認定不需替換的術語表違規
+// entry（source→expected），隨工作階段持久化——重掃不再列出、自動替換也不碰
+let epubScanIgnored = new Map(); // key = source + '→' + expected → { source, expected }
+// 漂移案例（第二層）的略過清單（2026-07-10）：人工判斷非真漂移的 term——
+// 隨工作階段持久化；下次掃描連候選 / LLM 對照抽取都跳過（省費用）
+let epubScanIgnoredDrift = new Set(); // term 字串
 // EPUB 書指紋（全書 plainText 的 sha1）：工作階段存檔 / 術語表持久化的 key。
 // 用內容 hash 不用 OPF dc:identifier——出版社填寫品質不可靠
 let epubBookHash = null;
@@ -174,6 +181,8 @@ function releaseCurrentDoc() {
   epubPreviewScope = null;
   epubScanGen++; // 取消 in-flight 一致性掃描
   epubScanState = null;
+  epubScanIgnored = new Map();
+  epubScanIgnoredDrift = new Set();
   if (window.__skLayoutDoc) delete window.__skLayoutDoc;
 }
 
@@ -1193,10 +1202,14 @@ async function extractGlossaryForDoc(doc, { forceRefresh = false } = {}) {
   }
   const inputHash = await sha1(compressedText);
   console.log('[Shinkansen] glossary extracting', { chars: compressedText.length, hash: inputHash.slice(0, 8) });
+  // modelOverride：術語擷取模型設「與主翻譯模型相同」時，對文件翻譯要用頁面
+  // preset 而非全域模型（2026-07-10）。抽取常發生在翻譯開始前
+  //（currentModelOverride 尚未設定），就地解析 preset
+  const presetModel = currentModelOverride || (await resolvePreset()).modelOverride || null;
   try {
     const res = await chrome.runtime.sendMessage({
       type: 'EXTRACT_GLOSSARY',
-      payload: { compressedText, inputHash, forceRefresh },
+      payload: { compressedText, inputHash, forceRefresh, modelOverride: presetModel },
     });
     if (res?.ok && Array.isArray(res.glossary) && res.glossary.length > 0) {
       // 人名間隔號正規化（同 mergeBookGlossaries 的 EPUB 路徑）
@@ -2878,6 +2891,8 @@ async function handleEpubFile(file) {
       }
       if (Array.isArray(session.forbidden)) currentBookForbidden = session.forbidden;
       if (Number.isFinite(session.costUSD)) epubCumulativeCostUSD = session.costUSD;
+      if (Array.isArray(session.scanIgnored)) epubScanIgnored = hydrateScanIgnored(session.scanIgnored);
+      if (Array.isArray(session.scanIgnoredDrift)) epubScanIgnoredDrift = new Set(session.scanIgnoredDrift.filter((x) => typeof x === 'string'));
       if (restored > 0) {
         // 還原的完成章節預設不勾（續翻節奏）
         for (const c of doc.chapters) {
@@ -3273,7 +3288,8 @@ function appendPreviewBlock(content, b, SK, dedupe) {
   el.dataset.state = b.translationStatus || 'pending';
   if (b.translationStatus === 'done') {
     if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) {
-      el.innerHTML = b.editedHtml;
+      // dedupe 後處理過的編輯版優先（2026-07-10，與下載共用所見即所得）
+      el.innerHTML = dedupe.get(b.blockId)?.editedHtml ?? b.editedHtml;
       el.classList.add('is-edited');
     } else {
       const raw = dedupe.get(b.blockId)?.translationRaw ?? b.translationRaw;
@@ -3422,15 +3438,24 @@ async function maybeRunConsistencyScan(doc) {
 
 async function runConsistencyScan(doc) {
   const gen = ++epubScanGen;
-  epubScanState = { running: true, tier1: [], cases: [] };
+  epubScanState = { running: true, tier1: [], cases: [], autoFixes: [] };
   renderScanBanner();
 
   const glossary = Array.isArray(currentArticleGlossary) ? currentArticleGlossary : [];
-  const tier1 = checkGlossaryCompliance(doc.chapters, glossary);
-
   const blockById = new Map();
   for (const ch of doc.chapters) for (const b of ch.blocks) blockById.set(b.blockId, b);
-  const candidates = mineCandidates(doc.chapters, glossary);
+
+  // 第一層違規中「譯文仍殘留原文詞」的段落直接自動替換（2026-07-10 Jimmy 指示：
+  // 確定性動作不需使用者確認）；替換後重掃，殘留的違規（LLM 用了別種譯名、
+  // 譯文找不到原文詞）留在清單，由結果頁「搜尋替換」與「略過」處理。
+  // 已略過的 entry 全程排除（不列出、不自動替換——使用者已裁決不需替換）
+  let tier1 = filterIgnoredViolations(checkGlossaryCompliance(doc.chapters, glossary));
+  const autoFixes = applyComplianceFixes(doc, tier1, blockById);
+  if (autoFixes.length > 0) tier1 = filterIgnoredViolations(checkGlossaryCompliance(doc.chapters, glossary));
+
+  // 已略過的漂移 term 連候選都不進（不送 LLM 對照，2026-07-10）
+  const candidates = mineCandidates(doc.chapters, glossary)
+    .filter((c) => !epubScanIgnoredDrift.has(c.term));
   const batches = buildScanBatches(candidates, blockById);
 
   const collected = [];
@@ -3462,39 +3487,76 @@ async function runConsistencyScan(doc) {
   if (gen !== epubScanGen || currentDoc !== doc) return;
 
   const cases = aggregateRenderings(collected);
-  epubScanState = { running: false, tier1, cases };
+  epubScanState = { running: false, tier1, cases, autoFixes };
   console.log('[Shinkansen] consistency scan done', {
     glossaryViolations: tier1.length, driftCases: cases.length,
+    autoFixedEntries: autoFixes.length,
     candidates: candidates.length, batches: batches.length,
   });
+  renderScanResults(); // 結果頁若開著（重新掃描入口）同步刷新
   renderScanBanner();
   await renderChapterList(); // 累計費用 row 刷新
 }
 
-// 章節頁掃描入口按鈕：掃描中 = 進度文字（disabled）；有發現 = 可點開結果頁；
-// 無發現 = 隱藏（高密度 UI 原則：沒資訊就不佔位）
+// 手動（重新）掃描（2026-07-10）：option translateDoc.consistencyScan 只 gate
+// 翻譯完成後的自動掃描；使用者明確點掃描 = 明確意圖，不受 option 限制
+function triggerManualScan() {
+  if (!currentDoc || currentDoc.kind !== 'epub' || epubScanState?.running) return;
+  const doc = currentDoc;
+  if (!doc.chapters.some((c) => c.blocks.some((b) => b.translationStatus === 'done'))) return;
+  runConsistencyScan(doc).catch((err) => {
+    console.warn('[Shinkansen] manual consistency scan failed', err && err.message);
+    if (currentDoc === doc && epubScanState?.running) {
+      epubScanState = null;
+      renderScanBanner();
+    }
+  });
+}
+
+// 章節頁掃描入口按鈕：書內有已翻段落即顯示——掃描中 = 進度文字（disabled）；
+// 有發現 = 可點開結果頁；尚未掃描 / 零發現 = 手動掃描入口（2026-07-10，
+// 取代原「無發現 = 隱藏」——重開工作階段 / option 關閉時也要有掃描途徑）
 function renderScanBanner() {
   const btn = $('chapters-scan-btn');
   if (!btn) return;
-  if (!epubScanState || currentDoc?.kind !== 'epub') {
+  // 結果頁「重新掃描」按鈕與入口同步反映掃描狀態
+  const rescanBtn = $('scan-rescan-btn');
+  if (rescanBtn) {
+    rescanBtn.disabled = !!epubScanState?.running;
+    rescanBtn.textContent = epubScanState?.running
+      ? t('doc.epub.scan.running') : t('doc.epub.scan.rescan');
+  }
+  const hasDone = currentDoc?.kind === 'epub'
+    && currentDoc.chapters.some((c) => c.blocks.some((b) => b.translationStatus === 'done'));
+  if (!hasDone) {
     btn.hidden = true;
     return;
   }
-  if (epubScanState.running) {
+  if (epubScanState?.running) {
     btn.hidden = false;
     btn.disabled = true;
+    btn.dataset.skMode = 'running';
     btn.textContent = t('doc.epub.scan.running');
     return;
   }
-  const findings = epubScanState.tier1.length
-    + epubScanState.cases.filter((c) => !c.applied).length;
-  if (findings === 0) {
-    btn.hidden = true;
-    return;
-  }
+  // 已自動替換的條目也算發現：程式改過使用者的譯文，必須讓他看得到改了什麼。
+  // 已略過的也計入——否則全略過後結果頁進不去，「復原」無入口
+  const findings = epubScanState
+    ? epubScanState.tier1.length
+      + epubScanState.cases.filter((c) => !c.applied).length
+      + (epubScanState.autoFixes?.length || 0)
+      + epubScanIgnored.size
+      + epubScanIgnoredDrift.size
+    : 0;
   btn.hidden = false;
   btn.disabled = false;
-  btn.textContent = t('doc.epub.scan.banner', { n: findings });
+  if (findings > 0) {
+    btn.dataset.skMode = 'results';
+    btn.textContent = t('doc.epub.scan.banner', { n: findings });
+  } else {
+    btn.dataset.skMode = 'manual';
+    btn.textContent = t('doc.epub.scan.manual');
+  }
 }
 
 function renderScanResults() {
@@ -3507,8 +3569,19 @@ function renderScanResults() {
   compList.replaceChildren();
 
   const activeCases = state.cases || [];
-  driftWrap.hidden = activeCases.length === 0;
+  const visibleCases = activeCases.filter((c) => !c.dismissed && !epubScanIgnoredDrift.has(c.term));
+  // driftWrap 顯示條件在漂移略過揭露列渲染後統一設定（含已略過項）
+  // 譯名出現處的上下文查表（2026-07-10：光看譯名無法決策——同 term 的不同
+  // 譯法可能是語境差異而非漂移，例如日期措辭，必須讓使用者看到前後文再選）
+  const blockCtxById = new Map();
+  if ((activeCases.length > 0 || (state.tier1 || []).length > 0) && currentDoc?.kind === 'epub') {
+    for (const ch of currentDoc.chapters) {
+      for (const b of ch.blocks) blockCtxById.set(b.blockId, { block: b, chapterIndex: ch.index });
+    }
+  }
   activeCases.forEach((scCase, idx) => {
+    if (scCase.dismissed) return; // 已套用且人工確認過 → 收起
+    if (epubScanIgnoredDrift.has(scCase.term)) return; // 人工判斷非真漂移 → 略過
     const card = document.createElement('div');
     card.className = 'scan-case';
     const termEl = document.createElement('div');
@@ -3518,8 +3591,50 @@ function renderScanResults() {
     if (scCase.applied) {
       const done = document.createElement('div');
       done.className = 'scan-case-status';
-      done.textContent = t('doc.epub.scan.applied', { n: scCase.applied.hits, blocks: scCase.applied.blocks });
+      done.textContent = t('doc.epub.scan.applied', {
+        keep: scCase.applied.keep || '', n: scCase.applied.hits, blocks: scCase.applied.blocks,
+      });
       card.appendChild(done);
+      // 套用結果摘錄（2026-07-10 Jimmy 指示：看得到改成什麼才能人工確認）：
+      // 每個被改段落列當前譯文前後文，統一後的譯名加粗
+      const resultWrap = document.createElement('div');
+      resultWrap.className = 'scan-rendering-contexts scan-applied-contexts';
+      const changed = scCase.applied.undo || [];
+      const MAX_APPLIED_CTX = 6;
+      for (const u of changed.slice(0, MAX_APPLIED_CTX)) {
+        if (typeof u.block?.translation !== 'string' || !u.block.translation) continue;
+        const line = document.createElement('div');
+        line.className = 'scan-rendering-context';
+        const chap = document.createElement('span');
+        chap.className = 'scan-context-chapter';
+        chap.textContent = t('doc.epub.scan.contextChapter', { n: u.chapterIndex + 1 });
+        line.appendChild(chap);
+        appendExcerptWithHighlight(line, u.block.translation, scCase.applied.keep);
+        resultWrap.appendChild(line);
+      }
+      if (changed.length > MAX_APPLIED_CTX) {
+        const more = document.createElement('div');
+        more.className = 'scan-rendering-context';
+        more.textContent = t('doc.epub.scan.moreItems', { n: changed.length - MAX_APPLIED_CTX });
+        resultWrap.appendChild(more);
+      }
+      if (resultWrap.childNodes.length > 0) card.appendChild(resultWrap);
+      // 套用預設不回填術語表（2026-07-10）——套用後仍可明確按鈕加入；
+      // 略過 = 人工確認沒問題收起；復原 = 還原套用前文字
+      const actions = buildAddGlossaryActions(scCase, () => scCase.applied.keep);
+      const skipBtn = document.createElement('button');
+      skipBtn.type = 'button';
+      skipBtn.className = 'secondary-btn scan-case-dismiss-btn';
+      skipBtn.textContent = t('doc.epub.scan.skip');
+      skipBtn.addEventListener('click', () => dismissScanCase(scCase));
+      const undoBtn = document.createElement('button');
+      undoBtn.type = 'button';
+      undoBtn.className = 'secondary-btn scan-case-undo-btn';
+      undoBtn.textContent = t('doc.epub.scan.undo');
+      undoBtn.addEventListener('click', () => undoScanCase(scCase));
+      actions.insertBefore(undoBtn, actions.firstChild);
+      actions.insertBefore(skipBtn, actions.firstChild);
+      card.appendChild(actions);
       driftList.appendChild(card);
       return;
     }
@@ -3538,6 +3653,22 @@ function renderScanResults() {
       count.textContent = t('doc.epub.scan.count', { n: r.count });
       row.append(radio, text, count);
       card.appendChild(row);
+      // 每處出現的譯文摘錄（章節標記 + 譯名加粗；字重 + 色階雙通道）
+      const ctxWrap = document.createElement('div');
+      ctxWrap.className = 'scan-rendering-contexts';
+      for (const blockId of r.blockIds) {
+        const info = blockCtxById.get(blockId);
+        if (!info || typeof info.block.translation !== 'string' || !info.block.translation) continue;
+        const line = document.createElement('div');
+        line.className = 'scan-rendering-context';
+        const chap = document.createElement('span');
+        chap.className = 'scan-context-chapter';
+        chap.textContent = t('doc.epub.scan.contextChapter', { n: info.chapterIndex + 1 });
+        line.appendChild(chap);
+        appendExcerptWithHighlight(line, info.block.translation, r.text);
+        ctxWrap.appendChild(line);
+      }
+      if (ctxWrap.childNodes.length > 0) card.appendChild(ctxWrap);
     }
     const actions = document.createElement('div');
     actions.className = 'scan-case-actions';
@@ -3550,23 +3681,64 @@ function renderScanResults() {
       if (chosen) applyScanCase(scCase, chosen.value);
     });
     actions.appendChild(applyBtn);
+    // 略過（2026-07-10 Jimmy 指示）：人工判斷非真漂移（例如日期語境差異）→
+    // 記入漂移略過清單（隨工作階段持久化，下次掃描連 LLM 對照都跳過）
+    const driftSkipBtn = document.createElement('button');
+    driftSkipBtn.type = 'button';
+    driftSkipBtn.className = 'secondary-btn scan-drift-skip-btn';
+    driftSkipBtn.textContent = t('doc.epub.scan.skip');
+    driftSkipBtn.addEventListener('click', () => skipDriftCase(scCase));
+    actions.appendChild(driftSkipBtn);
+    // 「加入術語表」獨立按鈕（2026-07-10 Jimmy 指示）：套用只取代文字，
+    // 寫入全書術語表由此鈕明確觸發（用當前選定的譯名）
+    appendAddGlossaryControls(actions, scCase,
+      () => card.querySelector(`input[name="scan-case-${idx}"]:checked`)?.value || '');
     card.appendChild(actions);
     driftList.appendChild(card);
   });
 
+  // 漂移已略過揭露列（可復原）：略過是隱形狀態，必須揭露
+  for (const term of epubScanIgnoredDrift) {
+    const row = document.createElement('div');
+    row.className = 'scan-compliance-row scan-skipped-row scan-drift-skipped-row';
+    const label = document.createElement('span');
+    label.textContent = t('doc.epub.scan.skippedTerm', { term });
+    const undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'secondary-btn scan-drift-skip-undo-btn';
+    undoBtn.textContent = t('doc.epub.scan.undo');
+    undoBtn.addEventListener('click', () => undoSkipDrift(term));
+    row.append(label, document.createTextNode(' '), undoBtn);
+    driftList.appendChild(row);
+  }
+  driftWrap.hidden = visibleCases.length === 0 && epubScanIgnoredDrift.size === 0;
+
   const tier1 = state.tier1 || [];
-  compWrap.hidden = tier1.length === 0;
+  const autoFixes = state.autoFixes || [];
+  const skippedEntries = [...epubScanIgnored.values()];
+  compWrap.hidden = tier1.length === 0 && autoFixes.length === 0 && skippedEntries.length === 0;
+  // 已自動替換列（資訊揭露：掃描動過使用者的譯文，列出改了什麼）
+  for (const f of autoFixes) {
+    const row = document.createElement('div');
+    row.className = 'scan-compliance-row scan-autofixed-row';
+    row.textContent = t(f.manual ? 'doc.epub.scan.userfixed' : 'doc.epub.scan.autofixed', {
+      source: f.source, target: f.expected, n: f.hits, blocks: f.blocks,
+      chapters: [...f.chapters].sort((a, b) => a - b).join(', '),
+    });
+    compList.appendChild(row);
+  }
   // 依 entry 分組：同一條術語的違規列一行 + 章節統計
   const grouped = new Map();
   for (const v of tier1) {
     const key = `${v.source}\u0000${v.expected}`;
     let g = grouped.get(key);
     if (!g) {
-      g = { source: v.source, expected: v.expected, count: 0, chapters: new Set(), excerpt: v.excerpt };
+      g = { source: v.source, expected: v.expected, count: 0, chapters: new Set(), items: [] };
       grouped.set(key, g);
     }
     g.count++;
     g.chapters.add(v.chapterIndex + 1);
+    g.items.push(v);
   }
   for (const g of grouped.values()) {
     const row = document.createElement('div');
@@ -3576,20 +3748,307 @@ function renderScanResults() {
       source: g.source, target: g.expected, n: g.count,
       chapters: [...g.chapters].sort((a, b) => a - b).join(', '),
     });
-    const excerpt = document.createElement('span');
-    excerpt.className = 'scan-compliance-excerpt';
-    excerpt.textContent = g.excerpt;
-    row.append(head, excerpt);
+    // 逐段列「原文摘錄（原詞加粗）+ 譯文摘錄」（2026-07-10 Jimmy 指示）：
+    // 違規的定義是「譯文缺指定譯名」，不代表譯文殘留原文詞——使用者必須
+    // 看到譯文實際用了什麼寫法才能決定搜尋取代或改術語表
+    const MAX_CTX_ITEMS = 6;
+    const ctxList = document.createElement('div');
+    ctxList.className = 'scan-compliance-contexts';
+    for (const v of g.items.slice(0, MAX_CTX_ITEMS)) {
+      const info = blockCtxById.get(v.blockId);
+      const item = document.createElement('div');
+      item.className = 'scan-compliance-item';
+      const srcLine = document.createElement('div');
+      srcLine.className = 'scan-rendering-context';
+      const chap = document.createElement('span');
+      chap.className = 'scan-context-chapter';
+      chap.textContent = t('doc.epub.scan.contextChapter', { n: v.chapterIndex + 1 });
+      const srcTag = document.createElement('span');
+      srcTag.className = 'scan-excerpt-label';
+      srcTag.textContent = t('doc.epub.scan.excerpt.src');
+      srcLine.append(chap, srcTag);
+      if (typeof info?.block?.plainText === 'string' && info.block.plainText) {
+        appendExcerptWithHighlight(srcLine, info.block.plainText, v.source);
+      } else {
+        srcLine.appendChild(document.createTextNode(v.excerpt));
+      }
+      item.appendChild(srcLine);
+      const dstText = info?.block?.translation;
+      if (typeof dstText === 'string' && dstText) {
+        const dstLine = document.createElement('div');
+        dstLine.className = 'scan-rendering-context';
+        const dstTag = document.createElement('span');
+        dstTag.className = 'scan-excerpt-label';
+        dstTag.textContent = t('doc.epub.scan.excerpt.dst');
+        dstLine.appendChild(dstTag);
+        dstLine.appendChild(document.createTextNode(
+          translationExcerptNear(dstText, info.block.plainText, v.source)));
+        item.appendChild(dstLine);
+      }
+      ctxList.appendChild(item);
+    }
+    if (g.items.length > MAX_CTX_ITEMS) {
+      const more = document.createElement('div');
+      more.className = 'scan-rendering-context';
+      more.textContent = t('doc.epub.scan.moreItems', { n: g.items.length - MAX_CTX_ITEMS });
+      ctxList.appendChild(more);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'scan-case-actions';
+    const status = document.createElement('span');
+    status.className = 'scan-case-status';
+    // 使用者輸入譯文中實際使用的譯名 → 直接搜尋替換為指定譯名（2026-07-10
+    // Jimmy 指示）：從譯文摘錄看出 LLM 用了什麼寫法後，就地修正不用跳全書預覽
+    const termInput = document.createElement('input');
+    termInput.type = 'text';
+    termInput.className = 'scan-term-input';
+    termInput.placeholder = t('doc.epub.scan.termInput.placeholder');
+    const customBtn = document.createElement('button');
+    customBtn.type = 'button';
+    customBtn.className = 'secondary-btn scan-custom-replace-btn';
+    customBtn.textContent = t('doc.epub.scan.replaceCustom');
+    customBtn.addEventListener('click', () => {
+      const term = termInput.value.trim();
+      if (!term) {
+        termInput.focus();
+        return;
+      }
+      customComplianceReplace(g, term, status);
+    });
+    termInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') customBtn.click();
+    });
+    // 略過（2026-07-10）：人工 review 後認定不需替換 → 移出清單（可復原）
+    const skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.className = 'secondary-btn scan-skip-btn';
+    skipBtn.textContent = t('doc.epub.scan.skip');
+    skipBtn.addEventListener('click', () => skipComplianceEntry(g));
+    actions.append(termInput, customBtn, skipBtn, status);
+    row.append(head, ctxList, actions);
+    compList.appendChild(row);
+  }
+  // 已略過列（可復原）：略過是隱形狀態，必須揭露才不會變成「為什麼掃不到」謎團
+  for (const e of skippedEntries) {
+    const row = document.createElement('div');
+    row.className = 'scan-compliance-row scan-skipped-row';
+    const label = document.createElement('span');
+    label.textContent = t('doc.epub.scan.skipped', { source: e.source, target: e.expected });
+    const undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'secondary-btn scan-skip-undo-btn';
+    undoBtn.textContent = t('doc.epub.scan.undo');
+    undoBtn.addEventListener('click', () => undoSkipEntry(e));
+    row.append(label, document.createTextNode(' '), undoBtn);
     compList.appendChild(row);
   }
 
-  $('scan-empty').hidden = activeCases.length > 0 || tier1.length > 0;
+  $('scan-empty').hidden = visibleCases.length > 0 || tier1.length > 0
+    || autoFixes.length > 0 || skippedEntries.length > 0 || epubScanIgnoredDrift.size > 0;
+}
+
+// block DOM 內逐 text node 替換（單一資料源：自動替換 / 搜尋替換 / 漂移套用共用）。
+// 帶節點邊界 context——詞落在 text node 開頭 / 結尾時，節點內看不到相鄰節點的
+// 字元，空格規則會漏（2026-07-10 Jimmy 回報「贊助商Haas 車隊」前緣沒補空格）；
+// 把相鄰節點的前後字元交給 replaceTermInText 判斷
+function replaceInTextNodes(el, term, replacement) {
+  const nodes = [];
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  let hits = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (!node.nodeValue) continue;
+    let prevChar = '';
+    for (let j = i - 1; j >= 0 && !prevChar; j--) prevChar = (nodes[j].nodeValue || '').slice(-1);
+    let nextChar = '';
+    for (let j = i + 1; j < nodes.length && !nextChar; j++) nextChar = (nodes[j].nodeValue || '').charAt(0);
+    const r = replaceTermInText(node.nodeValue, term, replacement, { prevChar, nextChar });
+    if (r.count > 0) {
+      node.nodeValue = r.text;
+      hits += r.count;
+    }
+  }
+  return hits;
+}
+// 測試 seam（spec 驗證跨節點空格 context 接線）
+window.__skReplaceInTextNodes = replaceInTextNodes;
+
+// 譯文摘錄：term 前後各取 radius 字元，term 本體 <strong> 加粗（配合 muted
+// 底色構成字重 + 色階雙通道）。純 DOM 組裝不走 innerHTML（譯文是使用者資料）
+function appendExcerptWithHighlight(el, text, term, radius = 40) {
+  const idx = text.indexOf(term);
+  if (idx === -1) {
+    el.appendChild(document.createTextNode(text.slice(0, radius * 2)));
+    return;
+  }
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + term.length + radius);
+  el.appendChild(document.createTextNode((start > 0 ? '…' : '') + text.slice(start, idx)));
+  const strong = document.createElement('strong');
+  strong.textContent = term;
+  el.appendChild(strong);
+  el.appendChild(document.createTextNode(text.slice(idx + term.length, end) + (end < text.length ? '…' : '')));
+}
+
+// 違規段的譯文摘錄：指定譯名與原文詞都不在譯文中（否則不會成為待處理違規），
+// 沒有精確錨點——用原文詞在原文中的位置比例對位到譯文取前後文（結構性啟發，
+// 通常落在對應句子附近，非精確對齊）
+function translationExcerptNear(translation, plainText, term, radius = 40) {
+  let center = 0;
+  const idx = typeof plainText === 'string' ? plainText.indexOf(term) : -1;
+  if (idx >= 0 && plainText.length > 0) {
+    center = Math.round((idx / plainText.length) * translation.length);
+  }
+  const start = Math.max(0, center - radius);
+  const end = Math.min(translation.length, center + radius * 2);
+  return (start > 0 ? '…' : '') + translation.slice(start, end) + (end < translation.length ? '…' : '');
+}
+
+// 術語表符合度違規的確定性替換（2026-07-10）：違規段譯文仍殘留原文詞 →
+// 直接把原文詞替換成指定譯名（text node 級、editedHtml 語意，同 applyScanCase
+// 的手動編輯身分存回；刻意不重翻——cache key 會變、重計費）。
+// noTranslate 違規（譯文把該保留的原文弄丟）無從確定性還原，略過。
+// 邊界語意與掃描比對一致（replaceTermInText：拉丁詞邊界 / 非拉丁 substring）。
+// 回傳 [{ source, expected, hits, blocks, chapters:Set }]（僅實際有替換的條目）
+function applyComplianceFixes(doc, violations, blockByIdArg = null) {
+  if (!Array.isArray(violations) || violations.length === 0) return [];
+  const SK = window.__SK;
+  let blockById = blockByIdArg;
+  if (!blockById) {
+    blockById = new Map();
+    for (const ch of doc.chapters) for (const b of ch.blocks) blockById.set(b.blockId, b);
+  }
+  const groups = new Map();
+  let changed = false;
+  for (const v of violations) {
+    if (v.noTranslate || v.source === v.expected) continue;
+    const b = blockById.get(v.blockId);
+    if (!b || b.translationStatus !== 'done') continue;
+    const el = renderBlockForScanEdit(b, SK);
+    if (!el) continue;
+    const hits = replaceInTextNodes(el, v.source, v.expected);
+    if (hits === 0) continue;
+    b.editedHtml = el.innerHTML;
+    b.translation = el.textContent;
+    changed = true;
+    const key = v.source + '\u0000' + v.expected;
+    let g = groups.get(key);
+    if (!g) {
+      g = { source: v.source, expected: v.expected, hits: 0, blocks: 0, chapters: new Set() };
+      groups.set(key, g);
+    }
+    g.hits += hits;
+    g.blocks++;
+    g.chapters.add(v.chapterIndex + 1);
+  }
+  if (changed) scheduleEpubSessionSave();
+  return [...groups.values()];
+}
+
+// 略過清單工具（2026-07-10）
+function scanIgnoreKey(source, expected) {
+  return source + '→' + expected;
+}
+
+function hydrateScanIgnored(arr) {
+  const map = new Map();
+  for (const e of arr) {
+    if (!e || typeof e.source !== 'string' || typeof e.expected !== 'string') continue;
+    map.set(scanIgnoreKey(e.source, e.expected), { source: e.source, expected: e.expected });
+  }
+  return map;
+}
+
+function filterIgnoredViolations(violations) {
+  if (!Array.isArray(violations) || epubScanIgnored.size === 0) return violations || [];
+  return violations.filter((v) => !epubScanIgnored.has(scanIgnoreKey(v.source, v.expected)));
+}
+
+// 略過（2026-07-10 Jimmy 指示）：人工 review 後認定該詞彙不需替換 → 記入略過
+// 清單（隨工作階段持久化），本列移除、之後重掃不再列出、自動替換也不碰。
+// 誤按有「復原」（略過列以揭露列形式留在結果頁）
+function skipComplianceEntry(group) {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !epubScanState) return;
+  epubScanIgnored.set(scanIgnoreKey(group.source, group.expected),
+    { source: group.source, expected: group.expected });
+  scheduleEpubSessionSave();
+  epubScanState.tier1 = filterIgnoredViolations(epubScanState.tier1);
+  renderScanResults();
+  renderScanBanner();
+}
+
+function undoSkipEntry(entry) {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !epubScanState) return;
+  epubScanIgnored.delete(scanIgnoreKey(entry.source, entry.expected));
+  scheduleEpubSessionSave();
+  const glossary = Array.isArray(currentArticleGlossary) ? currentArticleGlossary : [];
+  epubScanState.tier1 = filterIgnoredViolations(checkGlossaryCompliance(currentDoc.chapters, glossary));
+  renderScanResults();
+  renderScanBanner();
+}
+
+// 使用者輸入譯文中實際使用的譯名 → 在「原文含該詞」的已翻段落把它搜尋替換為
+// 指定譯名（範圍同 applyScanCase；text node 級、editedHtml 語意；替換語意同
+// replaceTermInText 的詞邊界規則）。完成後重算符合度並刷新掃描結果
+function customComplianceReplace(group, term, statusEl) {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !epubScanState || epubScanState.running) return;
+  if (!term || term === group.expected) return;
+  const SK = window.__SK;
+  let hits = 0;
+  let blocks = 0;
+  const chapters = new Set();
+  for (const ch of currentDoc.chapters) {
+    for (const b of ch.blocks) {
+      if (b.translationStatus !== 'done') continue;
+      if (typeof b.plainText !== 'string' || !sourceHasTerm(b.plainText, group.source)) continue;
+      const el = renderBlockForScanEdit(b, SK);
+      if (!el) continue;
+      const blockHits = replaceInTextNodes(el, term, group.expected);
+      if (blockHits === 0) continue;
+      b.editedHtml = el.innerHTML;
+      b.translation = el.textContent;
+      hits += blockHits;
+      blocks++;
+      chapters.add(ch.index + 1);
+    }
+  }
+  if (hits === 0) {
+    if (statusEl) statusEl.textContent = t('doc.epub.scan.customNotFound', { term });
+    return;
+  }
+  scheduleEpubSessionSave();
+  epubScanState.autoFixes = mergeComplianceFixes(epubScanState.autoFixes || [],
+    [{ source: group.source, expected: group.expected, hits, blocks, chapters, manual: true }]);
+  epubScanState.tier1 = filterIgnoredViolations(checkGlossaryCompliance(currentDoc.chapters,
+    Array.isArray(currentArticleGlossary) ? currentArticleGlossary : []));
+  renderScanResults();
+  renderScanBanner();
+}
+
+function mergeComplianceFixes(base, extra) {
+  // key 含 manual 維度：自動替換與使用者搜尋替換分列（揭露來源不混淆）
+  const keyOf = (f) => f.source + '\u0000' + f.expected + (f.manual ? ':m' : '');
+  const map = new Map(base.map((f) => [keyOf(f), f]));
+  for (const f of extra) {
+    const key = keyOf(f);
+    const g = map.get(key);
+    if (!g) {
+      map.set(key, f);
+      continue;
+    }
+    g.hits += f.hits;
+    g.blocks += f.blocks;
+    for (const c of f.chapters) g.chapters.add(c);
+  }
+  return [...map.values()];
 }
 
 // 套用選定譯名：在「原文含該詞」的已翻段落把其他譯名取代為選定譯名
-//（text node 級，同搜尋取代語意，走 editedHtml → session / 譯本都吃得到），
-// 並回填全書術語表讓續翻 / 重翻保持一致。刻意不重翻（cache key 會變、重計費；
-// 確定性取代已達同樣效果）
+//（text node 級，同搜尋取代語意，走 editedHtml → session / 譯本都吃得到）。
+// 預設不回填術語表（2026-07-10 Jimmy 指示）——回填由「加入術語表」按鈕明確觸發。
+// 刻意不重翻（cache key 會變、重計費；確定性取代已達同樣效果）
 function applyScanCase(scCase, keep) {
   if (!currentDoc || currentDoc.kind !== 'epub' || !keep) return;
   const SK = window.__SK;
@@ -3597,40 +4056,114 @@ function applyScanCase(scCase, keep) {
   if (others.length === 0) return;
   let hits = 0;
   let blocks = 0;
+  const undo = []; // 被改段落的套用前快照（「復原」用，2026-07-10 Jimmy 指示）
   for (const ch of currentDoc.chapters) {
     for (const b of ch.blocks) {
       if (b.translationStatus !== 'done') continue;
       if (typeof b.plainText !== 'string' || !sourceHasTerm(b.plainText, scCase.term)) continue;
       const el = renderBlockForScanEdit(b, SK);
       if (!el) continue;
+      const prevEditedHtml = (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) ? b.editedHtml : null;
+      const prevTranslation = typeof b.translation === 'string' ? b.translation : null;
       let changed = false;
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      let node;
-      while ((node = walker.nextNode())) {
-        if (!node.nodeValue) continue;
-        for (const other of others) {
-          if (!node.nodeValue.includes(other)) continue;
-          hits += node.nodeValue.split(other).length - 1;
-          node.nodeValue = node.nodeValue.split(other).join(keep);
-          changed = true;
-        }
+      for (const other of others) {
+        // 走 replaceInTextNodes：空格規則（含跨節點邊界）與其他掃描替換一致（2026-07-10）
+        const n = replaceInTextNodes(el, other, keep);
+        if (n === 0) continue;
+        hits += n;
+        changed = true;
       }
       if (changed) {
         blocks++;
+        undo.push({ block: b, prevEditedHtml, prevTranslation, chapterIndex: ch.index });
         b.editedHtml = el.innerHTML;
         b.translation = el.textContent;
       }
     }
   }
-  // 回填術語表（已有同 source 的不重複加）
-  const list = Array.isArray(currentArticleGlossary) ? [...currentArticleGlossary] : [];
-  if (!list.some((e) => e && typeof e.source === 'string' && e.source.trim().toLowerCase() === scCase.term.toLowerCase())) {
-    list.push({ source: scCase.term, target: keep });
-  }
-  savePersistedBookGlossary(list); // 內含 session 持久化（editedHtml 一併落地）
-  scCase.applied = { hits, blocks };
+  scheduleEpubSessionSave(); // editedHtml 落地（不動術語表）
+  scCase.applied = { hits, blocks, keep, undo };
   renderScanResults();
   renderScanBanner();
+}
+
+// 復原套用（2026-07-10 Jimmy 指示）：把被改段落還原成套用前快照（editedHtml /
+// translation），案例卡回到譯名選擇狀態。不動術語表（若已按「加入術語表」，
+// 該條目保留——復原只還原文字）
+function undoScanCase(scCase) {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !scCase.applied) return;
+  for (const u of scCase.applied.undo || []) {
+    u.block.editedHtml = u.prevEditedHtml;
+    u.block.translation = u.prevTranslation;
+  }
+  scCase.applied = null;
+  scCase.dismissed = false;
+  scheduleEpubSessionSave();
+  renderScanResults();
+  renderScanBanner();
+}
+
+// 略過（已套用案例）：人工確認套用結果沒問題後收起卡片。掃描結果不持久化、
+// 套用後重掃也不會再偵測到同一漂移，dismissed 只需活在本輪掃描狀態
+function dismissScanCase(scCase) {
+  scCase.dismissed = true;
+  renderScanResults();
+  renderScanBanner();
+}
+
+// 略過漂移案例（未套用，2026-07-10）：人工判斷非真漂移 → 記入持久化略過清單。
+// 本輪 state 內的案例只在 render 過濾（復原可立即回來）；下輪掃描連候選都不進
+function skipDriftCase(scCase) {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !epubScanState) return;
+  epubScanIgnoredDrift.add(scCase.term);
+  scheduleEpubSessionSave();
+  renderScanResults();
+  renderScanBanner();
+}
+
+function undoSkipDrift(term) {
+  if (!currentDoc || currentDoc.kind !== 'epub') return;
+  epubScanIgnoredDrift.delete(term);
+  scheduleEpubSessionSave();
+  // 本輪偵測過的案例立即回列；已被下輪掃描跳過的要再按「重新掃描」才會回來
+  renderScanResults();
+  renderScanBanner();
+}
+
+// 「加入術語表」（2026-07-10）：把選定譯名寫入全書術語表——後續翻譯經注入
+// 優先採用（軟約束，漏用由一致性掃描把關，不是硬鎖定）。
+// 同 source 已存在則更新其譯名（使用者明確選擇優先）
+function addScanCaseToGlossary(scCase, keep, statusEl) {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !keep) return;
+  const list = Array.isArray(currentArticleGlossary) ? [...currentArticleGlossary] : [];
+  const existing = list.find((e) => e && typeof e.source === 'string'
+    && e.source.trim().toLowerCase() === scCase.term.toLowerCase());
+  if (existing) existing.target = keep;
+  else list.push({ source: scCase.term, target: keep });
+  savePersistedBookGlossary(list); // 內含 session 持久化
+  if (statusEl) statusEl.textContent = t('doc.epub.scan.addedGlossary');
+}
+
+// 在 actions 容器內加「加入術語表」按鈕 + 就地狀態文字
+function appendAddGlossaryControls(actions, scCase, getKeep) {
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'secondary-btn scan-add-glossary-btn';
+  addBtn.textContent = t('doc.epub.scan.addGlossary');
+  const status = document.createElement('span');
+  status.className = 'scan-case-status';
+  addBtn.addEventListener('click', () => {
+    const keep = getKeep();
+    if (keep) addScanCaseToGlossary(scCase, keep, status);
+  });
+  actions.append(addBtn, status);
+}
+
+function buildAddGlossaryActions(scCase, getKeep) {
+  const actions = document.createElement('div');
+  actions.className = 'scan-case-actions';
+  appendAddGlossaryControls(actions, scCase, getKeep);
+  return actions;
 }
 
 // 把 block 目前的譯文渲染成可編輯 DOM（editedHtml 優先，同預覽渲染語意、
@@ -3660,9 +4193,15 @@ function renderBlockForScanEdit(b, SK) {
 function bindScanUI() {
   if (!stages.scan) return;
   $('chapters-scan-btn').addEventListener('click', () => {
+    // 尚未掃描 / 零發現 → 手動觸發；有發現 → 開結果頁
+    if ($('chapters-scan-btn').dataset.skMode === 'manual') {
+      triggerManualScan();
+      return;
+    }
     renderScanResults();
     showStage('scan');
   });
+  $('scan-rescan-btn').addEventListener('click', () => triggerManualScan());
   $('scan-back-btn').addEventListener('click', async () => {
     await renderChapterList(); // 套用可能改了術語表 / 費用，回去前刷新
     showStage('chapters');
@@ -3721,6 +4260,9 @@ async function extractGlossaryForBook(doc, { forceRefresh = false } = {}) {
     ? BOOK_GLOSSARY_SUFFIX_ZH
     : BOOK_GLOSSARY_SUFFIX_EN;
 
+  // modelOverride：術語擷取模型設「與主翻譯模型相同」時用文件翻譯 preset
+  //（2026-07-10）。抽取常在翻譯開始前（currentModelOverride 尚未設定），就地解析
+  const presetModel = currentModelOverride || (await resolvePreset()).modelOverride || null;
   const lists = [];
   let failures = 0;
   for (let i = 0; i < rounds.length; i++) {
@@ -3731,7 +4273,10 @@ async function extractGlossaryForBook(doc, { forceRefresh = false } = {}) {
     try {
       const res = await chrome.runtime.sendMessage({
         type: 'EXTRACT_GLOSSARY',
-        payload: { compressedText: text, inputHash, promptSuffix, forceRefresh },
+        payload: {
+          compressedText: text, inputHash, promptSuffix, forceRefresh,
+          modelOverride: presetModel,
+        },
       });
       if (res?.ok && Array.isArray(res.glossary)) {
         lists.push(res.glossary);
@@ -3771,6 +4316,9 @@ async function persistEpubSession() {
     forbidden: currentBookForbidden,
     // 本書累計翻譯費用也是進度的一部分（2026-07-10 Jimmy 確認）
     costUSD: epubCumulativeCostUSD,
+    // 一致性掃描的略過清單（2026-07-10）：人工 review 決策也是工作成果
+    scanIgnored: [...epubScanIgnored.values()],
+    scanIgnoredDrift: [...epubScanIgnoredDrift],
     blocks: collectSessionBlocks(currentDoc),
   });
   // session 落地成功後清掉舊版 bookgloss_ key——session 已是單一資料源，
@@ -3852,6 +4400,8 @@ function exportEpubSession() {
     glossary: Array.isArray(currentArticleGlossary) ? currentArticleGlossary : null,
     forbidden: currentBookForbidden,
     costUSD: epubCumulativeCostUSD,
+    scanIgnored: [...epubScanIgnored.values()],
+    scanIgnoredDrift: [...epubScanIgnoredDrift],
     blocks: collectSessionBlocks(currentDoc),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -3891,6 +4441,8 @@ async function importEpubSession(file) {
     if (Array.isArray(data.glossary)) currentArticleGlossary = data.glossary;
     if (Array.isArray(data.forbidden)) currentBookForbidden = data.forbidden;
     if (Number.isFinite(data.costUSD)) epubCumulativeCostUSD = data.costUSD;
+    epubScanIgnored = hydrateScanIgnored(Array.isArray(data.scanIgnored) ? data.scanIgnored : []);
+    epubScanIgnoredDrift = new Set((Array.isArray(data.scanIgnoredDrift) ? data.scanIgnoredDrift : []).filter((x) => typeof x === 'string'));
     for (const ch of currentDoc.chapters) {
       if (chapterDoneState(ch) === 'done') ch.selected = false;
     }

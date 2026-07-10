@@ -41,6 +41,79 @@ function sourceHasTerm(text, term) {
 
 export { sourceHasTerm };
 
+// CJK↔拉丁邊界空格規則（台灣排版慣例，2026-07-10）：替換後的新詞
+//   - 邊緣是拉丁且直接貼著 CJK → 補一個空格（「法拉利車隊」換 Ferrari →「Ferrari 車隊」）
+//   - 邊緣是 CJK 且隔「單一空格」貼著 CJK → 移除該空格（「Ferrari 車隊」換法拉利 →「法拉利車隊」）
+// 補空格方向與 epub-writer spliceWithCjkSpacing 同規則；移除方向為掃描替換新增
+const CJK_EDGE_RE = /[㐀-鿿豈-﫿]/;
+const LATIN_EDGE_RE = /[A-Za-z0-9]/;
+
+// ctx.prevChar / ctx.nextChar：本段文字（text node）之外的相鄰字元——詞落在
+// 節點開頭 / 結尾時，節點內看不到隔壁節點的 CJK，空格規則會漏（2026-07-10
+// Jimmy 回報「贊助商Haas 車隊」：前緣在節點邊界沒補到空格）。
+// 移除空格的分支只在空格位於本節點內時執行（不可跨節點改字）
+function spliceCjkAware(text, start, end, replacement, ctx = {}) {
+  let before = text.slice(0, start);
+  let after = text.slice(end);
+  let mid = replacement;
+  const repFirst = replacement[0] || '';
+  const repLast = replacement[replacement.length - 1] || '';
+  const prev = before ? before[before.length - 1] : (ctx.prevChar || '');
+  if (prev) {
+    if (CJK_EDGE_RE.test(prev) && LATIN_EDGE_RE.test(repFirst)) {
+      mid = ' ' + mid;
+    } else if (before && prev === ' ' && CJK_EDGE_RE.test(repFirst)) {
+      const beyond = before.length >= 2 ? before[before.length - 2] : (ctx.prevChar || '');
+      if (beyond && CJK_EDGE_RE.test(beyond)) before = before.slice(0, -1);
+    }
+  }
+  const next = after ? after[0] : (ctx.nextChar || '');
+  if (next) {
+    if (LATIN_EDGE_RE.test(repLast) && CJK_EDGE_RE.test(next)) {
+      mid = mid + ' ';
+    } else if (after && next === ' ' && CJK_EDGE_RE.test(repLast)) {
+      const beyond = after.length >= 2 ? after[1] : (ctx.nextChar || '');
+      if (beyond && CJK_EDGE_RE.test(beyond)) after = after.slice(1);
+    }
+  }
+  return { text: before + mid + after, nextFrom: before.length + mid.length };
+}
+
+/**
+ * 確定性替換（2026-07-10）：與 compileTermMatcher 同一套邊界語意——
+ * 拉丁 term 用詞邊界（不讓 'Ann' 改到 'Announcement' 內部），非拉丁純 substring。
+ * 逐一出現位置以 spliceCjkAware 替換（CJK↔拉丁邊界補 / 移空格）。
+ * 掃描的自動替換 / 搜尋替換 / 漂移套用共用（單一資料源）。
+ * @returns { text, count }（count = 替換次數；term 空 / 等於 replacement 時 0）
+ */
+export function replaceTermInText(text, term, replacement, ctx = {}) {
+  if (!text || !term || typeof replacement !== 'string' || term === replacement) {
+    return { text, count: 0 };
+  }
+  const re = RE_ASCII_ONLY.test(term)
+    ? new RegExp(`(?<![A-Za-z])${escapeRe(term)}(?![A-Za-z])`, 'g')
+    : null;
+  let out = text;
+  let count = 0;
+  let from = 0;
+  while (from <= out.length) {
+    let idx = -1;
+    if (re) {
+      re.lastIndex = from;
+      const m = re.exec(out);
+      idx = m ? m.index : -1;
+    } else {
+      idx = out.indexOf(term, from);
+    }
+    if (idx === -1) break;
+    const spliced = spliceCjkAware(out, idx, idx + term.length, replacement, ctx);
+    out = spliced.text;
+    count++;
+    from = spliced.nextFrom;
+  }
+  return { text: out, count };
+}
+
 function doneBlocks(chapters) {
   const out = [];
   for (const ch of chapters) {
