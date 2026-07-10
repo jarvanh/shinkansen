@@ -22,7 +22,7 @@ import { buildTranslatedEpub, translatedEpubFilename, computeAnnotationDedupe } 
 // 譯後一致性掃描（v2.0.11，SPEC §17.10.10）
 import {
   checkGlossaryCompliance, mineCandidates, buildScanBatches, aggregateRenderings, sourceHasTerm,
-  replaceTermInText,
+  replaceTermInText, addCjkLatinSpacing,
 } from './epub-scan.js';
 import {
   loadEpubSession, saveEpubSession, deleteEpubSession, collectSessionBlocks, hydrateSessionBlocks,
@@ -3212,6 +3212,9 @@ async function downloadTranslatedEpub() {
   const btn = $('chapters-download-btn');
   btn.disabled = true;
   try {
+    // 下載前自動修正中英空格（與預覽開啟同一條 autoFixCjkSpacing，
+    // 沒開過預覽直接下載也吃得到）
+    await autoFixCjkSpacing(currentDoc);
     const settings = await getSettings();
     // EPUB2 來源可選升級輸出 EPUB3（select 只在 EPUB2 來源時顯示，見 renderChapterList）
     const upgradeTo3 = !$('epub-output-format-wrap').hidden
@@ -3250,10 +3253,82 @@ async function downloadTranslatedEpub() {
 //   - 「顯示原文對照」toggle：每個已翻段落下方附原文（降淡、不可編輯）
 //   - 「對照只出現一次」後處理與下載共用（computeAnnotationDedupe），所見即所得
 //   - 編輯 / 搜尋取代都排進 session 存檔（scheduleEpubSessionSave）
-function openEpubPreview(scope) {
+async function openEpubPreview(scope) {
   epubPreviewScope = scope;
+  // 中英空格自動修正後再渲染，結果直接反映在預覽（2026-07-11 Jimmy 指示：
+  // 由按鈕改為預覽 / 下載時機自動執行）
+  const fixed = await autoFixCjkSpacing(currentDoc);
   renderEpubPreview();
   showStage('epubPreview');
+  if (fixed.hits > 0) {
+    $('epub-sr-status').textContent = t('doc.epub.sr.fixSpacingResult', { hits: fixed.hits, blocks: fixed.blocks });
+  }
+}
+
+// 中英空格自動修正（2026-07-11）：LLM 輸出偶發漏掉 CJK↔拉丁邊界空格
+//（「批評 F1是無謂」）。開啟章節 / 全書預覽與下載譯本 EPUB 時自動補齊全書
+// 已翻段落；規則在 epub-scan.js addCjkLatinSpacing（與掃描替換同組邊界常數，
+// 只補缺漏、冪等），只在中文 target 執行（補空格是中文排版慣例，en 等其他
+// target 不適用，未來 ja / ko 也不補）。逐 block 離屏渲染（editedHtml 優先，
+// 否則反序列化 translationRaw；cloneReuse 防 detach 活節點）→ 修正 text node
+//（inline 標記保留、跨節點相鄰靠 prevChar context）→ 有改動才寫回 editedHtml
+//（= 手動編輯語意，下載 / session 存檔都吃得到；dedupe 後處理對 edited block
+// 照樣生效）
+async function autoFixCjkSpacing(doc) {
+  const none = { hits: 0, blocks: 0 };
+  if (!doc || !Array.isArray(doc.chapters)) return none;
+  try {
+    const s = await getSettings();
+    if (!String(s.targetLanguage || '').startsWith('zh')) return none;
+  } catch (_) {
+    return none;
+  }
+  const SK = window.__SK;
+  let blocks = 0;
+  let hits = 0;
+  for (const ch of doc.chapters) {
+    for (const b of ch.blocks) {
+      if (b.translationStatus !== 'done') continue;
+      const el = document.createElement('div');
+      if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) {
+        el.innerHTML = b.editedHtml;
+      } else {
+        let rendered = false;
+        if (typeof b.translationRaw === 'string' && b.translationRaw && Array.isArray(b.slots)
+            && typeof SK?.deserializeWithPlaceholders === 'function') {
+          const { frag, ok } = SK.deserializeWithPlaceholders(b.translationRaw, b.slots, { cloneReuse: true });
+          if (ok || (b.slots.length === 0 && frag.childNodes.length > 0)) {
+            el.appendChild(frag);
+            rendered = true;
+          }
+        }
+        if (!rendered) el.textContent = typeof b.translation === 'string' ? b.translation : '';
+      }
+      const nodes = [];
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) nodes.push(node);
+      let blockHits = 0;
+      for (let i = 0; i < nodes.length; i++) {
+        if (!nodes[i].nodeValue) continue;
+        let prevChar = '';
+        for (let j = i - 1; j >= 0 && !prevChar; j--) prevChar = (nodes[j].nodeValue || '').slice(-1);
+        const r = addCjkLatinSpacing(nodes[i].nodeValue, { prevChar });
+        if (r.count > 0) {
+          nodes[i].nodeValue = r.text;
+          blockHits += r.count;
+        }
+      }
+      if (blockHits > 0) {
+        blocks++;
+        hits += blockHits;
+        b.editedHtml = el.innerHTML;
+        b.translation = el.textContent;
+      }
+    }
+  }
+  if (blocks > 0) scheduleEpubSessionSave();
+  return { hits, blocks };
 }
 
 function renderEpubPreview() {

@@ -79,6 +79,38 @@ function spliceCjkAware(text, start, end, replacement, ctx = {}) {
   return { text: before + mid + after, nextFrom: before.length + mid.length };
 }
 
+// CJK↔拉丁直接相鄰（缺空格）的兩個方向；字元集合與 CJK_EDGE_RE / LATIN_EDGE_RE
+// 同源（單一資料源），只比對「直接貼著」——中間已有空格 / 標點都不命中
+const RE_CJK_THEN_LATIN = new RegExp(`(${CJK_EDGE_RE.source})(${LATIN_EDGE_RE.source})`, 'g');
+const RE_LATIN_THEN_CJK = new RegExp(`(${LATIN_EDGE_RE.source})(${CJK_EDGE_RE.source})`, 'g');
+
+/**
+ * 中英空格修正（2026-07-11 Jimmy 回報「批評 F1是無謂」——LLM 輸出偶發漏掉
+ * CJK↔拉丁邊界空格）。只「補缺漏的空格」，不移除、不動其他排版；全形標點與
+ * 拉丁相鄰（「F1，」）本就不需空格，字元集合不含標點所以不命中。
+ * 節點邊界：ctx.prevChar 是前一個 text node 的尾字，跨節點相鄰只在後節點
+ * 開頭補（避免前後節點各補一次變雙空格）。
+ * @returns { text, count }（count = 補入的空格數）
+ */
+export function addCjkLatinSpacing(text, ctx = {}) {
+  if (!text) return { text, count: 0 };
+  let count = 0;
+  const bump = (_, a, b) => {
+    count++;
+    return `${a} ${b}`;
+  };
+  let out = text.replace(RE_CJK_THEN_LATIN, bump);
+  out = out.replace(RE_LATIN_THEN_CJK, bump);
+  const prev = ctx.prevChar || '';
+  const first = out[0] || '';
+  if (prev && ((CJK_EDGE_RE.test(prev) && LATIN_EDGE_RE.test(first))
+      || (LATIN_EDGE_RE.test(prev) && CJK_EDGE_RE.test(first)))) {
+    out = ' ' + out;
+    count++;
+  }
+  return { text: out, count };
+}
+
 /**
  * 確定性替換（2026-07-10）：與 compileTermMatcher 同一套邊界語意——
  * 拉丁 term 用詞邊界（不讓 'Ann' 改到 'Announcement' 內部），非拉丁純 substring。
@@ -240,8 +272,11 @@ export function mineCandidates(chapters, glossary, { minBlocks = 2, maxCandidate
     if (isSingleWord) {
       if (term.length < 3) continue;
       if (lowerWords.has(term.toLowerCase())) continue; // 句首大寫的普通詞
-      // 稱謂前綴偵測：多數出現緊跟另一個大寫詞 → 是長名字的一部分
-      const followedByCap = [...corpus.matchAll(new RegExp(`(?<![A-Za-z])${escapeRe(term)}\\.?\\s+[A-Z]`, 'g'))].length;
+      // 前綴偵測：多數出現緊跟另一個大寫詞 → 稱謂（Mr / Lady…），是長名字
+      // 的一部分；緊跟數字 → 日期 / 章節 / 編號等更大單位的一部分（April 1 /
+      // Chapter 3 / Lap 42），兩者都不是獨立譯名單位（2026-07-10 Jimmy 回報
+      // 月份名 April 被掃出、各日期被當多種譯名）
+      const followedByCap = [...corpus.matchAll(new RegExp(`(?<![A-Za-z])${escapeRe(term)}\\.?\\s+[A-Z0-9]`, 'g'))].length;
       if (rec.count > 1 && followedByCap / rec.count > 0.5) continue;
     }
     out.push({ term, blocks: [...rec.blocks.values()], count: rec.count });
@@ -331,9 +366,28 @@ export function aggregateRenderings(collected) {
   const cases = [];
   for (const [term, renderMap] of byTerm) {
     if (renderMap.size < 2) continue;
+    // 數字不變合併：兩譯名去掉數字與空白後相同 = 差異全由原文數字差異解釋
+    //（日期 / 編號 / 圈數逐字帶過來），非譯名漂移；也防 LLM 抽取時把 term
+    // 前後的數字一起抓進來（2026-07-10 Jimmy 回報「April → 4 月 1 日 /
+    // 4 月 5 日…」被判成多種譯名）。代表文字取出現段落數最多的變體
+    const merged = new Map(); // digitInvariantKey -> { text, repCount, ids }
+    for (const [text, ids] of renderMap) {
+      const key = text.replace(/[0-9０-９\s]/g, '');
+      let rec = merged.get(key);
+      if (!rec) {
+        rec = { text, repCount: 0, ids: new Set() };
+        merged.set(key, rec);
+      }
+      if (ids.size > rec.repCount) {
+        rec.text = text;
+        rec.repCount = ids.size;
+      }
+      for (const id of ids) rec.ids.add(id);
+    }
+    if (merged.size < 2) continue;
     // 互為子字串的譯名視為同一個（「普爾」⊂「老普爾」是稱謂 / 修飾差異，非漂移）
-    const renderings = [...renderMap.entries()]
-      .map(([text, ids]) => ({ text, blockIds: [...ids], count: ids.size }))
+    const renderings = [...merged.values()]
+      .map((r) => ({ text: r.text, blockIds: [...r.ids], count: r.ids.size }))
       .sort((a, b) => b.count - a.count);
     const distinct = renderings.filter((r, i) =>
       !renderings.some((other, j) => j < i && (other.text.includes(r.text) || r.text.includes(other.text))));
