@@ -435,6 +435,120 @@ export async function extractGlossary(compressedText, settings) {
   return { glossary, usage };
 }
 
+// v2.0.11: 一致性掃描的「譯名對照抽取」固定 prompt。機械性任務（在譯文中找
+// 指定原文詞的實際譯法子字串），非品味判斷 → 不開使用者自訂，不進 options
+const SCAN_RENDERINGS_PROMPT = `You are given proper-noun terms from a source-language book. Each term is followed by numbered passages that are TRANSLATIONS of passages containing that term. For each numbered passage, output the EXACT substring of that passage which is the translated rendering of the term (the name of the same person / place / thing). Rules:
+1. The rendering MUST be copied verbatim from the passage. Never invent or normalize text.
+2. If you cannot locate the rendering in a passage, use "" for that slot.
+3. Reply with JSON only, no explanations, no markdown fence: [{"term":"<term>","renderings":["<r1>","<r2>",...]}] where renderings[i] corresponds to passage [i+1] of that term.`;
+
+/**
+ * v2.0.11: 一致性掃描——批次抽取「原文詞在譯文中的實際譯法」。
+ * 結構鏡像 extractGlossary（best-effort 單次請求、AbortController timeout、
+ * usage 解析、code fence / 雜訊剝除），模型同術語表設定（預設 Flash Lite）。
+ * @param {Array<{term:string, samples:Array<{text:string}>}>} items
+ * @returns {Promise<{ renderings: Array<{term:string, renderings:string[]}>, usage, _diag?: string }>}
+ */
+export async function extractTermRenderings(items, settings) {
+  const emptyUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+  const { apiKey, geminiConfig, glossary: glossaryConfig } = settings;
+  if (!Array.isArray(items) || items.length === 0) {
+    return { renderings: [], usage: emptyUsage };
+  }
+  const model = (glossaryConfig?.model || '').trim() || geminiConfig.model;
+  const fetchTimeoutMs = glossaryConfig?.fetchTimeoutMs ?? 20_000;
+
+  const parts = [];
+  for (const item of items) {
+    parts.push(`### ${item.term}`);
+    item.samples.forEach((s, i) => parts.push(`[${i + 1}] ${s.text}`));
+  }
+  const userText = parts.join('\n');
+
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    systemInstruction: { parts: [{ text: SCAN_RENDERINGS_PROMPT }] },
+    generationConfig: {
+      temperature: glossaryConfig?.temperature ?? 1.0,
+      ...buildSamplingFields(model, { topP: geminiConfig.topP, topK: geminiConfig.topK }),
+      maxOutputTokens: Math.max(geminiConfig.maxOutputTokens || 0, 4096),
+      thinkingConfig: pickThinkingConfig(model),
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+    ],
+  };
+  if (geminiConfig.serviceTier && geminiConfig.serviceTier !== 'DEFAULT') {
+    body.service_tier = geminiConfig.serviceTier.toLowerCase();
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  await debugLog('info', 'scan', 'term renderings request', { model, terms: items.length, chars: userText.length });
+  const t0 = Date.now();
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), fetchTimeoutMs);
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(abortTimer);
+    const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';
+    await debugLog('error', 'scan', `term renderings failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
+    return { renderings: [], usage: emptyUsage, _diag: `${reason}: ${err.message}` };
+  }
+  let json;
+  try {
+    json = await resp.json();
+  } catch (parseErr) {
+    return { renderings: [], usage: emptyUsage, _diag: `resp.json() failed: ${parseErr.message}` };
+  } finally {
+    clearTimeout(abortTimer);
+  }
+  const usage = parseGeminiUsage(json?.usageMetadata);
+  if (!resp.ok) {
+    const errMsg = json?.error?.message || `HTTP ${resp.status}`;
+    await debugLog('error', 'scan', 'term renderings failed (API)', { status: resp.status, error: errMsg });
+    return { renderings: [], usage, _diag: `API error ${resp.status}: ${errMsg}` };
+  }
+  const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  let jsonStr = rawText.trim();
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim();
+  } else {
+    const firstBracket = jsonStr.search(/[\[{]/);
+    const lastBracket = Math.max(jsonStr.lastIndexOf(']'), jsonStr.lastIndexOf('}'));
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
+    }
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (parseErr) {
+    await debugLog('warn', 'scan', 'term renderings JSON parse failed', { error: parseErr.message, preview: rawText.slice(0, 300) });
+    return { renderings: [], usage, _diag: `JSON parse error: ${parseErr.message}` };
+  }
+  let entries = Array.isArray(parsed) ? parsed : null;
+  if (!entries && parsed && typeof parsed === 'object') {
+    const arrKey = Object.keys(parsed).find((k) => Array.isArray(parsed[k]));
+    entries = arrKey ? parsed[arrKey] : null;
+  }
+  const renderings = (entries || [])
+    .filter((e) => e && typeof e.term === 'string' && Array.isArray(e.renderings))
+    .map((e) => ({ term: e.term, renderings: e.renderings.map((r) => (typeof r === 'string' ? r : '')) }));
+  await debugLog('info', 'scan', 'term renderings done', { terms: renderings.length, elapsed: Date.now() - t0, usage });
+  return { renderings, usage };
+}
+
 /**
  * 為「送到 Instapaper」產生文章摘要(3-4 句,目標語言)。
  *

@@ -27,7 +27,7 @@ test('translate-doc index.html 依 uiLanguage 載入對應 dict', async ({ conte
   // zh-TW 載入確認
   await expect(page.locator('[data-i18n="doc.header"]')).toHaveText('翻譯文件（beta）');
   await expect(page.locator('[data-i18n="doc.upload.dropzone.title"]')).toHaveText('拖放文件至此');
-  await expect(page.locator('[data-i18n="doc.upload.constraint.value"]')).toHaveText('50 頁 / 10 MB');
+  await expect(page.locator('[data-i18n="doc.upload.constraint.value"]')).toHaveText('PDF 50 頁 / 10 MB・EPUB 100 MB');
 
   // 切 en → 文字立即更新
   await setUi(context, 'en');
@@ -57,8 +57,9 @@ test('translate-doc data-i18n-attr-* / data-i18n-html 正確 apply', async ({ co
   const title = await page.locator('#extract-glossary-btn').getAttribute('title');
   expect(title).toContain('glossary');
 
-  // data-i18n-html(edit help 段含 <strong> / <code>)
-  const editHelp = await page.locator('.edit-help').first().innerHTML();
+  // data-i18n-html(edit help 段含 <strong> / <code>)。v2.0.11 起 EPUB 預覽提示
+  // 也用 .edit-help class(純 data-i18n),鎖 [data-i18n-html] 屬性選對象
+  const editHelp = await page.locator('.edit-help[data-i18n-html]').first().innerHTML();
   expect(editHelp).toContain('<strong>');
   expect(editHelp.toLowerCase()).toContain('bold');
 

@@ -540,6 +540,10 @@ export const DEFAULT_SETTINGS = {
   // sub-key,不影響 systemPrompt 共用。改變 systemPrompt 會影響譯文 cache key sha1。
   translateDoc: {
     systemPrompt: DEFAULT_DOC_SYSTEM_PROMPT,
+    // v2.0.11：文件翻譯每批段數（1-100）。電子書段落多，20 段太保守——請求數
+    // 與 prompt 開銷都高；預設 50。只影響文件翻譯路徑（payload.docBatchSize
+    // → handleTranslate 覆蓋 maxUnitsPerBatch)，網頁 / 字幕翻譯不受影響
+    batchSize: 50,
     applyGlossary: false, // 預設術語表一致化(stage-result modal 內每次仍可 override)
     // 獨立 temperature,跟主 geminiConfig.temperature 區隔。
     // v1.10.18:從 0.5 改 1.0。文件翻譯也跑在 Gemini 3 模型,官方建議維持 1.0(設低於

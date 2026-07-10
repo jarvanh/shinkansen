@@ -104,4 +104,16 @@ describe('clearDocTranslationCache key 比對（2026-07-08 regex 修正）', () 
     expect(n).toBe(0);
     expect(removed).toHaveLength(0);
   });
+
+  // v2.0.11 EPUB：bookgloss_<書指紋> 是全書術語表持久化 key，屬文件翻譯 cache
+  // 範疇，「清除所有文件翻譯記憶」要一併清；gloss_（頁面/單輪抽取快取）不受影響
+  test('bookgloss_ 前綴（EPUB 全書術語表）一併清，gloss_ 不誤清', async () => {
+    const { ctx, removed } = loadCacheModule({
+      [`bookgloss_${SHA}`]: { glossary: [], updatedAt: 0 },
+      [`gloss_${SHA}`]: 'x',
+    });
+    const n = await ctx.clearDocTranslationCache();
+    expect(n).toBe(1);
+    expect(removed).toEqual([`bookgloss_${SHA}`]);
+  });
 });

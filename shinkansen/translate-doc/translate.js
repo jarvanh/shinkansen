@@ -14,6 +14,7 @@
 //   - 段落級 retry UI(W5)
 
 import { TRANSLATABLE_TYPES } from './block-types.js';
+import { normalizeNameSeparators } from './epub-engine.js';
 
 // 背景端錯誤的本地化（error code 協定，lib/bg-error.js）。lib/i18n.js 由 index.html
 // <script src> 載入 attach 到 window.__SK.i18n；還沒載入（init race）或沒帶 code 的
@@ -71,11 +72,27 @@ export function collectGlossaryInputParts(doc, maxChars) {
  * @param {Array}     [options.glossary]      — 額外術語表(可選)
  * @param {string}    [options.engine]        — 'gemini' | 'openai-compat'，預設 gemini
  * @param {AbortSignal} [options.signal]      — 取消信號
+ * @param {(block, page) => boolean} [options.blockFilter] — EPUB 章節選翻：回 false 的
+ *   block 完全不動（不重設狀態、不送翻）。續翻時用它跳過未勾選章節與已 done 的 block
+ * @param {boolean}   [options.filterGlossary] — EPUB 全書術語表批次級過濾：每批只注入
+ *   該批原文實際出現的條目（全書數百條全量注入太燒 token；substring 過濾是確定性
+ *   動作，不影響譯名一致性——glossary 本身在翻譯前已鎖定）
  * @param {(progress: TranslateProgress) => void} [options.onProgress]
  * @returns {Promise<TranslateSummary>}
  */
 export async function translateDocument(doc, options = {}) {
-  const { modelOverride, glossary, signal, onProgress = () => {}, engine = 'gemini' } = options;
+  const {
+    modelOverride, glossary, signal, onProgress = () => {}, engine = 'gemini',
+    blockFilter, filterGlossary,
+    // EPUB 本書獨立禁用詞（2026-07-10）：background 與 options 共通清單合併注入
+    extraForbiddenTerms = null,
+    // 每批段數（2026-07-10）：settings.translateDoc.batchSize（預設 50）。
+    // 同一值也隨 payload.docBatchSize 送 background 覆蓋 maxUnitsPerBatch，
+    // 讓「一批」= 一次 API 請求（否則 adapter 端仍按預設 20 重切）
+    batchSize = null,
+  } = options;
+  const chunkSize = (Number.isInteger(batchSize) && batchSize >= 1 && batchSize <= 100)
+    ? batchSize : DOC_CHUNK_SIZE;
   // v1.9.6: Google MT 沒 doc handler（沒 batch-aware marker / glossary 注入機制），
   // 早期擋 + throw，避免 silent fall-through 跑 Gemini 用錯 key / 錯 model。
   // UI 層（index.js startTranslate）會在更早攔下並顯示提示，這裡是防禦深度。
@@ -89,6 +106,7 @@ export async function translateDocument(doc, options = {}) {
   for (const page of doc.pages) {
     for (const block of page.blocks) {
       if (TRANSLATABLE_TYPES.has(block.type) && block.plainText && block.plainText.trim().length > 0) {
+        if (blockFilter && !blockFilter(block, page)) continue;
         queue.push(block);
         block.translationStatus = 'pending';
         block.translation = null;
@@ -113,8 +131,8 @@ export async function translateDocument(doc, options = {}) {
   console.log('[Shinkansen] translateDocument start', {
     filename: doc.meta?.filename,
     totalBlocks,
-    chunks: Math.ceil(totalBlocks / DOC_CHUNK_SIZE),
-    chunkSize: DOC_CHUNK_SIZE,
+    chunks: Math.ceil(totalBlocks / chunkSize),
+    chunkSize,
     modelOverride: modelOverride || '(default)',
     pages: doc.pages.length,
   });
@@ -122,7 +140,7 @@ export async function translateDocument(doc, options = {}) {
   emit();
 
   // 2) 切 chunk 逐批送
-  for (let start = 0; start < queue.length; start += DOC_CHUNK_SIZE) {
+  for (let start = 0; start < queue.length; start += chunkSize) {
     if (signal?.aborted) {
       // 標 cancelled，剩下 block 保留 pending(UI 顯示原文)
       for (let j = start; j < queue.length; j++) {
@@ -131,7 +149,7 @@ export async function translateDocument(doc, options = {}) {
       break;
     }
 
-    const chunk = queue.slice(start, start + DOC_CHUNK_SIZE);
+    const chunk = queue.slice(start, start + chunkSize);
     // W7:送 LLM 的文字含 inline style marker(⟦b⟧/⟦i⟧/⟦l:N⟧)。fallback:
     // 沒 styleSegments 的 block(舊 fixture / parser 失敗等)用 plainText。
     const texts = chunk.map((b) => buildMarkedText(b));
@@ -139,13 +157,19 @@ export async function translateDocument(doc, options = {}) {
     chunk.forEach((b) => { b.translationStatus = 'translating'; });
     emit();
 
+    // EPUB 全書術語表批次級過濾（見 options doc）；PDF 路徑不帶 filterGlossary，
+    // 行為不變（整份 glossary 每批注入）
+    const chunkGlossary = filterGlossary
+      ? filterGlossaryForTexts(glossary, texts)
+      : glossary;
+
     const t0 = Date.now();
     let response;
     try {
       const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
       response = await chrome.runtime.sendMessage({
         type: messageType,
-        payload: { texts, modelOverride, glossary, preferArticleGlossary: true },
+        payload: { texts, modelOverride, glossary: chunkGlossary, preferArticleGlossary: true, extraForbiddenTerms, docBatchSize: chunkSize },
       });
     } catch (err) {
       // background 完全沒回應(extension reload / service worker crash 等)
@@ -198,6 +222,19 @@ export async function translateDocument(doc, options = {}) {
       const b = chunk[i];
       const tr = response.result[i];
       if (typeof tr === 'string' && tr.length > 0) {
+        // EPUB block：原始譯文（含 ⟦N⟧ 佔位符）留給 epub-writer 反序列化；
+        // translation 欄位存去除標記後的純文字（預覽 / 複製用）
+        if (b.epubSerializedText != null) {
+          // 人名間隔號正規化（CJK·CJK → CJK・CJK，2026-07-10）——確定性保證，
+          // 不靠 LLM 服從；也讓 dedupe 的 target 比對兩端形式一致
+          const norm = normalizeNameSeparators(tr);
+          b.translationRaw = norm;
+          b.translation = stripPlaceholderTokens(norm);
+          b.editedHtml = null; // 重翻覆蓋預覽頁的手動編輯（UI 有提示）
+          b.translationStatus = 'done';
+          translatedBlocks++;
+          continue;
+        }
         // W7:譯文 parse 出 inline segments,寫回 block.translationSegments。
         // parser 失敗(marker 對不齊)會 fallback 整段 plain regular,不破渲染。
         // block.translation 保留為「parser 還原後的純文字」(複製譯文用),
@@ -238,10 +275,11 @@ export async function translateDocument(doc, options = {}) {
   // 全 cache hit 場景 background 端 shouldSkipUsageRecord 會自動跳過，不污染列表
   try {
     const filename = (doc.meta && doc.meta.filename) || 'unknown.pdf';
+    const urlScheme = doc.kind === 'epub' ? 'epub' : 'pdf';
     await chrome.runtime.sendMessage({
       type: 'LOG_USAGE',
       payload: {
-        url: `pdf://${filename}`,
+        url: `${urlScheme}://${filename}`,
         title: filename,
         inputTokens: cumulativeInputTokens,
         outputTokens: cumulativeOutputTokens,
@@ -280,7 +318,7 @@ export async function translateDocument(doc, options = {}) {
     const avgBatchMs = batchTimes.length > 0
       ? batchTimes.reduce((a, b) => a + b, 0) / batchTimes.length
       : 0;
-    const remainingChunks = Math.max(0, Math.ceil((totalBlocks - translatedBlocks) / DOC_CHUNK_SIZE));
+    const remainingChunks = Math.max(0, Math.ceil((totalBlocks - translatedBlocks) / chunkSize));
     const estimatedRemainingSec = avgBatchMs > 0
       ? Math.round((remainingChunks * avgBatchMs) / 1000)
       : 0;
@@ -371,6 +409,16 @@ export async function translateSingleBlock(block, options = {}) {
 
   const tr = response.result[0];
   if (typeof tr === 'string' && tr.length > 0) {
+    // EPUB block：同 translateDocument 的 epub 分支
+    if (block.epubSerializedText != null) {
+      const norm = normalizeNameSeparators(tr);
+      block.translationRaw = norm;
+      block.translation = stripPlaceholderTokens(norm);
+      block.editedHtml = null; // 重翻覆蓋預覽頁的手動編輯
+      block.translationStatus = 'done';
+      block.translationError = null;
+      return { ok: true };
+    }
     const parsed = parseMarkedTranslation(tr, block.linkUrls || []);
     block.translationSegments = parsed.segments;
     block.translation = parsed.plainText;
@@ -386,6 +434,46 @@ export async function translateSingleBlock(block, options = {}) {
     console.warn('[Shinkansen] retry empty translation', block.blockId);
     return { ok: false, error: 'empty translation' };
   }
+}
+
+// ============================================================================
+// EPUB 專用 helpers
+// ============================================================================
+
+// 去除譯文中的 ⟦N⟧ / ⟦/N⟧ / ⟦*N⟧ 佔位符標記（預覽 / 複製用純文字）。
+// 反序列化重建走 epub-writer 的 SK.deserializeWithPlaceholders，不用這個。
+export function stripPlaceholderTokens(s) {
+  const SK = (typeof window !== 'undefined' && window.__SK) || null;
+  if (SK && typeof SK.stripStrayPlaceholderMarkers === 'function') {
+    return SK.stripStrayPlaceholderMarkers(s).replace(/\s{2,}/g, ' ').trim();
+  }
+  return (s || '').replace(/⟦\*?\/?\d+⟧/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+// EPUB 全書術語表的批次級過濾：只保留該批原文實際出現的條目（大小寫不敏感）。
+// 確定性動作：glossary 在翻譯前已鎖定，此處只是「這批用不到的條目不送」省 token，
+// 不改變任何譯名決策。
+//
+// 部分比對規則（2026-07-09 真書實測補）：多詞條目（如 Richard Enfield）在章節內
+// 常以末詞（姓氏 Enfield）單獨出現——只比對完整 source 會把這條濾掉，LLM 對姓氏
+// 自由發揮造成譯名漂移（實測 Jekyll & Hyde：恩菲爾德 → 恩菲爾）。所以多詞條目
+// 改成「完整 source 或末詞（≥3 字元）出現」都算命中——多送一條無害（LLM 拿到
+// 全名對照能推姓氏譯法），漏送才是漂移來源。
+export function filterGlossaryForTexts(glossary, texts) {
+  if (!Array.isArray(glossary) || glossary.length === 0) return glossary;
+  const haystack = texts.join('\n').toLowerCase();
+  const hit = glossary.filter((e) => {
+    const src = (e && e.source || '').toLowerCase().trim();
+    if (!src) return false;
+    if (haystack.includes(src)) return true;
+    const words = src.split(/\s+/);
+    if (words.length >= 2) {
+      const last = words[words.length - 1];
+      if (last.length >= 3 && haystack.includes(last)) return true;
+    }
+    return false;
+  });
+  return hit.length > 0 ? hit : null;
 }
 
 // ============================================================================
@@ -418,6 +506,9 @@ const MARKER_TAG_RE = /⟦(?:b|i|l:\d+|\/b|\/i|\/l)⟧/g;
  */
 export function buildMarkedText(block) {
   if (!block) return '';
+  // EPUB block：送 ⟦N⟧ 佔位符序列化文字（epub-engine 產出；system-instruction
+  // 偵測到 ⟦ 會自動注入佔位符協定規則）。W7 styleSegments 是 PDF 專用路徑
+  if (block.epubSerializedText != null) return block.epubSerializedText;
   const segs = block.styleSegments;
   const linkUrls = block.linkUrls || [];
   if (!Array.isArray(segs) || segs.length === 0) {

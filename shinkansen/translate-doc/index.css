@@ -233,6 +233,10 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* 顯式 display:flex 蓋掉 UA 的 [hidden]（本頁已踩多次的同款陷阱）——
+   累計費用 row 未有費用前必須真的隱藏 */
+.result-row[hidden] { display: none !important; }
+
 .result-row:last-child {
   border-bottom: none;
 }
@@ -266,6 +270,11 @@ body {
 }
 
 /* ----- 按鈕 ----- */
+
+/* display: inline-block 會蓋掉 UA 的 [hidden] display:none（本頁已踩三次的
+ * 同款 bug：.epub-output-format / .g-opt / 這裡），按鈕類直接通殺補回 */
+.primary-btn[hidden],
+.secondary-btn[hidden] { display: none !important; }
 
 .primary-btn,
 .secondary-btn {
@@ -1071,7 +1080,8 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
  * 術語更多顯示空間,不增加 entry 密度——使用者反映兩欄資訊太密 */
 .glossary-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 70px;
+  /* v2.0.11：加「選項」欄（不翻譯 / 對照一次 toggle） */
+  grid-template-columns: 1fr 1fr minmax(150px, auto) 70px;
   column-gap: 12px;
   row-gap: 6px;
   align-items: center;
@@ -1150,4 +1160,416 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
   font-size: 12px;
   color: var(--text-faint);
   text-align: right;
+}
+
+/* ============ EPUB 章節選翻（v2.0.11） ============ */
+.chapters-select-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.chapters-list {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.chapter-row {
+  display: grid;
+  grid-template-columns: 1fr 72px 84px 96px 64px;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border, #eee);
+  font-size: 13px;
+}
+.chapter-row:last-child { border-bottom: none; }
+.chapter-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.chapter-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chapter-title.is-matter { opacity: 0.55; }
+.chapter-chars, .chapter-cost {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, #777);
+}
+.chapter-status { text-align: center; color: var(--muted, #777); }
+.chapter-status[data-state="done"] { color: #1a7f37; }
+.chapter-status[data-state="failed"] { color: #c62828; }
+.chapter-status[data-state="partial"] { color: #b26a00; }
+.chapter-preview-btn {
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* 單章譯文預覽 */
+.epub-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+/* 標題獨立成行（不跟返回按鈕擠同一列，2026-07-10 Jimmy 回報） */
+#epub-preview-title {
+  margin: 4px 0 12px;
+}
+.epub-preview-content {
+  max-width: 720px;
+  margin: 0 auto;
+  line-height: 1.8;
+  font-size: 15px;
+}
+.epub-preview-block[data-state="pending"],
+.epub-preview-block[data-state="cancelled"] { opacity: 0.45; }
+.epub-preview-block[data-state="failed"] {
+  opacity: 0.7;
+  border-left: 3px solid #c62828;
+  padding-left: 8px;
+}
+
+/* ============ 術語表選項欄 + EPUB 預覽編輯（v2.0.11） ============ */
+.g-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.g-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* display 顯式值會蓋掉 UA 的 [hidden]（同 .epub-output-format 的教訓），顯式補回 */
+.g-opt[hidden],
+.g-dedupe-keep[hidden] { display: none !important; }
+.g-opt input[type="checkbox"] { margin: 0; }
+.g-dedupe-keep {
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+.glossary-grid input[type="text"]:disabled { opacity: 0.5; }
+
+/* 章節清單的動作列項目多，允許整顆換行、禁止按鈕 / label 內部折行直排 */
+#stage-chapters .result-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+#stage-chapters .result-actions button { white-space: nowrap; }
+
+.epub-output-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+/* display: inline-flex 會蓋掉 UA 的 [hidden] display:none(同 options 頁踩過的
+ * 死按鈕 bug），必須顯式補回 */
+.epub-output-format[hidden] { display: none !important; }
+.epub-output-format select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* 預覽段落可編輯：hover / focus 給邊界提示，編輯過的段落左緣標記 */
+.epub-preview-block[contenteditable="true"]:hover {
+  outline: 1px dashed var(--border-strong, #bbb);
+  outline-offset: 4px;
+}
+.epub-preview-block[contenteditable="true"]:focus {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: 4px;
+}
+.epub-preview-block.is-edited {
+  border-left: 3px solid var(--primary, #2563eb);
+  padding-left: 8px;
+}
+
+/* ============ 第三批（2026-07-10）：分組 / 本書禁用詞 / 全書預覽搜尋取代 ============ */
+.glossary-group-header {
+  grid-column: 1 / -1;
+  font-weight: 600;
+  padding: 12px 4px 4px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.glossary-person-toggle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 12px;
+}
+/* 對齊 .glossary-table-wrap 的水平內距（16px），並給頁尾留白——
+ * 區塊在 wrap 外面，沒補內距會貼齊左緣與下緣（2026-07-10 Jimmy 回報） */
+.book-forbidden-section {
+  margin-top: 12px;
+  padding: 0 16px 48px;
+}
+.book-forbidden-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 70px;
+  column-gap: 12px;
+  row-gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+.book-forbidden-grid input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+}
+.epub-sr-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 4px;
+  flex-wrap: wrap;
+}
+.epub-sr-bar input {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  flex: 0 1 220px;
+}
+.epub-preview-original {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: -8px 0 16px;
+  padding-left: 8px;
+  border-left: 3px solid var(--border);
+}
+.epub-preview-chapter-title {
+  margin-top: 32px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ============ 2026-07-10 第四批：分組 header toggle / 翻譯中動態提示 ============ */
+.glossary-group-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.glossary-group-header .glossary-person-toggle {
+  font-weight: 400;
+  margin-left: 0;
+}
+
+/* 翻譯中：標題旁小 spinner + 進度條 shimmer，長批次期間也有動態感（避免像當機） */
+.translating-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.spinner-ring--sm {
+  width: 22px;
+  height: 22px;
+  border-width: 2.5px;
+}
+.translate-progress-fill {
+  position: relative;
+  overflow: hidden;
+}
+.translate-progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: sk-shimmer 1.4s linear infinite;
+}
+@keyframes sk-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+/* 術語表抽取 loading 也給 spinner（全書多輪抽取 forceRefresh 後是真等待） */
+.glossary-state.is-loading::before {
+  content: '';
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 10px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+/* 放棄本書翻譯：破壞性動作，紅字提示 */
+.chapters-discard-btn { color: #c62828; }
+.chapters-discard-btn:hover {
+  border-color: #c62828;
+  background: #fdf3f2;
+}
+
+/* 翻譯設定 dialog：Google MT preset 禁選 + 每批段數輸入（2026-07-10） */
+.settings-preset-row.is-unsupported {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.preset-unsupported-note {
+  font-size: 12px;
+  color: var(--error-text);
+  white-space: nowrap;
+}
+.settings-batch-input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* 術語表欄位排序 header（2026-07-10） */
+.g-header.g-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.g-header.g-sortable:hover { background: var(--border); }
+.g-sort-arrow {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--primary);
+}
+
+/* 翻譯設定 dialog 內的 checkbox label 對齊 .settings-label 字階（13px 灰）——
+ * .g-opt 在 dialog 情境繼承 body 15px 黑字，跟同區 label 不搭（2026-07-10 Jimmy 回報） */
+#translate-settings-dialog .g-opt {
+  font-size: 13px;
+  color: var(--text-muted);
+  gap: 6px;
+}
+
+/* ----- 譯後一致性掃描（v2.0.11） ----- */
+
+/* 顯式 display 蓋 [hidden] 的同款陷阱，先補 */
+.scan-findings-btn[hidden] { display: none !important; }
+
+.scan-findings-btn {
+  display: block;
+  width: 100%;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid rgba(0, 113, 227, 0.18);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.scan-findings-btn:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.scan-empty {
+  padding: 24px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.scan-section-title {
+  margin: 24px 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.scan-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.scan-case {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.scan-case-term {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.scan-rendering-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.scan-rendering-count {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-case-actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.scan-case-status {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.scan-compliance-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.scan-compliance-row:last-child { border-bottom: none; }
+
+.scan-compliance-excerpt {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-muted);
 }

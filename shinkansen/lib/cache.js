@@ -11,6 +11,7 @@ import { debugLog } from './logger.js';
 
 const KEY_PREFIX = 'tc_';
 const GLOSSARY_PREFIX = 'gloss_';   // v0.69: 術語表快取
+const SCAN_PREFIX = 'scanr_';       // v2.0.11: 一致性掃描譯名對照快取（EPUB）
 const VERSION_KEY = '__cacheVersion';
 
 // browser.storage.local 預設配額 10MB。保留 512KB 給非快取資料（設定、使用量統計、
@@ -152,7 +153,7 @@ async function evictOldest(targetBytes, preFetchedAll = null) {
   const all = preFetchedAll || await browser.storage.local.get(null);
   const cacheEntries = [];
   for (const [key, value] of Object.entries(all)) {
-    if (key.startsWith(KEY_PREFIX) || key.startsWith(GLOSSARY_PREFIX)) {
+    if (key.startsWith(KEY_PREFIX) || key.startsWith(GLOSSARY_PREFIX) || key.startsWith(SCAN_PREFIX)) {
       cacheEntries.push({
         key,
         size: estimateEntrySize(key, value),
@@ -225,7 +226,7 @@ async function getCacheUsageBytes() {
   const all = await browser.storage.local.get(null);
   let bytes = 0;
   for (const [key, value] of Object.entries(all)) {
-    if (key.startsWith(KEY_PREFIX) || key.startsWith(GLOSSARY_PREFIX)) {
+    if (key.startsWith(KEY_PREFIX) || key.startsWith(GLOSSARY_PREFIX) || key.startsWith(SCAN_PREFIX)) {
       bytes += estimateEntrySize(key, value);
     }
   }
@@ -406,6 +407,26 @@ export async function setGlossary(inputHash, glossary, suffix = '') {
   await safeStorageSet({ [key]: { v: glossary, t: Date.now() } });
 }
 
+/**
+ * v2.0.11: 一致性掃描譯名對照快取（同 payload 同結果，續翻後重掃不重複計費）。
+ * 內容指紋為 key，跟 gloss_ 同 { v, t } 格式、同 LRU 淘汰池。
+ */
+export async function getScanRenderings(inputHash) {
+  const key = SCAN_PREFIX + inputHash;
+  const stored = await browser.storage.local.get(key);
+  const entry = stored[key];
+  if (entry && typeof entry === 'object' && Array.isArray(entry.v)) {
+    safeStorageSet({ [key]: { v: entry.v, t: Date.now() } }).catch(() => {});
+    return entry.v;
+  }
+  return null;
+}
+
+export async function setScanRenderings(inputHash, renderings) {
+  const key = SCAN_PREFIX + inputHash;
+  await safeStorageSet({ [key]: { v: renderings, t: Date.now() } });
+}
+
 /** v0.69: 計算文字 SHA-1（匯出給 background 使用）。 */
 export { hashText };
 
@@ -414,7 +435,7 @@ export { hashText };
  */
 export async function clearAll() {
   const all = await browser.storage.local.get(null);
-  const toRemove = Object.keys(all).filter(k => k.startsWith(KEY_PREFIX) || k.startsWith(GLOSSARY_PREFIX));
+  const toRemove = Object.keys(all).filter(k => k.startsWith(KEY_PREFIX) || k.startsWith(GLOSSARY_PREFIX) || k.startsWith(SCAN_PREFIX));
   if (toRemove.length) {
     await browser.storage.local.remove(toRemove);
   }
@@ -462,7 +483,10 @@ export async function stats() {
  */
 export async function clearDocTranslationCache() {
   const all = await browser.storage.local.get(null);
-  const docKeys = Object.keys(all).filter((k) => /^tc_[0-9a-f]{40}(?:_oc)?_doc(?:_|$)/.test(k));
+  // v2.0.11: bookgloss_ 是 EPUB 全書術語表持久化 key(translate-doc 頁寫入)，
+  // 屬文件翻譯 cache 範疇，「清除文件翻譯快取」一併清
+  const docKeys = Object.keys(all).filter((k) =>
+    /^tc_[0-9a-f]{40}(?:_oc)?_doc(?:_|$)/.test(k) || k.startsWith('bookgloss_'));
   if (docKeys.length > 0) {
     await browser.storage.local.remove(docKeys);
   }

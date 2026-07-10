@@ -3,7 +3,7 @@
 
 import { browser } from './lib/compat.js';
 import { IS_IOS_BUILD } from './lib/distribution.js'; // Phase 2: host app 設定橋接只在 iOS build 走 native messaging
-import { translateBatch, extractGlossary, translateBatchStream, summarizeArticle } from './lib/gemini.js';
+import { translateBatch, extractGlossary, extractTermRenderings, translateBatchStream, summarizeArticle } from './lib/gemini.js';
 import { translateBatch as translateBatchCustom, extractGlossary as extractGlossaryCustom } from './lib/openai-compat.js'; // v1.5.7
 import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettings, getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt, LANG_LABELS } from './lib/storage.js';
@@ -1004,6 +1004,13 @@ const messageHandlers = {
     async: true,
     handler: (payload, sender) => handleExtractGlossaryCustomProvider(payload, sender),
   },
+  // v2.0.11: EPUB 譯後一致性掃描——批次抽取「原文詞在譯文中的實際譯法」
+  //（同 EXTRACT_GLOSSARY 的抽取類任務定位：走術語表模型、best-effort、
+  //  usage 記入 usage-db source='scan'、billedCostUSD 回給頁面累進本書累計費用）
+  SCAN_TERM_RENDERINGS: {
+    async: true,
+    handler: (payload, sender) => handleScanTermRenderings(payload, sender),
+  },
   CLEAR_CACHE: {
     async: true,
     handler: () => cache.clearAll().then(async (removed) => {
@@ -1360,6 +1367,22 @@ _registerAlarm(_STREAM_KEEPALIVE_ALARM, () => {
 // 但用 ytSubtitle.systemPrompt / ytSubtitle.model / ytSubtitle.pricing / cacheTag '_yt'。
 // 設計：async fire-and-forget，結果透過 tabs.sendMessage 推回 sender tab。
 // scope 限制：只給文章翻譯 + 人工字幕 batch 0 用，ASR LLM 路徑下一輪再套。
+// v2.0.11:EPUB「本書獨立禁用詞」——translate-doc 頁隨批次 payload 送，與
+// options 共通清單合併。_b cache hash 由合併後清單計算（buildCacheKeySuffix),
+// 書級清單變更 → 既有快取自動失效。上限 200 條防 prompt 暴脹；逐條欄位驗型別，
+// 值的消毒交給 lib/system-instruction.js sanitizeTermText（單一資料源）。
+function mergeExtraForbiddenTerms(baseList, extras) {
+  if (!Array.isArray(extras) || extras.length === 0) return baseList;
+  const cleaned = extras.slice(0, 200)
+    .filter((e) => e && typeof e.forbidden === 'string' && e.forbidden.trim())
+    .map((e) => ({
+      forbidden: e.forbidden,
+      replacement: typeof e.replacement === 'string' ? e.replacement : '',
+    }));
+  if (cleaned.length === 0) return baseList;
+  return [...baseList, ...cleaned];
+}
+
 async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}) {
   const {
     cacheTag = '',
@@ -1456,8 +1479,10 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     payload?.glossary,
     payload?.preferArticleGlossary,
   );
-  const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
-    ? settings.forbiddenTerms : [];
+  const forbiddenTermsList = mergeExtraForbiddenTerms(
+    (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms)) ? settings.forbiddenTerms : [],
+    payload?.extraForbiddenTerms,
+  );
 
   // v1.8.1/v1.8.9: cache key suffix 跟 handleTranslate 同 key 規則（v1.10.46 起共用
   // buildCacheKeySuffix 單一資料源）— 起始 cacheTag（'_yt' / ''）
@@ -1663,6 +1688,11 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     ...settings,
     geminiConfig: { ...settings.geminiConfig, ...geminiOverrides, systemInstruction: baseSI },
   };
+  // v2.0.11：文件翻譯每批段數（translate-doc 頁隨 payload 送，只有 TRANSLATE_DOC_BATCH*
+  // 會帶)。覆蓋頂層 maxUnitsPerBatch → gemini.js packChunks 以此切 API 請求
+  if (Number.isInteger(payload.docBatchSize) && payload.docBatchSize >= 1 && payload.docBatchSize <= 100) {
+    effectiveSettings.maxUnitsPerBatch = payload.docBatchSize;
+  }
   // v1.4.12: preset 帶 modelOverride 時，從內建表查對應 model 的 pricing，
   // 確保 toast / usage log 的費用與 model 一致（Flash Lite $0.25/$1.50、Flash $0.50/$3.00）。
   // 優先順序：pricingOverride（字幕獨立計價） > modelOverride 查表 > settings.pricing
@@ -1696,8 +1726,10 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
   // 同時計算 hash 加進 cache key 後綴，讓使用者修改清單後既有快取自動失效。
   // 空清單時 hash 為空字串，不附加後綴，向下相容既有 v1.5.5 之前的快取 key。
   // v1.5.8: 字幕路徑（applyForbiddenTerms=false）跳過，省 prompt token。
-  const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
-    ? settings.forbiddenTerms : [];
+  const forbiddenTermsList = mergeExtraForbiddenTerms(
+    (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms)) ? settings.forbiddenTerms : [],
+    payload?.extraForbiddenTerms,
+  );
 
   // v1.4.12: cacheTag 由呼叫端明確指定（'_yt' = 字幕模式 / '' = 網頁翻譯含 preset）。
   // 不再用 geminiOverrides 是否有值來判斷，因為 preset 快速鍵也會傳 { model } override，
@@ -2008,8 +2040,10 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
   );
 
   // v1.5.8: 字幕路徑（applyForbiddenTerms=false）跳過
-  const forbiddenTermsList = (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms))
-    ? settings.forbiddenTerms : [];
+  const forbiddenTermsList = mergeExtraForbiddenTerms(
+    (applyForbiddenTerms && Array.isArray(settings.forbiddenTerms)) ? settings.forbiddenTerms : [],
+    payload?.extraForbiddenTerms,
+  );
 
   // Cache key：'_oc' （網頁） / '_oc_yt' （字幕） base tag，組裝規則見 buildCacheKeySuffix
   // （v1.10.46 起三條路徑共用單一資料源）。
@@ -2055,6 +2089,11 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
     // P1 (v1.8.59):translateBatchCustom 內部讀 settings.customProvider.systemPrompt,
     // 把已 wrap 過 effective prompt 的 cp 寫回 settings.customProvider 才能讓 LLM 端拿到對的 prompt。
     const effSettings = { ...settings, customProvider: cp };
+    // v2.0.11：文件翻譯每批段數（同 handleTranslate，openai-compat packChunks 讀
+    // settings.maxUnitsPerBatch)
+    if (Number.isInteger(payload.docBatchSize) && payload.docBatchSize >= 1 && payload.docBatchSize <= 100) {
+      effSettings.maxUnitsPerBatch = payload.docBatchSize;
+    }
     let res;
     try {
       res = await translateBatchCustom(missingTexts, effSettings, glossary, fixedGlossaryEntries, forbiddenTermsList);
@@ -2254,8 +2293,10 @@ async function handleExtractGlossary(payload, sender) {
   const tl = settings.targetLanguage;
   const glossarySuffix = (tl && tl !== 'zh-TW') ? '_lang' + tl.replace(/[^a-z0-9]/gi, '') : '';
 
-  // 1. 先查術語表快取
-  const cached = await cache.getGlossary(inputHash, glossarySuffix);
+  // 1. 先查術語表快取。forceRefresh（「重新抽取」按鈕，v2.0.11）跳過快取讀取
+  //    強制重跑 API——否則同文字同 hash 秒回快取，「重新抽取」形同沒按；
+  //    新結果仍寫回快取
+  const cached = payload.forceRefresh ? null : await cache.getGlossary(inputHash, glossarySuffix);
   if (cached) {
     debugLog('info', 'glossary', 'glossary cache hit', { inputHash, terms: cached.length });
     return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
@@ -2267,9 +2308,15 @@ async function handleExtractGlossary(payload, sender) {
   debugLog('info', 'glossary', 'calling Gemini (bypassing rate limiter)');
 
   // P1: glossary prompt 走 getEffective(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
+  // v2.0.11：EPUB 書籍模式可帶 promptSuffix（角色暱稱 / 變體收錄規則，translate-doc 頁送）。
+  // caller 需自行把 suffix 摻進 inputHash(gloss_ cache key 只看 caller 給的 hash),
+  // 否則同文字不同 suffix 會吃到彼此的快取。
+  const promptSuffix = (typeof payload.promptSuffix === 'string' && payload.promptSuffix.trim())
+    ? '\n\n' + payload.promptSuffix.trim().slice(0, 2000)
+    : '';
   const glossaryEffSettings = {
     ...settings,
-    glossary: { ...settings.glossary, prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) },
+    glossary: { ...settings.glossary, prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) + promptSuffix },
   };
 
   // 3. 呼叫 Gemini 擷取術語表
@@ -2282,7 +2329,9 @@ async function handleExtractGlossary(payload, sender) {
     await cache.setGlossary(inputHash, glossary, glossarySuffix);
   }
 
-  // 5. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）
+  // 5. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）。
+  //    billedCostUSD 同時回給 caller——EPUB 頁把抽取費用累進「本書累計費用」
+  let glossaryBilledCostUSD = 0;
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
     const glossaryModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model || 'unknown';
     const glossaryPricing = getPricingForModel(glossaryModel, settings) || settings.pricing;
@@ -2293,7 +2342,7 @@ async function handleExtractGlossary(payload, sender) {
       0,
       Math.round(usage.inputTokens - (usage.cachedTokens || 0) * cachedSavedRatio),
     );
-    const billedCostUSD = computeBilledCostUSD(
+    glossaryBilledCostUSD = computeBilledCostUSD(
       usage.inputTokens,
       usage.cachedTokens || 0,
       usage.outputTokens,
@@ -2309,7 +2358,7 @@ async function handleExtractGlossary(payload, sender) {
       outputTokens: usage.outputTokens || 0,
       cachedTokens: usage.cachedTokens || 0,
       billedInputTokens,
-      billedCostUSD,
+      billedCostUSD: glossaryBilledCostUSD,
       segments: 0,
       cacheHits: 0,
       durationMs: 0,
@@ -2324,7 +2373,7 @@ async function handleExtractGlossary(payload, sender) {
     tabUrl: sender?.tab?.url,
   });
 
-  return { glossary, usage, fromCache: false, _diag: _diag || null };
+  return { glossary, usage: { ...usage, billedCostUSD: glossaryBilledCostUSD }, fromCache: false, _diag: _diag || null };
 }
 
 // 自訂 Provider 路徑術語表抽取。跟 handleExtractGlossary(Gemini）結構對齊：
@@ -2349,16 +2398,20 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
   // 1. 先查術語表快取（共用 cache.getGlossary;_diag 內含 baseUrl/model/engine 影響的話
   //    可在 inputHash 計算時考量，目前 hash 只看 compressedText 跟 Gemini 路徑共享
   //    符合「同一份原文不同 engine 抽出的術語應該等價」假設)
-  const cached = await cache.getGlossary(inputHash, glossarySuffix);
+  const cached = payload.forceRefresh ? null : await cache.getGlossary(inputHash, glossarySuffix);
   if (cached) {
     debugLog('info', 'glossary', 'openai-compat glossary cache hit', { inputHash, terms: cached.length });
     return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
   }
 
   // P1: glossary prompt 走 getEffective(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
+  // v2.0.11: EPUB 書籍模式 promptSuffix(同 handleExtractGlossary,caller 摻 hash)
+  const promptSuffix = (typeof payload.promptSuffix === 'string' && payload.promptSuffix.trim())
+    ? '\n\n' + payload.promptSuffix.trim().slice(0, 2000)
+    : '';
   const glossaryEffSettings = {
     ...settings,
-    glossary: { ...settings.glossary, prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) },
+    glossary: { ...settings.glossary, prompt: getEffectiveGlossaryPrompt(tl, settings.glossary?.prompt) + promptSuffix },
   };
 
   // 2. 呼叫自訂 Provider 抽術語表（extractGlossary 內部 best-effort，失敗回空陣列 + _diag)
@@ -2371,7 +2424,9 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
     await cache.setGlossary(inputHash, glossary, glossarySuffix);
   }
 
-  // 4. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）
+  // 4. 記錄用量到 IndexedDB（source='glossary' 區分，跟主翻譯紀錄分流）。
+  //    billedCostUSD 同時回給 caller（同 handleExtractGlossary）
+  let glossaryBilledCostUSD = 0;
   if (usage.inputTokens > 0 || usage.outputTokens > 0) {
     // v1.9.2: cache 命中折扣優先讀 cp.cachedDiscount,沒填 fallback baseUrl 自動推導
     const cachedRate = resolveCustomProviderCachedRate(cp);
@@ -2383,7 +2438,7 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
     const cpPricing = (cp.inputPerMTok || cp.outputPerMTok)
       ? { inputPerMTok: cp.inputPerMTok || 0, outputPerMTok: cp.outputPerMTok || 0 }
       : null;
-    const billedCostUSD = computeBilledCostUSD(
+    glossaryBilledCostUSD = computeBilledCostUSD(
       usage.inputTokens,
       usage.cachedTokens || 0,
       usage.outputTokens,
@@ -2399,7 +2454,7 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
       outputTokens: usage.outputTokens || 0,
       cachedTokens: usage.cachedTokens || 0,
       billedInputTokens,
-      billedCostUSD,
+      billedCostUSD: glossaryBilledCostUSD,
       segments: 0,
       cacheHits: 0,
       durationMs: 0,
@@ -2412,7 +2467,69 @@ async function handleExtractGlossaryCustomProvider(payload, sender) {
     terms: glossary.length, inputHash, tabUrl: sender?.tab?.url,
   });
 
-  return { glossary, usage, fromCache: false, _diag: _diag || null };
+  return { glossary, usage: { ...usage, billedCostUSD: glossaryBilledCostUSD }, fromCache: false, _diag: _diag || null };
+}
+
+// v2.0.11: EPUB 譯後一致性掃描——譯名對照抽取。結構鏡像 handleExtractGlossary：
+// 快取（scanr_，key 由 caller 以 items 內容 hash 計算）→ API → 寫快取 → 記用量。
+// 對照結果是「同 payload 同結果」的確定性映射 → 續翻後重掃、重開同書都吃快取，
+// 不重複計費
+async function handleScanTermRenderings(payload, sender) {
+  const settings = await getSettings();
+  if (!settings.apiKey) {
+    throw codedError('apiKeyMissing', null, '尚未設定 Gemini API Key，請至設定頁填入。');
+  }
+  const { items, inputHash } = payload;
+  const cached = inputHash ? await cache.getScanRenderings(inputHash) : null;
+  if (cached) {
+    debugLog('info', 'scan', 'scan renderings cache hit', { inputHash, terms: cached.length });
+    return { renderings: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0, billedCostUSD: 0 }, fromCache: true };
+  }
+
+  const result = await extractTermRenderings(items, settings);
+  const { renderings, usage, _diag } = result;
+
+  if (inputHash && renderings.length > 0) {
+    await cache.setScanRenderings(inputHash, renderings);
+  }
+
+  let scanBilledCostUSD = 0;
+  if (usage.inputTokens > 0 || usage.outputTokens > 0) {
+    const scanModel = (settings.glossary?.model || '').trim() || settings.geminiConfig?.model || 'unknown';
+    const scanPricing = getPricingForModel(scanModel, settings) || settings.pricing;
+    const cachedRate = pricingToCachedRate(scanPricing) ?? 0.10;
+    const cachedSavedRatio = 1 - cachedRate;
+    const billedInputTokens = Math.max(
+      0,
+      Math.round(usage.inputTokens - (usage.cachedTokens || 0) * cachedSavedRatio),
+    );
+    scanBilledCostUSD = computeBilledCostUSD(
+      usage.inputTokens,
+      usage.cachedTokens || 0,
+      usage.outputTokens,
+      scanPricing,
+      cachedRate,
+    );
+    await usageDB.logTranslation({
+      url: sender?.tab?.url || '',
+      title: sender?.tab?.title || '',
+      engine: 'gemini',
+      model: scanModel,
+      inputTokens: usage.inputTokens || 0,
+      outputTokens: usage.outputTokens || 0,
+      cachedTokens: usage.cachedTokens || 0,
+      billedInputTokens,
+      billedCostUSD: scanBilledCostUSD,
+      segments: 0,
+      cacheHits: 0,
+      durationMs: 0,
+      timestamp: Date.now(),
+      source: 'scan',
+    });
+  }
+
+  debugLog('info', 'scan', 'scan renderings complete', { terms: renderings.length, inputHash });
+  return { renderings, usage: { ...usage, billedCostUSD: scanBilledCostUSD }, fromCache: false, _diag: _diag || null };
 }
 
 // ─── 快捷鍵 ────────────────────────────────────────────────

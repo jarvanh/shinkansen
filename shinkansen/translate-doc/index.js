@@ -12,6 +12,20 @@ import { renderReader, buildPlainTextDump } from './reader.js';
 import { downloadBilingualPdf, buildBilingualPdf } from './pdf-renderer.js';
 import { formatMoney } from '../lib/format.js';
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
+// EPUB 翻譯（v2.0.11）
+import {
+  parseEpub, preflightEpubFile, estimateChapterCostUSD, EPUB_LIMITS,
+  buildBookGlossaryRounds, mergeBookGlossaries, glossaryGroupOf, normalizeNameSeparators,
+} from './epub-engine.js';
+import { buildTranslatedEpub, translatedEpubFilename, computeAnnotationDedupe } from './epub-writer.js';
+// 譯後一致性掃描（v2.0.11，SPEC §17.10.10）
+import {
+  checkGlossaryCompliance, mineCandidates, buildScanBatches, aggregateRenderings, sourceHasTerm,
+} from './epub-scan.js';
+import {
+  loadEpubSession, saveEpubSession, deleteEpubSession, collectSessionBlocks, hydrateSessionBlocks,
+} from './epub-session-db.js';
+import { getSettings } from '../lib/storage.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DEBUG_RENDER_SCALE = 1.5;
@@ -35,6 +49,10 @@ const stages = {
   edit: $('stage-edit'),
   glossary: $('stage-glossary'),
   debug: $('stage-debug'),
+  // EPUB（v2.0.11）：章節選翻清單 + 單章譯文預覽 + 一致性掃描結果
+  chapters: $('stage-chapters'),
+  epubPreview: $('stage-epub-preview'),
+  scan: $('stage-scan'),
 };
 
 let parseAbortController = null;
@@ -64,6 +82,20 @@ let cachedPresets = null;
 let currentArticleGlossary = null;
 // 記錄打開 glossary editor 的來源 stage,cancel / 翻譯後決定回哪個 stage
 let glossaryEntryStage = 'result';
+// EPUB（v2.0.11）：本書跨輪累計費用（試翻 + 續翻加總，SPEC-PRIVATE §30.4)
+let epubCumulativeCostUSD = 0;
+// 譯後一致性掃描（v2.0.11）：結果不持久化，每輪翻譯完成後重掃
+// （對照抽取有 scanr_ 內容快取，重掃不重複計費）
+let epubScanState = null; // { running, tier1: [violations], cases: [drift] }
+let epubScanGen = 0;      // 換檔 / 放棄時 ++，讓 in-flight 掃描丟棄結果
+// EPUB 書指紋（全書 plainText 的 sha1）：工作階段存檔 / 術語表持久化的 key。
+// 用內容 hash 不用 OPF dc:identifier——出版社填寫品質不可靠
+let epubBookHash = null;
+// EPUB 本書獨立禁用詞（2026-07-10）：與 options 共通清單合併注入，隨 session 持久化
+let currentBookForbidden = [];
+// EPUB 預覽狀態：原文對照 toggle + 目前預覽範圍（章節物件或 'all'）
+let epubPreviewCompare = false;
+let epubPreviewScope = null;
 
 function showStage(name) {
   for (const [key, el] of Object.entries(stages)) {
@@ -133,12 +165,23 @@ function releaseCurrentDoc() {
   currentOriginalArrayBuffer = null;
   lastTranslateSummary = null;
   currentArticleGlossary = null;
+  epubCumulativeCostUSD = 0;
+  epubBookHash = null;
+  currentBookForbidden = [];
+  epubPreviewScope = null;
+  epubScanGen++; // 取消 in-flight 一致性掃描
+  epubScanState = null;
   if (window.__skLayoutDoc) delete window.__skLayoutDoc;
 }
 
 async function handleFile(file) {
   clearError();
   clearResultError();
+
+  // EPUB 分流（v2.0.11）：副檔名 / MIME 命中就走 EPUB 管線，其餘維持 PDF 路徑
+  if (/\.epub$/i.test(file.name || '') || (file.type || '') === 'application/epub+zip') {
+    return handleEpubFile(file);
+  }
 
   const pre = preflightFile(file);
   if (pre.level === 'error') {
@@ -1138,7 +1181,7 @@ function computeStructureDiagnostics(doc) {
 // 對整份 PDF 送 EXTRACT_GLOSSARY 拿 [{source, target}] 對照表(術語表一致化)
 // 取樣邏輯抽到 translate.js collectGlossaryInputParts(可 unit 測;原 inline 版有
 // slice(0, 負值) 邊界 bug:acc 含 join 分隔符預算可超過 MAX,後續 block 算出負 room)
-async function extractGlossaryForDoc(doc) {
+async function extractGlossaryForDoc(doc, { forceRefresh = false } = {}) {
   const parts = collectGlossaryInputParts(doc, GLOSSARY_INPUT_MAX_CHARS);
   const compressedText = parts.join('\n');
   if (compressedText.length < 200) {
@@ -1150,10 +1193,11 @@ async function extractGlossaryForDoc(doc) {
   try {
     const res = await chrome.runtime.sendMessage({
       type: 'EXTRACT_GLOSSARY',
-      payload: { compressedText, inputHash },
+      payload: { compressedText, inputHash, forceRefresh },
     });
     if (res?.ok && Array.isArray(res.glossary) && res.glossary.length > 0) {
-      return res.glossary;
+      // 人名間隔號正規化（同 mergeBookGlossaries 的 EPUB 路徑）
+      return res.glossary.map((e) => ({ ...e, target: normalizeNameSeparators(e.target) }));
     }
     if (res?.ok) {
       console.log('[Shinkansen] glossary returned empty');
@@ -1231,9 +1275,23 @@ const PRESET_DISPLAY = [
   { slot: 3, nameKey: 'doc.settings.preset.alt',  nameParams: { n: 3 }, shortcut: IS_MAC ? '⌥D' : 'Alt+D' },
 ];
 
+// 文件翻譯每批段數（settings.translateDoc.batchSize，預設 50，clamp 1-100）
+async function resolveDocBatchSize() {
+  try {
+    const s = await getSettings();
+    const n = s.translateDoc?.batchSize;
+    if (Number.isInteger(n) && n >= 1 && n <= 100) return n;
+  } catch (_) { /* fallback */ }
+  return 50;
+}
+
 async function openSettingsDialog() {
   const presets = await loadPresets();
   const dlg = $('translate-settings-dialog');
+  // EPUB：「清除本篇翻譯記憶」已拉出成主功能「放棄本書翻譯」（2026-07-10），
+  // dialog 內隱藏（且該按鈕的 plainText hash 算法對 EPUB 段落本來就不對）
+  const clearSection = $('settings-clear-doc-cache-btn')?.closest('.settings-section');
+  if (clearSection) clearSection.hidden = currentDoc?.kind === 'epub';
   const list = $('settings-preset-list');
   list.innerHTML = '';
   for (const { slot, nameKey, nameParams, shortcut } of PRESET_DISPLAY) {
@@ -1262,13 +1320,38 @@ async function openSettingsDialog() {
     engineSpan.className = 'preset-engine';
     engineSpan.textContent = engineLabel;
     row.append(radio, labelSpan, engineSpan);
-    row.addEventListener('click', () => {
-      list.querySelectorAll('.settings-preset-row').forEach((el) => el.classList.remove('is-selected'));
-      row.classList.add('is-selected');
-      row.querySelector('input').checked = true;
-    });
+    // Google MT preset：文件翻譯不支援 → 顯示但禁選（2026-07-10 Jimmy 回報：
+    // 之前照常可選，按開始翻譯才撞 runtime banner）
+    if (p.engine === 'google') {
+      radio.disabled = true;
+      row.classList.add('is-unsupported');
+      const note = document.createElement('span');
+      note.className = 'preset-unsupported-note';
+      note.textContent = t('doc.settings.preset.googleUnsupported');
+      row.appendChild(note);
+    } else {
+      row.addEventListener('click', () => {
+        list.querySelectorAll('.settings-preset-row').forEach((el) => el.classList.remove('is-selected'));
+        row.classList.add('is-selected');
+        row.querySelector('input').checked = true;
+      });
+    }
     list.appendChild(row);
   }
+  // 每批段數（2026-07-10）：載入現值
+  $('settings-doc-batch-size').value = String(await resolveDocBatchSize());
+  // 段落間距 + 一致性掃描 toggle（EPUB 專屬，PDF 隱藏）
+  const spacingSection = $('settings-epub-paragraph-spacing')?.closest('.settings-section');
+  if (spacingSection) spacingSection.hidden = currentDoc?.kind !== 'epub';
+  const scanSection = $('settings-epub-consistency-scan')?.closest('.settings-section');
+  if (scanSection) scanSection.hidden = currentDoc?.kind !== 'epub';
+  try {
+    const s = await getSettings();
+    $('settings-epub-paragraph-spacing').checked = s.translateDoc?.epubParagraphSpacing === true;
+    // 一致性掃描預設開啟（缺值 = 開）
+    const scanCb = $('settings-epub-consistency-scan');
+    if (scanCb) scanCb.checked = s.translateDoc?.consistencyScan !== false;
+  } catch (_) { /* 預設不勾 */ }
   dlg.showModal();
 }
 
@@ -1281,9 +1364,23 @@ function bindSettingsDialogUI() {
     currentPresetSlot = slot;
     try {
       await chrome.storage.local.set({ translateDocPresetSlot: slot });
+      // 每批段數 + 段落間距：merge 進 sync.translateDoc（不動 settings.js 管的其他欄位）
+      const raw = parseInt($('settings-doc-batch-size').value, 10);
+      const batchSize = Number.isInteger(raw) ? Math.min(100, Math.max(1, raw)) : 50;
+      // 元素缺失時不可 throw 拖垮整包儲存（2026-07-10 踩過：HTML 區塊漏部署時
+      // 這行 TypeError 把 batchSize 的儲存一起吞掉）
+      const epubParagraphSpacing = $('settings-epub-paragraph-spacing')?.checked === true;
+      const { translateDoc = {} } = await chrome.storage.sync.get('translateDoc');
+      const merged = { ...translateDoc, batchSize, epubParagraphSpacing };
+      // 元素缺失時不動既有值（同上防禦）；預設開啟 → 只存明確的 true / false
+      const scanCb = $('settings-epub-consistency-scan');
+      if (scanCb) merged.consistencyScan = scanCb.checked === true;
+      await chrome.storage.sync.set({ translateDoc: merged });
     } catch (_) { /* ignore */ }
     // v1.9.6: 改 preset 後清掉「Google MT 不支援」banner（讓使用者切到 Gemini / 自訂後不留殘影）
     clearResultError();
+    // 換 preset / 模型後每章預估費用要跟著重算（2026-07-10 Jimmy 回報）
+    if (currentDoc?.kind === 'epub') await renderChapterList();
     dlg.close();
   });
   $('settings-clear-doc-cache-btn').addEventListener('click', async () => {
@@ -1522,7 +1619,7 @@ async function openReader() {
     {
       modelOverride: currentModelOverride,
       engine: currentEngine,
-      glossary: currentArticleGlossary,
+      glossary: injectableArticleGlossary(),
     },
   );
   // await 期間使用者換檔 / 重新上傳(releaseCurrentDoc bump gen)→ 這輪作廢：
@@ -1652,6 +1749,9 @@ async function init() {
   bindEditUI();
   bindGlossaryUI();
   bindDebugUI();
+  bindChaptersUI();
+  bindEpubPreviewUI();
+  bindScanUI();
   // 啟動讀使用者選定的 preset slot
   loadCurrentPresetSlot();
   showStage('upload');
@@ -2089,6 +2189,9 @@ function bindFindReplaceUI() {
 async function startTranslate() {
   if (!currentDoc) return;
 
+  // EPUB 走章節選翻管線（軟警告 / 重翻確認 / blockFilter / 批次級 glossary 過濾）
+  if (currentDoc.kind === 'epub') return startEpubTranslate();
+
   const { engine, modelOverride } = await resolvePreset();
 
   // v1.9.6: Google MT 沒文件翻譯 handler（沒 batch-aware marker / glossary 注入機制），
@@ -2115,10 +2218,9 @@ async function startTranslate() {
   });
 
   // v1.8.49:文章術語表來源是使用者編輯後的 currentArticleGlossary(取代既有
-  // applyGlossary 黑箱 toggle)。沒術語表(null / 空)就不送,等同沒術語表
-  const glossary = (Array.isArray(currentArticleGlossary) && currentArticleGlossary.length > 0)
-    ? currentArticleGlossary
-    : null;
+  // applyGlossary 黑箱 toggle）。沒術語表（null / 空）就不送，等同沒術語表。
+  // v2.0.11：經 injectableArticleGlossary 映射（不翻譯 entry → 原文→原文）
+  const glossary = injectableArticleGlossary();
   if (glossary) {
     console.log('[Shinkansen] using article glossary:', glossary.length, 'terms');
   }
@@ -2132,6 +2234,7 @@ async function startTranslate() {
       glossary,
       signal: translateAbortController.signal,
       onProgress: setProgress,
+      batchSize: await resolveDocBatchSize(),
     });
   } catch (err) {
     console.error('[Shinkansen] translateDocument 失敗', err);
@@ -2176,14 +2279,30 @@ async function startTranslate() {
 async function openGlossaryEditor(fromStage = 'result') {
   if (!currentDoc) return;
   glossaryEntryStage = fromStage;
+  const isEpub = currentDoc.kind === 'epub';
+  // EPUB 入口的主要按鈕是「儲存」（開始翻譯集中在章節清單主流程，2026-07-10）；
+  // PDF 入口維持「用此術語表翻譯」（reader 流程沒有其他重翻入口，不可斷路）
+  const actionBtn = $('glossary-translate-btn');
+  const actionKey = (isEpub && fromStage === 'chapters') ? 'doc.glossary.btn.save' : 'doc.glossary.btn.translate';
+  actionBtn.setAttribute('data-i18n', actionKey);
+  actionBtn.textContent = t(actionKey);
+  // 本書禁用詞區塊只在 EPUB 顯示
+  $('book-forbidden-section').hidden = !isEpub;
+  if (isEpub) buildBookForbiddenTable(currentBookForbidden);
   showStage('glossary');
   // 若還沒建術語表(null)→ 顯 loading + 自動跑 EXTRACT_GLOSSARY 拿初始值。
   // 若已有(包含空 [])→ 直接 show table 讓使用者編輯
   if (currentArticleGlossary === null) {
     setGlossaryState(t('doc.glossary.state.loading'), 'is-loading');
     try {
-      const extracted = await extractGlossaryForDoc(currentDoc);
+      // EPUB 走全書逐章分輪抽取（覆蓋全書，不是只抽開頭 60K 字）
+      const extracted = isEpub
+        ? await extractGlossaryForBook(currentDoc)
+        : await extractGlossaryForDoc(currentDoc);
       currentArticleGlossary = Array.isArray(extracted) ? extracted : [];
+      if (isEpub && currentArticleGlossary.length > 0) {
+        await savePersistedBookGlossary(currentArticleGlossary);
+      }
     } catch (err) {
       console.warn('[Shinkansen] glossary extract failed', err && err.message);
       currentArticleGlossary = [];
@@ -2210,17 +2329,100 @@ function clearGlossaryEntries() {
   }
 }
 
+// 分組渲染（2026-07-10）：人名 / 地名 / 其他術語三組，各組前插跨欄 header。
+// 組別依抽取 prompt 的 type（person / place / tech / work）分桶（glossaryGroupOf）
+const GLOSSARY_GROUPS = ['person', 'place', 'other'];
+
+// 欄位排序（2026-07-10）：點「原文 / 譯文」header 切換排序欄，再點反向。
+// 排序在各分組內進行，分組結構不變
+let glossarySortKey = 'source';
+let glossarySortDir = 1;
+
+function glossaryComparator(a, b) {
+  const av = ((glossarySortKey === 'target' ? a.target : a.source) || '').toLowerCase();
+  const bv = ((glossarySortKey === 'target' ? b.target : b.source) || '').toLowerCase();
+  return av.localeCompare(bv) * glossarySortDir;
+}
+
+function refreshGlossarySortArrows() {
+  for (const [id, key] of [['g-sort-source', 'source'], ['g-sort-target', 'target']]) {
+    const arrow = $(id)?.querySelector('.g-sort-arrow');
+    if (arrow) arrow.textContent = (glossarySortKey === key) ? (glossarySortDir === 1 ? '▲' : '▼') : '';
+  }
+}
+
+function appendGlossaryGroupHeader(group, count) {
+  const div = document.createElement('div');
+  div.className = 'glossary-group-header';
+  div.dataset.group = group;
+  const label = document.createElement('span');
+  label.textContent = `${t('doc.glossary.group.' + group)}（${count}）`;
+  div.appendChild(label);
+  // 「人名不翻譯」toggle 放在人名 group header 旁（2026-07-10 Jimmy 指定位置）
+  if (group === 'person') {
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'g-opt glossary-person-toggle';
+    toggleLabel.title = t('doc.glossary.personNoTranslate.title');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = 'glossary-person-notrans';
+    cb.addEventListener('change', onPersonNoTransToggle);
+    toggleLabel.append(cb, document.createTextNode(t('doc.glossary.personNoTranslate')));
+    div.appendChild(toggleLabel);
+  }
+  $('glossary-grid').appendChild(div);
+}
+
+// 「人名不翻譯」批次 toggle：一鍵把人名組所有列的不翻譯 checkbox 設成同一狀態
+function onPersonNoTransToggle(e) {
+  const on = e.target.checked;
+  for (const src of $('glossary-grid').querySelectorAll('.g-source[data-gtype="person"]')) {
+    const cb = src.nextElementSibling?.nextElementSibling?.querySelector('.g-notranslate');
+    if (cb && cb.checked !== on) {
+      cb.checked = on;
+      cb.dispatchEvent(new Event('change'));
+    }
+  }
+}
+
 function buildGlossaryTable(entries) {
+  refreshGlossarySortArrows();
   clearGlossaryEntries();
   if (!entries || entries.length === 0) {
     setGlossaryState(t('doc.glossary.state.empty'), 'is-empty');
+    syncPersonNoTransToggle();
     return;
   }
-  for (const e of entries) appendGlossaryRow(e, { skipUpdateCount: true });
+  const buckets = { person: [], place: [], other: [] };
+  for (const e of entries) buckets[glossaryGroupOf(e)].push(e);
+  for (const group of GLOSSARY_GROUPS) {
+    const list = buckets[group];
+    if (list.length === 0) continue;
+    // 組內排序：依目前排序欄與方向（預設原文升冪；大小寫不敏感）
+    list.sort(glossaryComparator);
+    appendGlossaryGroupHeader(group, list.length);
+    for (const e of list) appendGlossaryRow(e, { skipUpdateCount: true, group });
+  }
   updateGlossaryCount();
+  syncPersonNoTransToggle();
 }
 
-function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount = false } = {}) {
+// 「人名不翻譯」總 toggle 的顯示狀態：人名組全數 noTranslate 才打勾
+function syncPersonNoTransToggle() {
+  const cb = $('glossary-person-notrans');
+  if (!cb) return;
+  const personSources = [...$('glossary-grid').querySelectorAll('.g-source[data-gtype="person"]')];
+  cb.checked = personSources.length > 0 && personSources.every((src) => {
+    const opts = src.nextElementSibling?.nextElementSibling;
+    return opts?.querySelector('.g-notranslate')?.checked === true;
+  });
+}
+
+// 「譯文（原文）」對照式譯名的偵測（全形括號收尾）——只有這類 entry 顯示
+// 「對照只出現一次」toggle（v2.0.11）
+const ANNOTATED_TARGET_RE = /^(.+)（(.+)）\s*$/;
+
+function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount = false, group = null } = {}) {
   const grid = $('glossary-grid');
   // 第一次加入 entry 時可能還在 placeholder state,先清掉
   const placeholder = grid.querySelector('.glossary-state');
@@ -2231,6 +2433,9 @@ function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount
   sourceInput.className = 'g-source';
   sourceInput.placeholder = t('doc.glossary.placeholder.source');
   sourceInput.value = entry.source || '';
+  // 分組資訊記在 row 上：readGlossaryTable 回寫 type、「人名不翻譯」批次 toggle 靠它選人名列
+  sourceInput.dataset.gtype = group || glossaryGroupOf(entry);
+  if (typeof entry.type === 'string' && entry.type) sourceInput.dataset.rawtype = entry.type;
 
   const targetInput = document.createElement('input');
   targetInput.type = 'text';
@@ -2238,40 +2443,120 @@ function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount
   targetInput.placeholder = t('doc.glossary.placeholder.target');
   targetInput.value = entry.target || '';
 
+  // ── 選項 cell（v2.0.11）：不翻譯 toggle ＋「譯文（原文）」對照一次 toggle ──
+  const optionsDiv = document.createElement('div');
+  optionsDiv.className = 'g-options';
+
+  const noTransLabel = document.createElement('label');
+  noTransLabel.className = 'g-opt';
+  const noTransCb = document.createElement('input');
+  noTransCb.type = 'checkbox';
+  noTransCb.className = 'g-notranslate';
+  noTransCb.checked = entry.noTranslate === true;
+  noTransLabel.append(noTransCb, document.createTextNode(t('doc.glossary.opt.noTranslate')));
+  noTransLabel.title = t('doc.glossary.opt.noTranslate.title');
+
+  const dedupeLabel = document.createElement('label');
+  dedupeLabel.className = 'g-opt g-dedupe-wrap';
+  const dedupeCb = document.createElement('input');
+  dedupeCb.type = 'checkbox';
+  dedupeCb.className = 'g-dedupe';
+  dedupeCb.checked = entry.dedupeAnnotation === true;
+  dedupeLabel.append(dedupeCb, document.createTextNode(t('doc.glossary.opt.dedupe')));
+  dedupeLabel.title = t('doc.glossary.opt.dedupe.title');
+
+  const keepSelect = document.createElement('select');
+  keepSelect.className = 'g-dedupe-keep';
+  const optSource = document.createElement('option');
+  optSource.value = 'source';
+  optSource.textContent = t('doc.glossary.opt.keepSource');
+  const optTarget = document.createElement('option');
+  optTarget.value = 'target';
+  optTarget.textContent = t('doc.glossary.opt.keepTarget');
+  keepSelect.append(optSource, optTarget);
+  // 預設「後續用原文」（2026-07-10 Jimmy 指定）
+  keepSelect.value = entry.dedupeKeep === 'target' ? 'target' : 'source';
+
+  optionsDiv.append(noTransLabel, dedupeLabel, keepSelect);
+
+  // 選項顯示邏輯：不翻譯 → 譯文欄 disabled、對照類選項隱藏；
+  // 對照 toggle 只在譯文長相是「譯文（原文）」時出現；勾了才顯示後續用哪個的 select
+  const refreshOptionVisibility = () => {
+    const noTrans = noTransCb.checked;
+    targetInput.disabled = noTrans;
+    const isAnnotated = !noTrans && ANNOTATED_TARGET_RE.test(targetInput.value.trim());
+    dedupeLabel.hidden = !isAnnotated;
+    keepSelect.hidden = !(isAnnotated && dedupeCb.checked);
+  };
+  refreshOptionVisibility();
+
   const delBtn = document.createElement('button');
   delBtn.type = 'button';
   delBtn.className = 'glossary-row-delete';
   delBtn.textContent = t('doc.glossary.btn.delete');
 
-  // 三個元素為一組 entry,delete 時一起拔
+  // 四個元素為一組 entry,delete 時一起拔
   delBtn.addEventListener('click', () => {
     sourceInput.remove();
     targetInput.remove();
+    optionsDiv.remove();
     delBtn.remove();
     // 若清空到沒任何 entry,顯示 empty state
     if (!grid.querySelector('.g-source')) setGlossaryState(t('doc.glossary.state.empty'), 'is-empty');
     else updateGlossaryCount();
   });
   sourceInput.addEventListener('input', updateGlossaryCount);
-  targetInput.addEventListener('input', updateGlossaryCount);
+  targetInput.addEventListener('input', () => { refreshOptionVisibility(); updateGlossaryCount(); });
+  noTransCb.addEventListener('change', () => { refreshOptionVisibility(); syncPersonNoTransToggle(); });
+  dedupeCb.addEventListener('change', refreshOptionVisibility);
 
-  grid.append(sourceInput, targetInput, delBtn);
+  grid.append(sourceInput, targetInput, optionsDiv, delBtn);
   if (!skipUpdateCount) updateGlossaryCount();
 }
 
 function readGlossaryTable() {
   const out = [];
-  // 每個 entry 在 grid 內是連續三 cell:source / target / delete-btn。
-  // 走 .g-source 即可,nextElementSibling 一定是對應的 .g-target
+  // 每個 entry 在 grid 內是連續四 cell:source / target / options / delete-btn。
+  // 走 .g-source 即可，nextElementSibling 依序是 .g-target 與 .g-options
   for (const sourceInput of $('glossary-grid').querySelectorAll('.g-source')) {
     const source = sourceInput.value.trim();
     const targetInput = sourceInput.nextElementSibling;
     const target = (targetInput && targetInput.classList.contains('g-target'))
       ? targetInput.value.trim() : '';
     // source + target 都有值才當有效 entry(只填 source 沒譯名 / 只填譯名沒原文都丟)
-    if (source && target) out.push({ source, target });
+    if (!source || !target) continue;
+    // 人名間隔號正規化（手動輸入 / 編輯的條目也吃同一規則）
+    const entry = { source, target: normalizeNameSeparators(target) };
+    // 分類保留（分組顯示 / 人名批次 toggle / 持久化都要）
+    const rawType = sourceInput.dataset.rawtype
+      || (sourceInput.dataset.gtype && sourceInput.dataset.gtype !== 'other' ? sourceInput.dataset.gtype : '');
+    if (rawType) entry.type = rawType;
+    const optionsDiv = targetInput.nextElementSibling;
+    if (optionsDiv && optionsDiv.classList.contains('g-options')) {
+      if (optionsDiv.querySelector('.g-notranslate')?.checked) entry.noTranslate = true;
+      const dedupeCb = optionsDiv.querySelector('.g-dedupe');
+      if (!entry.noTranslate && dedupeCb?.checked && ANNOTATED_TARGET_RE.test(target)) {
+        entry.dedupeAnnotation = true;
+        entry.dedupeKeep = optionsDiv.querySelector('.g-dedupe-keep')?.value === 'target'
+          ? 'target' : 'source';
+      }
+    }
+    out.push(entry);
   }
   return out;
+}
+
+// 注入用術語表（v2.0.11）：把「不翻譯此名詞」entry 映射成 `原文 → 原文`
+//（LLM 拿到同值對照 = 指示保留原文），其餘 flag 不進 systemInstruction。
+// dedupe 類 flag 不影響注入——那是下載 / 預覽時的後處理（epub-writer）。
+function injectableArticleGlossary() {
+  if (!Array.isArray(currentArticleGlossary) || currentArticleGlossary.length === 0) return null;
+  // target 過人名間隔號正規化——涵蓋舊 session 載回、還沒重新儲存的條目
+  return currentArticleGlossary.map((e) => (
+    e.noTranslate
+      ? { source: e.source, target: e.source }
+      : { source: e.source, target: normalizeNameSeparators(e.target) }
+  ));
 }
 
 function updateGlossaryCount() {
@@ -2288,7 +2573,7 @@ function exportGlossaryJSON() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const baseName = (currentDoc?.meta?.filename || 'glossary').replace(/\.pdf$/i, '');
+  const baseName = (currentDoc?.meta?.filename || 'glossary').replace(/\.(pdf|epub)$/i, '');
   a.download = `${baseName}-glossary.json`;
   document.body.appendChild(a);
   a.click();
@@ -2303,7 +2588,19 @@ async function handleGlossaryFileImport(file) {
     if (!Array.isArray(data)) throw new Error(t('doc.glossary.alert.invalidJson'));
     const valid = data
       .filter((e) => e && typeof e.source === 'string' && typeof e.target === 'string')
-      .map((e) => ({ source: e.source, target: e.target })); // 舊版 JSON 帶的 note 欄忽略
+      .map((e) => {
+        // v2.0.11：保留選項 flag（不翻譯 / 對照一次）與分類 type（person / place
+        // 分組顯示、人名批次 toggle 都靠它，丟掉會讓匯入後全部掉進「其他」組）；
+        // 舊版 JSON 帶的 note 欄忽略
+        const entry = { source: e.source, target: e.target };
+        if (typeof e.type === 'string' && e.type.trim()) entry.type = e.type.trim().slice(0, 32);
+        if (e.noTranslate === true) entry.noTranslate = true;
+        if (e.dedupeAnnotation === true) {
+          entry.dedupeAnnotation = true;
+          entry.dedupeKeep = e.dedupeKeep === 'target' ? 'target' : 'source';
+        }
+        return entry;
+      });
     if (valid.length === 0) throw new Error(t('doc.glossary.alert.noEntries'));
     const existing = readGlossaryTable();
     if (existing.length > 0) {
@@ -2326,7 +2623,11 @@ async function reextractGlossary() {
   btn.textContent = t('doc.glossary.btn.extracting');
   setGlossaryState(t('doc.glossary.state.loading'), 'is-loading');
   try {
-    const extracted = await extractGlossaryForDoc(currentDoc);
+    // 「重新抽取」語意 = 強制重跑（forceRefresh 繞過 gloss_ 快取讀取，
+    // 否則同文字同 hash 秒回快取，按了形同沒按——2026-07-10 Jimmy 回報）
+    const extracted = currentDoc.kind === 'epub'
+      ? await extractGlossaryForBook(currentDoc, { forceRefresh: true })
+      : await extractGlossaryForDoc(currentDoc, { forceRefresh: true });
     if (Array.isArray(extracted) && extracted.length > 0) {
       buildGlossaryTable(extracted);
     } else {
@@ -2354,15 +2655,35 @@ function bindGlossaryUI() {
   });
   $('glossary-export-btn').addEventListener('click', exportGlossaryJSON);
   $('glossary-reextract-btn').addEventListener('click', reextractGlossary);
+  // v2.0.11：清空術語表（confirm 後清 UI + module state；EPUB 同步清持久化，
+  // 避免重開同書又載回舊表）
+  $('glossary-clear-btn').addEventListener('click', async () => {
+    const existing = readGlossaryTable();
+    if (existing.length > 0 && !confirm(t('doc.glossary.confirm.clear', { n: existing.length }))) return;
+    currentArticleGlossary = [];
+    buildGlossaryTable([]);
+    if (currentDoc?.kind === 'epub') await savePersistedBookGlossary([]);
+  });
   $('glossary-cancel-btn').addEventListener('click', () => {
-    // 回到打開 editor 的來源 stage(result / edit / reader)
-    if (glossaryEntryStage === 'edit' && currentReaderHandle) showStage('edit');
+    // 回到打開 editor 的來源 stage(result / edit / reader / chapters)
+    if (glossaryEntryStage === 'chapters' && currentDoc?.kind === 'epub') showStage('chapters');
+    else if (glossaryEntryStage === 'edit' && currentReaderHandle) showStage('edit');
     else if (glossaryEntryStage === 'reader' && currentReaderHandle) showStage('reader');
     else showStage('result');
   });
   $('glossary-translate-btn').addEventListener('click', async () => {
     currentArticleGlossary = readGlossaryTable();
-    // 從 result 第一次翻譯不需要 confirm;從 edit / reader 進來都是「已翻過要重翻」要警告
+    // EPUB：按鈕語意是「儲存」（2026-07-10）——存術語表 + 本書禁用詞（session
+    // 持久化，跨次載檔還原），回章節清單；開始翻譯集中在主流程「翻譯勾選章節」
+    if (currentDoc?.kind === 'epub') {
+      currentBookForbidden = readBookForbiddenTable();
+      await savePersistedBookGlossary(currentArticleGlossary);
+      await renderChapterList();
+      showStage('chapters');
+      return;
+    }
+    // PDF 維持原行為（用此術語表翻譯）。從 result 第一次翻譯不需要 confirm；
+    // 從 edit / reader 進來都是「已翻過要重翻」要警告
     if (glossaryEntryStage === 'edit') {
       if (!confirm(t('doc.glossary.confirm.translateUnsaved'))) return;
     } else if (currentReaderHandle) {
@@ -2370,6 +2691,18 @@ function bindGlossaryUI() {
     }
     await startTranslate();
   });
+  // 欄位排序 header（2026-07-10）：同欄再點 = 反向；換欄 = 升冪起手。
+  // 用 readGlossaryTable 重排（保留使用者未儲存的輸入；source/target 未填全的
+  // 半成品列會被過濾，行為同儲存）
+  const onSortHeaderClick = (key) => {
+    if (glossarySortKey === key) glossarySortDir = -glossarySortDir;
+    else { glossarySortKey = key; glossarySortDir = 1; }
+    buildGlossaryTable(readGlossaryTable());
+  };
+  $('g-sort-source').addEventListener('click', () => onSortHeaderClick('source'));
+  $('g-sort-target').addEventListener('click', () => onSortHeaderClick('target'));
+  // 本書禁用詞（EPUB）
+  $('book-forbidden-add-btn').addEventListener('click', () => appendBookForbiddenRow());
 }
 
 async function fillSummaryDialog(summary) {
@@ -2431,4 +2764,1141 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init, { once: true });
 } else {
   init();
+}
+
+// ============================================================================
+// EPUB 翻譯（v2.0.11，SPEC-PRIVATE §30）
+// ============================================================================
+//
+// 流程：上傳 → parseEpub → 章節清單（選翻 + 每章預估費用） → [全書術語表] →
+//       翻譯勾選章節 → 回章節清單 review（預覽 / 續翻 / 下載譯本 EPUB)
+//
+// 譯名一致性設計（§30.3)：術語表抽取覆蓋全書（逐章分輪）、翻譯前鎖定、
+// 每批只注入該批出現的條目（translate.js filterGlossary）、以書指紋持久化。
+
+function showChaptersError(msg) {
+  const el = $('chapters-error');
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function clearChaptersError() {
+  const el = $('chapters-error');
+  el.textContent = '';
+  el.hidden = true;
+}
+
+async function handleEpubFile(file) {
+  const pre = preflightEpubFile(file);
+  if (pre.level === 'error') {
+    showError(t('doc.epub.error.' + pre.code));
+    return;
+  }
+
+  releaseCurrentDoc();
+
+  if (parseAbortController) parseAbortController.abort();
+  const myGen = ++parseGeneration;
+  parseAbortController = new AbortController();
+  const parseSignal = parseAbortController.signal;
+
+  showStage('parsing');
+  setParsingDetail(t('doc.epub.parsing.unzip'));
+
+  try {
+    const doc = await parseEpub(file, (p) => {
+      if (myGen !== parseGeneration) return;
+      if (p.stage === 'chapters') {
+        setParsingDetail(t('doc.epub.parsing.chapters', { current: p.current, total: p.total }));
+      }
+    }, { signal: parseSignal });
+    if (myGen !== parseGeneration) return;
+
+    currentDoc = doc;
+    window.__skEpubDoc = doc; // dev probe
+
+    // 書指紋：全書 plainText 內容 hash(bookgloss_ 持久化 key)
+    epubBookHash = await sha1(
+      doc.chapters.map((c) => c.blocks.map((b) => b.plainText).join('\n')).join('\n'));
+    if (myGen !== parseGeneration) return;
+
+    // 工作階段還原（2026-07-10）：同書重開載回翻譯進度 + 術語表 + 本書禁用詞。
+    // 存檔在頁面自己的 IndexedDB，不受「清除翻譯快取」影響
+    const session = await loadEpubSession(epubBookHash);
+    if (myGen !== parseGeneration) return;
+    if (session) {
+      const restored = hydrateSessionBlocks(doc, session.blocks);
+      // 空陣列也要接受——「清空過」（[]）跟「沒建過」（null）是不同狀態；
+      // 只接受非空會讓清空後重開掉進 legacy fallback 撈回舊術語表
+      //（2026-07-10 Jimmy 回報 bug）
+      if (Array.isArray(session.glossary)) {
+        currentArticleGlossary = session.glossary;
+      }
+      if (Array.isArray(session.forbidden)) currentBookForbidden = session.forbidden;
+      if (Number.isFinite(session.costUSD)) epubCumulativeCostUSD = session.costUSD;
+      if (restored > 0) {
+        // 還原的完成章節預設不勾（續翻節奏）
+        for (const c of doc.chapters) {
+          if (chapterDoneState(c) === 'done') c.selected = false;
+        }
+      }
+      console.log('[Shinkansen] epub session restored:', {
+        blocks: restored,
+        glossary: (currentArticleGlossary || []).length,
+        forbidden: currentBookForbidden.length,
+      });
+    }
+    // 舊版 bookgloss_（chrome.storage.local）讀取 fallback：只在「完全沒有
+    // session 紀錄」時才走——有 session 就以 session 為準（即使 glossary 是空），
+    // 否則清空過的術語表會被 legacy key 復活
+    if (!session && currentArticleGlossary === null) {
+      const persisted = await loadPersistedBookGlossary();
+      if (myGen !== parseGeneration) return;
+      if (Array.isArray(persisted) && persisted.length > 0) {
+        currentArticleGlossary = persisted;
+        console.log('[Shinkansen] legacy book glossary restored:', persisted.length, 'terms');
+      }
+    }
+
+    await renderChapterList();
+    if (myGen !== parseGeneration) return;
+    showStage('chapters');
+  } catch (err) {
+    if (myGen !== parseGeneration || (err && err.code === 'aborted')) return;
+    console.error('[Shinkansen] parseEpub 失敗', err);
+    if (err && err.name === 'EpubParseError') {
+      showError(t('doc.epub.error.' + err.code));
+    } else {
+      showError(t('doc.epub.error.bad-zip'));
+    }
+  } finally {
+    if (myGen === parseGeneration) parseAbortController = null;
+  }
+}
+
+// 章節翻譯狀態聚合（從段落 translationStatus 推）
+function chapterDoneState(ch) {
+  if (ch.parseFailed) return 'unparsed';
+  if (ch.blocks.length === 0) return 'empty';
+  let done = 0, failed = 0;
+  for (const b of ch.blocks) {
+    if (b.translationStatus === 'done') done++;
+    else if (b.translationStatus === 'failed') failed++;
+  }
+  if (done === ch.blocks.length) return 'done';
+  if (failed > 0) return 'failed';
+  if (done > 0) return 'partial';
+  return 'none';
+}
+
+function epubHasAnyTranslation() {
+  return !!(currentDoc && currentDoc.kind === 'epub'
+    && currentDoc.chapters.some((c) => c.blocks.some((b) => b.translationStatus === 'done')));
+}
+
+function formatUsdApprox(usd) {
+  if (usd == null || !Number.isFinite(usd)) return '—';
+  return '≈ $' + (usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2));
+}
+
+async function renderChapterList() {
+  const doc = currentDoc;
+  if (!doc || doc.kind !== 'epub') return;
+
+  $('chapters-book-title').textContent = doc.meta.title;
+  $('chapters-author').textContent = doc.meta.author || '—';
+  $('chapters-epub-version').textContent = doc.meta.epubVersion
+    ? `EPUB ${doc.meta.epubVersion}` : '—';
+  $('chapters-count').textContent = String(doc.meta.chapterCount);
+  $('chapters-chars').textContent = doc.stats.totalChars.toLocaleString('en-US');
+
+  const { modelOverride } = await resolvePreset();
+  const settings = await getSettings();
+  const estModel = modelOverride || settings.geminiConfig?.model || '';
+
+  const list = $('chapters-list');
+  list.replaceChildren();
+  for (const ch of doc.chapters) {
+    const row = document.createElement('div');
+    row.className = 'chapter-row';
+    const state = chapterDoneState(ch);
+    const disabled = state === 'unparsed' || state === 'empty';
+
+    const label = document.createElement('label');
+    label.className = 'chapter-label';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = ch.selected && !disabled;
+    cb.disabled = disabled;
+    cb.addEventListener('change', () => {
+      ch.selected = cb.checked;
+      updateChapterSummaryLine(estModel, settings);
+    });
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'chapter-title' + (ch.suggestSkip ? ' is-matter' : '');
+    titleSpan.textContent = `${ch.index + 1}. ${ch.title}`;
+    label.append(cb, titleSpan);
+
+    const charsSpan = document.createElement('span');
+    charsSpan.className = 'chapter-chars';
+    charsSpan.textContent = ch.charCount > 0 ? ch.charCount.toLocaleString('en-US') : '—';
+
+    const costSpan = document.createElement('span');
+    costSpan.className = 'chapter-cost';
+    costSpan.textContent = ch.charCount > 0
+      ? formatUsdApprox(estimateChapterCostUSD(ch.charCount, estModel, settings))
+      : '';
+
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'chapter-status';
+    statusSpan.dataset.state = state;
+    statusSpan.textContent = t('doc.epub.status.' + state);
+
+    row.append(label, charsSpan, costSpan, statusSpan);
+
+    if (state === 'done' || state === 'partial' || state === 'failed') {
+      const previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.className = 'chapter-preview-btn';
+      previewBtn.textContent = t('doc.epub.btn.preview');
+      previewBtn.addEventListener('click', () => openEpubPreview(ch));
+      row.appendChild(previewBtn);
+    }
+    list.appendChild(row);
+  }
+
+  updateChapterSummaryLine(estModel, settings);
+
+  $('chapters-download-btn').hidden = !epubHasAnyTranslation();
+  $('chapters-preview-all-btn').hidden = !epubHasAnyTranslation();
+  // 術語表按鈕動態標籤（2026-07-10）：沒建過 = 先建立、已有 = 編輯
+  const glossBtn = $('chapters-glossary-btn');
+  const glossKey = (Array.isArray(currentArticleGlossary) && currentArticleGlossary.length > 0)
+    ? 'doc.epub.btn.glossaryEdit' : 'doc.epub.btn.glossary';
+  glossBtn.setAttribute('data-i18n', glossKey);
+  glossBtn.textContent = t(glossKey);
+  // 放棄本書翻譯 / 匯出工作階段：有任何翻譯進度才顯示；匯入隨時可用
+  $('chapters-discard-btn').hidden = !epubHasAnyTranslation();
+  $('chapters-export-session-btn').hidden = !epubHasAnyTranslation();
+  // EPUB2 來源才顯示「輸出格式」選擇（EPUB3 來源兩個選項等價，不放干擾項）
+  const isEpub2 = /^2(\.|$)/.test(doc.meta.epubVersion || '');
+  $('epub-output-format-wrap').hidden = !(isEpub2 && epubHasAnyTranslation());
+  const cumRow = $('chapters-cumulative-row');
+  if (epubCumulativeCostUSD > 0) {
+    cumRow.hidden = false;
+    $('chapters-cumulative-cost').textContent = await formatCostStr(epubCumulativeCostUSD);
+  } else {
+    cumRow.hidden = true;
+  }
+  // 一致性掃描入口與章節清單同步刷新（換書 / 放棄後不留殘影）
+  renderScanBanner();
+}
+
+function selectedEpubChapters() {
+  if (!currentDoc || currentDoc.kind !== 'epub') return [];
+  return currentDoc.chapters.filter((c) => c.selected && !c.parseFailed && c.blocks.length > 0);
+}
+
+function updateChapterSummaryLine(estModel, settings) {
+  const sel = selectedEpubChapters();
+  const chars = sel.reduce((acc, c) => acc + c.charCount, 0);
+  const cost = estimateChapterCostUSD(chars, estModel, settings);
+  $('chapters-selected-summary').textContent = t('doc.epub.selectedSummary', {
+    chapters: sel.length,
+    chars: chars.toLocaleString('en-US'),
+    cost: formatUsdApprox(cost),
+  });
+}
+
+async function startEpubTranslate() {
+  const doc = currentDoc;
+  const selected = selectedEpubChapters();
+  if (selected.length === 0) {
+    showChaptersError(t('doc.epub.error.none-selected'));
+    showStage('chapters');
+    return;
+  }
+
+  const { engine, modelOverride } = await resolvePreset();
+  if (engine === 'google') {
+    showChaptersError(t('doc.error.googleNotSupportedInDoc'));
+    showStage('chapters');
+    return;
+  }
+  clearChaptersError();
+
+  // 軟警告（§30.5)：已選字數超過門檻要使用者確認
+  const selChars = selected.reduce((acc, c) => acc + c.charCount, 0);
+  if (selChars > EPUB_LIMITS.softWarnChars) {
+    const settings = await getSettings();
+    const est = estimateChapterCostUSD(selChars, modelOverride || settings.geminiConfig?.model || '', settings);
+    if (!confirm(t('doc.epub.confirm.softWarn', {
+      chars: selChars.toLocaleString('en-US'),
+      cost: formatUsdApprox(est),
+    }))) return;
+  }
+
+  // 已翻章節被重勾 → 明確警告會以當前術語表 / 設定重翻並重新計費。
+  // 確認後清掉這些段落的翻譯快取——否則設定沒變時逐塊 cache hit，看起來
+  // 「沒有真的重翻」（2026-07-10 Jimmy 回報 bug）。正常續翻 / 中斷恢復
+  // 不走這條（done 章節預設已取消勾選），快取仍然有效
+  const hasDone = selected.some((c) => c.blocks.some((b) => b.translationStatus === 'done'));
+  if (hasDone) {
+    if (!confirm(t('doc.epub.confirm.retranslate'))) return;
+    await clearEpubBlocksCache(selected);
+  }
+
+  currentModelOverride = modelOverride;
+  currentEngine = engine;
+
+  showStage('translating');
+  setProgress({
+    totalBlocks: 0,
+    translatedBlocks: 0,
+    failedBlocks: 0,
+    estimatedRemainingSec: 0,
+    cumulativeInputTokens: 0,
+    cumulativeOutputTokens: 0,
+    cumulativeCostUSD: 0,
+  });
+
+  // v2.0.11：經 injectableArticleGlossary 映射（不翻譯 entry → 原文→原文）
+  const glossary = injectableArticleGlossary();
+  if (glossary) {
+    console.log('[Shinkansen] using book glossary:', glossary.length, 'terms');
+  }
+
+  const selIdx = new Set(selected.map((c) => c.index));
+  translateAbortController = new AbortController();
+  let summary;
+  try {
+    summary = await translateDocument(doc, {
+      modelOverride,
+      engine,
+      glossary,
+      signal: translateAbortController.signal,
+      onProgress: setProgress,
+      // 章節選翻：只翻勾選章節。勾選章節內全部重跑（重勾已翻章節時由上方 confirm
+      // 把關；設定沒變時逐塊 cache hit，不重新計費）
+      blockFilter: (block, page) => selIdx.has(page.chapterIndex),
+      // 全書術語表批次級過濾注入（§30.3 第 4 層）
+      filterGlossary: true,
+      // 本書獨立禁用詞（2026-07-10）：background 與 options 共通清單合併，
+      // _b hash 由合併後清單計算 → 書級清單變更快取自動失效
+      extraForbiddenTerms: currentBookForbidden.length > 0 ? currentBookForbidden : null,
+      batchSize: await resolveDocBatchSize(),
+    });
+  } catch (err) {
+    console.error('[Shinkansen] translateDocument(epub) 失敗', err);
+    summary = {
+      totalBlocks: 0,
+      translatedBlocks: 0,
+      failedBlocks: 0,
+      cumulativeInputTokens: 0,
+      cumulativeBilledInputTokens: 0,
+      cumulativeOutputTokens: 0,
+      cumulativeCostUSD: 0,
+      cancelled: false,
+      error: (err && err.message) || String(err),
+    };
+  }
+  translateAbortController = null;
+  lastTranslateSummary = summary;
+  epubCumulativeCostUSD += summary.cumulativeCostUSD || 0;
+
+  // 續翻節奏：整章完成的自動取消勾選，下一輪預設只剩未翻章節
+  for (const c of selected) {
+    if (chapterDoneState(c) === 'done') c.selected = false;
+  }
+
+  // 工作階段存檔：翻譯成果落地 IndexedDB（離開頁面後可續翻，2026-07-10）。
+  // 必須在 showStage 之前 await——使用者看到章節清單即代表進度已落地，
+  // 立刻關頁也不掉進度
+  await persistEpubSession();
+
+  await renderChapterList();
+  if (summary.error) showChaptersError(summary.error);
+  showStage('chapters');
+
+  // 譯後一致性掃描（v2.0.11）：option 預設開啟，翻譯回到章節清單後於背景執行，
+  // 不擋 UI；發現問題時章節頁出現入口按鈕
+  maybeRunConsistencyScan(doc);
+}
+
+// 重勾已翻章節的「真重翻」快取清除：以段落實際送翻文字（epubSerializedText，
+// background 以它算 cache key）的 sha1 為 prefix，掃掉所有 suffix 變體
+//（同 clearCurrentDocCache 的 prefix 思路）
+async function clearEpubBlocksCache(chapters, { all = false } = {}) {
+  const prefixes = new Set();
+  for (const ch of chapters) {
+    for (const b of ch.blocks) {
+      if (!all && b.translationStatus !== 'done') continue;
+      const text = b.epubSerializedText || b.plainText;
+      if (!text) continue;
+      prefixes.add('tc_' + (await sha1(text)));
+    }
+  }
+  if (prefixes.size === 0) return 0;
+  const allKeys = (typeof chrome.storage.local.getKeys === 'function')
+    ? await chrome.storage.local.getKeys()
+    : Object.keys(await chrome.storage.local.get(null));
+  const matched = allKeys.filter((k) => k.startsWith('tc_') && prefixes.has(k.slice(0, 43)));
+  if (matched.length > 0) await chrome.storage.local.remove(matched);
+  console.log('[Shinkansen] retranslate cache cleared:', matched.length, 'keys');
+  return matched.length;
+}
+
+async function downloadTranslatedEpub() {
+  if (!epubHasAnyTranslation()) return;
+  const btn = $('chapters-download-btn');
+  btn.disabled = true;
+  try {
+    const settings = await getSettings();
+    // EPUB2 來源可選升級輸出 EPUB3（select 只在 EPUB2 來源時顯示，見 renderChapterList）
+    const upgradeTo3 = !$('epub-output-format-wrap').hidden
+      && $('epub-output-format').value === 'epub3';
+    const { bytes } = buildTranslatedEpub(currentDoc, settings.targetLanguage || 'zh-TW', {
+      upgradeTo3,
+      // 「對照只出現一次」後處理要吃原始 entries（含 dedupe flag)，不是注入用映射
+      glossary: currentArticleGlossary,
+      // 段落間距 toggle（2026-07-10）
+      paragraphSpacing: settings.translateDoc?.epubParagraphSpacing === true,
+    });
+    const blob = new Blob([bytes], { type: 'application/epub+zip' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = translatedEpubFilename(currentDoc.meta.filename);
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  } catch (err) {
+    console.error('[Shinkansen] 譯本 EPUB 產出失敗', err);
+    showChaptersError(t('doc.epub.error.build-failed', { error: (err && err.message) || String(err) }));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// 單章譯文預覽（試翻 review)：已翻段落顯示譯文，未翻 / 失敗段落顯示原文並降淡
+// EPUB 預覽（v2.0.11，2026-07-10 擴充）：
+//   - scope = 章節物件（單章）或 'all'（全書預覽）
+//   - 已翻段落渲染反序列化富文本 + contenteditable 編輯（editedHtml 優先進譯本）
+//   - 「顯示原文對照」toggle：每個已翻段落下方附原文（降淡、不可編輯）
+//   - 「對照只出現一次」後處理與下載共用（computeAnnotationDedupe），所見即所得
+//   - 編輯 / 搜尋取代都排進 session 存檔（scheduleEpubSessionSave）
+function openEpubPreview(scope) {
+  epubPreviewScope = scope;
+  renderEpubPreview();
+  showStage('epubPreview');
+}
+
+function renderEpubPreview() {
+  const SK = window.__SK;
+  const scope = epubPreviewScope;
+  if (!scope || !currentDoc) return;
+  const chapters = scope === 'all'
+    ? currentDoc.chapters.filter((c) => c.blocks.length > 0)
+    : [scope];
+  $('epub-preview-title').textContent = scope === 'all'
+    ? t('doc.epub.preview.allTitle')
+    : `${scope.index + 1}. ${scope.title}`;
+  $('epub-preview-compare').checked = epubPreviewCompare;
+  $('epub-sr-status').textContent = '';
+  const dedupe = computeAnnotationDedupe(currentDoc, currentArticleGlossary);
+  const content = $('epub-preview-content');
+  content.replaceChildren();
+  for (const ch of chapters) {
+    if (scope === 'all') {
+      const h = document.createElement('h2');
+      h.className = 'epub-preview-chapter-title';
+      h.textContent = `${ch.index + 1}. ${ch.title}`;
+      content.appendChild(h);
+    }
+    for (const b of ch.blocks) appendPreviewBlock(content, b, SK, dedupe);
+  }
+}
+
+function appendPreviewBlock(content, b, SK, dedupe) {
+  const el = document.createElement(b.type === 'heading' ? 'h3' : 'p');
+  el.className = 'epub-preview-block';
+  el.dataset.state = b.translationStatus || 'pending';
+  if (b.translationStatus === 'done') {
+    if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) {
+      el.innerHTML = b.editedHtml;
+      el.classList.add('is-edited');
+    } else {
+      const raw = dedupe.get(b.blockId)?.translationRaw ?? b.translationRaw;
+      let rendered = false;
+      if (typeof raw === 'string' && raw && Array.isArray(b.slots)
+          && typeof SK?.deserializeWithPlaceholders === 'function') {
+        const { frag, ok } = SK.deserializeWithPlaceholders(raw, b.slots, { cloneReuse: true });
+        if (ok || (b.slots.length === 0 && frag.childNodes.length > 0)) {
+          el.appendChild(frag);
+          rendered = true;
+        }
+      }
+      if (!rendered) el.textContent = dedupe.get(b.blockId)?.translation ?? b.translation ?? '';
+    }
+    // 點擊編輯：blur 時存回 editedHtml（跟渲染時不同才存，避免只是點過就標記）
+    el.contentEditable = 'true';
+    el.spellcheck = false;
+    el.__skBlock = b;
+    const before = el.innerHTML;
+    el.addEventListener('blur', () => {
+      if (el.innerHTML === before && !b.editedHtml) return;
+      b.editedHtml = el.innerHTML;
+      b.translation = el.textContent;
+      el.classList.add('is-edited');
+      scheduleEpubSessionSave();
+    });
+    content.appendChild(el);
+    // 原文對照：譯文段下方附原文（不進搜尋取代、不可編輯）
+    if (epubPreviewCompare) {
+      const orig = document.createElement('div');
+      orig.className = 'epub-preview-original';
+      orig.textContent = b.plainText;
+      content.appendChild(orig);
+    }
+    return;
+  }
+  el.textContent = b.plainText;
+  content.appendChild(el);
+}
+
+function bindChaptersUI() {
+  if (!stages.chapters) return;
+  $('chapters-select-all-btn').addEventListener('click', () => {
+    for (const c of currentDoc?.chapters || []) {
+      if (!c.parseFailed && c.blocks.length > 0) c.selected = true;
+    }
+    renderChapterList();
+  });
+  $('chapters-select-none-btn').addEventListener('click', () => {
+    for (const c of currentDoc?.chapters || []) c.selected = false;
+    renderChapterList();
+  });
+  $('chapters-exclude-matter-btn').addEventListener('click', () => {
+    for (const c of currentDoc?.chapters || []) {
+      if (c.suggestSkip) c.selected = false;
+    }
+    renderChapterList();
+  });
+  $('chapters-translate-btn').addEventListener('click', () => startTranslate());
+  $('chapters-glossary-btn').addEventListener('click', () => openGlossaryEditor('chapters'));
+  $('chapters-preview-all-btn').addEventListener('click', () => openEpubPreview('all'));
+  $('chapters-download-btn').addEventListener('click', downloadTranslatedEpub);
+  $('chapters-settings-btn').addEventListener('click', () => openSettingsDialog());
+  $('chapters-discard-btn').addEventListener('click', discardBookTranslation);
+  $('chapters-export-session-btn').addEventListener('click', exportEpubSession);
+  $('chapters-import-session-btn').addEventListener('click', () => {
+    const fi = $('epub-session-import-file');
+    fi.value = '';
+    fi.click();
+  });
+  $('epub-session-import-file').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) importEpubSession(file);
+  });
+  $('chapters-reupload-btn').addEventListener('click', () => {
+    clearError();
+    releaseCurrentDoc();
+    showStage('upload');
+  });
+}
+
+function bindEpubPreviewUI() {
+  if (!stages.epubPreview) return;
+  $('epub-preview-back-btn').addEventListener('click', () => showStage('chapters'));
+  $('epub-preview-compare').addEventListener('change', (e) => {
+    epubPreviewCompare = e.target.checked;
+    if (epubPreviewScope) renderEpubPreview();
+  });
+  // 搜尋取代（2026-07-10）：只動已翻段落譯文的文字節點，inline 標記保留；
+  // 跨標記邊界的字串搜不到（已知取捨）。改動走 editedHtml（= 手動編輯語意），
+  // 下載 / session 存檔都吃得到
+  $('epub-sr-apply').addEventListener('click', () => {
+    const find = $('epub-sr-find').value;
+    const replace = $('epub-sr-replace').value;
+    if (!find) return;
+    let blocks = 0;
+    let hits = 0;
+    for (const el of $('epub-preview-content').querySelectorAll('.epub-preview-block[data-state="done"]')) {
+      const b = el.__skBlock;
+      if (!b) continue;
+      let changed = false;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (!node.nodeValue || !node.nodeValue.includes(find)) continue;
+        hits += node.nodeValue.split(find).length - 1;
+        node.nodeValue = node.nodeValue.split(find).join(replace);
+        changed = true;
+      }
+      if (changed) {
+        blocks++;
+        b.editedHtml = el.innerHTML;
+        b.translation = el.textContent;
+        el.classList.add('is-edited');
+      }
+    }
+    if (blocks > 0) scheduleEpubSessionSave();
+    $('epub-sr-status').textContent = t('doc.epub.sr.result', { hits, blocks });
+  });
+}
+
+// ---------- 譯後一致性掃描（v2.0.11，SPEC §17.10.10）----------
+//
+// 兩層訊號（掃描邏輯在 epub-scan.js 純函式模組）：
+//   第一層：術語表符合度（確定性，免費）
+//   第二層：術語表外「同一原文多譯名」（候選挖掘 / 聚合確定性；
+//           對照抽取走 SCAN_TERM_RENDERINGS，費用累進本書累計費用）
+// option（translateDoc.consistencyScan，預設開啟）只 gate 自動掃描；
+// 結果不持久化，每輪翻譯完成後重掃（scanr_ 內容快取讓重掃不重複計費）
+
+async function maybeRunConsistencyScan(doc) {
+  if (!doc || doc.kind !== 'epub' || currentDoc !== doc) return;
+  try {
+    const s = await getSettings();
+    if (s.translateDoc?.consistencyScan === false) return;
+  } catch (_) { /* 讀不到設定時照預設開啟 */ }
+  if (!doc.chapters.some((c) => c.blocks.some((b) => b.translationStatus === 'done'))) return;
+  runConsistencyScan(doc).catch((err) => {
+    console.warn('[Shinkansen] consistency scan failed', err && err.message);
+    if (currentDoc === doc && epubScanState?.running) {
+      epubScanState = null;
+      renderScanBanner();
+    }
+  });
+}
+
+async function runConsistencyScan(doc) {
+  const gen = ++epubScanGen;
+  epubScanState = { running: true, tier1: [], cases: [] };
+  renderScanBanner();
+
+  const glossary = Array.isArray(currentArticleGlossary) ? currentArticleGlossary : [];
+  const tier1 = checkGlossaryCompliance(doc.chapters, glossary);
+
+  const blockById = new Map();
+  for (const ch of doc.chapters) for (const b of ch.blocks) blockById.set(b.blockId, b);
+  const candidates = mineCandidates(doc.chapters, glossary);
+  const batches = buildScanBatches(candidates, blockById);
+
+  const collected = [];
+  for (const batch of batches) {
+    if (gen !== epubScanGen || currentDoc !== doc) return;
+    // 內容指紋進 scanr_ 快取：同 payload 同結果，續翻後重掃不重複計費
+    const inputHash = await sha1(JSON.stringify(batch.items) + '#skscan-v1');
+    let res;
+    try {
+      res = await chrome.runtime.sendMessage({
+        type: 'SCAN_TERM_RENDERINGS',
+        payload: { items: batch.items, inputHash },
+      });
+    } catch (err) {
+      console.warn('[Shinkansen] scan batch failed', err && err.message);
+      continue;
+    }
+    if (res?.ok && Array.isArray(res.renderings)) {
+      collected.push({ items: batch.items, results: res.renderings });
+      // 抽取費用累進本書累計費用（同術語表抽取；快取命中為 0）
+      if (currentDoc === doc && Number.isFinite(res.usage?.billedCostUSD) && res.usage.billedCostUSD > 0) {
+        epubCumulativeCostUSD += res.usage.billedCostUSD;
+        scheduleEpubSessionSave();
+      }
+    } else if (res && !res.ok) {
+      console.warn('[Shinkansen] scan batch not ok', res.error);
+    }
+  }
+  if (gen !== epubScanGen || currentDoc !== doc) return;
+
+  const cases = aggregateRenderings(collected);
+  epubScanState = { running: false, tier1, cases };
+  console.log('[Shinkansen] consistency scan done', {
+    glossaryViolations: tier1.length, driftCases: cases.length,
+    candidates: candidates.length, batches: batches.length,
+  });
+  renderScanBanner();
+  await renderChapterList(); // 累計費用 row 刷新
+}
+
+// 章節頁掃描入口按鈕：掃描中 = 進度文字（disabled）；有發現 = 可點開結果頁；
+// 無發現 = 隱藏（高密度 UI 原則：沒資訊就不佔位）
+function renderScanBanner() {
+  const btn = $('chapters-scan-btn');
+  if (!btn) return;
+  if (!epubScanState || currentDoc?.kind !== 'epub') {
+    btn.hidden = true;
+    return;
+  }
+  if (epubScanState.running) {
+    btn.hidden = false;
+    btn.disabled = true;
+    btn.textContent = t('doc.epub.scan.running');
+    return;
+  }
+  const findings = epubScanState.tier1.length
+    + epubScanState.cases.filter((c) => !c.applied).length;
+  if (findings === 0) {
+    btn.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  btn.disabled = false;
+  btn.textContent = t('doc.epub.scan.banner', { n: findings });
+}
+
+function renderScanResults() {
+  const state = epubScanState || { tier1: [], cases: [] };
+  const driftWrap = $('scan-drift-wrap');
+  const compWrap = $('scan-compliance-wrap');
+  const driftList = $('scan-drift-list');
+  const compList = $('scan-compliance-list');
+  driftList.replaceChildren();
+  compList.replaceChildren();
+
+  const activeCases = state.cases || [];
+  driftWrap.hidden = activeCases.length === 0;
+  activeCases.forEach((scCase, idx) => {
+    const card = document.createElement('div');
+    card.className = 'scan-case';
+    const termEl = document.createElement('div');
+    termEl.className = 'scan-case-term';
+    termEl.textContent = scCase.term;
+    card.appendChild(termEl);
+    if (scCase.applied) {
+      const done = document.createElement('div');
+      done.className = 'scan-case-status';
+      done.textContent = t('doc.epub.scan.applied', { n: scCase.applied.hits, blocks: scCase.applied.blocks });
+      card.appendChild(done);
+      driftList.appendChild(card);
+      return;
+    }
+    for (const r of scCase.renderings) {
+      const row = document.createElement('label');
+      row.className = 'scan-rendering-row';
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = `scan-case-${idx}`;
+      radio.value = r.text;
+      if (r === scCase.renderings[0]) radio.checked = true; // 預設最多數的
+      const text = document.createElement('span');
+      text.textContent = r.text;
+      const count = document.createElement('span');
+      count.className = 'scan-rendering-count';
+      count.textContent = t('doc.epub.scan.count', { n: r.count });
+      row.append(radio, text, count);
+      card.appendChild(row);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'scan-case-actions';
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'secondary-btn';
+    applyBtn.textContent = t('doc.epub.scan.apply');
+    applyBtn.addEventListener('click', () => {
+      const chosen = card.querySelector(`input[name="scan-case-${idx}"]:checked`);
+      if (chosen) applyScanCase(scCase, chosen.value);
+    });
+    actions.appendChild(applyBtn);
+    card.appendChild(actions);
+    driftList.appendChild(card);
+  });
+
+  const tier1 = state.tier1 || [];
+  compWrap.hidden = tier1.length === 0;
+  // 依 entry 分組：同一條術語的違規列一行 + 章節統計
+  const grouped = new Map();
+  for (const v of tier1) {
+    const key = `${v.source} ${v.expected}`;
+    let g = grouped.get(key);
+    if (!g) {
+      g = { source: v.source, expected: v.expected, count: 0, chapters: new Set(), excerpt: v.excerpt };
+      grouped.set(key, g);
+    }
+    g.count++;
+    g.chapters.add(v.chapterIndex + 1);
+  }
+  for (const g of grouped.values()) {
+    const row = document.createElement('div');
+    row.className = 'scan-compliance-row';
+    const head = document.createElement('span');
+    head.textContent = t('doc.epub.scan.compliance.row', {
+      source: g.source, target: g.expected, n: g.count,
+      chapters: [...g.chapters].sort((a, b) => a - b).join(', '),
+    });
+    const excerpt = document.createElement('span');
+    excerpt.className = 'scan-compliance-excerpt';
+    excerpt.textContent = g.excerpt;
+    row.append(head, excerpt);
+    compList.appendChild(row);
+  }
+
+  $('scan-empty').hidden = activeCases.length > 0 || tier1.length > 0;
+}
+
+// 套用選定譯名：在「原文含該詞」的已翻段落把其他譯名取代為選定譯名
+//（text node 級，同搜尋取代語意，走 editedHtml → session / 譯本都吃得到），
+// 並回填全書術語表讓續翻 / 重翻保持一致。刻意不重翻（cache key 會變、重計費；
+// 確定性取代已達同樣效果）
+function applyScanCase(scCase, keep) {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !keep) return;
+  const SK = window.__SK;
+  const others = scCase.renderings.map((r) => r.text).filter((x) => x && x !== keep);
+  if (others.length === 0) return;
+  let hits = 0;
+  let blocks = 0;
+  for (const ch of currentDoc.chapters) {
+    for (const b of ch.blocks) {
+      if (b.translationStatus !== 'done') continue;
+      if (typeof b.plainText !== 'string' || !sourceHasTerm(b.plainText, scCase.term)) continue;
+      const el = renderBlockForScanEdit(b, SK);
+      if (!el) continue;
+      let changed = false;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (!node.nodeValue) continue;
+        for (const other of others) {
+          if (!node.nodeValue.includes(other)) continue;
+          hits += node.nodeValue.split(other).length - 1;
+          node.nodeValue = node.nodeValue.split(other).join(keep);
+          changed = true;
+        }
+      }
+      if (changed) {
+        blocks++;
+        b.editedHtml = el.innerHTML;
+        b.translation = el.textContent;
+      }
+    }
+  }
+  // 回填術語表（已有同 source 的不重複加）
+  const list = Array.isArray(currentArticleGlossary) ? [...currentArticleGlossary] : [];
+  if (!list.some((e) => e && typeof e.source === 'string' && e.source.trim().toLowerCase() === scCase.term.toLowerCase())) {
+    list.push({ source: scCase.term, target: keep });
+  }
+  savePersistedBookGlossary(list); // 內含 session 持久化（editedHtml 一併落地）
+  scCase.applied = { hits, blocks };
+  renderScanResults();
+  renderScanBanner();
+}
+
+// 把 block 目前的譯文渲染成可編輯 DOM（editedHtml 優先，同預覽渲染語意、
+// 不含對照 dedupe 後處理——套用結果以「手動編輯」身分存回）
+function renderBlockForScanEdit(b, SK) {
+  const el = document.createElement('div');
+  if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) {
+    el.innerHTML = b.editedHtml;
+    return el;
+  }
+  const raw = b.translationRaw;
+  if (typeof raw === 'string' && raw && Array.isArray(b.slots)
+      && typeof SK?.deserializeWithPlaceholders === 'function') {
+    const { frag, ok } = SK.deserializeWithPlaceholders(raw, b.slots, { cloneReuse: true });
+    if (ok || (b.slots.length === 0 && frag.childNodes.length > 0)) {
+      el.appendChild(frag);
+      return el;
+    }
+  }
+  if (typeof b.translation === 'string' && b.translation) {
+    el.textContent = b.translation;
+    return el;
+  }
+  return null;
+}
+
+function bindScanUI() {
+  if (!stages.scan) return;
+  $('chapters-scan-btn').addEventListener('click', () => {
+    renderScanResults();
+    showStage('scan');
+  });
+  $('scan-back-btn').addEventListener('click', async () => {
+    await renderChapterList(); // 套用可能改了術語表 / 費用，回去前刷新
+    showStage('chapters');
+  });
+}
+
+
+// ---------- 全書術語表（§30.3)----------
+
+// 書籍模式抽取規則（角色暱稱 / 變體收錄），隨 EXTRACT_GLOSSARY payload.promptSuffix
+// 送到 background 附加在有效 glossary prompt 之後。zh-TW target 用中文版，其餘英文版
+const BOOK_GLOSSARY_SUFFIX_ZH = `補充規則（書籍模式）：本次輸入是一本書籍的內容（可能為小說）。
+1. 人物優先：主要角色與反覆出現的配角人名一律收錄。
+2. 同一人物的暱稱、簡稱、敬稱或別名（例如 Elizabeth / Lizzy / Miss Bennet 是同一人）各建一條，譯名必須對映同一人物的一致中文名（例如伊莉莎白 / 莉茲 / 班奈特小姐），確保跨章節譯名一致。
+3. 多詞人名除了全名條目外，「姓氏單獨出現」也要另建一條（例如 Richard Enfield 之外另建 Enfield→恩菲爾德），因為書中常只以姓氏稱呼。
+4. 譯名中的姓名分隔一律用全形間隔號「・」（例如「拉夫・舒馬克」），絕對不可用半形「·」。
+5. 反覆出現的地名、組織名與作品內世界觀專有名詞（魔法、科技、稱號等設定詞）也收錄。`;
+const BOOK_GLOSSARY_SUFFIX_EN = `Additional rules (book mode): the input is part of a book (possibly a novel).
+1. Prioritize people: include every main character and recurring supporting character.
+2. Create separate entries for nicknames, short forms, honorifics and aliases of the same person (e.g. Elizabeth / Lizzy / Miss Bennet are one person), keeping the translated names consistent for that character across chapters.
+3. For multi-word person names, also add a surname-only entry (e.g. besides Richard Enfield, add Enfield), because books often refer to characters by surname alone.
+4. When a translated name needs a separator between name parts, always use the full-width middle dot 「・」(U+30FB), never the half-width 「·」.
+5. Also include recurring place names, organizations, and in-world proper nouns (magic terms, technologies, titles).`;
+
+// gloss_ 輪快取的內容 hash——抽取與「放棄本書翻譯」清快取共用同一條（單一資料源，
+// 兩處各算一份會 drift）。promptSuffix 語意摻進 salt：同文字不同 prompt 模式
+// 不可共用 gloss_ 快取（v3：suffix 加全形間隔號規則，2026-07-10）
+function bookGlossaryRoundHash(text) {
+  return sha1(text + '\n#shinkansen-book-glossary-v3');
+}
+
+// 清這本書的 gloss_ 抽取輪快取（含 _lang<x> 等任何 target 後綴，用前綴比對）。
+// 放棄本書翻譯時呼叫——否則重開同書按「先建立術語表」逐輪秒回快取，
+// 看起來像術語表沒被清掉（2026-07-10 Jimmy 回報）。get(null) 全掃對罕見的
+// 破壞性動作可接受
+async function clearBookGlossaryExtractionCache(doc) {
+  try {
+    const rounds = buildBookGlossaryRounds(doc);
+    if (rounds.length === 0) return;
+    const prefixes = await Promise.all(rounds.map(async (text) => 'gloss_' + await bookGlossaryRoundHash(text)));
+    const all = await chrome.storage.local.get(null);
+    const toRemove = Object.keys(all).filter((k) => prefixes.some((p) => k.startsWith(p)));
+    if (toRemove.length) await chrome.storage.local.remove(toRemove);
+    console.log('[Shinkansen] book glossary extraction cache cleared', { removed: toRemove.length });
+  } catch (err) {
+    console.warn('[Shinkansen] clear book glossary cache failed', err && err.message);
+  }
+}
+
+async function extractGlossaryForBook(doc, { forceRefresh = false } = {}) {
+  const docAtStart = doc;
+  const rounds = buildBookGlossaryRounds(doc);
+  if (rounds.length === 0) return null;
+  const settings = await getSettings();
+  const promptSuffix = (settings.targetLanguage === 'zh-TW' || !settings.targetLanguage)
+    ? BOOK_GLOSSARY_SUFFIX_ZH
+    : BOOK_GLOSSARY_SUFFIX_EN;
+
+  const lists = [];
+  let failures = 0;
+  for (let i = 0; i < rounds.length; i++) {
+    if (currentDoc !== docAtStart) return null; // 使用者已換檔，丟棄
+    setGlossaryState(t('doc.epub.glossary.extracting', { current: i + 1, total: rounds.length }), 'is-loading');
+    const text = rounds[i];
+    const inputHash = await bookGlossaryRoundHash(text);
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'EXTRACT_GLOSSARY',
+        payload: { compressedText: text, inputHash, promptSuffix, forceRefresh },
+      });
+      if (res?.ok && Array.isArray(res.glossary)) {
+        lists.push(res.glossary);
+        // 抽取也是真實 API 花費，累進「本書累計費用」（快取命中 billedCostUSD=0）。
+        // 換檔 guard：使用者已換書時這筆費用屬舊書，不可污染新書計數
+        if (currentDoc === docAtStart && Number.isFinite(res.usage?.billedCostUSD) && res.usage.billedCostUSD > 0) {
+          epubCumulativeCostUSD += res.usage.billedCostUSD;
+          scheduleEpubSessionSave();
+        }
+      } else {
+        failures++;
+        console.warn('[Shinkansen] book glossary round not ok', i + 1, res?.error);
+      }
+    } catch (err) {
+      failures++;
+      console.warn('[Shinkansen] book glossary round failed', i + 1, err && err.message);
+    }
+  }
+  if (currentDoc !== docAtStart) return null;
+  if (lists.length === 0) return null; // 全數失敗 → 等同抽取失敗
+  const { entries, conflicts } = mergeBookGlossaries(lists);
+  console.log('[Shinkansen] book glossary merged', {
+    rounds: rounds.length, failures, terms: entries.length, conflicts,
+  });
+  return entries;
+}
+
+// ---------- 工作階段持久化（IndexedDB，epub-session-db.js，2026-07-10）----------
+// 翻譯進度 / 手動編輯 / 術語表 / 本書禁用詞整包存檔。不放 chrome.storage.local
+// ——「清除翻譯快取」不可波及使用者工作成果
+
+async function persistEpubSession() {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !epubBookHash) return;
+  const ok = await saveEpubSession(epubBookHash, {
+    title: currentDoc.meta.title || '',
+    glossary: Array.isArray(currentArticleGlossary) ? currentArticleGlossary : null,
+    forbidden: currentBookForbidden,
+    // 本書累計翻譯費用也是進度的一部分（2026-07-10 Jimmy 確認）
+    costUSD: epubCumulativeCostUSD,
+    blocks: collectSessionBlocks(currentDoc),
+  });
+  // session 落地成功後清掉舊版 bookgloss_ key——session 已是單一資料源，
+  // legacy key 留著只會在邊角把清空過的術語表復活
+  if (ok) {
+    const legacyKey = bookGlossStorageKey();
+    if (legacyKey) {
+      try { await chrome.storage.local.remove(legacyKey); } catch (_) { /* ignore */ }
+    }
+  }
+}
+
+let _sessionSaveTimer = null;
+function scheduleEpubSessionSave() {
+  if (_sessionSaveTimer) clearTimeout(_sessionSaveTimer);
+  _sessionSaveTimer = setTimeout(() => {
+    _sessionSaveTimer = null;
+    persistEpubSession();
+  }, 800);
+}
+
+// 術語表儲存 = 整包 session 存檔（glossary 隨 session 走）
+async function savePersistedBookGlossary(entries) {
+  if (Array.isArray(entries)) currentArticleGlossary = entries;
+  await persistEpubSession();
+}
+
+// ---------- 放棄本書翻譯 / 工作階段匯出匯入（2026-07-10）----------
+
+// 放棄 = 清掉這本書「全部」work in progress（2026-07-10 Jimmy 修訂語意）：
+// 翻譯進度（含手動編輯）+ 全書翻譯快取 + 累計費用 + 術語表 + 本書禁用詞 +
+// session 紀錄（含舊版 bookgloss_ fallback key，否則重開檔案又載回術語表）+
+// gloss_ 抽取輪快取（否則重開同書「先建立術語表」秒回快取，看似沒清乾淨）。
+// 清完直接離開本頁回選取檔案畫面（同日 Jimmy 需求），in-memory 進度隨
+// releaseCurrentDoc 一起丟。想留備份的使用者先按「匯出工作階段」——匯入即可整包還原
+async function discardBookTranslation() {
+  if (!currentDoc || currentDoc.kind !== 'epub') return;
+  if (!confirm(t('doc.epub.confirm.discard'))) return;
+  // 取消排隊中的 session 存檔，避免 timer 在清除的 await 空檔把 session 又寫回去
+  if (_sessionSaveTimer) {
+    clearTimeout(_sessionSaveTimer);
+    _sessionSaveTimer = null;
+  }
+  await clearEpubBlocksCache(currentDoc.chapters, { all: true });
+  await clearBookGlossaryExtractionCache(currentDoc);
+  await deleteEpubSession(epubBookHash);
+  const legacyKey = bookGlossStorageKey();
+  if (legacyKey) {
+    try { await chrome.storage.local.remove(legacyKey); } catch (_) { /* ignore */ }
+  }
+  releaseCurrentDoc();
+  showStage('upload');
+}
+
+const SESSION_EXPORT_TYPE = 'shinkansen-epub-session';
+
+function exportEpubSession() {
+  if (!currentDoc || currentDoc.kind !== 'epub' || !epubBookHash) return;
+  const data = {
+    type: SESSION_EXPORT_TYPE,
+    version: 1,
+    bookHash: epubBookHash,
+    title: currentDoc.meta.title || '',
+    exportedAt: new Date().toISOString(),
+    glossary: Array.isArray(currentArticleGlossary) ? currentArticleGlossary : null,
+    forbidden: currentBookForbidden,
+    costUSD: epubCumulativeCostUSD,
+    blocks: collectSessionBlocks(currentDoc),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const baseName = (currentDoc.meta.filename || 'book').replace(/\.epub$/i, '');
+  a.download = `${baseName}-session.json`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
+// 匯入 = 以檔案內容整包取代目前進度（先重置再 hydrate）。
+// 書指紋必須吻合——blockId 由內容派生，跨書匯入只會得到垃圾對映
+async function importEpubSession(file) {
+  if (!currentDoc || currentDoc.kind !== 'epub') return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data || data.type !== SESSION_EXPORT_TYPE || !data.blocks) {
+      throw new Error(t('doc.epub.alert.importSessionInvalid'));
+    }
+    if (data.bookHash !== epubBookHash) {
+      alert(t('doc.epub.alert.importSessionMismatch'));
+      return;
+    }
+    for (const ch of currentDoc.chapters) {
+      for (const b of ch.blocks) {
+        b.translation = null;
+        b.translationRaw = null;
+        b.editedHtml = null;
+        b.translationStatus = 'pending';
+        b.translationError = null;
+      }
+    }
+    const restored = hydrateSessionBlocks(currentDoc, data.blocks);
+    if (Array.isArray(data.glossary)) currentArticleGlossary = data.glossary;
+    if (Array.isArray(data.forbidden)) currentBookForbidden = data.forbidden;
+    if (Number.isFinite(data.costUSD)) epubCumulativeCostUSD = data.costUSD;
+    for (const ch of currentDoc.chapters) {
+      if (chapterDoneState(ch) === 'done') ch.selected = false;
+    }
+    await persistEpubSession();
+    await renderChapterList();
+    console.log('[Shinkansen] epub session imported:', { blocks: restored });
+  } catch (err) {
+    alert(t('doc.epub.alert.importSessionFail', { error: (err && err.message) || String(err) }));
+  }
+}
+
+// 舊版 bookgloss_（chrome.storage.local）讀取 fallback——v2.0.11 dev 期寫過的
+// 資料還讀得到；新寫入一律走 session（IndexedDB）
+function bookGlossStorageKey() {
+  return epubBookHash ? `bookgloss_${epubBookHash}` : null;
+}
+
+async function loadPersistedBookGlossary() {
+  const key = bookGlossStorageKey();
+  if (!key) return null;
+  try {
+    const got = await chrome.storage.local.get(key);
+    const entry = got[key];
+    return (entry && Array.isArray(entry.glossary)) ? entry.glossary : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------- 本書禁用詞（EPUB，2026-07-10）----------
+
+function buildBookForbiddenTable(entries) {
+  const grid = $('book-forbidden-grid');
+  for (const el of [...grid.children]) {
+    if (!el.classList.contains('g-header')) el.remove();
+  }
+  for (const e of entries || []) appendBookForbiddenRow(e);
+}
+
+function appendBookForbiddenRow(entry = { forbidden: '', replacement: '' }) {
+  const grid = $('book-forbidden-grid');
+  const forbiddenInput = document.createElement('input');
+  forbiddenInput.type = 'text';
+  forbiddenInput.className = 'bf-forbidden';
+  forbiddenInput.value = entry.forbidden || '';
+  const replacementInput = document.createElement('input');
+  replacementInput.type = 'text';
+  replacementInput.className = 'bf-replacement';
+  replacementInput.value = entry.replacement || '';
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'glossary-row-delete';
+  delBtn.textContent = t('doc.glossary.btn.delete');
+  delBtn.addEventListener('click', () => {
+    forbiddenInput.remove();
+    replacementInput.remove();
+    delBtn.remove();
+  });
+  grid.append(forbiddenInput, replacementInput, delBtn);
+}
+
+function readBookForbiddenTable() {
+  const out = [];
+  for (const forbiddenInput of $('book-forbidden-grid').querySelectorAll('.bf-forbidden')) {
+    const forbidden = forbiddenInput.value.trim();
+    if (!forbidden) continue;
+    const replacementInput = forbiddenInput.nextElementSibling;
+    const replacement = (replacementInput && replacementInput.classList.contains('bf-replacement'))
+      ? replacementInput.value.trim() : '';
+    out.push({ forbidden, replacement });
+  }
+  return out;
 }
