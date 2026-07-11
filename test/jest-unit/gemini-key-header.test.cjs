@@ -49,8 +49,11 @@ describe('Gemini API key 走 x-goog-api-key header（不放 URL）', () => {
     // 翻譯主路徑（fetchWithRetry 呼叫）+ glossary + summary + streaming 直接 fetch ×3
     const headerCount = (geminiSrc.match(/'x-goog-api-key': apiKey/g) || []).length;
     expect(headerCount).toBeGreaterThanOrEqual(4);
-    // fetchWithRetry 支援 headers 傳遞（主翻譯路徑靠它把 header 帶進 fetch）
-    expect(geminiSrc).toMatch(/fetchWithRetry\(url, body, \{ maxRetries, headers: \{ 'x-goog-api-key': apiKey \} \}\)/);
+    // fetchWithRetry 支援 headers 傳遞（主翻譯路徑靠它把 header 帶進 fetch）。
+    // v2.0.53 起呼叫多了 timeoutMs / timeoutRetries 選項改為多行——斷言錨定
+    // 「同一個 fetchWithRetry 呼叫的 options 內含 x-goog-api-key header」即可,
+    // 不鎖死參數排列
+    expect(geminiSrc).toMatch(/fetchWithRetry\(url, body, \{[\s\S]{0,400}?headers: \{ 'x-goog-api-key': apiKey \}/);
     expect(geminiSrc).toMatch(/\.\.\.headers/);
   });
 

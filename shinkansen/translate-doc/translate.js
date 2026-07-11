@@ -177,111 +177,37 @@ export async function translateDocument(doc, options = {}) {
 
   emit();
 
-  // 2) 切 chunk 逐批送
-  for (let start = 0; start < queue.length; start += chunkSize) {
-    if (signal?.aborted) {
-      // 標 cancelled，剩下 block 保留 pending(UI 顯示原文)
-      for (let j = start; j < queue.length; j++) {
-        queue[j].translationStatus = 'cancelled';
-      }
-      break;
-    }
+  const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
 
-    const chunk = queue.slice(start, start + chunkSize);
-    // W7:送 LLM 的文字含 inline style marker(⟦b⟧/⟦i⟧/⟦l:N⟧)。fallback:
-    // 沒 styleSegments 的 block(舊 fixture / parser 失敗等)用 plainText。
-    const texts = chunk.map((b) => buildMarkedText(b));
+  const accountUsage = (usage = {}) => {
+    // `??` 而非 `||`:billedInputTokens === 0(全 cache hit / 全免費)是合法值,
+    // `||` 會 fallback 到另一邊,語意相反
+    cumulativeInputTokens += usage.inputTokens ?? usage.billedInputTokens ?? 0;
+    cumulativeBilledInputTokens += usage.billedInputTokens ?? usage.inputTokens ?? 0;
+    cumulativeOutputTokens += usage.outputTokens ?? 0;
+    cumulativeCostUSD += usage.billedCostUSD ?? usage.costUSD ?? 0;
+    cacheHits += usage.cacheHits || 0;
+  };
 
-    chunk.forEach((b) => { b.translationStatus = 'translating'; });
-    emit();
-
-    // EPUB 全書術語表批次級過濾（見 options doc）；PDF 路徑不帶 filterGlossary，
-    // 行為不變（整份 glossary 每批注入）
-    const chunkGlossary = filterGlossary
-      ? filterGlossaryForTexts(glossary, texts)
-      : glossary;
-
-    const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
-    const payload = { texts, modelOverride, glossary: chunkGlossary, preferArticleGlossary: true, extraForbiddenTerms, docBatchSize: chunkSize };
-    const markChunkFailed = (msg) => {
-      chunk.forEach((b) => {
-        b.translationStatus = 'failed';
-        b.translationError = msg;
-      });
-      failedBlocks += chunk.length;
-      translatedBlocks += chunk.length;
-      emit();
-    };
-    const accountUsage = (usage = {}) => {
-      // `??` 而非 `||`:billedInputTokens === 0(全 cache hit / 全免費)是合法值,
-      // `||` 會 fallback 到另一邊,語意相反
-      cumulativeInputTokens += usage.inputTokens ?? usage.billedInputTokens ?? 0;
-      cumulativeBilledInputTokens += usage.billedInputTokens ?? usage.inputTokens ?? 0;
-      cumulativeOutputTokens += usage.outputTokens ?? 0;
-      cumulativeCostUSD += usage.billedCostUSD ?? usage.costUSD ?? 0;
-      cacheHits += usage.cacheHits || 0;
-    };
-
-    const t0 = Date.now();
-    let response;
-    try {
-      response = await chrome.runtime.sendMessage({ type: messageType, payload });
-    } catch (err) {
-      // background 完全沒回應(extension reload / service worker crash 等)
-      markChunkFailed((err && err.message) || String(err));
-      continue;
-    }
-    batchTimes.push(Date.now() - t0);
-
-    if (!response || !Array.isArray(response.result)) {
-      // background handler 拋了(API key 缺 / Gemini 回 error 等)
-      markChunkFailed(bgErrMsg(response) || 'no response');
-      continue;
-    }
-    accountUsage(response.usage);
-
-    // v2.0.52:batch 級輸出語言驗證 + 單次重試。模型偶發把整批翻成原文語言
-    //(實例:日文書某批「譯文」是日文改寫,下一批正常),且錯譯已被 background
-    // 寫進 tc_ 快取——不清快取直接重送會秒回同一批錯譯,所以重試前先清該批
-    // tc_。重試仍錯就標整批 failed(再清一次快取,讓使用者手動重翻直接打 API),
-    // 不無限重試——最壞成本上限 = 該批 2 次 API 呼叫
-    if (detectDocBatchLangMismatch(response.result, targetLanguage)) {
-      console.warn('[Shinkansen] chunk output language mismatch, retrying once', { chunkStart: start, targetLanguage });
-      await clearTcCacheForTexts(texts);
-      let retryResp = null;
-      try {
-        retryResp = await chrome.runtime.sendMessage({ type: messageType, payload });
-      } catch { retryResp = null; }
-      if (retryResp && Array.isArray(retryResp.result)) accountUsage(retryResp.usage);
-      if (retryResp && Array.isArray(retryResp.result)
-          && !detectDocBatchLangMismatch(retryResp.result, targetLanguage)) {
-        response = retryResp;
-      } else {
-        await clearTcCacheForTexts(texts);
-        const i18n = window.__SK?.i18n;
-        markChunkFailed((i18n && typeof i18n.t === 'function')
-          ? i18n.t('doc.translate.outputLangMismatch')
-          : 'output language does not match target language');
-        continue;
-      }
-    }
-
-    const usage = response.usage || {};
-    console.log('[Shinkansen] chunk done', {
-      chunkStart: start,
-      chunkSize: chunk.length,
-      batchMs: Date.now() - t0,
-      usage: {
-        billedInputTokens: usage.billedInputTokens || 0,
-        outputTokens: usage.outputTokens || 0,
-        cacheHits: usage.cacheHits || 0,
-        billedCostUSD: Number((usage.billedCostUSD || 0).toFixed(6)),
-      },
+  const markBlocksFailed = (blocks, msg) => {
+    blocks.forEach((b) => {
+      b.translationStatus = 'failed';
+      b.translationError = msg;
     });
+    failedBlocks += blocks.length;
+    translatedBlocks += blocks.length;
+    emit();
+  };
 
-    for (let i = 0; i < chunk.length; i++) {
-      const b = chunk[i];
-      const tr = response.result[i];
+  const applyBlockResults = (blocks, result) => {
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      // LLM 協定殘片修復(v2.0.53):畸形佔位符(⟦/2»)+ 段尾分隔符殘片——進 raw
+      // 前先修,快取命中回同一字串也走這裡,舊的壞快取自動治癒不需清快取。
+      // 再對齊句尾句號(原文沒有終止標點時刪掉模型自補的「。」)
+      const tr = typeof result[i] === 'string'
+        ? alignTrailingPeriodWithSource(b.plainText, repairDocLlmArtifacts(result[i]))
+        : result[i];
       if (typeof tr === 'string' && tr.length > 0) {
         // EPUB block：原始譯文（含 ⟦N⟧ 佔位符）留給 epub-writer 反序列化；
         // translation 欄位存去除標記後的純文字（預覽 / 複製用）
@@ -314,6 +240,121 @@ export async function translateDocument(doc, options = {}) {
       translatedBlocks++;
     }
     emit();
+  };
+
+  // 對切重試(v2.0.53)可救的錯誤碼——縮小批次有機會通過的類型:
+  //   - timeout / readTimeout:輸出量隨批次減半,更容易在時限內完成
+  //   - blocked / empty*(含 PROHIBITED_CONTENT 走 emptyContent):Google 過濾器
+  //     通常只被批內一兩段觸發,對切能把觸發段隔離、救回其餘段
+  //   - emptyMaxTokens:輸出砍半自然低於上限
+  // 不對切的類型:apiKeyMissing / baseUrlMissing / rpd 配額 / network(斷線)/
+  // badResponse——縮批也不會好,對切只會把一次失敗放大成 2N-1 次請求雪崩。
+  // sendMessage 直接 throw(extension reload / SW crash)同理不對切
+  const BISECTABLE_CODES = new Set([
+    'timeout', 'readTimeout',
+    'blocked', 'emptyContent', 'emptySafety', 'emptyRecitation', 'emptyMaxTokens', 'emptyOther',
+    'customEmptyContent',
+  ]);
+
+  // 一個 sub-chunk 的完整生命週期:送翻 → 失敗時視錯誤碼對切遞迴(深度自然收斂:
+  // 長度 1 不可再切)→ 語言驗證 → 寫回。遞迴上限 log2(chunkSize) ≤ 7
+  async function translateSubChunk(blocks, depth) {
+    if (signal?.aborted) {
+      blocks.forEach((b) => { b.translationStatus = 'cancelled'; });
+      emit();
+      return;
+    }
+    // W7:送 LLM 的文字含 inline style marker(⟦b⟧/⟦i⟧/⟦l:N⟧)。fallback:
+    // 沒 styleSegments 的 block(舊 fixture / parser 失敗等)用 plainText。
+    const texts = blocks.map((b) => buildMarkedText(b));
+    blocks.forEach((b) => { b.translationStatus = 'translating'; });
+    emit();
+
+    // EPUB 全書術語表批次級過濾（見 options doc）；PDF 路徑不帶 filterGlossary，
+    // 行為不變（整份 glossary 每批注入）
+    const chunkGlossary = filterGlossary
+      ? filterGlossaryForTexts(glossary, texts)
+      : glossary;
+    const payload = { texts, modelOverride, glossary: chunkGlossary, preferArticleGlossary: true, extraForbiddenTerms, docBatchSize: chunkSize };
+
+    const t0 = Date.now();
+    let response;
+    try {
+      response = await chrome.runtime.sendMessage({ type: messageType, payload });
+    } catch (err) {
+      // background 完全沒回應(extension reload / service worker crash 等)
+      markBlocksFailed(blocks, (err && err.message) || String(err));
+      return;
+    }
+    batchTimes.push(Date.now() - t0);
+
+    if (!response || !Array.isArray(response.result)) {
+      // background handler 拋了(API key 缺 / Gemini 回 error 等)
+      const code = response && response.errorCode;
+      if (blocks.length >= 2 && BISECTABLE_CODES.has(code)) {
+        console.warn('[Shinkansen] chunk failed — bisect retry', { code, size: blocks.length, depth });
+        const mid = Math.ceil(blocks.length / 2);
+        await translateSubChunk(blocks.slice(0, mid), depth + 1);
+        await translateSubChunk(blocks.slice(mid), depth + 1);
+        return;
+      }
+      markBlocksFailed(blocks, bgErrMsg(response) || 'no response');
+      return;
+    }
+    accountUsage(response.usage);
+
+    // v2.0.52:batch 級輸出語言驗證 + 單次重試。模型偶發把整批翻成原文語言
+    //(實例:日文書某批「譯文」是日文改寫,下一批正常),且錯譯已被 background
+    // 寫進 tc_ 快取——不清快取直接重送會秒回同一批錯譯,所以重試前先清該批
+    // tc_。重試仍錯就標整批 failed(再清一次快取,讓使用者手動重翻直接打 API),
+    // 不無限重試也不對切——維持該批最壞成本上限 = 2 次 API 呼叫
+    if (detectDocBatchLangMismatch(response.result, targetLanguage)) {
+      console.warn('[Shinkansen] chunk output language mismatch, retrying once', { size: blocks.length, targetLanguage });
+      await clearTcCacheForTexts(texts);
+      let retryResp = null;
+      try {
+        retryResp = await chrome.runtime.sendMessage({ type: messageType, payload });
+      } catch { retryResp = null; }
+      if (retryResp && Array.isArray(retryResp.result)) accountUsage(retryResp.usage);
+      if (retryResp && Array.isArray(retryResp.result)
+          && !detectDocBatchLangMismatch(retryResp.result, targetLanguage)) {
+        response = retryResp;
+      } else {
+        await clearTcCacheForTexts(texts);
+        const i18n = window.__SK?.i18n;
+        markBlocksFailed(blocks, (i18n && typeof i18n.t === 'function')
+          ? i18n.t('doc.translate.outputLangMismatch')
+          : 'output language does not match target language');
+        return;
+      }
+    }
+
+    const usage = response.usage || {};
+    console.log('[Shinkansen] chunk done', {
+      chunkSize: blocks.length,
+      depth,
+      batchMs: Date.now() - t0,
+      usage: {
+        billedInputTokens: usage.billedInputTokens || 0,
+        outputTokens: usage.outputTokens || 0,
+        cacheHits: usage.cacheHits || 0,
+        billedCostUSD: Number((usage.billedCostUSD || 0).toFixed(6)),
+      },
+    });
+
+    applyBlockResults(blocks, response.result);
+  }
+
+  // 2) 切 chunk 逐批送
+  for (let start = 0; start < queue.length; start += chunkSize) {
+    if (signal?.aborted) {
+      // 標 cancelled，剩下 block 保留 pending(UI 顯示原文)
+      for (let j = start; j < queue.length; j++) {
+        queue[j].translationStatus = 'cancelled';
+      }
+      break;
+    }
+    await translateSubChunk(queue.slice(start, start + chunkSize), 0);
   }
 
 
@@ -468,7 +509,10 @@ export async function translateSingleBlock(block, options = {}) {
     });
   } catch (_) { /* swallow */ }
 
-  const tr = response.result[0];
+  // LLM 協定殘片修復 + 句尾句號對齊,同 translateDocument 的 applyBlockResults（v2.0.53）
+  const tr = typeof response.result[0] === 'string'
+    ? alignTrailingPeriodWithSource(block.plainText, repairDocLlmArtifacts(response.result[0]))
+    : response.result[0];
   if (typeof tr === 'string' && tr.length > 0) {
     // EPUB block：同 translateDocument 的 epub 分支
     if (block.epubSerializedText != null) {
@@ -501,14 +545,118 @@ export async function translateSingleBlock(block, options = {}) {
 // EPUB 專用 helpers
 // ============================================================================
 
+// 佔位符畸形標記修復（v2.0.53）：模型偶發把標記的閉合 ⟧ 寫成 »（⟦/2⟧ → ⟦/2»,
+// 日文書實測 57 段），或段尾整個漏寫。錨定「⟦ + (*/?)數字 + 非 ⟧」pattern——
+// ⟦ 是協定專用字元，這個前綴必然是壞標記；» 等常見替代閉合字元順帶吃掉,
+// 其他字元不消耗只補 ⟧。內文合法的 «» 引號沒有 ⟦N 前綴,不受影響。
+// 與 content-serialize.js SK.normalizeLlmPlaceholders 尾段是同一份事實的雙實作
+//（module 系統隔離:content script IIFE vs ES module），改這裡必同步那邊
+export function repairMangledPlaceholders(s) {
+  if (typeof s !== 'string' || s.length === 0) return s;
+  return s.replace(/⟦(\*?\/?\d+)(?:[»›❱》〉≫]|(?=[^⟧0-9])|$)/g, '⟦$1⟧');
+}
+
+// 批次分隔符殘片清理（v2.0.53）：模型偶發在段尾寫出殘缺的批次分隔符幻覺
+//（日文書實例:「…走了過來。⟦/0⟧\n<<<//22»」）。完整分隔符 <<<SHINKANSEN_SEP>>>
+// 由 gemini.js 的 split 消耗；殘缺副本（以 <<< 開頭、沒有 >>> 閉合）永不屬於
+// 譯文內容——<<< 是批次協定保留序列（原文含 <<< 本來就會破 split）。
+// 三重限縮避免誤殺內文：1) 只看字串尾端 2) <<< 之後必須是「無空白、無 CJK 的
+// 符號串」≤24 字（實測殘片 //22» 的結構特徵;帶內文的「<<< b 之後還有正文」
+// 不會中）3) 含 >>> 閉合的完整分隔符不動（tempered lookahead）
+export function stripTrailingSeparatorGarbage(s) {
+  if (typeof s !== 'string' || s.length === 0) return s;
+  return s.replace(/\s*<{3,}(?:(?!>{3})[^\s㐀-鿿぀-ヿ]){0,24}$/, '');
+}
+
+// 標記周邊 CJK 空格收斂（v2.0.53）：模型偶發在每個標記前後塞空格
+//（日文書實測 c25-b30:「⟦0⟧ 兩個男人…稍微 ⟦/0⟧ ⟦1⟧ 歪 ⟦/1⟧ ⟦2⟧ 著頭…」），
+// strip 後殘留「稍微 歪 著頭」這種 CJK 間空格。通則:兩個 CJK 字元之間只隔著
+// 標記與空白時,空白全是模型幻覺（CJK 內部無空格語意）——標記留、[ \t] 刪;
+// 字串頭尾的標記串同理。不動 \n（<br> 語意）、不動 CJK/拉丁邊界空格（中英
+// 空格合法）。與 content-serialize.js SK.collapseCjkSpacesAroundPlaceholders
+// 尾段是同一份事實的雙實作（module 系統隔離），改這裡必同步那邊
+const CJK_RE = '[\\u3400-\\u9fff\\uf900-\\ufaff\\u3000-\\u303f\\uff00-\\uffef]';
+const PH_TOKEN_RE = '⟦[*\\/]?\\d+⟧';
+export function collapseCjkPlaceholderSpaces(s) {
+  if (typeof s !== 'string' || s.length === 0) return s;
+  const strip = (run) => run.replace(/[ \t]+/g, '');
+  s = s.replace(
+    new RegExp('(' + CJK_RE + ')((?:[ \\t]*(?:' + PH_TOKEN_RE + '))+[ \\t]*)(?=' + CJK_RE + ')', 'g'),
+    (m, a, run) => a + strip(run),
+  );
+  s = s.replace(
+    new RegExp('^((?:[ \\t]*(?:' + PH_TOKEN_RE + '))+[ \\t]*)(?=' + CJK_RE + ')'),
+    (m, run) => strip(run),
+  );
+  s = s.replace(
+    new RegExp('(' + CJK_RE + ')((?:[ \\t]*(?:' + PH_TOKEN_RE + '))+[ \\t]*)$'),
+    (m, a, run) => a + strip(run),
+  );
+  return s;
+}
+
+// CJK 內文 ASCII 空格收斂（v2.0.53，2026-07-11 Jimmy 指定納入自動清理）：
+// 模型翻日文書時把原文「？／！後接空格再起句」的排版慣例帶進中文譯文
+//（實測樣本:「妳懂嗎？ 那本來應該是…」，session 內 11 段）。通則:CJK 文字
+// 內部沒有 ASCII 空格語意——兩個 CJK 字元（含全形標點）之間的 [ \t] 一律移除。
+// 三個刻意不動:1) 全形空格 U+3000（日文合法排版字元,不在 [ \t] 內）
+// 2) CJK/拉丁邊界空格（中英空格合法,v2.0.51 甚至主動補）3) \n（換行語意）。
+// 範圍:僅 translate-doc 譯文接收鏈（比照人名間隔號正規化的 translate-doc
+// 先例）;網頁翻譯路徑維持 §7 排版歸 prompt 原則
+export function collapseCjkAsciiSpaces(s) {
+  if (typeof s !== 'string' || s.length === 0) return s;
+  return s.replace(new RegExp('(' + CJK_RE + ')[ \\t]+(?=' + CJK_RE + ')', 'g'), '$1');
+}
+
+// 譯文接收點的 LLM 協定殘片修復總管——applyBlockResults / retryBlock /
+// hydrateSessionBlocks 三個接收點共用，避免各自組合 drift。
+// 順序:先修畸形標記（collapse 的 token pattern 要求完好 ⟧）→ 清分隔符殘片
+// → 收斂標記周邊 CJK 空格 → 收斂 CJK 內文 ASCII 空格
+export function repairDocLlmArtifacts(s) {
+  if (typeof s !== 'string' || s.length === 0) return s;
+  return collapseCjkAsciiSpaces(
+    collapseCjkPlaceholderSpaces(stripTrailingSeparatorGarbage(repairMangledPlaceholders(s))),
+  );
+}
+
+// 句尾句號對齊原文（v2.0.53，2026-07-11 Jimmy 指定「忠於原文」方向）：
+// 模型把日文「」內對白慣例的「句尾無句號」正規化成中文出版慣例的「補句號」
+//（實測本:1,478 段對白中 931 段句尾帶句號,原文多數沒有）。原文輕收節奏是
+// 作者的選擇——原文句尾（撇開閉引號 / 閉括號 / 標記殼）沒有終止標點時,刪掉
+// 譯文句尾多補的「。」。只刪句號、只在原文沒有終止標點時刪,絕不反向添加;
+// 句中的標點重組是翻譯自由,不碰。需要原文對照,所以獨立於 repairDocLlmArtifacts
+//（那條鏈沒有 source context），由接收點與 hydrate 另行呼叫
+const TERMINAL_PUNCT_RE = /[。．.！!？?…‥]/;
+// 收尾殼:閉引號 / 閉括號 / 佔位符或樣式標記（⟦/0⟧ / ⟦/b⟧ / ⟦l:2⟧ 等）/ 空白
+const TRAILING_SHELL_RE = /(?:[」』”’〉》】）)\]]|⟦[^⟦⟧]{1,8}⟧|\s)+$/;
+export function alignTrailingPeriodWithSource(source, target) {
+  if (typeof source !== 'string' || typeof target !== 'string' || target.length === 0) return target;
+  const sCore = source.replace(TRAILING_SHELL_RE, '');
+  if (!sCore) return target;
+  if (TERMINAL_PUNCT_RE.test(sCore[sCore.length - 1])) return target; // 原文有終止標點 → 不動
+  const m = target.match(TRAILING_SHELL_RE);
+  const shell = m ? m[0] : '';
+  const tCore = m ? target.slice(0, target.length - shell.length) : target;
+  if (tCore.endsWith('。')) return tCore.slice(0, -1) + shell;
+  return target;
+}
+
 // 去除譯文中的 ⟦N⟧ / ⟦/N⟧ / ⟦*N⟧ 佔位符標記（預覽 / 複製用純文字）。
 // 反序列化重建走 epub-writer 的 SK.deserializeWithPlaceholders，不用這個。
+// v2.0.53:先修畸形標記再掃——否則 ⟦/2» 這種壞 token 只會被「殘留括號」清理
+// 削掉 ⟦,留下「/2»」碎片洩漏到預覽 / session plain
 export function stripPlaceholderTokens(s) {
+  const repaired = repairDocLlmArtifacts(s || '');
   const SK = (typeof window !== 'undefined' && window.__SK) || null;
+  // 尾端再過一次 CJK 空格收斂:strip 自己的 \s{2,}→' ' 會把 raw 的合法換行
+  //（\n\n 段落分隔）壓成 CJK 間空格（實測 c42-b7「如下： 清水」），對一行式
+  // plain 而言該空格是噪音。EPUB 下載走 raw 不經此路徑,換行語意不受影響
   if (SK && typeof SK.stripStrayPlaceholderMarkers === 'function') {
-    return SK.stripStrayPlaceholderMarkers(s).replace(/\s{2,}/g, ' ').trim();
+    return collapseCjkAsciiSpaces(SK.stripStrayPlaceholderMarkers(repaired).replace(/\s{2,}/g, ' ').trim());
   }
-  return (s || '').replace(/⟦\*?\/?\d+⟧/g, '').replace(/\s{2,}/g, ' ').trim();
+  return collapseCjkAsciiSpaces(
+    repaired.replace(/⟦\*?\/?\d+⟧/g, '').replace(/[⟦⟧❰❱]/g, '').replace(/\s{2,}/g, ' ').trim(),
+  );
 }
 
 // EPUB 全書術語表的批次級過濾：只保留該批原文實際出現的條目（大小寫不敏感）。

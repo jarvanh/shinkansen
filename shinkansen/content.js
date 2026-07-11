@@ -111,14 +111,29 @@
     } else if (action === 'GET_STORAGE') {
       // Debug Bridge:暴露 storage.sync 設定供除錯讀取
       // (Chrome for Claude / 主世界 javascript_tool 拿不到 chrome.storage,需 isolated 端橋接)
+      // v2.0.53:整段包 try/catch——extension reload 後的 orphan content script
+      // 碰 chrome.storage 會「同步」throw「Extension context invalidated」,
+      // .catch 接不到 → uncaught 累積在 chrome://extensions 錯誤清單。
+      // respond 走 DOM CustomEvent,context 失效後仍可用,改回明確錯誤訊息
+      //(其餘 bridge action 經 safeSendMessage,該層已有同款防護)
       const keys = (e.detail && e.detail.keys) || null;  // null = 全部 key
-      const _storage = (typeof browser !== 'undefined' && browser.storage) || (typeof chrome !== 'undefined' && chrome.storage);
-      if (!_storage || !_storage.sync) {
-        respond({ ok: false, error: 'storage.sync unavailable in this context' });
-      } else {
-        _storage.sync.get(keys)
-          .then((data) => respond({ ok: true, sync: data }))
-          .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+      try {
+        const _storage = (typeof browser !== 'undefined' && browser.storage) || (typeof chrome !== 'undefined' && chrome.storage);
+        if (!_storage || !_storage.sync) {
+          respond({ ok: false, error: 'storage.sync unavailable in this context' });
+        } else {
+          _storage.sync.get(keys)
+            .then((data) => respond({ ok: true, sync: data }))
+            .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+        }
+      } catch (err) {
+        const m = err?.message || String(err);
+        respond({
+          ok: false,
+          error: m.includes('Extension context invalidated')
+            ? 'extension 已重載,此分頁的 content script 已失效——請重新整理頁面後再試'
+            : m,
+        });
       }
     } else if (action === 'GET_USAGE_STATS') {
       // DEBUG(v1.10.18.x):用量統計查詢。usage-db 在背景(extension origin)的 IndexedDB,

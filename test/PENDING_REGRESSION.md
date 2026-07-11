@@ -17,6 +17,12 @@
 
 ## 條目
 
+### Debug Bridge GET_STORAGE 對 orphan content script 的防護——reload 時序無法穩定 fixture 化（dev tail 2.0.52.1 修）
+- **症狀**:extension reload 後,舊分頁的 orphan content script 收到 Debug Bridge `GET_STORAGE` 請求時,`chrome.storage` 存取**同步** throw「Extension context invalidated」——`.catch` 接不到 → uncaught error 累積在 chrome://extensions 錯誤清單(2026-07-11 Jimmy 回報,實際觸發者是 Claude 對 reload 前的舊分頁跑 GET_STORAGE)。
+- **根因**:bridge 內只有 GET_STORAGE 直接碰 chrome API(其餘 action 走 `SK.safeSendMessage`,該層已有 context-invalidated 防護),且同步 throw 不走 Promise `.catch`。
+- **修在**:`content.js` GET_STORAGE 分支整段包 try/catch,context 失效時 respond 明確錯誤訊息(respond 走 DOM CustomEvent,context 失效後仍可用)。
+- **為什麼進 PENDING**:最小重現需要「extension reload → 舊分頁 content script 變 orphan → 對 orphan dispatch bridge 事件」的時序編排,Playwright 下 RELOAD_EXTENSION + CDP isolated context 存活狀態不穩定,硬寫斷言會 flaky。影響面僅 debug 工具(使用者不觸發 bridge),風險低,可由 Jimmy 決定是否永久結案。
+
 ### 術語表 prompt 日文 source 羅馬化——LLM 行為層無法 fixture 化（dev tail 2.0.51.1 修）
 - **症狀**:日文書 EPUB 抽全書術語表,212 條 source 全是羅馬拼音(Aizawa / Hitoshi Kashiwaki…)而非原文日文——譯後一致性掃描 `checkGlossaryCompliance` 拿 source 比對日文原文永遠比不中,整批條目默默失去保護;翻譯時譯名規則也變不可靠。
 - **根因**:舊 `DEFAULT_GLOSSARY_PROMPT` 自稱「英中對照術語表」+ 範例全拉丁字母,無「source 必須逐字取自原文」規則。**模型相依**:gemini-3.1-flash-lite 對日文輸入仍回日文 source(短文 / 8K / 60K 皆是),`gemini-3.5-flash` 則 17/17 全轉羅馬拼音(真 API probe 重現,2026-07-11)。

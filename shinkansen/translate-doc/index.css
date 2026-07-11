@@ -37,8 +37,10 @@ body {
   flex-direction: column;
 }
 
+/* 頁首縮窄（2026-07-11 Jimmy 需求）：原 24px 上 padding + 22px 字 + 32px icon
+   對內容頁是垂直空間浪費,壓成單薄一條 */
 .app-header {
-  padding: 24px 40px 16px;
+  padding: 8px 40px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-soft);
 }
@@ -46,15 +48,15 @@ body {
 .app-header h1 {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin: 0;
-  font-size: 22px;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .app-icon {
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
 }
 
 #app-main {
@@ -1218,11 +1220,45 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
-/* 標題獨立成行（不跟返回按鈕擠同一列，2026-07-10 Jimmy 回報） */
+/* 預覽頂欄凍結（2026-07-11 Jimmy 需求）：長書捲到中段仍能返回 / 搜尋取代。
+   sticky 底色蓋住滑到下方的內文;整組元件縮小壓低佔用高度 */
+.epub-preview-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+  padding: 8px 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.epub-preview-sticky .secondary-btn {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.epub-preview-sticky .g-opt {
+  font-size: 13px;
+}
+/* 標題獨立成行（不跟返回按鈕擠同一列，2026-07-10 Jimmy 回報）；
+   sticky 縮小版:字級降、單行截斷,長章節名不撐高凍結欄 */
 #epub-preview-title {
-  margin: 4px 0 12px;
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 掃描頁 sticky 標題:固定短字串,與按鈕同列不會撐高（預覽頁章節名可長,
+   維持獨立行;兩者刻意不同,見 2026-07-10 / 07-11 兩筆需求） */
+.scan-sticky .scan-sticky-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.scan-sticky .epub-preview-toolbar {
+  margin-bottom: 0;
 }
 .epub-preview-content {
   max-width: 720px;
@@ -1349,7 +1385,7 @@ body:has(#stage-glossary:not([hidden])) .app-footer {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin: 10px 0 4px;
+  margin: 0;
   flex-wrap: wrap;
 }
 .epub-sr-bar input {

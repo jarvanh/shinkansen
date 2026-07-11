@@ -625,6 +625,11 @@ async function _handleAsrSubtitleBatch(payload, sender, cacheTag, namespace) {
     false, false);
 }
 
+// v2.0.53:文件翻譯批次的 fetch 逾時（TRANSLATE_DOC_BATCH* 兩個 handler 共用）。
+// 網頁翻譯的 15s 假設（gemini.js FETCH_TIMEOUT_MS）對「每批可達 50 段長文」不成立,
+// 詳見兩個 handler 內的註解
+const DOC_FETCH_TIMEOUT_MS = 120_000;
+
 // ─── 訊息路由（handler map 取代 if-else 鏈） ──────────────────
 const messageHandlers = {
   // DEBUG: 給 Debug Bridge 觸發 hot reload(讀取磁碟最新 unpacked extension code)。
@@ -863,6 +868,12 @@ const messageHandlers = {
       const userPrompt = getEffectiveDocSystemPrompt(s.targetLanguage, td.systemPrompt);
       const effectivePrompt = userPrompt + DOC_INLINE_MARKER_INSTRUCTION;
       const overrides = { systemInstruction: effectivePrompt };
+      // v2.0.53:文件批次逾時 120s——每批可達 50 段長文,輸出遠超網頁翻譯的 15s
+      // 假設(日文書實例:850 段逾時失敗,abort 的請求 Google 端照樣計費)。
+      // 逾時重試降為 1 次:120s 還逾時代表批太大,重複燒同尺寸請求 = 4 倍計費
+      // 0 產出,交 translate-doc/translate.js 對切重試縮批處理
+      overrides.fetchTimeoutMs = DOC_FETCH_TIMEOUT_MS;
+      overrides.timeoutRetries = 1;
       if (typeof td.temperature === 'number' && Number.isFinite(td.temperature)) {
         overrides.temperature = td.temperature;
       }
@@ -881,6 +892,13 @@ const messageHandlers = {
       const userPrompt = getEffectiveDocSystemPrompt(s.targetLanguage, td.systemPrompt);
       const effectivePrompt = userPrompt + DOC_INLINE_MARKER_INSTRUCTION;
       const overrides = { systemPrompt: effectivePrompt };
+      // v2.0.53:同 TRANSLATE_DOC_BATCH 的批次逾時放寬。openai-compat 走秒制
+      // fetchTimeoutSec;使用者在自訂模型設定填了更大的值就尊重使用者
+      const userTimeoutSec = s.customProvider?.fetchTimeoutSec;
+      overrides.fetchTimeoutSec = Math.max(
+        DOC_FETCH_TIMEOUT_MS / 1000,
+        (typeof userTimeoutSec === 'number' && userTimeoutSec > 0) ? userTimeoutSec : 0,
+      );
       if (typeof td.temperature === 'number' && Number.isFinite(td.temperature)) {
         overrides.temperature = td.temperature;
       }

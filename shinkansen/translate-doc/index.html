@@ -117,20 +117,25 @@
 
     <!-- EPUB 階段 5：單章譯文預覽（試翻 review 用） -->
     <section id="stage-epub-preview" class="stage" hidden>
-      <div class="epub-preview-toolbar">
-        <button id="epub-preview-back-btn" class="secondary-btn" type="button" data-i18n="doc.epub.btn.previewBack">← 返回章節清單</button>
-        <span class="edit-toolbar-spacer"></span>
-        <label class="g-opt">
-          <input type="checkbox" id="epub-preview-compare">
-          <span data-i18n="doc.epub.preview.compare">顯示原文對照</span>
-        </label>
-      </div>
-      <h2 class="result-title" id="epub-preview-title"></h2>
-      <div class="epub-sr-bar">
-        <input type="text" id="epub-sr-find" data-i18n-attr-placeholder="doc.epub.sr.find" placeholder="搜尋譯文…">
-        <input type="text" id="epub-sr-replace" data-i18n-attr-placeholder="doc.epub.sr.replace" placeholder="取代為…">
-        <button id="epub-sr-apply" class="secondary-btn" type="button" data-i18n="doc.epub.sr.apply">全部取代</button>
-        <span id="epub-sr-status" class="settings-hint"></span>
+      <!-- 長書預覽捲到中段仍要能返回 / 搜尋取代（2026-07-11 Jimmy 需求）：
+           工具列 + 標題 + 搜尋取代列整組縮小並 sticky 凍結頁面頂端。
+           標題維持獨立一行（2026-07-10 Jimmy 回報不與返回按鈕擠同列） -->
+      <div class="epub-preview-sticky">
+        <div class="epub-preview-toolbar">
+          <button id="epub-preview-back-btn" class="secondary-btn" type="button" data-i18n="doc.epub.btn.previewBack">← 返回章節清單</button>
+          <span class="edit-toolbar-spacer"></span>
+          <label class="g-opt">
+            <input type="checkbox" id="epub-preview-compare">
+            <span data-i18n="doc.epub.preview.compare">顯示原文對照</span>
+          </label>
+        </div>
+        <h2 class="result-title" id="epub-preview-title"></h2>
+        <div class="epub-sr-bar">
+          <input type="text" id="epub-sr-find" data-i18n-attr-placeholder="doc.epub.sr.find" placeholder="搜尋譯文…">
+          <input type="text" id="epub-sr-replace" data-i18n-attr-placeholder="doc.epub.sr.replace" placeholder="取代為…">
+          <button id="epub-sr-apply" class="secondary-btn" type="button" data-i18n="doc.epub.sr.apply">全部取代</button>
+          <span id="epub-sr-status" class="settings-hint"></span>
+        </div>
       </div>
       <div class="edit-help" data-i18n="doc.epub.preview.editHint">已翻譯的段落可直接點擊編輯，修改會即時存入譯本；重新翻譯該章會覆蓋手動修改</div>
       <div id="epub-preview-content" class="epub-preview-content"></div>
@@ -138,7 +143,16 @@
 
     <!-- EPUB 階段 6：譯後一致性掃描結果（v2.0.11） -->
     <section id="stage-scan" class="stage" hidden>
-      <h2 class="result-title" data-i18n="doc.epub.scan.title">譯名一致性掃描</h2>
+      <!-- 動作列凍結頂端（2026-07-11 Jimmy 需求,同全書預覽 sticky pattern）：
+           長清單捲到中段仍能重新掃描 / 返回,標題與按鈕同列縮小 -->
+      <div class="epub-preview-sticky scan-sticky">
+        <div class="epub-preview-toolbar">
+          <h2 class="result-title scan-sticky-title" data-i18n="doc.epub.scan.title">譯名一致性掃描</h2>
+          <span class="edit-toolbar-spacer"></span>
+          <button id="scan-rescan-btn" class="secondary-btn" type="button" data-i18n="doc.epub.scan.rescan">重新掃描</button>
+          <button id="scan-back-btn" class="secondary-btn" type="button" data-i18n="doc.epub.scan.back">← 返回章節清單</button>
+        </div>
+      </div>
       <div id="scan-empty" class="scan-empty" data-i18n="doc.epub.scan.empty" hidden>沒有發現一致性問題</div>
       <div id="scan-drift-wrap" hidden>
         <h3 class="scan-section-title" data-i18n="doc.epub.scan.drift.title">同一原文多種譯名</h3>
@@ -149,10 +163,6 @@
         <h3 class="scan-section-title" data-i18n="doc.epub.scan.compliance.title">術語表未遵守</h3>
         <p class="scan-hint" data-i18n="doc.epub.scan.compliance.hint">以下段落的譯文找不到術語表指定的譯名。可在「全書預覽」用搜尋取代修正</p>
         <div id="scan-compliance-list"></div>
-      </div>
-      <div class="result-actions">
-        <button id="scan-rescan-btn" class="secondary-btn" type="button" data-i18n="doc.epub.scan.rescan">重新掃描</button>
-        <button id="scan-back-btn" class="secondary-btn" type="button" data-i18n="doc.epub.scan.back">← 返回章節清單</button>
       </div>
     </section>
 

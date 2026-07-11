@@ -3942,6 +3942,51 @@ function replaceInTextNodes(el, term, replacement) {
       hits += r.count;
     }
   }
+  // 第二遍:跨節點出現位置（v2.0.53）——inline 殼把詞切成多個 text node 時
+  // 逐節點搜尋看不見完整詞（實例:日文書 ruby 逐字 slot,「我叫柏木⟦/0⟧⟦1⟧⟦/1⟧斉」
+  // 搜「柏木斉」不中,2026-07-11 Jimmy 回報「搜尋替換找不到詞彙」）
+  hits += replaceAcrossTextNodes(nodes, term, replacement);
+  return hits;
+}
+
+// 跨 text node 替換:把節點串接成全文找 term,映射回節點區間動手術——首節點
+// 寫入「頭 + 替換結果」,中間節點清空,尾節點留「尾」。邊界 / CJK↔拉丁空格
+// 語意經 synthetic context 字串（前鄰字 + term + 後鄰字）重用 replaceTermInText,
+// 不留雙實作:拉丁詞邊界拒絕時 r.count=0,空格增補會出現在 r.text 的中段
+function replaceAcrossTextNodes(nodes, term, replacement) {
+  if (!term || typeof replacement !== 'string' || term === replacement) return 0;
+  let hits = 0;
+  let from = 0; // joined 座標,跨輪單調前進——替換結果含 term 時不回頭,防無限迴圈
+  for (let guard = 0; guard < 1000; guard++) {
+    const vals = nodes.map((nd) => nd.nodeValue || '');
+    const joined = vals.join('');
+    const idx = joined.indexOf(term, from);
+    if (idx === -1) return hits;
+    const prevChar = idx > 0 ? joined[idx - 1] : '';
+    const nextChar = joined[idx + term.length] || '';
+    const synth = prevChar + term + nextChar;
+    const r = replaceTermInText(synth, term, replacement, {});
+    if (r.count === 0) { from = idx + 1; continue; } // 拉丁詞邊界拒絕（Ann in Announcement）
+    const middle = r.count === 1
+      ? r.text.slice(prevChar.length, r.text.length - nextChar.length)
+      : replacement; // 極端 case（單字 term 與鄰字相同→synth 內多次命中）:放棄空格微調直接替換
+    // 映射 [idx, idx + term.length) 到節點區間
+    let acc = 0;
+    let sN = -1; let sOff = 0; let eN = -1; let eOff = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      const len = vals[i].length;
+      if (sN === -1 && idx < acc + len) { sN = i; sOff = idx - acc; }
+      if (sN !== -1 && idx + term.length <= acc + len) { eN = i; eOff = idx + term.length - acc; break; }
+      acc += len;
+    }
+    if (sN === -1 || eN === -1) return hits; // 防禦:映射失敗不硬換
+    if (sN === eN) { from = idx + 1; continue; } // 單節點殘餘 = 第一遍已判定不換,跳過
+    nodes[sN].nodeValue = vals[sN].slice(0, sOff) + middle;
+    for (let i = sN + 1; i < eN; i++) nodes[i].nodeValue = '';
+    nodes[eN].nodeValue = vals[eN].slice(eOff);
+    hits++;
+    from = idx + middle.length;
+  }
   return hits;
 }
 // 測試 seam（spec 驗證跨節點空格 context 接線）

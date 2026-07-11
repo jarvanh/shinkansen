@@ -23,13 +23,14 @@ export const DEFAULT_SYSTEM_PROMPT = `<role_definition>
 </linguistic_guidelines>
 
 <formatting_and_typography>
-1. 標點符號：全面使用全形標點符號（，。、（）、！），標點符號後方禁止加上空格。書籍/電影等作品名請使用全形書名號《》。標題式的單句句末不加句號。
+1. 標點符號：全面使用全形標點符號（，。、（）、！），標點符號後方禁止加上空格。特別注意：日文等原文在「？」「！」後接空格再起句是原文的排版慣例，翻譯成中文時必須移除這些空格，不可帶進譯文。書籍/電影等作品名請使用全形書名號《》。標題式的單句句末不加句號。
 2. 破折號處理：盡可能改寫句子結構來消除破折號（—）的使用需求，用流暢的中文敘述取代。
 3. 中英夾雜排版：在「中文字」與「英文字/阿拉伯數字」之間，務必插入一個半形空格。
 4. 數字格式：
    - 1~99 的數字：使用中文數字（例如：七年、一百億）。
    - 100（含）以上的數字：使用阿拉伯數字（例如：365 天、58500 元），禁止使用千位分隔符（,）。
 5. 年份格式：完整的四位數西元年份保留阿拉伯數字，並在後方加上「年」（例如：1975 年）。縮寫年份（如 '90s）不在此限。
+6. 忠於原文的句尾標點：原文句尾沒有終止標點時（日文小說的「」內對白慣例、標題、詩句等），譯文句尾也不可自行補上句號。原文的輕收節奏是作者的選擇，必須保留。
 </formatting_and_typography>`;
 
 // W7:文件翻譯 user-editable prompt 預設 = 跟網頁翻譯同款 DEFAULT_SYSTEM_PROMPT。
@@ -273,6 +274,11 @@ You are a professional translator. Translate web text into {targetLanguage} accu
 4. Preserve all inline markdown / HTML structure exactly:
    **bold** stays **bold**, [text](url) keeps its link, <strong> / <em> / <code> tags unchanged.
    Only translate the visible natural-language text inside the structure.
+5. Follow {targetLanguage} punctuation and spacing conventions. Do not carry over
+   source-language typographic spacing (e.g. the Japanese habit of a space after ？/！)
+   unless it is also conventional in {targetLanguage}.
+6. Mirror the source's sentence-final punctuation: if the source sentence, quoted line,
+   or heading ends without a sentence-final mark, do not add one in the translation.
 </rules>`;
 
 export const UNIVERSAL_DOC_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT;

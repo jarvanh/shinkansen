@@ -30,7 +30,7 @@ test('FETCH_TIMEOUT_MS 常數設定為 15_000(主翻譯 fetch timeout)', () => {
   ).toMatch(/const\s+FETCH_TIMEOUT_MS\s*=\s*15_000\s*;/);
 });
 
-test('fetchWithRetry 內含 AbortController + setTimeout(abort, FETCH_TIMEOUT_MS)', () => {
+test('fetchWithRetry 內含 AbortController + setTimeout(abort, timeoutMs)（預設 FETCH_TIMEOUT_MS）', () => {
   // 找到 fetchWithRetry 函式 body 範圍
   const fnStart = SRC.indexOf('async function fetchWithRetry');
   expect(fnStart, 'gemini.js 找不到 fetchWithRetry 函式').toBeGreaterThan(-1);
@@ -42,10 +42,51 @@ test('fetchWithRetry 內含 AbortController + setTimeout(abort, FETCH_TIMEOUT_MS
     'fetchWithRetry 內缺 `new AbortController()`',
   ).toMatch(/new\s+AbortController\s*\(\s*\)/);
 
+  // v2.0.53:timeout 參數化——setTimeout 用 timeoutMs,簽名帶預設 FETCH_TIMEOUT_MS
+  //(網頁翻譯 15s 行為不變,文件路徑可覆蓋)
   expect(
     fnBody,
-    'fetchWithRetry 內缺 `setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)`',
-  ).toMatch(/setTimeout\s*\(\s*\(\s*\)\s*=>\s*controller\.abort\s*\(\s*\)\s*,\s*FETCH_TIMEOUT_MS\s*\)/);
+    'fetchWithRetry 內缺 `setTimeout(() => controller.abort(), timeoutMs)`',
+  ).toMatch(/setTimeout\s*\(\s*\(\s*\)\s*=>\s*controller\.abort\s*\(\s*\)\s*,\s*timeoutMs\s*\)/);
+
+  expect(
+    fnBody,
+    'fetchWithRetry 簽名缺 `timeoutMs = FETCH_TIMEOUT_MS` 預設值(拔掉預設會讓網頁翻譯路徑失去 timeout)',
+  ).toMatch(/timeoutMs\s*=\s*FETCH_TIMEOUT_MS/);
+});
+
+// SANITY 紀錄(已驗證,v2.0.53):暫時把第一處(fetch catch)的
+// `attempt >= (isTimeout ? timeoutRetryCap : maxRetries)` revert 成
+// `attempt >= maxRetries` → 「兩個逾時分支」case fail(count 1 ≠ 2)→ 還原 → pass。
+// 教訓:兩處同 pattern 時單一 toMatch 只 revert 一處不會咬,改用出現次數 =2 斷言。
+test('v2.0.53: 逾時類重試走 timeoutRetryCap 分流(文件路徑降為 1 次,避免重複燒同尺寸請求)', () => {
+  const fnStart = SRC.indexOf('async function fetchWithRetry');
+  const fnBody = SRC.slice(fnStart, fnStart + 6000);
+  expect(
+    fnBody,
+    'fetchWithRetry 簽名缺 timeoutRetries 參數',
+  ).toMatch(/timeoutRetries\s*=\s*null/);
+  // fetch catch 與 body-read catch 兩個逾時分支都要走 timeoutRetryCap——
+  // 用出現次數 =2 斷言,漏掉任一處(SANITY 實測:只 revert 第一處時單一 toMatch 不會咬)都 fail
+  const capBranches = fnBody.match(/attempt\s*>=\s*\(\s*isTimeout\s*\?\s*timeoutRetryCap\s*:\s*maxRetries\s*\)/g) || [];
+  expect(
+    capBranches.length,
+    'fetchWithRetry 的兩個逾時分支(fetch / body read)都要走 `attempt >= (isTimeout ? timeoutRetryCap : maxRetries)` 分流',
+  ).toBe(2);
+});
+
+test('v2.0.53: translateChunk 把 geminiConfig.fetchTimeoutMs / timeoutRetries 傳進 fetchWithRetry', () => {
+  const fnStart = SRC.indexOf('async function translateChunk');
+  expect(fnStart, 'gemini.js 找不到 translateChunk').toBeGreaterThan(-1);
+  const fnBody = SRC.slice(fnStart, SRC.indexOf('const resp = await fetchWithRetry', fnStart) + 600);
+  expect(
+    fnBody,
+    'translateChunk 的 fetchWithRetry 呼叫缺 geminiConfig.fetchTimeoutMs 傳遞(文件路徑 120s 覆蓋不會生效)',
+  ).toMatch(/geminiConfig\.fetchTimeoutMs/);
+  expect(
+    fnBody,
+    'translateChunk 的 fetchWithRetry 呼叫缺 geminiConfig.timeoutRetries 傳遞',
+  ).toMatch(/geminiConfig\.timeoutRetries/);
 });
 
 test('fetch 呼叫帶 `signal: controller.signal`(否則 abort 不會生效)', () => {

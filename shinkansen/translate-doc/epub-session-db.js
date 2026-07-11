@@ -16,6 +16,10 @@
 //     forbidden: [...] | null,       // 本書獨立禁用詞
 //     blocks: { [blockId]: { raw, plain, edited, status } } }  // 只存 done block
 
+// LLM 協定殘片修復 / 句尾句號對齊 / strip（v2.0.53 hydrate 自癒用；
+// translate.js 不 import 本檔，無循環）
+import { repairDocLlmArtifacts, alignTrailingPeriodWithSource, stripPlaceholderTokens } from './translate.js';
+
 const DB_NAME = 'shinkansen-epub-sessions';
 const STORE = 'sessions';
 const VERSION = 1;
@@ -138,6 +142,25 @@ export function collectSessionFailures(epubDoc) {
   return failures;
 }
 
+// editedHtml → 純文字（掃描 / 比對用的 b.translation）。頁面環境走 DOM
+// textContent（entity 正確解碼）;node 單元測試環境無 document,fallback 去標籤
+// regex + 常見 entity（測試涵蓋 fallback,真實頁面永遠走 DOM 分支）
+function editedHtmlToText(html, fallbackPlain) {
+  try {
+    if (typeof document !== 'undefined' && document.createElement) {
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      return div.textContent;
+    }
+  } catch (_) { /* fall through */ }
+  if (typeof html === 'string') {
+    return html.replace(/<[^>]*>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  }
+  return fallbackPlain ?? null;
+}
+
 /** 把 session 的 blocks 灌回 epubDoc（blockId 由內容指紋派生，同書必對齊） */
 export function hydrateSessionBlocks(epubDoc, blocks) {
   if (!blocks) return 0;
@@ -147,9 +170,28 @@ export function hydrateSessionBlocks(epubDoc, blocks) {
       const saved = blocks[b.blockId];
       if (!saved) continue;
       if (saved.raw == null && saved.plain == null && saved.edited == null) continue;
-      b.translationRaw = saved.raw ?? null;
-      b.translation = saved.plain ?? null;
+      // LLM 協定殘片自癒(v2.0.53):修好之前存的 session 可能帶壞標記——raw 修
+      // ⟦/2» → ⟦/2⟧ + 段尾分隔符殘片,再對齊句尾句號(b.plainText = 該 block
+      // 原文,parseEpub 已灌好);plain 是壞標記被舊版 strip 削過的殘骸
+      //(「/2»」,⟦ 已丟失無法錨定修復),從修好的 raw 重新 strip 一次才乾淨。
+      // 正常 session 走這條是 no-op(沒有壞 pattern 時 repair / strip 結果不變)
+      const raw = typeof saved.raw === 'string'
+        ? alignTrailingPeriodWithSource(b.plainText, repairDocLlmArtifacts(saved.raw))
+        : (saved.raw ?? null);
+      b.translationRaw = raw;
       b.editedHtml = saved.edited ?? null;
+      // 手動編輯優先(渲染 / 譯本 / 掃描都以 editedHtml 為準):translation 必須
+      // 從 edited 導出,不可從 raw 重算——否則已修正過的段落被 raw 舊值蓋回,
+      // 掃描看到舊譯文再列違規、搜尋替換卻搜 edited DOM 找不到舊詞(2026-07-11
+      // Jimmy 回報「京浜急行搜尋不到」,v2.0.53 自癒第一版引入的回歸)。
+      // 從 edited 重新導出也順便修復已被前版蓋壞的 session plain(自癒)
+      if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) {
+        b.translation = editedHtmlToText(b.editedHtml, saved.plain);
+      } else {
+        b.translation = (typeof raw === 'string' && raw.length > 0)
+          ? stripPlaceholderTokens(raw)
+          : (saved.plain ?? null);
+      }
       b.translationStatus = 'done';
       restored++;
     }

@@ -1915,6 +1915,43 @@ test('替換空格規則：CJK↔拉丁邊界補 / 移空格（replaceTermInText
   });
   expect(dom.hits).toBe(1);
   expect(dom.text).toBe('這個贊助商 Haas 車隊就會倒');
+
+  // 跨節點出現位置（v2.0.53，2026-07-11 Jimmy 回報「搜尋替換找不到詞彙」）：
+  // 日文書 ruby 逐字 slot 把人名切成多個 text node（實例 raw:
+  // 「我叫柏木⟦/0⟧⟦1⟧⟦/1⟧斉。」），逐節點搜尋看不見完整詞。
+  // replaceAcrossTextNodes 要在串接全文定位、映射回節點區間替換。
+  // SANITY 紀錄（已驗證）：暫時把 replaceInTextNodes 內的
+  // `hits += replaceAcrossTextNodes(...)` 註解掉 → cross.h1 斷言 fail
+  //（Expected 1, Received 0）→ 還原 → 本檔 31 條全綠
+  const cross = await page.evaluate(() => {
+    const mk = (html) => { const d = document.createElement('div'); d.innerHTML = html; return d; };
+    // case 1: 實例形狀——詞被空 inline 殼切成「柏木 | 斉」
+    const d1 = mk('「我叫柏木<span></span>斉。」');
+    const h1 = window.__skReplaceInTextNodes(d1, '柏木斉', '柏木齊');
+    // case 2: ruby 逐字——每個字各在自己的 inline 元素
+    const d2 = mk('我叫<i>柏</i>木<i>斉</i>先生');
+    const h2 = window.__skReplaceInTextNodes(d2, '柏木斉', '柏木齊');
+    // case 3: 跨節點 + CJK↔拉丁空格規則（middle 帶補上的空格）
+    const d3 = mk('贊助商<em>哈</em>斯車隊');
+    const h3 = window.__skReplaceInTextNodes(d3, '哈斯', 'Haas');
+    // case 4: 拉丁詞邊界跨節點仍要拒絕（Ferrari 不可命中 Ferraris）
+    const d4 = mk('the <em>Ferr</em>aris team');
+    const h4 = window.__skReplaceInTextNodes(d4, 'Ferrari', 'Enzo');
+    return {
+      h1, t1: d1.textContent,
+      h2, t2: d2.textContent,
+      h3, t3: d3.textContent,
+      h4, t4: d4.textContent,
+    };
+  });
+  expect(cross.h1).toBe(1);
+  expect(cross.t1).toBe('「我叫柏木齊。」');
+  expect(cross.h2).toBe(1);
+  expect(cross.t2).toBe('我叫柏木齊先生');
+  expect(cross.h3).toBe(1);
+  expect(cross.t3).toBe('贊助商 Haas 車隊');
+  expect(cross.h4).toBe(0);
+  expect(cross.t4).toBe('the Ferraris team');
   await page.close();
 });
 

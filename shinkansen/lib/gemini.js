@@ -133,19 +133,27 @@ function extractQuotaDimension(json) {
 // 主翻譯 fetch 層級 timeout。15s = Flash 系列慢 case(~8s)留 2x margin,
 // 真正卡死的情境(Gemini 沒回 / 連線吊住)在 15s 後 AbortError,走下面 retry 路徑。
 // 預設 preset 都是 Flash 系列(storage.js:617-618),Pro thinking 邊緣情境不納入。
+// v2.0.53:這個假設只對「網頁翻譯每批 ~20 段」成立——文件翻譯每批可達 50 段長文,
+// 輸出時間遠超 15s(日文書實例:850 段全因 15s 逾時失敗,且 abort 掉的請求
+// Google 端照樣計費)。文件路徑由 background 經 geminiConfig.fetchTimeoutMs 覆蓋,
+// 本常數只是預設值
 const FETCH_TIMEOUT_MS = 15_000;
 
 /**
  * fetch Gemini API,帶 fetch-level timeout + 429 退避重試。
- * - 15s 內沒回應 → AbortError → 走網路錯誤 retry path
+ * - timeoutMs(預設 15s)內沒回應 → AbortError → 走網路錯誤 retry path
  * - 收到 429 → 讀 Retry-After header(秒數)等待後重試
  * - Retry-After 沒給 → 指數退避 2^n * 500ms(上限 8s)
  * - 爆的是 RPD → 丟 DailyQuotaExceededError,不 retry
  * - 重試次數超過 maxRetries → 丟原錯誤
+ * - timeoutRetries(預設同 maxRetries):逾時類單獨的重試上限。文件路徑設 1——
+ *   放寬到 120s 還逾時代表批太大,重複燒同尺寸請求只會 4 倍計費 0 產出,
+ *   交呼叫端(translate-doc 對切重試)縮批處理
  */
 // opts.headers:額外 request headers(API key 走 `x-goog-api-key` header 而非 URL
 // query string,避免金鑰漏進 proxy / 網路設備 / 錯誤訊息等會記 URL 的地方)
-async function fetchWithRetry(url, body, { maxRetries = 3, headers = {} } = {}) {
+async function fetchWithRetry(url, body, { maxRetries = 3, headers = {}, timeoutMs = FETCH_TIMEOUT_MS, timeoutRetries = null } = {}) {
+  const timeoutRetryCap = (typeof timeoutRetries === 'number') ? timeoutRetries : maxRetries;
   let attempt = 0;
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -156,7 +164,7 @@ async function fetchWithRetry(url, body, { maxRetries = 3, headers = {} } = {}) 
     // 成功路徑回傳以 body 文字重建的 Response,呼叫端 resp.json() / clone() 行為不變。
     // timer 統一在 finally 清(每輪 continue / return / throw 都會經過)。
     const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       let resp;
       try {
@@ -168,11 +176,11 @@ async function fetchWithRetry(url, body, { maxRetries = 3, headers = {} } = {}) 
         });
       } catch (err) {
         const isTimeout = err.name === 'AbortError';
-        const errMsg = isTimeout ? `逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
-        await debugLog('error', 'api', isTimeout ? 'gemini fetch timeout' : 'gemini fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? FETCH_TIMEOUT_MS : undefined });
-        if (attempt >= maxRetries) {
+        const errMsg = isTimeout ? `逾時(${timeoutMs}ms)` : err.message;
+        await debugLog('error', 'api', isTimeout ? 'gemini fetch timeout' : 'gemini fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? timeoutMs : undefined });
+        if (attempt >= (isTimeout ? timeoutRetryCap : maxRetries)) {
           throw isTimeout
-            ? codedError('timeout', { ms: FETCH_TIMEOUT_MS }, '網路錯誤：' + errMsg)
+            ? codedError('timeout', { ms: timeoutMs }, '網路錯誤：' + errMsg)
             : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
         }
         await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
@@ -200,11 +208,11 @@ async function fetchWithRetry(url, body, { maxRetries = 3, headers = {} } = {}) 
           bodyText = await resp.text();
         } catch (err) {
           const isTimeout = err.name === 'AbortError';
-          const errMsg = isTimeout ? `回應讀取逾時(${FETCH_TIMEOUT_MS}ms)` : err.message;
+          const errMsg = isTimeout ? `回應讀取逾時(${timeoutMs}ms)` : err.message;
           await debugLog('error', 'api', isTimeout ? 'gemini body read timeout' : 'gemini body read error', { error: err.message, attempt });
-          if (attempt >= maxRetries) {
+          if (attempt >= (isTimeout ? timeoutRetryCap : maxRetries)) {
             throw isTimeout
-              ? codedError('readTimeout', { ms: FETCH_TIMEOUT_MS }, '網路錯誤：' + errMsg)
+              ? codedError('readTimeout', { ms: timeoutMs }, '網路錯誤：' + errMsg)
               : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
           }
           await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
@@ -788,7 +796,16 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   const t0 = Date.now();
   const maxRetries = typeof settings?.maxRetries === 'number' ? settings.maxRetries : 3;
-  const resp = await fetchWithRetry(url, body, { maxRetries, headers: { 'x-goog-api-key': apiKey } });
+  // v2.0.53:文件翻譯路徑(TRANSLATE_DOC_BATCH)經 geminiOverrides 帶
+  // fetchTimeoutMs=120s + timeoutRetries=1;undefined 時 fetchWithRetry 用預設
+  //(15s / maxRetries),網頁翻譯行為不變
+  const resp = await fetchWithRetry(url, body, {
+    maxRetries,
+    headers: { 'x-goog-api-key': apiKey },
+    timeoutMs: (typeof geminiConfig.fetchTimeoutMs === 'number' && geminiConfig.fetchTimeoutMs > 0)
+      ? geminiConfig.fetchTimeoutMs : undefined,
+    timeoutRetries: (typeof geminiConfig.timeoutRetries === 'number') ? geminiConfig.timeoutRetries : null,
+  });
 
   // v0.84: resp.json() 加 try-catch。API 回傳非 JSON 時（HTML 錯誤頁、空回應、
   // CDN 擋下的 502 HTML 頁面等）原本會直接 crash，現在包成可讀的錯誤訊息。

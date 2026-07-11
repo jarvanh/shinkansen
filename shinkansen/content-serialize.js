@@ -471,10 +471,36 @@
       new RegExp('(' + PH_OPEN + '\\*\\d+' + PH_CLOSE + ')[ \\t]+(' + C + ')', 'g'),
       '$1$2'
     );
+    // 標記串通用收斂（v2.0.53）：模型偶發在「每個」標記前後都塞空格
+    //（日文書實測:「⟦0⟧ 兩個男人…稍微 ⟦/0⟧ ⟦1⟧ 歪 ⟦/1⟧ ⟦2⟧ 著頭…⟦/2⟧」），
+    // 上面四條窄規則只蓋「標記外側貼 CJK」單一形態,漏接內側與標記串之間。
+    // 通則:兩個 CJK 字元之間「只隔著標記與空白」時,空白全部是模型幻覺
+    //（CJK 文字內部沒有空格語意）,標記保留、[ \t] 移除;字串頭（標記串 + CJK
+    // 開頭）與尾（CJK + 標記串結尾）同理。刻意不動 \n（<br> 語意,v1.4.4）,
+    // 也不動 CJK/拉丁邊界的空格（中英空格是合法排版）。
+    // 與 translate-doc/translate.js collapseCjkPlaceholderSpaces 是同一份事實的
+    // 雙實作（module 系統隔離）,改這裡必同步那邊
+    const PH_TOKEN = PH_OPEN + '[*\\/]?\\d+' + PH_CLOSE;
+    const stripRunSpaces = (run) => run.replace(/[ \t]+/g, '');
+    s = s.replace(
+      new RegExp('(' + C + ')((?:[ \\t]*(?:' + PH_TOKEN + '))+[ \\t]*)(?=' + C + ')', 'g'),
+      (m, a, run) => a + stripRunSpaces(run)
+    );
+    s = s.replace(
+      new RegExp('^((?:[ \\t]*(?:' + PH_TOKEN + '))+[ \\t]*)(?=' + C + ')'),
+      (m, run) => stripRunSpaces(run)
+    );
+    s = s.replace(
+      new RegExp('(' + C + ')((?:[ \\t]*(?:' + PH_TOKEN + '))+[ \\t]*)$'),
+      (m, a, run) => a + stripRunSpaces(run)
+    );
     return s;
   };
 
   SK.stripStrayPlaceholderMarkers = function stripStrayPlaceholderMarkers(s) {
+    // 先修復畸形標記（⟦/2» 等）再掃——否則畸形 token 只會被下方「殘留括號」規則
+    // 削掉 ⟦ 留下「/2»」碎片洩漏到譯文（v2.0.53，日文書實例）
+    s = SK.normalizeLlmPlaceholders(s);
     s = s.replace(new RegExp(PH_OPEN + '\\*?\\/?\\d+' + PH_CLOSE, 'g'), '');
     s = s.replace(new RegExp('[\\*\\/]\\d+' + PH_CLOSE, 'g'), '');
     s = s.replace(new RegExp('[' + PH_OPEN + PH_CLOSE +
@@ -499,8 +525,20 @@
       new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)[ \\t]+\\S[^' + PH_CLOSE + ']{0,28}' + PH_CLOSE, 'g'),
       PH_OPEN + '$1' + PH_CLOSE
     );
-    return s.replace(
+    s = s.replace(
       new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)\\s*' + PH_CLOSE, 'g'),
+      PH_OPEN + '$1' + PH_CLOSE
+    );
+    // 畸形閉合括號修復（v2.0.53）：模型偶發把標記的 ⟧ 寫成 »（⟦/2⟧ → ⟦/2»），
+    // 或整個漏寫（段尾 ⟦/2 就結束）。錨定「⟦ + (*/?)數字 + 非 ⟧」pattern——
+    // ⟦ 是協定專用字元，這個前綴必然是壞標記；» 等常見替代閉合字元順帶吃掉，
+    // 其他字元不消耗只補 ⟧。內文合法的 «» 引號沒有 ⟦N 前綴，不受影響。
+    // 必須放在上面兩條「加注 / 空白清理」之後——那兩條要求完好 ⟧，先跑本條會把
+    // ⟦0 drug⟧ 錯修成 ⟦0⟧ drug⟧。與 translate-doc/translate.js
+    // repairMangledPlaceholders 是同一份事實的雙實作（module 系統隔離：IIFE vs
+    // ES module），改這裡必同步那邊
+    return s.replace(
+      new RegExp(PH_OPEN + '(\\*?\\/?\\d+)(?:[»›❱》〉≫]|(?=[^' + PH_CLOSE + '0-9])|$)', 'g'),
       PH_OPEN + '$1' + PH_CLOSE
     );
   };
