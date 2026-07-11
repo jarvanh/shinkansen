@@ -14,6 +14,7 @@ import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
 import { detectForbiddenTermLeaks } from './lib/forbidden-terms.js'; // v1.5.6
+import { filterEchoPairsForCache, isSuspectEchoTranslation } from './lib/system-instruction.js'; // v2.0.52: echo 快取防護
 import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/update-check.js'; // v1.6.1
 import { shouldLogInit as _shouldLogRateLimitInit } from './lib/rate-limit-init-log-dedup.js'; // v1.8.60
 import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
@@ -1594,7 +1595,9 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
       const writableTexts = [];
       const writableTranslations = [];
       for (let i = 0; i < missingTexts.length && i < result.translations.length; i++) {
-        if (result.translations[i]) {
+        // v2.0.52: echo segment 不寫快取(見 handleTranslate 同款防護)
+        if (result.translations[i]
+            && !isSuspectEchoTranslation(missingTexts[i], result.translations[i], settings.targetLanguage)) {
           writableTexts.push(missingTexts[i]);
           writableTranslations.push(result.translations[i]);
         }
@@ -1856,7 +1859,15 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
       tabUrl: sender?.tab?.url,
     });
     // 3. 寫回快取（帶 glossary suffix 確保有/無術語表分開存）
-    await cache.setBatch(missingTexts, fresh, glossaryKeySuffix);
+    // v2.0.52: echo segment(譯文=原文且原文非 target 字系,如「えっ?」被原樣返回)
+    // 不寫快取——結果照樣回給呼叫端,但下次翻譯重試而非永遠命中壞快取
+    {
+      const cacheable = filterEchoPairsForCache(missingTexts, fresh, settings.targetLanguage);
+      if (cacheable.skipped > 0) {
+        debugLog('warn', 'cache', 'echo translations not cached', { skipped: cacheable.skipped });
+      }
+      await cache.setBatch(cacheable.texts, cacheable.translations, glossaryKeySuffix);
+    }
     // 3.5 累計到全域使用量統計
     // v0.48: 改為累計「實付」值（套用 implicit cache 折扣後的等效 input tokens
     // 與實付費用），讓 popup 累計顯示的 token / 費用等於 Gemini 帳單實際扣款。
@@ -2162,7 +2173,14 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
     });
 
     // 4. 寫回快取
-    await cache.setBatch(missingTexts, fresh, suffix);
+    // v2.0.52: echo segment 不寫快取(見 handleTranslate 同款防護)
+    {
+      const cacheable = filterEchoPairsForCache(missingTexts, fresh, settings.targetLanguage);
+      if (cacheable.skipped > 0) {
+        debugLog('warn', 'cache', 'echo translations not cached (custom)', { skipped: cacheable.skipped });
+      }
+      await cache.setBatch(cacheable.texts, cacheable.translations, suffix);
+    }
   }
 
   // 6. 合併結果

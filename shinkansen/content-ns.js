@@ -682,10 +682,21 @@ if (window.__shinkansen_loaded) {
     return !!el.querySelector(SK.BLOCK_TAG_SELECTOR);
   };
 
+  // 「實質文字」字元集(單一資料源:hasSubstantiveContent 與 content-detect.js
+  // inline fragment 收集共用)。v2.0.52 補假名 \u3040-\u30FF(含片假名延伸
+  // \u31F0-\u31FF、半形片假名 \uFF66-\uFF9D)與諺文 \uAC00-\uD7A3——原字元集
+  // 只有拉丁 / 西里爾 / 漢字 / 數字,純假名文字(日文小說對白「いえ、いいんです」)
+  // 被判「無實質文字」:EPUB 錨點政策把帶 id 的純假名元素當原子保留 ⟦*N⟧(整段
+  // 永不送翻),網頁路徑純假名 inline run 也不收集。
+  SK.SUBSTANTIVE_CHAR_RE = /[A-Za-zÀ-ÿ\u0400-\u04FF\u3040-\u30FF\u31F0-\u31FF\u3400-\u9fff\uAC00-\uD7A3\uFF66-\uFF9D0-9]/;
+
+  SK.hasSubstantiveText = function hasSubstantiveText(txt) {
+    return SK.SUBSTANTIVE_CHAR_RE.test(txt || '');
+  };
+
   // 內容是否「有實質文字」
   SK.hasSubstantiveContent = function hasSubstantiveContent(el) {
-    const txt = (el.innerText || el.textContent || '');
-    return /[A-Za-zÀ-ÿ\u0400-\u04FF\u3400-\u9fff0-9]/.test(txt);
+    return SK.hasSubstantiveText(el.innerText || el.textContent || '');
   };
 
   // 「原子保留」子樹

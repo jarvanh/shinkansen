@@ -6,7 +6,7 @@
 
 import { parsePdf, preflightFile, renderPageToCanvas, closeDocument, PdfParseError } from './pdf-engine.js';
 import { analyzeLayout } from './layout-analyzer.js';
-import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts } from './translate.js';
+import { translateDocument, segmentsToMarkdown, markdownToSegments, collectGlossaryInputParts, clearTcCacheForTexts } from './translate.js';
 import { TRANSLATABLE_TYPES } from './block-types.js';
 import { renderReader, buildPlainTextDump } from './reader.js';
 import { downloadBilingualPdf, buildBilingualPdf } from './pdf-renderer.js';
@@ -26,6 +26,7 @@ import {
 } from './epub-scan.js';
 import {
   loadEpubSession, saveEpubSession, deleteEpubSession, collectSessionBlocks, hydrateSessionBlocks,
+  collectSessionFailures,
 } from './epub-session-db.js';
 import { getSettings } from '../lib/storage.js';
 
@@ -3188,23 +3189,19 @@ async function startEpubTranslate() {
 // background 以它算 cache key）的 sha1 為 prefix，掃掉所有 suffix 變體
 //（同 clearCurrentDocCache 的 prefix 思路）
 async function clearEpubBlocksCache(chapters, { all = false } = {}) {
-  const prefixes = new Set();
+  const texts = [];
   for (const ch of chapters) {
     for (const b of ch.blocks) {
       if (!all && b.translationStatus !== 'done') continue;
       const text = b.epubSerializedText || b.plainText;
-      if (!text) continue;
-      prefixes.add('tc_' + (await sha1(text)));
+      if (text) texts.push(text);
     }
   }
-  if (prefixes.size === 0) return 0;
-  const allKeys = (typeof chrome.storage.local.getKeys === 'function')
-    ? await chrome.storage.local.getKeys()
-    : Object.keys(await chrome.storage.local.get(null));
-  const matched = allKeys.filter((k) => k.startsWith('tc_') && prefixes.has(k.slice(0, 43)));
-  if (matched.length > 0) await chrome.storage.local.remove(matched);
-  console.log('[Shinkansen] retranslate cache cleared:', matched.length, 'keys');
-  return matched.length;
+  // v2.0.52:prefix 掃描核心下沉到 translate.js clearTcCacheForTexts
+  //(語言驗證重試共用同一條,不留雙實作)
+  const removed = await clearTcCacheForTexts(texts);
+  console.log('[Shinkansen] retranslate cache cleared:', removed, 'keys');
+  return removed;
 }
 
 async function downloadTranslatedEpub() {
@@ -4303,9 +4300,11 @@ const BOOK_GLOSSARY_SUFFIX_EN = `Additional rules (book mode): the input is part
 
 // gloss_ 輪快取的內容 hash——抽取與「放棄本書翻譯」清快取共用同一條（單一資料源，
 // 兩處各算一份會 drift）。promptSuffix 語意摻進 salt：同文字不同 prompt 模式
-// 不可共用 gloss_ 快取（v3：suffix 加全形間隔號規則，2026-07-10）
+// 不可共用 gloss_ 快取（v3：suffix 加全形間隔號規則，2026-07-10；
+// v4：glossary prompt 加 <source_fidelity> 禁 source 羅馬化，舊快取可能存有
+// 羅馬拼音 source 的抽取結果，不可再命中，2026-07-11）
 function bookGlossaryRoundHash(text) {
-  return sha1(text + '\n#shinkansen-book-glossary-v3');
+  return sha1(text + '\n#shinkansen-book-glossary-v4');
 }
 
 // 清這本書的 gloss_ 抽取輪快取（含 _lang<x> 等任何 target 後綴，用前綴比對）。
@@ -4478,6 +4477,9 @@ function exportEpubSession() {
     scanIgnored: [...epubScanIgnored.values()],
     scanIgnoredDrift: [...epubScanIgnoredDrift],
     blocks: collectSessionBlocks(currentDoc),
+    // v2.0.52:失敗 block 診斷欄(blockId / 章節 / 錯誤訊息 / 原文)。匯入端不
+    // hydrate(失敗是暫態);舊版匯入忽略未知欄位,向下相容
+    failures: collectSessionFailures(currentDoc),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

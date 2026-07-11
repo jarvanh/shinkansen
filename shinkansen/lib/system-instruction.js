@@ -88,6 +88,87 @@ function sanitizeTermText(s) {
     .slice(0, 200); // 單詞超過 200 字本來就不正常,截斷防 prompt 暴脹
 }
 
+// v2.0.52:glossary entry 協定層驗證(gemini.js / openai-compat.js extractGlossary
+// 共用,單一資料源)。除既有的 source / target 非空字串檢查外,擋掉模型偶發的
+// 欄位錯置——把分類代號(person / place / tech / work)填進 target(實例:
+// {"source":"金谷","target":"place"}),這種 entry 注入譯名規則會逼模型把地名
+// 翻成「place」、一致性掃描也會拿「place」當 expected 誤報,直接丟棄。
+const GLOSSARY_TYPE_TOKENS = new Set(['person', 'place', 'tech', 'work']);
+export function isValidGlossaryEntry(e) {
+  if (!e || typeof e.source !== 'string' || typeof e.target !== 'string') return false;
+  if (!e.source || !e.target) return false;
+  if (GLOSSARY_TYPE_TOKENS.has(e.target.trim().toLowerCase())) return false;
+  return true;
+}
+
+// v2.0.52:per-segment echo 快取防護。模型偶發對批內短句(「えっ?」類感嘆詞)
+// echo 原文不翻;echo 一旦寫進 tc_ 快取,高頻短句會在整本書 / 整站每一處命中
+// 同一條壞快取,永遠自我複製。判定「確定錯」才擋:譯文與原文一致,且原文含
+// 明確「非 target 字系」特徵(zh target 下含假名 / 諺文)。數字、URL、英文品牌
+// 等合法原樣保留(不含這些字系特徵)不受影響。
+// 用途:cache.setBatch 前過濾——echo 結果仍回給呼叫端顯示(跟原文一樣,顯示
+// 無差別),只是不寫快取,下次翻譯自然重試。
+export function isSuspectEchoTranslation(source, translation, targetLanguage) {
+  if (typeof source !== 'string' || typeof translation !== 'string') return false;
+  const s = source.trim();
+  if (!s || s !== translation.trim()) return false;
+  const tl = String(targetLanguage || 'zh-TW');
+  const kana = (s.match(/[ぁ-ゖァ-ヺ]/g) || []).length;
+  const hangul = (s.match(/[가-힣]/g) || []).length;
+  if (tl.startsWith('zh')) return kana >= 2 || hangul >= 2;
+  if (tl.startsWith('ja')) return hangul >= 2;
+  if (tl.startsWith('ko')) return kana >= 2;
+  // 拉丁字母 target(en / es / fr / de):原文含 CJK 系字元卻原樣返回 = echo
+  const han = (s.match(/[一-鿿]/g) || []).length;
+  return kana + hangul + han >= 2;
+}
+
+// v2.0.52:chunk / batch 級輸出語言驗證(單一資料源:gemini.js / openai-compat.js
+// 的 chunk 層 fallback 判定與 translate-doc/translate.js 的 batch 層最後防線共用)。
+// 模型偶發把「整個 chunk」翻成原文語言(實例:日文書某 22 段 sub-chunk 兩次都被
+// 輸出成日文改寫,同 payload 重試高度 sticky)。只驗「整體」不驗單段——單段譯文
+// 合法引用原文詞(人名、書名括號對照)是正常的,整體字系佔比漂移才代表 target
+// 錯亂。閾值保守(絕對量 + 佔比雙門檻)防誤殺。純函式可 unit 測。
+export function detectOutputLangMismatch(results, targetLanguage) {
+  const tl = String(targetLanguage || 'zh-TW');
+  if (tl.startsWith('ja')) return false; // 日文 target 本來就該有假名,不驗
+  const joined = (Array.isArray(results) ? results : [])
+    .filter((t) => typeof t === 'string').join('\n');
+  if (joined.length < 40) return false; // 短輸出(標題等)樣本不足,不驗
+  const kana = (joined.match(/[ぁ-ゖァ-ヺー]/g) || []).length;
+  const han = (joined.match(/[一-鿿]/g) || []).length;
+  const hangul = (joined.match(/[가-힣]/g) || []).length;
+  const latin = (joined.match(/[A-Za-z]/g) || []).length;
+  if (tl.startsWith('ko')) {
+    // 韓文 target:輸出應以諺文為主
+    return (kana >= 30 && kana > hangul) || (han >= 30 && han > hangul * 2);
+  }
+  if (tl.startsWith('zh')) {
+    // 中文 target:假名佔 CJK 系字元比例高 = 整體是日文;諺文同理
+    if (kana >= 30 && kana / (kana + han) > 0.15) return true;
+    if (hangul >= 30 && hangul / (hangul + han) > 0.5) return true;
+    return false;
+  }
+  // 拉丁字母 target(en / es / fr / de):輸出應以拉丁字母為主
+  const cjkish = kana + han + hangul;
+  return cjkish >= 30 && cjkish > latin;
+}
+
+// 批次寫快取前的 echo 過濾(texts / translations 平行陣列,回傳可安全寫入的子集)
+export function filterEchoPairsForCache(texts, translations, targetLanguage) {
+  const outTexts = [];
+  const outTranslations = [];
+  let skipped = 0;
+  const n = Math.min(texts?.length || 0, translations?.length || 0);
+  for (let i = 0; i < n; i++) {
+    if (!translations[i]) continue; // falsy 本來就不寫(setBatch 也會跳),不算 echo
+    if (isSuspectEchoTranslation(texts[i], translations[i], targetLanguage)) { skipped++; continue; }
+    outTexts.push(texts[i]);
+    outTranslations.push(translations[i]);
+  }
+  return { texts: outTexts, translations: outTranslations, skipped };
+}
+
 /**
  * Greedy 打包：對 texts 陣列用字元預算 + 段數上限雙門檻切成連續子批次，
  * 回傳「起始 / 結束 index」陣列讓呼叫端可以對齊結果。

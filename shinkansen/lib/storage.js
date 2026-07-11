@@ -65,14 +65,17 @@ PDF 文件翻譯時,文字可能含 inline 樣式邊界標記:
 
 // v1.0.2: 術語表擷取用的預設 prompt（結構化重寫，強化排除規則與輸出格式約束）
 export const DEFAULT_GLOSSARY_PROMPT = `<role_definition>
-你是一位專業的翻譯術語擷取助理。你的任務是從使用者提供的文章或摘要中，精準擷取需要統一翻譯的專有名詞，建立符合台灣在地化語境的英中對照術語表。
+你是一位專業的翻譯術語擷取助理。你的任務是從使用者提供的文章或摘要中，精準擷取需要統一翻譯的專有名詞，建立「原文 → 台灣繁體中文」的對照術語表，符合台灣在地化語境。
 </role_definition>
+<source_fidelity>
+source 欄位必須是原文文本中「逐字出現」的字串，保持原文字系：日文原文就用日文漢字／假名（例如原文出現「相沢」，source 必須寫「相沢」，絕不可轉寫成「Aizawa」）、韓文用諺文、英文才用拉丁字母。任何羅馬拼音轉寫、英譯改寫都是嚴重錯誤——source 拿去跟原文比對，不是原文中的字串就完全失效。
+</source_fidelity>
 <extraction_scope>
 請嚴格限制只擷取以下四類實體：
-1. 人名 (person)：西方人名須轉換為台灣通行中譯（例如：Elon Musk→馬斯克、Trump→川普、Peter Hessler→何偉）。華人姓名亦須使用台灣通行譯法。
+1. 人名 (person)：西方人名須轉換為台灣通行中譯（例如：Elon Musk→馬斯克、Trump→川普、Peter Hessler→何偉）。華人姓名亦須使用台灣通行譯法。日文人名的漢字須轉為台灣慣用字形（例如：相沢→相澤、斉藤→齊藤、渋谷→澀谷），假名人名用台灣通行音譯。
 2. 地名 (place)：國家、城市、地理位置須採用台灣標準譯名（例如：Israel→以色列、London→倫敦、Chengdu→成都）。
 3. 專業術語與新創詞 (tech)：台灣尚無廣泛通用譯名的專業詞彙、新創詞。譯名後方「必須」附加全形括號標註原文（例如：watchfluencers→錶壇網紅（watchfluencers）、algorithmic filter bubble→演算法驅動的資訊繭房（algorithmic filter bubble））。
-4. 作品名 (work)：書籍、電影、歌曲等作品名稱，須使用台灣通行譯名並加上全形書名號（例如：Parasite→《寄生上流》）。
+4. 作品名 (work)：書籍、電影、歌曲等作品名稱，須使用台灣通行譯名並加上全形書名號（例如：Parasite→《寄生上流》）。無通行譯名的作品名須自行譯成台灣繁體中文（可意譯）再加書名號；source 保持原文是對的，但 target 是給台灣讀者看的譯名，絕不可原文照抄、不可殘留日文假名（例如：『ノルウェイの森』→《挪威的森林》，而不是《ノルウェイの森》）。
 </extraction_scope>
 <exclusion_rules>
 絕對不可擷取以下內容（違反將導致嚴重錯誤）：
@@ -84,9 +87,10 @@ export const DEFAULT_GLOSSARY_PROMPT = `<role_definition>
 1. 語言規範：嚴格使用台灣繁體中文與台灣慣用語，絕對禁用中國譯法（例如：必須使用「影片」而非「視頻」、「軟體」而非「軟件」、「程式」而非「程序」、「實作」而非「實現」、「線程」而非「進程」）。
 2. 數量限制：提取數量上限為 200 條，若超過請依重要性篩選，保留最重要的 200 條。
 3. 絕對 JSON 格式：只能輸出純 JSON 陣列，絕對不可包含任何前言、解釋、後記，也「絕對不要」使用 \`\`\`json 和 \`\`\` 的 Markdown 程式碼區塊標記。
+4. 欄位完整：每條 entry 必須同時包含 source、target、type 三個欄位；target 必須是譯名本身，絕對不可填入分類代號（person / place / tech / work）。
 </output_constraints>
 <json_format_example>
-[{"source":"Peter Hessler","target":"何偉","type":"person"},{"source":"Chengdu","target":"成都","type":"place"},{"source":"watchfluencers","target":"錶壇網紅（watchfluencers）","type":"tech"},{"source":"Parasite","target":"《寄生上流》","type":"work"}]
+[{"source":"Peter Hessler","target":"何偉","type":"person"},{"source":"相沢","target":"相澤","type":"person"},{"source":"Chengdu","target":"成都","type":"place"},{"source":"watchfluencers","target":"錶壇網紅（watchfluencers）","type":"tech"},{"source":"Parasite","target":"《寄生上流》","type":"work"}]
 </json_format_example>`;
 
 // v1.2.11: YouTube 字幕翻譯專用 system prompt（從 background.js 搬到此處，供設定頁存取）
@@ -276,13 +280,16 @@ export const UNIVERSAL_DOC_SYSTEM_PROMPT = UNIVERSAL_SYSTEM_PROMPT;
 export const UNIVERSAL_GLOSSARY_PROMPT = `<role_definition>
 You are a glossary extraction assistant for translating into {targetLanguage}.
 </role_definition>
+<source_fidelity>
+The "source" field must be the exact string as it appears verbatim in the original text, in its original script (e.g. Japanese kanji/kana for a Japanese text, Hangul for Korean). Never romanize, transliterate, or translate the source — a source string that does not literally appear in the original text is a critical error, because it is matched against the original text.
+</source_fidelity>
 <extraction_scope>
 Extract only these four entity types:
 1. Person names — proper-noun translations into {targetLanguage}.
 2. Place names — countries, cities, regions, in {targetLanguage} convention.
 3. Technical terms / coined words — terms without an established {targetLanguage} translation.
    Append the original in parentheses on first appearance.
-4. Work titles — books, films, songs; use the established {targetLanguage} convention if available.
+4. Work titles — books, films, songs; use the established {targetLanguage} convention if available. If none exists, translate the title into {targetLanguage} yourself; never leave the original title untranslated as the target.
 </extraction_scope>
 <exclusion_rules>
 Do NOT extract:
@@ -293,9 +300,10 @@ Do NOT extract:
 <output_constraints>
 1. Maximum 200 entries; if exceeded, keep the most important.
 2. Output pure JSON only. No prefaces, no postscripts, no markdown code fences.
+3. Every entry must include all three fields source / target / type; the target must be the translated name itself, never a category token (person / place / tech / work).
 </output_constraints>
 <json_format_example>
-[{"source":"Peter Hessler","target":"<translated>","type":"person"},{"source":"Chengdu","target":"<translated>","type":"place"}]
+[{"source":"Peter Hessler","target":"<translated>","type":"person"},{"source":"相沢","target":"<translated>","type":"person"},{"source":"Chengdu","target":"<translated>","type":"place"}]
 </json_format_example>`;
 
 export const UNIVERSAL_SUBTITLE_SYSTEM_PROMPT = `You are a professional video subtitle translator translating into {targetLanguage}.
@@ -375,6 +383,19 @@ function _normalizePromptForComparison(s) {
     // 「中國大陸用語/譯法/特有用語」改成「中國用語/譯法/特有用語」(全域用語規範)。
     // 既有使用者 saved 仍是舊版「中國大陸」字面值,normalize 後等於當前 DEFAULT。
     .replace(/中國大陸/g, '中國')
+    // v2.0.52:GLOSSARY prompt 修「日文書 source 被轉寫成羅馬拼音」——role 改寫 +
+    // 新增 <source_fidelity> 區塊 + 日文人名字形規則 + 日文 JSON 範例;同輪追加
+    // 「無通行譯名作品名須自行譯出」與「target 不可填分類代號」規則。
+    // 以下 rules 把新增段落 strip 掉、舊措辭映射到新措辭,讓舊 saved 字面值
+    // normalize 後仍等於當前 DEFAULT / UNIVERSAL(視為未客製,自動吃新 prompt)。
+    .replace(/建立符合台灣在地化語境的英中對照術語表/g, '建立「原文 → 台灣繁體中文」的對照術語表，符合台灣在地化語境')
+    .replace(/<source_fidelity>[\s\S]*?<\/source_fidelity>\n/g, '')
+    .replace(/日文人名的漢字須轉為台灣慣用字形（例如：相沢→相澤、斉藤→齊藤、渋谷→澀谷），假名人名用台灣通行音譯。/g, '')
+    .replace(/\{"source":"相沢","target":"(?:相澤|<translated>)","type":"person"\},/g, '')
+    .replace(/無通行譯名的作品名須自行譯成台灣繁體中文（可意譯）再加書名號；source 保持原文是對的，但 target 是給台灣讀者看的譯名，絕不可原文照抄、不可殘留日文假名（例如：『ノルウェイの森』→《挪威的森林》，而不是《ノルウェイの森》）。/g, '')
+    .replace(/\n4\. 欄位完整：每條 entry 必須同時包含 source、target、type 三個欄位；target 必須是譯名本身，絕對不可填入分類代號（person \/ place \/ tech \/ work）。/g, '')
+    .replace(/ If none exists, translate the title into [^\n]*? yourself; never leave the original title untranslated as the target\./g, '')
+    .replace(/\n3\. Every entry must include all three fields source \/ target \/ type; the target must be the translated name itself, never a category token \(person \/ place \/ tech \/ work\)\./g, '')
     .trim();
 }
 

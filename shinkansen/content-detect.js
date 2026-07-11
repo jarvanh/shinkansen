@@ -552,7 +552,9 @@
         runEnd = null;
         return;
       }
-      if (/[A-Za-zÀ-ÿ\u0400-\u04FF\u3400-\u9fff0-9]/.test(text)) {
+      // v2.0.52:改走 SK.hasSubstantiveText(單一資料源;原字面 regex 缺假名 / 諺文,
+      // 純假名 inline run 不收集 → 日文頁對白永不翻)
+      if (SK.hasSubstantiveText(text)) {
         let _elCount = 0, _wrapperEl = null, _directTextLen = 0;
         { let _n = runStart;
           while (_n) {

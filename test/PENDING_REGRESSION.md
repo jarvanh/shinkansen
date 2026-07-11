@@ -17,7 +17,13 @@
 
 ## 條目
 
-(目前沒有 pending 條目)
+### 術語表 prompt 日文 source 羅馬化——LLM 行為層無法 fixture 化（dev tail 2.0.51.1 修）
+- **症狀**:日文書 EPUB 抽全書術語表,212 條 source 全是羅馬拼音(Aizawa / Hitoshi Kashiwaki…)而非原文日文——譯後一致性掃描 `checkGlossaryCompliance` 拿 source 比對日文原文永遠比不中,整批條目默默失去保護;翻譯時譯名規則也變不可靠。
+- **根因**:舊 `DEFAULT_GLOSSARY_PROMPT` 自稱「英中對照術語表」+ 範例全拉丁字母,無「source 必須逐字取自原文」規則。**模型相依**:gemini-3.1-flash-lite 對日文輸入仍回日文 source(短文 / 8K / 60K 皆是),`gemini-3.5-flash` 則 17/17 全轉羅馬拼音(真 API probe 重現,2026-07-11)。
+- **修在**:`lib/storage.js` DEFAULT / UNIVERSAL_GLOSSARY_PROMPT 加 `<source_fidelity>` 區塊(source 逐字取自原文、保持原文字系、禁羅馬化)+ 日文範例(相沢→相澤)+ 日文漢字台灣字形規則;`_normalizePromptForComparison` 加 v2.0.52 rules 讓舊 saved 字面值視為未客製。
+- **已驗證**:真 API probe(gemini-3.5-flash,舊 prompt 破壞態 17/17 拉丁 → 新 prompt 3 輪 0 拉丁、16/16 逐字存在原文);升級路徑已走路徑 A(`test/unit/glossary-prompt-ja-source-upgrade.spec.js`,SANITY 過)。
+- **為什麼 LLM 層不能寫測試**:斷言對象是「gemini-3.5-flash 對日文輸入的 source 字系」,要打真 API、花錢、非決定性,Playwright fixture 架構放不下。若日後要覆蓋,方向是 tools/ probe script(需 `~/.shinkansen-test-key`)手動跑,不進 `npm test`。屬永久 path B 性質,可由 Jimmy 決定結案。
+- **第二輪(同 dev tail,2026-07-11)**:Jimmy 重抽後回報兩個殘餘症狀:(a) target 被填成分類代號(「金谷 → place」)——已走路徑 A(`isValidGlossaryEntry` 協定層驗證 + `glossary-json-parsing.spec.js` 新 case,SANITY 過);(b) 無通行譯名的作品名原文照抄進書名號(《背いて故郷》)——prompt 作品名規則加日文範例釘死方向,3.5-flash probe 由 1/3 服從提升到 3/3(此部分同屬本條 LLM 行為層,無法 fixture 化)。
 
 ### ~~code review 2026-07-08 R1 — streaming 路徑 rate limiter + 失敗路徑記帳(dev tail 2.0.7.1 修)~~
 - ★ **關閉(2026-07-09,Jimmy 決定)**:修法已隨 v2.0.8 release;streaming 記帳測試要 mock SSE reader + usage-db + limiter 三方,工程成本高、修法屬記帳補齊性質,Jimmy 決定不補測試永久結案。日後若對帳再出現系統性低估,回頭以本條「修在」清單為起點排查。

@@ -119,6 +119,25 @@ test.describe('glossary JSON 解析容錯', () => {
     expect(glossary.map(g => g.source)).toEqual(['A', 'E']);
   });
 
+  // Regression（v2.0.52）:模型偶發把分類代號填進 target（實例:日文書抽取回
+  // {"source":"金谷","target":"place"}），UI 顯示「金谷 → place」且注入 / 一致性
+  // 掃描都會被毒——isValidGlossaryEntry 協定層丟棄。
+  // SANITY 紀錄（已驗證）:暫時把 system-instruction.js isValidGlossaryEntry 的
+  // GLOSSARY_TYPE_TOKENS 檢查註解掉 → 本 test「toHaveLength(2)」收到 5 條 fail →
+  // 還原 → pass。
+  test('target 為分類代號（person/place/tech/work）的欄位錯置 entry 被丟棄', async () => {
+    mockGeminiResponse(JSON.stringify([
+      { source: '金谷', target: 'place', type: 'place' },   // 欄位錯置
+      { source: '相沢', target: '相澤', type: 'person' },   // 正常
+      { source: 'X', target: 'Person', type: 'person' },    // 大小寫變體也擋
+      { source: 'Y', target: ' tech ', type: 'tech' },      // 前後空白變體也擋
+      { source: '愛因斯坦街', target: '愛因斯坦街', type: 'place' }, // target=原文照抄是合法(日文漢字地名)
+    ]));
+    const { glossary } = await extractGlossary('some text', settings);
+    expect(glossary).toHaveLength(2);
+    expect(glossary.map(g => g.source)).toEqual(['相沢', '愛因斯坦街']);
+  });
+
   test('empty response text → empty glossary', async () => {
     mockGeminiResponse('');
     const result = await extractGlossary('some text', settings);

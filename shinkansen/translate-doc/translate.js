@@ -15,6 +15,8 @@
 
 import { TRANSLATABLE_TYPES } from './block-types.js';
 import { normalizeNameSeparators } from './epub-engine.js';
+import { getSettings } from '../lib/storage.js';
+import { detectOutputLangMismatch as detectDocBatchLangMismatch } from '../lib/system-instruction.js';
 
 // 背景端錯誤的本地化（error code 協定，lib/bg-error.js）。lib/i18n.js 由 index.html
 // <script src> 載入 attach 到 window.__SK.i18n；還沒載入（init race）或沒帶 code 的
@@ -27,6 +29,34 @@ const bgErrMsg = (response) => {
 
 // 跟 content.js 共用相同 chunk size，行為一致(rate limiter / token cost / cache 命中規則一致)
 export const DOC_CHUNK_SIZE = 20;
+
+// ── batch 級輸出語言驗證（v2.0.52）──────────────────────────────
+// 實作下沉到 lib/system-instruction.js detectOutputLangMismatch（單一資料源：
+// gemini.js / openai-compat.js 的 chunk 層 per-segment fallback 判定共用同一條）。
+// 本檔的 batch 級檢查是最後防線——chunk 層 fallback 正常情況下已自動治癒，
+// 這裡攔到代表逐段 fallback 也翻錯，才標整批 failed。
+export { detectOutputLangMismatch as detectDocBatchLangMismatch } from '../lib/system-instruction.js';
+
+async function sha1Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 清指定送翻文字的 tc_ 譯文快取（prefix 比對掃掉所有 suffix 變體，同
+// index.js clearEpubBlocksCache 的思路；背景以送翻文字本身算 cache key）。
+// 語言驗證重試前必清——錯譯已被 background 寫進快取，不清會秒回同一批錯譯
+export async function clearTcCacheForTexts(texts) {
+  const prefixes = new Set(await Promise.all(
+    (texts || []).filter(Boolean).map(async (t) => 'tc_' + (await sha1Hex(t))),
+  ));
+  if (prefixes.size === 0) return 0;
+  const allKeys = (typeof chrome.storage.local.getKeys === 'function')
+    ? await chrome.storage.local.getKeys()
+    : Object.keys(await chrome.storage.local.get(null));
+  const matched = allKeys.filter((k) => k.startsWith('tc_') && prefixes.has(k.slice(0, 43)));
+  if (matched.length > 0) await chrome.storage.local.remove(matched);
+  return matched.length;
+}
 
 /**
  * 文章術語表的輸入取樣:按 reading order 收 translatable block 的 plainText,
@@ -101,6 +131,14 @@ export async function translateDocument(doc, options = {}) {
   }
   const startTime = Date.now();
 
+  // v2.0.52:batch 級輸出語言驗證用（detectDocBatchLangMismatch）。
+  // fail-open:語言驗證是附加防線,設定讀取失敗(單元測試 mock 只給 runtime、
+  // 極端 storage 錯誤)時 fallback 預設 target,絕不讓驗證功能弄掛翻譯主流程
+  let targetLanguage = 'zh-TW';
+  try {
+    targetLanguage = (await getSettings()).targetLanguage || 'zh-TW';
+  } catch (_) { /* fallback 預設 */ }
+
   // 1) 收集所有需翻譯 block(扁平化，保 order 用 readingOrder + page)
   const queue = [];
   for (const page of doc.pages) {
@@ -163,17 +201,9 @@ export async function translateDocument(doc, options = {}) {
       ? filterGlossaryForTexts(glossary, texts)
       : glossary;
 
-    const t0 = Date.now();
-    let response;
-    try {
-      const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
-      response = await chrome.runtime.sendMessage({
-        type: messageType,
-        payload: { texts, modelOverride, glossary: chunkGlossary, preferArticleGlossary: true, extraForbiddenTerms, docBatchSize: chunkSize },
-      });
-    } catch (err) {
-      // background 完全沒回應(extension reload / service worker crash 等)
-      const msg = (err && err.message) || String(err);
+    const messageType = engine === 'openai-compat' ? 'TRANSLATE_DOC_BATCH_CUSTOM' : 'TRANSLATE_DOC_BATCH';
+    const payload = { texts, modelOverride, glossary: chunkGlossary, preferArticleGlossary: true, extraForbiddenTerms, docBatchSize: chunkSize };
+    const markChunkFailed = (msg) => {
       chunk.forEach((b) => {
         b.translationStatus = 'failed';
         b.translationError = msg;
@@ -181,31 +211,62 @@ export async function translateDocument(doc, options = {}) {
       failedBlocks += chunk.length;
       translatedBlocks += chunk.length;
       emit();
+    };
+    const accountUsage = (usage = {}) => {
+      // `??` 而非 `||`:billedInputTokens === 0(全 cache hit / 全免費)是合法值,
+      // `||` 會 fallback 到另一邊,語意相反
+      cumulativeInputTokens += usage.inputTokens ?? usage.billedInputTokens ?? 0;
+      cumulativeBilledInputTokens += usage.billedInputTokens ?? usage.inputTokens ?? 0;
+      cumulativeOutputTokens += usage.outputTokens ?? 0;
+      cumulativeCostUSD += usage.billedCostUSD ?? usage.costUSD ?? 0;
+      cacheHits += usage.cacheHits || 0;
+    };
+
+    const t0 = Date.now();
+    let response;
+    try {
+      response = await chrome.runtime.sendMessage({ type: messageType, payload });
+    } catch (err) {
+      // background 完全沒回應(extension reload / service worker crash 等)
+      markChunkFailed((err && err.message) || String(err));
       continue;
     }
     batchTimes.push(Date.now() - t0);
 
     if (!response || !Array.isArray(response.result)) {
       // background handler 拋了(API key 缺 / Gemini 回 error 等)
-      const msg = bgErrMsg(response) || 'no response';
-      chunk.forEach((b) => {
-        b.translationStatus = 'failed';
-        b.translationError = msg;
-      });
-      failedBlocks += chunk.length;
-      translatedBlocks += chunk.length;
-      emit();
+      markChunkFailed(bgErrMsg(response) || 'no response');
       continue;
+    }
+    accountUsage(response.usage);
+
+    // v2.0.52:batch 級輸出語言驗證 + 單次重試。模型偶發把整批翻成原文語言
+    //(實例:日文書某批「譯文」是日文改寫,下一批正常),且錯譯已被 background
+    // 寫進 tc_ 快取——不清快取直接重送會秒回同一批錯譯,所以重試前先清該批
+    // tc_。重試仍錯就標整批 failed(再清一次快取,讓使用者手動重翻直接打 API),
+    // 不無限重試——最壞成本上限 = 該批 2 次 API 呼叫
+    if (detectDocBatchLangMismatch(response.result, targetLanguage)) {
+      console.warn('[Shinkansen] chunk output language mismatch, retrying once', { chunkStart: start, targetLanguage });
+      await clearTcCacheForTexts(texts);
+      let retryResp = null;
+      try {
+        retryResp = await chrome.runtime.sendMessage({ type: messageType, payload });
+      } catch { retryResp = null; }
+      if (retryResp && Array.isArray(retryResp.result)) accountUsage(retryResp.usage);
+      if (retryResp && Array.isArray(retryResp.result)
+          && !detectDocBatchLangMismatch(retryResp.result, targetLanguage)) {
+        response = retryResp;
+      } else {
+        await clearTcCacheForTexts(texts);
+        const i18n = window.__SK?.i18n;
+        markChunkFailed((i18n && typeof i18n.t === 'function')
+          ? i18n.t('doc.translate.outputLangMismatch')
+          : 'output language does not match target language');
+        continue;
+      }
     }
 
     const usage = response.usage || {};
-    // `??` 而非 `||`:billedInputTokens === 0(全 cache hit / 全免費)是合法值,
-    // `||` 會 fallback 到另一邊,語意相反
-    cumulativeInputTokens += usage.inputTokens ?? usage.billedInputTokens ?? 0;
-    cumulativeBilledInputTokens += usage.billedInputTokens ?? usage.inputTokens ?? 0;
-    cumulativeOutputTokens += usage.outputTokens ?? 0;
-    cumulativeCostUSD += usage.billedCostUSD ?? usage.costUSD ?? 0;
-    cacheHits += usage.cacheHits || 0;
     console.log('[Shinkansen] chunk done', {
       chunkStart: start,
       chunkSize: chunk.length,

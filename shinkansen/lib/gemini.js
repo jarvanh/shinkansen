@@ -5,7 +5,7 @@
 import { debugLog } from './logger.js';
 // v1.5.7: DELIMITER / packChunks / buildEffectiveSystemInstruction 抽到共用模組，
 // 與 lib/openai-compat.js 共用同一份「翻譯 batch 構建」邏輯。
-import { DELIMITER, SEP_RE, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
+import { DELIMITER, SEP_RE, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction, isValidGlossaryEntry, detectOutputLangMismatch } from './system-instruction.js';
 import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
 
 const MAX_BACKOFF_MS = 8000;
@@ -417,9 +417,10 @@ export async function extractGlossary(compressedText, settings) {
     return { glossary: [], usage, _diag: `entries array is empty (rawText first 500): ${rawText.slice(0, 500)}` };
   }
 
-  // 過濾有效 entry 並截斷到 maxTerms
+  // 過濾有效 entry 並截斷到 maxTerms(v2.0.52:改共用 isValidGlossaryEntry,
+  // 加擋「target 被填成分類代號」的欄位錯置 entry)
   const glossary = entries
-    .filter(e => e && typeof e.source === 'string' && typeof e.target === 'string' && e.source && e.target)
+    .filter(isValidGlossaryEntry)
     .slice(0, maxTerms);
 
   // v0.75 診斷：若有 entries 但全被過濾掉，回傳前幾筆的結構讓 content.js 能看到
@@ -869,18 +870,11 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   // v0.89: split 後移除序號標記（若有）
   const parts = text.split(SEP_RE).map(s => s.trim().replace(MARKER_COMPACT.re, ''));
-  // 若回傳段數不符，且本批不只一段，則 fallback 改為逐段單獨翻譯，確保對齊
-  if (parts.length !== texts.length) {
-    await debugLog('warn', 'api', 'segment count mismatch — fallback to per-segment', {
-      expected: texts.length, got: parts.length, elapsed: ms,
-    });
-    if (texts.length === 1) {
-      // 單段模式：直接回傳整個 text(LLM 可能多吐了分隔符）
-      return { parts: [text.trim()], usage: chunkUsage };
-    }
-    // 逐段 fallback：每段都會真的再打一次 API，需累加 usage
-    // 注意：此時原本這一批的 chunkUsage 已經付過錢了，但結果沒法對齊要丟掉，
-    // 所以還是要算進總成本裡。
+
+  // 逐段 fallback：每段都會真的再打一次 API，需累加 usage
+  // 注意：此時原本這一批的 chunkUsage 已經付過錢了，但結果沒法用要丟掉，
+  // 所以還是要算進總成本裡。（segment count mismatch 與輸出語言錯 chunk 共用）
+  const perSegmentFallback = async () => {
     const aligned = [];
     const aggUsage = { ...chunkUsage };
     const tFallback0 = Date.now();
@@ -903,7 +897,32 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     }
     await debugLog('warn', 'api', 'fallback complete', { segments: texts.length, fallbackElapsed: Date.now() - tFallback0, originalElapsed: ms });
     return { parts: aligned, usage: aggUsage, hadMismatch: true };
+  };
+
+  // 若回傳段數不符，且本批不只一段，則 fallback 改為逐段單獨翻譯，確保對齊
+  if (parts.length !== texts.length) {
+    await debugLog('warn', 'api', 'segment count mismatch — fallback to per-segment', {
+      expected: texts.length, got: parts.length, elapsed: ms,
+    });
+    if (texts.length === 1) {
+      // 單段模式：直接回傳整個 text(LLM 可能多吐了分隔符）
+      return { parts: [text.trim()], usage: chunkUsage };
+    }
+    return perSegmentFallback();
   }
+
+  // v2.0.52:段數對齊但整 chunk 輸出語言錯(模型把整個 chunk 翻成原文語言;
+  // 實測同 payload 立即重試高度 sticky,原樣重打大機率再錯)→ 走同款逐段
+  // fallback——逐段小 payload 能打破 sticky(persisted log 實證 16/16 全成功)。
+  // 只驗多段 chunk:單段 chunk 在逐段 fallback 內部呼叫,不驗避免無限遞迴;
+  // 逐段結果若仍翻錯,由 translate-doc 頁 batch 級最後防線攔(標 failed 不入庫)。
+  if (texts.length > 1 && detectOutputLangMismatch(parts, settings.targetLanguage)) {
+    await debugLog('warn', 'api', 'chunk output language mismatch — fallback to per-segment', {
+      segments: texts.length, elapsed: ms, targetLanguage: settings.targetLanguage,
+    });
+    return perSegmentFallback();
+  }
+
   return { parts, usage: chunkUsage, hadMismatch: false };
 }
 

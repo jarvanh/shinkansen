@@ -115,6 +115,29 @@ export function collectSessionBlocks(epubDoc) {
   return blocks;
 }
 
+// v2.0.52:匯出檔的失敗診斷欄。session 匯出原本只存 done blocks——失敗 block
+// 連狀態 / 錯誤訊息都不進檔,拿到 session 檔只能反推「哪個範圍缺席」,無法診斷。
+// 這裡收集 failed block 的錯誤訊息 + 原文,以獨立 `failures` 欄進匯出檔
+//(不混進 blocks map——hydrateSessionBlocks 把 blocks 的存在視為 done,混放會把
+// 失敗段當成譯文灌回)。診斷用途 only:匯入端不 hydrate 此欄(失敗是暫態,
+// 重翻即重置),舊版匯入忽略未知欄位,向下相容。
+export function collectSessionFailures(epubDoc) {
+  const failures = [];
+  for (const ch of epubDoc.chapters) {
+    for (const b of ch.blocks) {
+      if (b.translationStatus !== 'failed') continue;
+      failures.push({
+        blockId: b.blockId,
+        chapterIndex: ch.index,
+        chapterTitle: ch.title || '',
+        error: b.translationError || '',
+        source: b.plainText || '',
+      });
+    }
+  }
+  return failures;
+}
+
 /** 把 session 的 blocks 灌回 epubDoc（blockId 由內容指紋派生，同書必對齊） */
 export function hydrateSessionBlocks(epubDoc, blocks) {
   if (!blocks) return 0;

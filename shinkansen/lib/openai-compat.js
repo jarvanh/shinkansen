@@ -19,7 +19,7 @@
 // 黑名單與固定術語表是「跨 provider 共用」（Jimmy 設計決定 #3）。
 
 import { debugLog } from './logger.js';
-import { DELIMITER, SEP_RE, MARKER_COMPACT, MARKER_STRONG, packChunks, buildEffectiveSystemInstruction } from './system-instruction.js';
+import { DELIMITER, SEP_RE, MARKER_COMPACT, MARKER_STRONG, packChunks, buildEffectiveSystemInstruction, isValidGlossaryEntry, detectOutputLangMismatch } from './system-instruction.js';
 // v1.6.18: thinking 控制 mapping（各家 provider 的 thinking schema 不同，統一成
 // thinkingLevel 'auto/off/low/medium/high' + extraBodyJson 進階透傳）
 import { buildThinkingPayload } from './openai-compat-thinking.js';
@@ -319,13 +319,9 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   // 拆分對齊（與 Gemini 同邏輯：split by DELIMITER + 移除序號標記;用本批選的 marker.re）
   const parts = text.split(SEP_RE).map(s => s.trim().replace(marker.re, ''));
-  if (parts.length !== texts.length) {
-    await debugLog('warn', 'api', 'openai-compat segment count mismatch — fallback to per-segment', {
-      expected: texts.length, got: parts.length, elapsed: ms,
-    });
-    if (texts.length === 1) {
-      return { parts: [text.trim()], usage: chunkUsage, hadMismatch: false };
-    }
+
+  // 逐段 fallback（segment count mismatch 與輸出語言錯 chunk 共用,對齊 gemini.js）
+  const perSegmentFallback = async () => {
     const aligned = [];
     const aggUsage = { ...chunkUsage };
     for (let fi = 0; fi < texts.length; fi++) {
@@ -343,7 +339,27 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
       aggUsage.cachedTokens += r.usage.cachedTokens || 0;
     }
     return { parts: aligned, usage: aggUsage, hadMismatch: true };
+  };
+
+  if (parts.length !== texts.length) {
+    await debugLog('warn', 'api', 'openai-compat segment count mismatch — fallback to per-segment', {
+      expected: texts.length, got: parts.length, elapsed: ms,
+    });
+    if (texts.length === 1) {
+      return { parts: [text.trim()], usage: chunkUsage, hadMismatch: false };
+    }
+    return perSegmentFallback();
   }
+
+  // v2.0.52:段數對齊但整 chunk 輸出語言錯 → 逐段 fallback(對齊 gemini.js,
+  // 單段 chunk 不驗避免無限遞迴)
+  if (texts.length > 1 && detectOutputLangMismatch(parts, settings.targetLanguage)) {
+    await debugLog('warn', 'api', 'openai-compat chunk output language mismatch — fallback to per-segment', {
+      segments: texts.length, elapsed: ms, targetLanguage: settings.targetLanguage,
+    });
+    return perSegmentFallback();
+  }
+
   return { parts, usage: chunkUsage, hadMismatch: false };
 }
 
@@ -487,8 +503,9 @@ export async function extractGlossary(compressedText, settings) {
     return { glossary: [], usage, _diag: `entries array is empty (rawText first 500): ${rawText.slice(0, 500)}` };
   }
 
+  // v2.0.52:改共用 isValidGlossaryEntry(加擋「target 被填成分類代號」欄位錯置)
   const glossary = entries
-    .filter(e => e && typeof e.source === 'string' && typeof e.target === 'string' && e.source && e.target)
+    .filter(isValidGlossaryEntry)
     .slice(0, maxTerms);
 
   if (entries.length > 0 && glossary.length === 0) {
