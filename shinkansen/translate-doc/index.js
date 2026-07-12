@@ -3414,10 +3414,36 @@ function onPreviewEditablePaste(e) {
   document.execCommand('insertText', false, text);
 }
 
+// 捲動錨點 = 視窗內第一個（部分）可見的預覽段落（sticky 工具列以下）。
+// offset 記該段落頂相對 viewport 頂的距離，重繪後還原同視覺位置——
+// 「大致回到原位」以段落為粒度，不追字元級精度
+function findPreviewScrollAnchor() {
+  const sticky = document.querySelector('#stage-epub-preview .epub-preview-sticky');
+  const stickyBottom = sticky ? sticky.getBoundingClientRect().bottom : 0;
+  for (const el of $('epub-preview-content').querySelectorAll('[data-sk-block-id]')) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > stickyBottom + 1) {
+      return { blockId: el.dataset.skBlockId, offset: r.top };
+    }
+  }
+  return null;
+}
+
+function restorePreviewScrollAnchor(anchor) {
+  if (!anchor) return;
+  let el = null;
+  try {
+    el = $('epub-preview-content').querySelector(`[data-sk-block-id="${CSS.escape(anchor.blockId)}"]`);
+  } catch (_) { /* 無效 blockId 直接放棄還原 */ }
+  if (!el) return;
+  window.scrollBy(0, el.getBoundingClientRect().top - anchor.offset);
+}
+
 function appendPreviewBlock(content, b, SK, dedupe) {
   const el = document.createElement(b.type === 'heading' ? 'h3' : 'p');
   el.className = 'epub-preview-block';
   el.dataset.state = b.translationStatus || 'pending';
+  el.dataset.skBlockId = b.blockId; // 捲動錨定查找用（含未翻段落）
   if (b.translationStatus === 'done') {
     if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) {
       // dedupe 後處理過的編輯版優先（2026-07-10，與下載共用所見即所得）
@@ -3509,7 +3535,13 @@ function bindEpubPreviewUI() {
   $('epub-preview-back-btn').addEventListener('click', () => showStage('chapters'));
   $('epub-preview-compare').addEventListener('change', (e) => {
     epubPreviewCompare = e.target.checked;
-    if (epubPreviewScope) renderEpubPreview();
+    if (!epubPreviewScope) return;
+    // 捲動錨定（2026-07-12 Jimmy 回報）：切換對照後全區重繪、內容高度倍增 /
+    // 減半，絕對捲動位置對不上原本在看的段落 → 畫面跳到很遠。重繪前記住
+    // 視窗頂附近第一個段落與其視覺偏移，重繪後把同段落捲回同視覺位置
+    const anchor = findPreviewScrollAnchor();
+    renderEpubPreview();
+    restorePreviewScrollAnchor(anchor);
   });
   // 搜尋取代（2026-07-10）：只動已翻段落譯文的文字節點，inline 標記保留；
   // 跨標記邊界的字串搜不到（已知取捨）。改動走 editedHtml（= 手動編輯語意），
@@ -3714,7 +3746,7 @@ function renderScanResults() {
   // 譯名出現處的上下文查表（2026-07-10：光看譯名無法決策——同 term 的不同
   // 譯法可能是語境差異而非漂移，例如日期措辭，必須讓使用者看到前後文再選）
   const blockCtxById = new Map();
-  if ((activeCases.length > 0 || (state.tier1 || []).length > 0) && currentDoc?.kind === 'epub') {
+  if ((activeCases.length > 0 || (state.tier1 || []).length > 0 || (state.autoFixes || []).length > 0) && currentDoc?.kind === 'epub') {
     for (const ch of currentDoc.chapters) {
       for (const b of ch.blocks) blockCtxById.set(b.blockId, { block: b, chapterIndex: ch.index });
     }
@@ -3861,10 +3893,37 @@ function renderScanResults() {
   for (const f of autoFixes) {
     const row = document.createElement('div');
     row.className = 'scan-compliance-row scan-autofixed-row';
-    row.textContent = t(f.manual ? 'doc.epub.scan.userfixed' : 'doc.epub.scan.autofixed', {
+    const head = document.createElement('span');
+    head.textContent = t(f.manual ? 'doc.epub.scan.userfixed' : 'doc.epub.scan.autofixed', {
       source: f.source, target: f.expected, n: f.hits, blocks: f.blocks,
       chapters: [...f.chapters].sort((a, b) => a - b).join(', '),
     });
+    row.appendChild(head);
+    // 替換結果摘錄（2026-07-12 Jimmy 指示：已替換的也要看得到改成什麼樣才能
+    // 人工確認）：每個被改段落列當前譯文前後文，替換後譯名加粗（同漂移套用摘錄）
+    const refs = Array.isArray(f.blockRefs) ? f.blockRefs : [];
+    const ctxWrap = document.createElement('div');
+    ctxWrap.className = 'scan-rendering-contexts scan-applied-contexts';
+    const MAX_FIXED_CTX = 6;
+    for (const r of refs.slice(0, MAX_FIXED_CTX)) {
+      const info = blockCtxById.get(r.blockId);
+      if (typeof info?.block?.translation !== 'string' || !info.block.translation) continue;
+      const line = document.createElement('div');
+      line.className = 'scan-rendering-context';
+      const chap = document.createElement('span');
+      chap.className = 'scan-context-chapter';
+      chap.textContent = t('doc.epub.scan.contextChapter', { n: r.chapterIndex + 1 });
+      line.appendChild(chap);
+      appendExcerptWithHighlight(line, info.block.translation, f.expected);
+      ctxWrap.appendChild(line);
+    }
+    if (refs.length > MAX_FIXED_CTX) {
+      const more = document.createElement('div');
+      more.className = 'scan-rendering-context';
+      more.textContent = t('doc.epub.scan.moreItems', { n: refs.length - MAX_FIXED_CTX });
+      ctxWrap.appendChild(more);
+    }
+    if (ctxWrap.childNodes.length > 0) row.appendChild(ctxWrap);
     compList.appendChild(row);
   }
   // 依 entry 分組：同一條術語的違規列一行 + 章節統計
@@ -4137,12 +4196,13 @@ function applyComplianceFixes(doc, violations, blockByIdArg = null) {
     const key = v.source + '\u0000' + v.expected;
     let g = groups.get(key);
     if (!g) {
-      g = { source: v.source, expected: v.expected, hits: 0, blocks: 0, chapters: new Set() };
+      g = { source: v.source, expected: v.expected, hits: 0, blocks: 0, chapters: new Set(), blockRefs: [] };
       groups.set(key, g);
     }
     g.hits += hits;
     g.blocks++;
     g.chapters.add(v.chapterIndex + 1);
+    g.blockRefs.push({ blockId: v.blockId, chapterIndex: v.chapterIndex });
   }
   if (changed) scheduleEpubSessionSave();
   return [...groups.values()];
@@ -4185,12 +4245,13 @@ function repairComplianceMangles(doc, glossary) {
         const key = entry.source.trim() + '\u0000' + base;
         let g = groups.get(key);
         if (!g) {
-          g = { source: entry.source.trim(), expected: base, hits: 0, blocks: 0, chapters: new Set() };
+          g = { source: entry.source.trim(), expected: base, hits: 0, blocks: 0, chapters: new Set(), blockRefs: [] };
           groups.set(key, g);
         }
         g.hits += hits;
         g.blocks++;
         g.chapters.add(ch.index + 1);
+        g.blockRefs.push({ blockId: b.blockId, chapterIndex: ch.index });
       }
     }
   }
@@ -4250,6 +4311,7 @@ function customComplianceReplace(group, term, statusEl) {
   let hits = 0;
   let blocks = 0;
   const chapters = new Set();
+  const blockRefs = [];
   for (const ch of currentDoc.chapters) {
     for (const b of ch.blocks) {
       if (b.translationStatus !== 'done') continue;
@@ -4263,6 +4325,7 @@ function customComplianceReplace(group, term, statusEl) {
       hits += blockHits;
       blocks++;
       chapters.add(ch.index + 1);
+      blockRefs.push({ blockId: b.blockId, chapterIndex: ch.index });
     }
   }
   if (hits === 0) {
@@ -4271,7 +4334,7 @@ function customComplianceReplace(group, term, statusEl) {
   }
   scheduleEpubSessionSave();
   epubScanState.autoFixes = mergeComplianceFixes(epubScanState.autoFixes || [],
-    [{ source: group.source, expected: group.expected, hits, blocks, chapters, manual: true }]);
+    [{ source: group.source, expected: group.expected, hits, blocks, chapters, blockRefs, manual: true }]);
   epubScanState.tier1 = filterIgnoredViolations(checkGlossaryCompliance(currentDoc.chapters,
     Array.isArray(currentArticleGlossary) ? currentArticleGlossary : []));
   renderScanResults();
@@ -4292,6 +4355,16 @@ function mergeComplianceFixes(base, extra) {
     g.hits += f.hits;
     g.blocks += f.blocks;
     for (const c of f.chapters) g.chapters.add(c);
+    // blockRefs 併入（替換結果摘錄用）；同 block 多輪替換只留一筆
+    if (Array.isArray(f.blockRefs) && f.blockRefs.length > 0) {
+      g.blockRefs = g.blockRefs || [];
+      const seen = new Set(g.blockRefs.map((r) => r.blockId));
+      for (const r of f.blockRefs) {
+        if (seen.has(r.blockId)) continue;
+        seen.add(r.blockId);
+        g.blockRefs.push(r);
+      }
+    }
   }
   return [...map.values()];
 }
