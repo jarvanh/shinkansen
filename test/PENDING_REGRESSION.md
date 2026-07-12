@@ -17,6 +17,13 @@
 
 ## 條目
 
+### 術語表帶（原文）對照的 target 被模型剝掉對照——LLM 行為層無法 fixture 化（dev tail 2.0.53.1 修）
+- **症狀**:EPUB 全書術語表 entry「Changing Rooms → 《變換房間》（Changing Rooms）」（對照一次未勾）,譯文只出現《變換房間》,（Changing Rooms）對照被砍(2026-07-12 Jimmy 回報,session 真實資料 c9-b169);另一表現:模型在已含《》的譯名外再自包一層變「《《雷霆谷》》」。
+- **根因**:`system-instruction.js` 術語表注入指令句尾「…也不需加註英文原文」與帶對照的 target 自相矛盾——模型讀到就把 target 裡的（原文）剝掉。真 API probe(`tools/probe-glossary-annotation.mjs`,忠實重現 production prompt 組裝)重現:舊指令 3.5-flash 3 輪只保留 1 輪、lite 3 輪保留 2 輪。
+- **修在**:(1) `lib/system-instruction.js` 注入措辭改「右欄字串的所有部分——包括書名號與括號內的原文對照——都是指定譯名的一部分,每次出現都要完整輸出」＋「已含書名號不要再外包一層」——新指令 probe 3.5-flash 5/5、lite 全保留、零雙書名號;(2) 雙重書名號已另走路徑 A(`collapseDoubledTitleMarks` 接收鏈確定性收斂,`test/unit/placeholder-mangled-repair.spec.js`,SANITY 過)。
+- **為什麼 (1) 進 PENDING**:斷言對象是「模型對帶對照 target 的服從度」,要打真 API、花錢、非決定性(機率性剝除),Playwright fixture 架構放不下。日後要覆蓋走 probe script 手動跑(需 `~/.shinkansen-test-key`),不進 `npm test`。屬永久 path B 性質,可由 Jimmy 決定結案。
+- **注意**:cache key 不含注入指令文字,舊快取(被剝對照的譯文)不會自動失效——bump 時 CHANGELOG 應寫「建議手動清快取」;既有書重勾章節真重翻即可吃到新 prompt。
+
 ### Debug Bridge GET_STORAGE 對 orphan content script 的防護——reload 時序無法穩定 fixture 化（dev tail 2.0.52.1 修）
 - **症狀**:extension reload 後,舊分頁的 orphan content script 收到 Debug Bridge `GET_STORAGE` 請求時,`chrome.storage` 存取**同步** throw「Extension context invalidated」——`.catch` 接不到 → uncaught error 累積在 chrome://extensions 錯誤清單(2026-07-11 Jimmy 回報,實際觸發者是 Claude 對 reload 前的舊分頁跑 GET_STORAGE)。
 - **根因**:bridge 內只有 GET_STORAGE 直接碰 chrome API(其餘 action 走 `SK.safeSendMessage`,該層已有 context-invalidated 防護),且同步 throw 不走 Promise `.catch`。

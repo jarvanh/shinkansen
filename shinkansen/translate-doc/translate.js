@@ -608,15 +608,30 @@ export function collapseCjkAsciiSpaces(s) {
   return s.replace(new RegExp('(' + CJK_RE + ')[ \\t]+(?=' + CJK_RE + ')', 'g'), '$1');
 }
 
+// 雙重書名號收斂（2026-07-12 Jimmy 回報「《《雷霆谷》》」）：術語表 target 已含
+// 《》，模型偶發在指定譯名外再自包一層書名號。只收斂「開閉都緊鄰重複」的完整
+// 雙包——合法巢狀書名（「《《紅樓夢》研究》」開雙閉不雙）不命中。迴圈到不動點
+// 處理三層以上退化 case
+export function collapseDoubledTitleMarks(s) {
+  if (typeof s !== 'string' || s.length === 0) return s;
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/《《([^《》]*)》》/g, '《$1》');
+  } while (s !== prev);
+  return s;
+}
+
 // 譯文接收點的 LLM 協定殘片修復總管——applyBlockResults / retryBlock /
 // hydrateSessionBlocks 三個接收點共用，避免各自組合 drift。
 // 順序:先修畸形標記（collapse 的 token pattern 要求完好 ⟧）→ 清分隔符殘片
-// → 收斂標記周邊 CJK 空格 → 收斂 CJK 內文 ASCII 空格
+// → 收斂標記周邊 CJK 空格 → 收斂 CJK 內文 ASCII 空格（《》屬 CJK 字元集,
+// 「《 《」空格先收斂）→ 收斂雙重書名號
 export function repairDocLlmArtifacts(s) {
   if (typeof s !== 'string' || s.length === 0) return s;
-  return collapseCjkAsciiSpaces(
+  return collapseDoubledTitleMarks(collapseCjkAsciiSpaces(
     collapseCjkPlaceholderSpaces(stripTrailingSeparatorGarbage(repairMangledPlaceholders(s))),
-  );
+  ));
 }
 
 // 句尾句號對齊原文（v2.0.53，2026-07-11 Jimmy 指定「忠於原文」方向）：

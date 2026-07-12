@@ -1362,12 +1362,17 @@ async function openSettingsDialog() {
   if (spacingSection) spacingSection.hidden = currentDoc?.kind !== 'epub';
   const scanSection = $('settings-epub-consistency-scan')?.closest('.settings-section');
   if (scanSection) scanSection.hidden = currentDoc?.kind !== 'epub';
+  const autofixSection = $('settings-epub-autofix-spacing')?.closest('.settings-section');
+  if (autofixSection) autofixSection.hidden = currentDoc?.kind !== 'epub';
   try {
     const s = await getSettings();
     $('settings-epub-paragraph-spacing').checked = s.translateDoc?.epubParagraphSpacing === true;
     // 一致性掃描預設開啟（缺值 = 開）
     const scanCb = $('settings-epub-consistency-scan');
     if (scanCb) scanCb.checked = s.translateDoc?.consistencyScan !== false;
+    // 空格自動校正預設開啟（缺值 = 開）
+    const fixCb = $('settings-epub-autofix-spacing');
+    if (fixCb) fixCb.checked = s.translateDoc?.epubAutoFixSpacing !== false;
   } catch (_) { /* 預設不勾 */ }
   dlg.showModal();
 }
@@ -1392,6 +1397,8 @@ function bindSettingsDialogUI() {
       // 元素缺失時不動既有值（同上防禦）；預設開啟 → 只存明確的 true / false
       const scanCb = $('settings-epub-consistency-scan');
       if (scanCb) merged.consistencyScan = scanCb.checked === true;
+      const fixCb = $('settings-epub-autofix-spacing');
+      if (fixCb) merged.epubAutoFixSpacing = fixCb.checked === true;
       await chrome.storage.sync.set({ translateDoc: merged });
     } catch (_) { /* ignore */ }
     // v1.9.6: 改 preset 後清掉「Google MT 不支援」banner（讓使用者切到 Gemini / 自訂後不留殘影）
@@ -2438,6 +2445,8 @@ function syncPersonNoTransToggle() {
 // 「譯文（原文）」對照式譯名的偵測（全形括號收尾）——只有這類 entry 顯示
 // 「對照只出現一次」toggle（v2.0.11）
 const ANNOTATED_TARGET_RE = /^(.+)（(.+)）\s*$/;
+// 作品名書名號整包偵測（2026-07-12,對照順序翻轉時《》跟著 lead token 走）
+const TITLE_WRAP_RE = /^《(.+)》$/;
 
 function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount = false, group = null } = {}) {
   const grid = $('glossary-grid');
@@ -2507,6 +2516,39 @@ function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount
   };
   refreshOptionVisibility();
 
+  // v2.0.54:譯文欄順序 = 「首次出現的長相」invariant。「對照一次」勾選且「後續用原文」
+  // 時自動翻轉成「原文（譯文）」,讓首次對照的 lead token 跟後續出現的原文一致;
+  // 「後續用譯文」或取消勾選則回「譯文（原文）」慣例順序。只在欄位是「A（B）」且
+  // 其中一個 token 等於原文欄時翻轉,不覆蓋使用者自訂格式;下游 computeAnnotationDedupe
+  // 以 source 比對決定 token 角色,兩種順序都吃(epub-writer.js)。
+  // 書名號跟著 lead token 走（2026-07-12 Jimmy 回報:翻轉把《妳是我今生的新娘》整包
+  // 塞進括號變「Four Weddings（《妳是我今生的新娘》）」）:任一 token 有《》時
+  // 視為作品名 entry,翻轉後《》包 lead、括號內不帶——「《Four Weddings》（妳是我
+  // 今生的新娘）」;比對 source 時同樣先剝《》再比
+  const syncAnnotatedTargetOrder = () => {
+    const m = targetInput.value.trim().match(ANNOTATED_TARGET_RE);
+    if (!m) return;
+    const src = sourceInput.value.trim();
+    if (!src) return;
+    const stripTitle = (s) => (s.match(TITLE_WRAP_RE)?.[1].trim() ?? s);
+    const tok1 = m[1].trim();
+    const tok2 = m[2].trim();
+    const srcBare = stripTitle(src);
+    let sourceTok = null;
+    let targetTok = null;
+    if (stripTitle(tok1) === srcBare) { sourceTok = stripTitle(tok1); targetTok = stripTitle(tok2); }
+    else if (stripTitle(tok2) === srcBare) { sourceTok = stripTitle(tok2); targetTok = stripTitle(tok1); }
+    else return;
+    const hadTitleMarks = TITLE_WRAP_RE.test(tok1) || TITLE_WRAP_RE.test(tok2);
+    const wrap = (s) => (hadTitleMarks ? `《${s}》` : s);
+    const sourceFirst = dedupeCb.checked && keepSelect.value === 'source';
+    const next = sourceFirst ? `${wrap(sourceTok)}（${targetTok}）` : `${wrap(targetTok)}（${sourceTok}）`;
+    if (next !== targetInput.value.trim()) {
+      targetInput.value = next;
+      refreshOptionVisibility();
+    }
+  };
+
   const delBtn = document.createElement('button');
   delBtn.type = 'button';
   delBtn.className = 'glossary-row-delete';
@@ -2525,7 +2567,8 @@ function appendGlossaryRow(entry = { source: '', target: '' }, { skipUpdateCount
   sourceInput.addEventListener('input', updateGlossaryCount);
   targetInput.addEventListener('input', () => { refreshOptionVisibility(); updateGlossaryCount(); });
   noTransCb.addEventListener('change', () => { refreshOptionVisibility(); syncPersonNoTransToggle(); });
-  dedupeCb.addEventListener('change', refreshOptionVisibility);
+  dedupeCb.addEventListener('change', () => { refreshOptionVisibility(); syncAnnotatedTargetOrder(); });
+  keepSelect.addEventListener('change', syncAnnotatedTargetOrder);
 
   grid.append(sourceInput, targetInput, optionsDiv, delBtn);
   if (!skipUpdateCount) updateGlossaryCount();
@@ -3277,6 +3320,8 @@ async function autoFixCjkSpacing(doc) {
   try {
     const s = await getSettings();
     if (!String(s.targetLanguage || '').startsWith('zh')) return none;
+    // 自動校正 toggle（2026-07-12，翻譯設定 modal）：預設開啟（缺值 = 開）
+    if (s.translateDoc?.epubAutoFixSpacing === false) return none;
   } catch (_) {
     return none;
   }
@@ -3354,6 +3399,21 @@ function renderEpubPreview() {
   }
 }
 
+// 預覽編輯貼上一律降為純文字（2026-07-12 Jimmy 回報：從原文對照 copy 貼進
+// 譯文段，瀏覽器 rich paste 帶著來源 inline style（font-family 等 span）進
+// editedHtml → 預覽與譯本出現字體不一致的外來樣式；寫回消毒只剝 script /
+// on*，不能剝 style——原書合法標記也可能帶 style，分不出來源）。
+// 純文字插入 = 繼承游標處樣式，段落樣式主權留給書的 CSS；代價是「複製既有
+// 斜體再貼」會失去 inline 標記（可接受，編輯場景以文字修正為主）
+function onPreviewEditablePaste(e) {
+  e.preventDefault();
+  const text = e.clipboardData?.getData('text/plain') ?? '';
+  if (!text) return;
+  // execCommand 走瀏覽器原生插入（游標 / 選取範圍取代 / undo stack 都對）；
+  // deprecated 但 Chromium / Safari 對 contenteditable 仍完整支援
+  document.execCommand('insertText', false, text);
+}
+
 function appendPreviewBlock(content, b, SK, dedupe) {
   const el = document.createElement(b.type === 'heading' ? 'h3' : 'p');
   el.className = 'epub-preview-block';
@@ -3380,6 +3440,7 @@ function appendPreviewBlock(content, b, SK, dedupe) {
     el.contentEditable = 'true';
     el.spellcheck = false;
     el.__skBlock = b;
+    el.addEventListener('paste', onPreviewEditablePaste);
     const before = el.innerHTML;
     el.addEventListener('blur', () => {
       if (el.innerHTML === before && !b.editedHtml) return;

@@ -141,6 +141,7 @@ export const DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT = `你是專業的{sourceLanguag
 2. 專有名詞保留原文寫法（人名、品牌、技術縮寫如 AI、NASA、CPU 不譯成中文）
 3. 忠實保留粗俗用語（Fuck → 幹），不審查、不委婉化
 4. 不要遺漏輸入片段：輸出陣列加總應涵蓋所有輸入時間範圍
+5. 這批輸入可能從句子中間開始、或在句子中間結束（前後還有其他批次接續）：開頭與結尾的殘句照字面翻譯即可，絕對不可為了讓句子完整而補上輸入片段裡沒有的詞語，也不可丟棄殘句
 </critical_rules>`;
 
 // v1.5.6: 禁用詞預設清單。使用者可在「術語表」分頁的「禁用詞清單」section 編輯。
@@ -335,6 +336,7 @@ Example: [{"s":500,"e":1200,"t":"the auto"},{"s":1200,"e":1800,"t":"captions are
 2. Silently fix obvious ASR errors (homophones, mis-recognized proper nouns).
 3. Translate into {targetLanguage} with appropriate punctuation (commas, question marks; no trailing period).
 4. Use natural spoken language, avoid formal written prose.
+5. This batch may start or end mid-sentence (adjacent batches continue it). Translate leading/trailing fragments literally as they are; never add words that are not in the input to complete a sentence, and never drop those fragments.
 </task>
 
 <output_format>

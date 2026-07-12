@@ -84,13 +84,31 @@ function spliceCjkAware(text, start, end, replacement, ctx = {}) {
 const RE_CJK_THEN_LATIN = new RegExp(`(${CJK_EDGE_RE.source})(${LATIN_EDGE_RE.source})`, 'g');
 const RE_LATIN_THEN_CJK = new RegExp(`(${LATIN_EDGE_RE.source})(${CJK_EDGE_RE.source})`, 'g');
 
+// 全形標點（2026-07-12 Jimmy 指示：全形標點與中英文之間都不需要空格）。
+// 範圍取不歧義的 CJK / 全形標點區段：U+3001-303F（、。「」『』《》【】等，
+// 刻意不含 U+3000 全形空格——它是空白不是標點）+ 全形 ASCII 標點
+//（，！？：；（）等，刻意不含全形數字 / 字母——那些是「文字」）。
+// … U+2026 與 — U+2014 刻意不收：譯文內嵌英文句也用這兩個字元
+//（"wait… he said"），移掉旁邊空格會改壞合法英文排版
+const FW_PUNCT_RE = /[、-〿！-／：-＠［-｀｛-｠]/;
+// 標點的另一側是「中文或英數字」都不需空格；[ \t] 與 collapseCjkAsciiSpaces
+// 同一取捨——\n 是換行語意（<br> / source 排版）不動
+const TEXT_EDGE_RE = new RegExp(`(?:${CJK_EDGE_RE.source}|${LATIN_EDGE_RE.source})`);
+const RE_SPACE_BEFORE_FW_PUNCT = new RegExp(`(${TEXT_EDGE_RE.source})[ \\t]+(?=${FW_PUNCT_RE.source})`, 'g');
+const RE_SPACE_AFTER_FW_PUNCT = new RegExp(`(${FW_PUNCT_RE.source})[ \\t]+(?=${TEXT_EDGE_RE.source})`, 'g');
+
 /**
  * 中英空格修正（2026-07-11 Jimmy 回報「批評 F1是無謂」——LLM 輸出偶發漏掉
- * CJK↔拉丁邊界空格）。只「補缺漏的空格」，不移除、不動其他排版；全形標點與
- * 拉丁相鄰（「F1，」）本就不需空格，字元集合不含標點所以不命中。
+ * CJK↔拉丁邊界空格）。兩組規則（皆冪等）：
+ *   1. 補：CJK↔拉丁直接相鄰 → 補一個空格（不動既有空格 / 其他排版）
+ *   2. 移（2026-07-12）：全形標點與中英文之間的 [ \t] → 移除（「F1 ，」→「F1，」）。
+ *      CJK↔全形標點側在譯文接收鏈 collapseCjkAsciiSpaces 已收斂過，這裡是
+ *      預覽 / 下載時機對全書（含舊 session / editedHtml）的補掃，並補上
+ *      接收鏈管不到的「拉丁↔全形標點」方向
  * 節點邊界：ctx.prevChar 是前一個 text node 的尾字，跨節點相鄰只在後節點
- * 開頭補（避免前後節點各補一次變雙空格）。
- * @returns { text, count }（count = 補入的空格數）
+ * 開頭補 / 移（避免前後節點各處理一次）；空格落在前一節點尾端的移除案例
+ * 搆不到（不可跨節點改字，與 spliceCjkAware 同取捨）。
+ * @returns { text, count }（count = 修正處數 = 補入 + 移除）
  */
 export function addCjkLatinSpacing(text, ctx = {}) {
   if (!text) return { text, count: 0 };
@@ -99,14 +117,32 @@ export function addCjkLatinSpacing(text, ctx = {}) {
     count++;
     return `${a} ${b}`;
   };
+  const drop = (_, a) => {
+    count++;
+    return a;
+  };
   let out = text.replace(RE_CJK_THEN_LATIN, bump);
   out = out.replace(RE_LATIN_THEN_CJK, bump);
+  out = out.replace(RE_SPACE_BEFORE_FW_PUNCT, drop);
+  out = out.replace(RE_SPACE_AFTER_FW_PUNCT, drop);
   const prev = ctx.prevChar || '';
   const first = out[0] || '';
   if (prev && ((CJK_EDGE_RE.test(prev) && LATIN_EDGE_RE.test(first))
       || (LATIN_EDGE_RE.test(prev) && CJK_EDGE_RE.test(first)))) {
     out = ' ' + out;
     count++;
+  } else if (prev) {
+    // 節點前緣的移除方向：前節點尾字是全形標點、本節點以空格開頭貼著中英文
+    //（或反向）→ 移除本節點前緣空格
+    const lead = out.match(/^[ \t]+/);
+    if (lead) {
+      const after = out[lead[0].length] || '';
+      if ((FW_PUNCT_RE.test(prev) && TEXT_EDGE_RE.test(after))
+          || (TEXT_EDGE_RE.test(prev) && FW_PUNCT_RE.test(after))) {
+        out = out.slice(lead[0].length);
+        count++;
+      }
+    }
   }
   return { text: out, count };
 }

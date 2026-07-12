@@ -1061,25 +1061,26 @@ test('youtube-asr-mode: progressive 模式 LLM 寫入清除被覆蓋的 heuristi
   await page.close();
 });
 
-test('youtube-asr-mode: replaceRange 用 LLM 原始 endMs 不用 adjustedEnd(避免閱讀延長範圍誤清 heuristic)', async ({
+test('youtube-asr-mode: replaceRange 用分割 endMs 不用 adjustedEnd(閱讀延長不得清掉分割範圍外的 cue)', async ({
   context,
   localServer,
 }) => {
-  // 驗證 v1.6.22 修法:
-  //   閱讀延長(adjustedEnd)只是顯示 cue 的 endMs,不代表 LLM 涵蓋的範圍。
-  //   replaceRange 清除上限應用 LLM 原始 endMs,而非延長後的 adjustedEnd。
-  //   否則「LLM 短 e + 長中文 → 延長後跨多 heuristic 邊界」會誤清掉 LLM 沒 cover 的中段
-  //   heuristic cue,造成「中段字幕消失」。
+  // 驗證 v1.6.22 修法在 v2.0.54 時間軸分割模型下的等價不變量:
+  //   閱讀延長(adjustedEnd)只是顯示 cue 的 endMs,不代表本句涵蓋的範圍。
+  //   replaceRange 清除上限應用傳入的分割 endMs,而非延長後的 adjustedEnd。
+  //   否則「短分割區間 + 長中文 → 延長後跨過子批邊界」會誤清掉後面批次已寫好的 cue。
+  //   (v2.0.54 前此 test 驗「LLM 原始 e vs adjustedEnd」;時間軸分割後 LLM 的 e
+  //   不再採信,清除上限=分割區間終點,保護對象改為分割範圍外的既有 cue)
   //
   // 場景:
-  //   - LLM 給 cue (s=0, e=500),譯文 12 字 → adjustedEnd = max(500, 0 + 12×200=2400) = 2400
-  //   - heuristic 在 (500, 2400) 內有 cue (s=1500)
-  //   - 修法後:replaceRange 清的是 (0, 500)(LLM 原始 e),不清 (0, 2400)
-  //   - 結果:heuristic s=1500 cue 保留,接力顯示
+  //   - subSegs 4 條(0/500/1700/2100),無後繼 → 分割終點 batchEnd = 2100+1500 = 3600
+  //   - LLM 回單一 entry(s=0)+ 30 字長譯文 → adjustedEnd = max(3600, 0+30×200) = 6000
+  //   - displayCues 預先放一條後面批次的 cue(s=4000,在 (3600, 6000) 內)
+  //   - 修法後:replaceRange 清的是 (0, 3600),s=4000 cue 保留
   //
-  // SANITY CHECK 已完成:
-  //   把 _upsertDisplayCue 內 `c.startMs < llmEndMs` 改回 `c.startMs < adjustedEnd`
-  //   → 此 test fail(s=1500 heuristic cue 被誤清)→ 還原 pass。
+  // SANITY CHECK 已完成(2026-07-12):
+  //   把 _upsertDisplayCue 內 replaceRange 的 `c.startMs < llmEndMs` 改成
+  //   `c.startMs < adjustedEnd` → 此 test fail(s=4000 cue 被誤清)→ 還原 pass。
 
   const page = await context.newPage();
   await page.goto(`${localServer.baseUrl}/${FIXTURE}.html`, { waitUntil: 'domcontentloaded' });
@@ -1087,66 +1088,62 @@ test('youtube-asr-mode: replaceRange 用 LLM 原始 endMs 不用 adjustedEnd(避
 
   const { evaluate } = await getShinkansenEvaluator(page);
   await evaluate(`window.__SK.isYouTubePage = () => true`);
-  await setAsrMode(evaluate, 'progressive');
 
   await evaluate(`
     chrome.runtime.sendMessage = async function(msg) {
-      if (!msg || !msg.type) return { ok: true };
-      if (msg.type === 'TRANSLATE_SUBTITLE_BATCH') {
-        const texts = (msg.payload && msg.payload.texts) || [];
-        return {
-          ok: true,
-          result: texts.map((_t, i) => 'heuristic_' + i),
-          usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, billedInputTokens: 1, billedCostUSD: 0, cacheHits: 0 },
-        };
-      }
-      if (msg.type === 'TRANSLATE_ASR_SUBTITLE_BATCH') {
-        const inputArr = JSON.parse((msg.payload && msg.payload.texts && msg.payload.texts[0]) || '[]');
-        if (inputArr.length === 0) return { ok: true, result: ['[]'], usage: {} };
-        // LLM 只取第一段(短 e)+ 12 字長譯文 → adjustedEnd 會延長很遠
-        const merged = [{
-          s: inputArr[0].s,
-          e: inputArr[0].e,                       // 短 e(=500ms)
-          t: '一二三四五六七八九十一二',           // 12 字 → idealReadMs = 12×200 = 2400ms
-        }];
-        return { ok: true, result: [JSON.stringify(merged)], usage: {} };
+      if (msg && msg.type === 'TRANSLATE_ASR_SUBTITLE_BATCH') {
+        return { ok: true,
+          result: ['[{"s":0,"e":500,"t":"一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十"}]'],
+          usage: { inputTokens: 1, outputTokens: 1, cachedTokens: 0, billedInputTokens: 1, billedCostUSD: 0, cacheHits: 0 } };
       }
       return { ok: true };
     };
-
-    // ASR segments 安排成 heuristic 會切兩句:第一句 (s=0,500) gap=1200ms (>1000) 後第二句 (s=1700, 2100)
-    const events = [
-      { tStartMs: 0,    segs: [{ utf8: 'first' }] },
-      { tStartMs: 500,  segs: [{ utf8: 'one' }] },
-      { tStartMs: 1700, segs: [{ utf8: 'second' }] },
-      { tStartMs: 2100, segs: [{ utf8: 'two' }] },
-    ];
-    const json3 = JSON.stringify({ events });
-    window.dispatchEvent(new CustomEvent('shinkansen-yt-captions', {
-      detail: { url: 'https://www.youtube.com/api/timedtext?v=ABC&lang=en&kind=asr', responseText: json3 },
-    }));
   `);
-  await page.waitForTimeout(100);
 
-  await evaluate(`(() => { window.__SK.translateYouTubeSubtitles(); })()`);
-  await page.waitForTimeout(500);
+  const subSegs = [
+    { startMs: 0,    text: 'first',  normText: 'first' },
+    { startMs: 500,  text: 'one',    normText: 'one' },
+    { startMs: 1700, text: 'second', normText: 'second' },
+    { startMs: 2100, text: 'two',    normText: 'two' },
+  ];
+  await evaluate(`
+    Object.assign(window.__SK.YT, {
+      active: true,
+      isAsr: false,
+      videoEl: null,
+      captionMap: new Map(),
+      rawSegments: ${JSON.stringify(subSegs)},
+      // 後面批次已寫好的 cue,startMs=4000 落在 (batchEnd=3600, adjustedEnd=6000) 內
+      displayCues: [{ startMs: 4000, endMs: 5000, sourceText: 'later', targetText: '後批句子' }],
+      sessionStartTime: Date.now(),
+      videoId: 'test',
+      config: {},
+    });
+  `);
+  await evaluate(`
+    (async () => { await window.__SK._runAsrSubBatch(${JSON.stringify(subSegs)}, 0, Date.now(), [0]); })()
+  `);
+  const start = Date.now();
+  let finalCues = [];
+  while (Date.now() - start < 5000) {
+    finalCues = JSON.parse(await evaluate(`JSON.stringify(window.__SK.YT.displayCues.map(c => ({
+      startMs: c.startMs, endMs: c.endMs, targetText: c.targetText,
+    })))`));
+    if (finalCues.length >= 2) break;
+    await page.waitForTimeout(50);
+  }
 
-  const finalCues = await evaluate(`window.__SK.YT.displayCues.map(c => ({
-    startMs: c.startMs, endMs: c.endMs, targetText: c.targetText,
-  }))`);
-
-  // LLM cue (s=0, e=500),adjustedEnd=2400(延長至 12 字 × 200ms)
-  // heuristic 第二句 startMs=1700 在 (500, 2400) 內,但**不在** (0, 500) 內
-  // 所以 heuristic s=1700 cue 應保留(不被 LLM 誤清)
-  const heuristicMid = finalCues.find(c => c.startMs === 1700 && c.targetText.startsWith('heuristic'));
+  // 分割範圍外(s=4000)的後批 cue 應保留(replaceRange 上限 = 3600,非 adjustedEnd 6000)
+  const laterCue = finalCues.find(c => c.startMs === 4000);
   expect(
-    heuristicMid,
-    `heuristic s=1700 cue 應保留(不在 LLM 原始範圍 (0,500) 內,只在閱讀延長 (0,2400) 內)。實際 cues: ${JSON.stringify(finalCues)}`,
+    laterCue,
+    `分割範圍外的後批 cue(s=4000)不得被閱讀延長誤清。實際 cues: ${JSON.stringify(finalCues)}`,
   ).toBeTruthy();
 
-  // 應有 LLM cue 在 s=0
+  // LLM cue 在 s=0,顯示 endMs 為閱讀延長後的 6000(30 字 × 200ms)
   const llmCue = finalCues.find(c => c.startMs === 0 && c.targetText.startsWith('一二三四'));
   expect(llmCue, `應有 LLM cue 在 s=0`).toBeTruthy();
+  expect(llmCue.endMs, '顯示 endMs = 閱讀延長後的 adjustedEnd').toBe(6000);
 
   await page.close();
 });

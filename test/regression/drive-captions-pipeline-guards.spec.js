@@ -6,6 +6,9 @@
 //   3-7 LLM 路徑不驗 entry.s 對齊原始 startMs:LLM 幻覺時間戳直接上 overlay。
 //       修法：對齊驗證收斂到 SK.ASR.normalizeAsrEntry（跟 YT _runAsrSubBatch 共用，
 //       避免同協定雙實作 drift);Drive 端零長度 cue（區間顯示永不可見）一併丟棄。
+//       v2.0.54 演進:normalizeAsrEntry → SK.ASR.resolveEntryTimeline(時間軸分割,
+//       LLM 的 e 不採信)——幻覺 s 仍丟棄;e 零長度但 s 有效的 entry 改由分割補齊
+//       顯示區間(不再整條丟),對應斷言已更新。詳見 youtube-asr-cue-timeline.spec.js。
 //   3-8 engine latch 註解與實作不符：_engine 每批重讀，mid-run 切設定跨批混用
 //       google / gemini / openai-compat 結果。修法：_handleCaptionsMessage 開頭
 //       latch 成 const 傳進 worker。
@@ -65,7 +68,12 @@ test.describe('drive-captions-pipeline-guards', () => {
       ({ entries: window.__SK.DRIVE.entries.map(e => e.text), msgTypes: window.__msgTypes })
     `);
     expect(r.msgTypes, '應送出 1 批 Gemini LLM 請求').toEqual(['TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH']);
-    expect(r.entries, '只有對齊 entry 上 overlay，幻覺 / 零長度被丟').toEqual(['譯文一']);
+    // v2.0.54:resolveEntryTimeline 取代 normalizeAsrEntry——幻覺 s 仍丟棄;
+    // 「e 零長度」的 entry 因 s 對齊有效,改由時間軸分割修復顯示區間(舊邏輯整條丟 =
+    // 該片段的譯文永遠不顯示),所以 '零長度' 現在應該上 overlay
+    expect(r.entries, '對齊 entry 上 overlay(含 e 零長度但 s 有效者),幻覺 s 被丟').toEqual(['譯文一', '零長度']);
+    const zeroLenEntry = await evaluate(`window.__SK.DRIVE.entries.find(e => e.text === '零長度')`);
+    expect(zeroLenEntry.endMs, 'e 零長度 entry 的區間由時間軸分割補齊(3000 + fallback 1500)').toBe(4500);
 
     await page.close();
   });

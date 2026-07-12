@@ -277,6 +277,9 @@
     //   onVideoTimeUpdate 根據 video.currentTime 找出當前該顯示的 cue 寫入 overlay。
     //   整句進整句出,不依賴 YouTube 原生 caption-segment(避免 ASR 一字一字跳)。
     displayCues:              [],
+    // v2.0.54:ASR 視窗收集已取走的片段 startMs 集合(視窗尾端延伸到句尾標點後,
+    // 下一視窗開頭跳過已取走片段——每片段只送翻一次)。詳見 _collectAsrWindowSegs。
+    asrSegConsumed:           new Set(),
     // CC 按鈕關閉時暫停送 API(captionMap / rawSegments / active 不變,只擋 onVideoTimeUpdate
     // 等驅動點)。CC 重開時自動續翻並把 translatedUpToMs 對齊當前 currentTime 視窗,避免
     // 暫停期間使用者拖進度條造成虛假超前。
@@ -394,6 +397,7 @@
     YT.displayCues        = [];
     YT.translatedUpToMs   = 0;
     YT.captionMapCoverageUpToMs = 0;
+    YT.asrSegConsumed     = new Set();  // v2.0.54: 換軌後片段時間軸全新,取用紀錄一併歸零
     SK.sendLog('info', 'youtube', `caption source bookkeeping reset (${reason})`, {
       gen: YT.captionSourceGen, ...(extra || {}),
     });
@@ -624,13 +628,20 @@
   // ─── ASR 模式視窗翻譯(D',timestamp mode) ─────
   //
   // 輸入 windowSegs 的每條 segment 只有 startMs(YouTube ASR 不給 dur)。
-  // 我們以「下一條 startMs」當作本條的 endMs;最後一條用 startMs + SK.ASR_LAST_CUE_FALLBACK_MS 當保守 endMs。
+  // 我們以「下一條 startMs」當作本條的 endMs;子批最後一條查 YT.rawSegments 的真實
+  // 後繼片段起點(cap +ASR_LAST_CUE_MAX_EXTEND_MS 防長靜默 linger),整軌最後一條
+  // 才用 startMs + SK.ASR_LAST_CUE_FALLBACK_MS 保守值。
   // LLM 收到緊湊 JSON 陣列,自由合句後回傳同格式陣列。
   //
-  // 解析容錯:LLM 可能用 ```json fence 包,先剝;陣列驗證寬鬆——
+  // 解析容錯:LLM 可能用 ```json fence 包,先剝;陣列驗證規則——
   //   1. 每個 entry 的 s 必須等於某條原始 segment 的 startMs(否則該 entry 丟棄)
-  //   2. e 不強制驗(觀察 LLM 偶爾會給出非輸入值,但 s 對齊就足以決定 captionMap 寫入位置)
-  // captionMap 寫入慣例:該 entry 的 [s, e] 內所有 windowSegs → 第一條 normText 存譯文,
+  //   2. e 完全不採信,顯示區間由「有效 entries 依 s 排序後的時間軸分割」決定:
+  //      entry i 涵蓋 [s_i, s_{i+1}),最後一個 entry 涵蓋到子批末片段的真實後繼起點。
+  //      real-data 校準(2026-07-12,gemini-3.1-flash-lite × 真實 ASR 軌 69 entries):
+  //      e 值 100% 是合法輸入值,但 ~4% 挑到「句中片段」而非句尾片段的 e →
+  //      句尾 2-4s 字幕提早消失 + 尾片段 uncovered;偶發 s 幻覺(~1.4%)整句被丟。
+  //      以片段時間軸為單一資料源分割,LLM 的 e 不再影響顯示。
+  // captionMap 寫入慣例:該 entry 分割區間內所有 windowSegs → 第一條 normText 存譯文,
   // 其餘存空字串(視覺等同合併成單行,跟 buildTranslationUnits preserve=true 慣例一致)。
 
   function _stripJsonFence(s) {
@@ -640,19 +651,62 @@
     return s.trim();
   }
 
-  // v1.10.46: ASR JSON 協定 entry 對齊驗證（YT _runAsrSubBatch 與 Drive _runOneBatchLlm 共用，
-  // 避免同協定雙實作 drift——Drive 原本只驗 isFinite,LLM 幻覺時間戳會直接上 overlay)。
-  //   - s 必須等於某條原始 segment 的 startMs（LLM 幻覺時間戳防禦）
-  //   - e 寬鬆：非 finite / 倒退 → 退回 s（觀察 LLM 偶爾給非輸入值，s 對齊就足以定位）
-  // 回 null = 該 entry 丟棄。
-  function _normalizeAsrEntry(entry, startMsSet) {
-    const sStart = Number(entry.s);
-    const sEnd = Number(entry.e);
-    const text = String(entry.t || '').trim();
-    if (!Number.isFinite(sStart) || !text) return null;
-    if (startMsSet && !startMsSet.has(sStart)) return null;
-    const endMs = Number.isFinite(sEnd) && sEnd >= sStart ? sEnd : sStart;
-    return { startMs: sStart, endMs, text };
+  // v2.0.54: 批次末片段的顯示終點(YT 子批 / Drive 批次 / heuristic 視窗尾組共用)。
+  // 原本一律 lastStartMs + FALLBACK(1500ms),但真實 ASR 相鄰片段間隔中位數 ~1.7s
+  // (p90 2.6s),固定 1500 讓每個子批的最後一句系統性提早消失(real-data:32% 短收 >1s)。
+  // 改查 rawSegments 真實後繼片段起點;cap +MAX_EXTEND 防止把長靜默(音樂/停頓)
+  // 也算進顯示時間;整軌最後一片段(無後繼)才退回 FALLBACK。
+  function _asrBatchEndMs(lastStartMs, rawSegments) {
+    const next = (rawSegments || []).find(s => s && s.startMs > lastStartMs);
+    if (next) return Math.min(next.startMs, lastStartMs + SK.ASR_LAST_CUE_MAX_EXTEND_MS);
+    return lastStartMs + SK.ASR_LAST_CUE_FALLBACK_MS;
+  }
+
+  // v2.0.54: ASR JSON 協定 entry → 顯示時間軸解析(YT _runAsrSubBatch 與 Drive
+  // _runOneBatchLlm 共用,避免同協定雙實作 drift)。取代舊 _normalizeAsrEntry 的
+  // 逐條驗證:改以「片段時間軸」為單一資料源做分割。
+  //   - s 必須等於某條原始 segment 的 startMs(LLM 幻覺時間戳防禦,同舊規則)
+  //   - e 完全不採信:有效 entries 依 s 排序去重(同 s 後者覆蓋前者,對齊
+  //     _upsertDisplayCue 同 startMs upsert 語意)後,entry i 的顯示區間 =
+  //     [s_i, s_{i+1});最後一個 entry 到 batchEndMs
+  //   - s 是幻覺值但落在批次時間範圍內 → 不顯示該 entry,但把該 s 當保守邊界
+  //     (cap 前一 entry 的 endMs):LLM 認為那裡有新句子開始,寧可留空窗給
+  //     heuristic cue / 空白,也不讓前一句的譯文 linger 蓋到下一句語音上
+  // 回 { cues: [{startMs, endMs, text}...] 依 startMs 排序, droppedCount }。
+  function _resolveAsrEntryTimeline(entries, subSegs, batchEndMs) {
+    const startMsSet = new Set(subSegs.map(seg => seg && seg.startMs));
+    const spanStart = subSegs[0] ? subSegs[0].startMs : 0;
+    const valid = [];
+    const caps = [];
+    let droppedCount = 0;
+    for (const entry of entries) {
+      const s = Number(entry.s);
+      const text = String(entry.t || '').trim();
+      if (!Number.isFinite(s) || !text) { droppedCount++; continue; }
+      if (!startMsSet.has(s)) {
+        droppedCount++;
+        if (s > spanStart && s < batchEndMs) caps.push(s);
+        continue;
+      }
+      valid.push({ s, text });
+    }
+    valid.sort((a, b) => a.s - b.s);
+    const dedup = [];
+    for (const v of valid) {
+      if (dedup.length && dedup[dedup.length - 1].s === v.s) dedup[dedup.length - 1] = v;
+      else dedup.push(v);
+    }
+    caps.sort((a, b) => a - b);
+    const cues = [];
+    for (let i = 0; i < dedup.length; i++) {
+      const cur = dedup[i];
+      const nextS = i + 1 < dedup.length ? dedup[i + 1].s : batchEndMs;
+      const cap = caps.find(c => c > cur.s && c < nextS);
+      const endMs = cap != null ? cap : nextS;
+      if (endMs <= cur.s) continue; // 防禦:batchEndMs 異常小時不產生零長度 cue
+      cues.push({ startMs: cur.s, endMs, text: cur.text });
+    }
+    return { cues, droppedCount };
   }
 
   function _parseAsrResponse(text) {
@@ -663,6 +717,114 @@
     const parsed = JSON.parse(stripped.slice(start));
     if (!Array.isArray(parsed)) throw new Error('ASR response: not an array');
     return parsed;
+  }
+
+  // v2.0.54(症狀:句尾詞跨視窗重複,例「…181 匹馬力」/「馬力,但…」):
+  // ASR 視窗是純時間對齊切分(floor 到 windowSizeMs),邊界常落在句中;前後視窗
+  // 各自獨立送 LLM、互看不到——前窗看到殘句會腦補句尾(「It makes 181」→
+  // 「它輸出 181 匹馬力」),後窗把殘餘片段(「horsepower, but…」)忠實翻出
+  // 「馬力,但…」,拼起來語意重複(real-data:cXot3z7ZPOo 的 150s 視窗邊界
+  // 正好切在「181 ⟷ horsepower」之間)。
+  // 修法:視窗末片段文字未收在句尾標點時,尾端繼續收片段直到「句尾標點」或
+  // +ASR_WINDOW_MAX_TAIL_EXTEND_MS 上限;consumed(YT.asrSegConsumed)記錄已被
+  // 取走的片段 startMs,下一視窗開頭跳過——每片段只送翻一次,不重複計費。
+  // ASR 軌沒標點的影片延伸只會打到上限(邊界後移但不比現況差),殘句另由 prompt
+  // 「殘句照字面翻、不可補完」規則第二層兜底。
+  // 句尾判定:. ! ? 。 ! ? …(允許尾隨引號 / 括號);半形逗號結尾視為句未完。
+  const _ASR_SENTENCE_END_RE = /[.!?。！？…]["')\]」』]*$/;
+
+  function _collectAsrWindowSegs(rawSegments, windowStartMs, windowEndMs, consumed) {
+    const maxMs = windowEndMs + SK.ASR_WINDOW_MAX_TAIL_EXTEND_MS;
+    const segs = [];
+    for (const seg of (rawSegments || [])) {
+      if (!seg || seg.startMs < windowStartMs) continue;
+      // 已被前一視窗延伸取走:視窗本體內 → 跳過續掃;延伸區 → 停(下一視窗領地)
+      if (consumed && consumed.has(seg.startMs)) {
+        if (seg.startMs >= windowEndMs) break;
+        continue;
+      }
+      if (seg.startMs < windowEndMs) { segs.push(seg); continue; }
+      // ── 延伸區(startMs ≥ windowEndMs)──
+      if (segs.length === 0) break;                                   // 視窗本體沒片段,不延伸
+      if (_ASR_SENTENCE_END_RE.test(segs[segs.length - 1].text.trim())) break;  // 句已收尾
+      if (seg.startMs > maxMs) break;                                 // 延伸上限
+      segs.push(seg);
+    }
+    return segs;
+  }
+  SK._collectAsrWindowSegs = _collectAsrWindowSegs;   // regression spec 直接驅動用
+
+  // v2.0.54(症狀:LLM 無視 prompt 的 35 字上限,50+ 字合一句 → overlay 折成 3+ 行):
+  // code 端保底——超長譯文 cue 依標點均衡拆成多個顯示 cue。
+  // 時間分配:字元占比只當初估,切點會**吸附到 segStarts 內最近的原始片段起點**
+  // (真實語音 onset,±SNAP 容差)——純占比切點是猜的,句內換片會落在語音中間,
+  // 使用者感知「時間對齊不準」;吸附後句內切換發生在新片段開口的瞬間。
+  // 句內沒有可用 onset(整句只涵蓋一個長片段)才留占比近似;跨語言語序重排造成的
+  // 誤差是天生極限,吸附只保證「切在真實開口點」。
+  // 只拆顯示 cue:captionMap 仍寫整句(非 ASR 注入路徑與語意查詢不受影響),
+  // iOS 全螢幕字幕軌從 displayCues 鏡像、自動跟進拆分結果。
+  // cue 時長不足以讓每片 ≥ ASR_CUE_MIN_PIECE_MS 時自動減片數(避免字幕閃跳)。
+  const _ASR_SPLIT_SNAP_MS = 2000;   // 切點吸附到片段起點的容差
+
+  function _splitLongAsrCue(startMs, endMs, text, segStarts) {
+    const t = String(text || '').trim();
+    const total = t.length;
+    const whole = [{ startMs, endMs, text: t }];
+    if (total <= SK.ASR_CUE_MAX_CHARS) return whole;
+    const durMs = endMs - startMs;
+    let n = Math.ceil(total / SK.ASR_CUE_MAX_CHARS);
+    n = Math.min(n, Math.max(1, Math.floor(durMs / SK.ASR_CUE_MIN_PIECE_MS)));
+    if (n <= 1) return whole;
+    const SEARCH = 12;   // 理想切點左右找標點的範圍(字元)
+    const pieces = [];
+    let pos = 0;
+    for (let k = 1; k < n; k++) {
+      const ideal = Math.round((total * k) / n);
+      let cut = -1;
+      let bestDist = Infinity;
+      const lo = Math.max(pos + 1, ideal - SEARCH);
+      const hi = Math.min(total - 2, ideal + SEARCH);
+      for (let i = lo; i <= hi; i++) {
+        if (_ASR_PUNCT_RE.test(t[i])) {
+          const d = Math.abs(i + 1 - ideal);
+          if (d < bestDist) { bestDist = d; cut = i + 1; }
+        }
+      }
+      if (cut < 0) cut = ideal;          // 附近沒標點 → 均分硬切(寧可切也不要第三行)
+      if (cut <= pos || cut >= total) continue;
+      pieces.push(t.slice(pos, cut));
+      pos = cut;
+    }
+    if (pos < total) pieces.push(t.slice(pos));
+    if (pieces.length <= 1) return whole;
+    // 時間分配:字元占比初估 → 吸附到 cue 區間內最近的片段起點(真實語音 onset)
+    const onsets = (segStarts || [])
+      .filter(ms => Number.isFinite(ms) && ms > startMs && ms < endMs)
+      .sort((a, b) => a - b);
+    const out = [];
+    let acc = 0;
+    let cursor = startMs;
+    for (let i = 0; i < pieces.length; i++) {
+      acc += pieces[i].length;
+      let end;
+      if (i === pieces.length - 1) {
+        end = endMs;   // 末片收在原 endMs
+      } else {
+        end = startMs + Math.round(durMs * acc / total);
+        let best = null;
+        let bestDist = _ASR_SPLIT_SNAP_MS + 1;
+        for (const onset of onsets) {
+          if (onset <= cursor) continue;
+          const d = Math.abs(onset - end);
+          if (d < bestDist) { bestDist = d; best = onset; }
+        }
+        if (best != null && bestDist <= _ASR_SPLIT_SNAP_MS) end = best;
+      }
+      const pt = pieces[i].trim();
+      if (pt && end > cursor) out.push({ startMs: cursor, endMs: end, text: pt });
+      cursor = end;
+    }
+    return out.length ? out : whole;
   }
 
   // ─── 啟發式 ASR 合句(F/E 模式) ─────
@@ -1544,11 +1706,12 @@
 
   // 加入 cue 到 displayCues。
   //   - 同 startMs upsert(progressive 模式 LLM 覆蓋 heuristic 用)
-  //   - opts.replaceRange=true(LLM 路徑用):清除 startMs 落在 (新 cue.startMs, LLM 原始 endMs)
+  //   - opts.replaceRange=true(LLM 路徑用):清除 startMs 落在 (新 cue.startMs, 傳入 endMs)
   //     範圍內的舊 cue,避免 progressive 模式下「LLM 沒同 startMs」的 heuristic cue 殘留 →
-  //     視覺上預設分句 / AI 分句疊來疊去。**用 LLM 原始 endMs 不用延長後 adjustedEnd**:
-  //     閱讀延長只是「給使用者讀完已有譯文的時間」,不該擴張 LLM 認為涵蓋的範圍。誤用 adjustedEnd
-  //     會把 LLM 沒 cover 的中段 heuristic cue 清掉,造成中段字幕消失。
+  //     視覺上預設分句 / AI 分句疊來疊去。v2.0.54 起傳入 endMs = 時間軸分割區間終點
+  //     (_resolveAsrEntryTimeline,= 下一個 LLM cue 的 startMs),清除範圍恰等於本句
+  //     實際涵蓋範圍。**不可用延長後 adjustedEnd**:閱讀延長只是「給使用者讀完已有譯文
+  //     的時間」,不該擴張清除範圍——會把本句沒 cover 的中段 heuristic cue 清掉。
   //   - 寫完按 startMs 排序,確保 _findActiveCue 找 nextStart 順序正確
   // endMs 自動延長至少夠中文閱讀時間(用於顯示 cue 的 endMs)。
   function _upsertDisplayCue(startMs, endMs, sourceText, targetText, opts) {
@@ -1973,11 +2136,38 @@
       return bestIdx;
     }
 
+    // v2.0.54:句尾標點感知切分。start-to-start 間隔 = 片段語音長度 + 停頓,長片段
+    // (5s+)會被 gap 邏輯誤判成「自然停頓」而切在句中(real-data cXot3z7ZPOo:
+    // 146.8s「…It makes 181」→152.5s「horsepower…」間隔 5.68s 全是語音,gap 切分
+    // 正好把句子切進兩個獨立 LLM 呼叫——前批腦補句尾、後批殘句起頭,邊界詞重複;
+    // prompt 殘句規則實測 flash-lite 不服從,必須結構性避免)。
+    // 有句尾標點的軌:只在「前一片段收在句尾標點」處切,範圍內取最晚(批大一點、
+    // 接縫少一點),超出 maxSpan 可放寬 SLACK 找第一個;完全找不到就回 -1 = 不切
+    // (整批送——句子完整優先於並行度,絕不回退到假 gap)。無標點軌:維持 gap 邏輯。
+    const PUNCT_CUT_SLACK_MS = 5000;
+    const hasPunct = segs.some(s => _ASR_SENTENCE_END_RE.test((s.text || '').trim()));
+
+    function findPunctCutIdx(fromIdx, minSpanMs, maxSpanMs) {
+      const baseMs = segs[fromIdx].startMs;
+      let best = -1;
+      for (let i = fromIdx + 1; i < n; i++) {
+        const span = segs[i].startMs - baseMs;
+        if (span > maxSpanMs + PUNCT_CUT_SLACK_MS) break;
+        if (!_ASR_SENTENCE_END_RE.test((segs[i - 1].text || '').trim())) continue;
+        if (span < minSpanMs) continue;
+        if (span <= maxSpanMs) { best = i; continue; }  // 範圍內取最晚
+        if (best < 0) best = i;                          // 放寬區取第一個
+        break;
+      }
+      return best;
+    }
+
+    const _findCut = hasPunct ? findPunctCutIdx : findCutIdx;
     const cuts = [];
-    const cut1 = findCutIdx(0, sub0Min, sub0Max);
+    const cut1 = _findCut(0, sub0Min, sub0Max);
     if (cut1 > 0) cuts.push(cut1);
     if (cut1 > 0) {
-      const cut2 = findCutIdx(cut1, 8000, 15000);
+      const cut2 = _findCut(cut1, 8000, 15000);
       if (cut2 > cut1) cuts.push(cut2);
     }
 
@@ -2000,12 +2190,13 @@
     // 世代快照：await 回來後 SPA 換片 / stop-restart 會換掉 captionMap / displayCues
     // (物件同一個 YT，屬性換新)，不比對就把舊影片的譯文與 cue 寫進新影片 session
     const _myGen = YT.captionSourceGen || 0;
-    const startMsSet = new Set(subSegs.map(s => s.startMs));
     const lastSeg = subSegs[subSegs.length - 1];
+    // v2.0.54:子批末條 e 改用 rawSegments 真實後繼片段起點(下一子批首條 = 本值,
+    // 子批間仍不重疊),不再固定 +1500ms——固定值讓 LLM 對末句時距的認知系統性偏短
+    const batchEndMs = _asrBatchEndMs(lastSeg.startMs, YT.rawSegments);
     const inputArr = subSegs.map((seg, i) => {
       const next = subSegs[i + 1];
-      // 子批內最後一條 fallback +1500ms(子批間不重疊)
-      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
+      const endMs = next ? next.startMs : batchEndMs;
       return { s: seg.startMs, e: endMs, t: seg.text };
     });
     const inputJson = JSON.stringify(inputArr);
@@ -2039,25 +2230,29 @@
     const rawText = res.result?.[0] || '';
     const entries = _parseAsrResponse(rawText);
 
+    // v2.0.54:顯示時間軸改由 _resolveAsrEntryTimeline 以片段時間軸分割(不採信 LLM 的 e),
+    // 修「AI 分句字幕太早消失 / 下一句太晚出現」:LLM 挑錯句中片段的 e 時,舊邏輯讓
+    // 句尾片段 uncovered + cue 提早收
+    const { cues, droppedCount } = _resolveAsrEntryTimeline(entries, subSegs, batchEndMs);
     let writtenCount = 0;
-    let droppedCount = 0;
-    for (const entry of entries) {
-      // v1.10.46: 對齊驗證收斂到 _normalizeAsrEntry（跟 Drive 共用，單一資料源）
-      const norm = _normalizeAsrEntry(entry, startMsSet);
-      if (!norm) { droppedCount++; continue; }
-      const { startMs: sStart, endMs: validEnd, text: trans } = norm;
+    for (const cue of cues) {
       // v1.9.22: 加 `seg &&` null guard 跟 displayCues 同樣 sparse 防禦原則
-      const covered = subSegs.filter(seg => seg && seg.startMs >= sStart && seg.startMs <= validEnd);
-      if (covered.length === 0) { droppedCount++; continue; }
-      YT.captionMap.set(covered[0].normText, trans);
+      const covered = subSegs.filter(seg => seg && seg.startMs >= cue.startMs && seg.startMs < cue.endMs);
+      if (covered.length === 0) continue;
+      YT.captionMap.set(covered[0].normText, cue.text);
       for (let k = 1; k < covered.length; k++) {
         // v1.10.46: rawSegments 不再全軌 dedup,covered 內可能有同 normText 的重複行
         // （例如「yeah yeah」連續兩條）——同 key 不可用空字串把剛寫入的譯文抹掉
         if (covered[k].normText !== covered[0].normText) YT.captionMap.set(covered[k].normText, '');
       }
-      // G 路徑:寫 displayCues 給 overlay 用(progressive 模式覆蓋 heuristic 寫的同 startMs)
+      // G 路徑:寫 displayCues 給 overlay 用(progressive 模式覆蓋 heuristic 寫的同 startMs)。
+      // v2.0.54:超長合句先過 _splitLongAsrCue 保底拆分(只拆顯示 cue,上面 captionMap
+      // 已寫整句;拆出的每片各自 replaceRange 清掉自己區間內的 heuristic 殘留)
       const sourceText = covered.map(seg => seg.text).join(' ');
-      _upsertDisplayCue(sStart, validEnd, sourceText, trans, { replaceRange: true });
+      const _segStarts = covered.map(seg => seg.startMs);
+      for (const piece of _splitLongAsrCue(cue.startMs, cue.endMs, cue.text, _segStarts)) {
+        _upsertDisplayCue(piece.startMs, piece.endMs, sourceText, piece.text, { replaceRange: true });
+      }
       writtenCount++;
     }
 
@@ -2159,6 +2354,11 @@
     const sentences = _heuristicMergeAsr(windowSegs);
     if (sentences.length === 0) return;
 
+    // v2.0.54:視窗尾組 endMs 同 LLM 路徑改用 rawSegments 真實後繼片段起點
+    // (_heuristicMergeAsr 只看得到 windowSegs,尾組原本固定 +1500ms 系統性提早收)
+    const _lastSentence = sentences[sentences.length - 1];
+    _lastSentence.endMs = _asrBatchEndMs(windowSegs[windowSegs.length - 1].startMs, YT.rawSegments);
+
     SK.sendLog('info', 'youtube', 'asr heuristic merged', {
       windowStartMs, windowSegCount: windowSegs.length,
       sentenceCount: sentences.length,
@@ -2166,10 +2366,14 @@
     });
 
     // _cue 帶 cue 時間範圍,翻譯回來後 push 到 displayCues 給 overlay 用
+    // (segStarts = 該句涵蓋片段的真實起點,給超長譯文拆分的切點吸附用)
     const units = sentences.map(s => ({
       text: s.text,
       keys: s.sourceSegs.map(seg => seg.normText),
-      _cue: { startMs: s.startMs, endMs: s.endMs, sourceText: s.text },
+      _cue: {
+        startMs: s.startMs, endMs: s.endMs, sourceText: s.text,
+        segStarts: s.sourceSegs.map(seg => seg.startMs),
+      },
     }));
 
     // v1.9.19: BATCH 8 → 12(token 攤提 ~26%,elapsed median 幾乎不變),
@@ -2244,8 +2448,11 @@
             }
           }
           // G 路徑:寫 displayCues 給 overlay 用
+          // v2.0.54:heuristic 合句(上限 30 words)譯文也可能超長,同過保底拆分
           if (unit._cue) {
-            _upsertDisplayCue(unit._cue.startMs, unit._cue.endMs, unit._cue.sourceText, normTrans);
+            for (const piece of _splitLongAsrCue(unit._cue.startMs, unit._cue.endMs, normTrans, unit._cue.segStarts)) {
+              _upsertDisplayCue(piece.startMs, piece.endMs, unit._cue.sourceText, piece.text);
+            }
           }
         }
         // overlay 立刻 render 當前 active cue(若有)
@@ -2413,10 +2620,18 @@
     const _cmSizeBefore = YT.captionMap.size;
     const _cuesCountBefore = YT.displayCues.length;
 
-    // 找出本視窗內的字幕（[windowStartMs, windowEndMs)）
-    const windowSegs = YT.rawSegments.filter(
-      s => s.startMs >= windowStartMs && s.startMs < windowEndMs
-    );
+    // 找出本視窗內的字幕（[windowStartMs, windowEndMs)）。
+    // v2.0.54:ASR 走 _collectAsrWindowSegs——尾端延伸到句尾標點(邊界不切在句中)
+    // + asrSegConsumed 去重(已被前一視窗延伸取走的片段本視窗跳過,每片段只送翻一次)。
+    // 非 ASR(人工字幕)本就整句一條,維持純時間切分。
+    const _myConsumedSet = YT.isAsr ? YT.asrSegConsumed : null;
+    const windowSegs = YT.isAsr
+      ? _collectAsrWindowSegs(YT.rawSegments, windowStartMs, windowEndMs, _myConsumedSet)
+      : YT.rawSegments.filter(
+          s => s.startMs >= windowStartMs && s.startMs < windowEndMs
+        );
+    // 收集後立即標記取用(同步,搶在其他並行視窗收集之前),失敗時於收尾釋放
+    if (_myConsumedSet) windowSegs.forEach(s => _myConsumedSet.add(s.startMs));
 
     SK.sendLog('info', 'youtube', 'translateWindow start', {
       windowStartMs, windowEndMs, segCount: windowSegs.length,
@@ -2827,6 +3042,9 @@
     } else if (windowSegs.length === 0 || _windowProducedTranslation) {
       YT.translatedWindows.add(windowStartMs); // Set 精確記錄,供 seek-back 跳過判斷用
     } else {
+      // v2.0.54:視窗沒產出 → 釋放本視窗取走的片段,retry 時重新收集(含尾端延伸)。
+      // 不釋放的話片段永遠掛在 asrSegConsumed,重試視窗收不到片段 → 永久空白。
+      if (_myConsumedSet) windowSegs.forEach(s => _myConsumedSet.delete(s.startMs));
       SK.sendLog('warn', 'youtube', 'window translation produced nothing — leaving open for retry', {
         windowStartMs, segCount: windowSegs.length,
         captionMapSize: YT.captionMap.size,
@@ -3186,6 +3404,10 @@
     YT.displayCues               = [];
     YT.translatedUpToMs          = 0;
     YT.captionMapCoverageUpToMs  = 0;
+    // v2.0.54:不清會讓清快取後的重翻視窗把所有片段當「已取走」→ 收 0 條、字幕永久
+    // 空白(cage 實測踩到:CLEAR_CACHE 後 translatedWindows=[120000,150000] 但
+    // displayCues=0)。asrSegConsumed 必須跟 captionMap / translatedWindows 同生命週期
+    YT.asrSegConsumed            = new Set();
     YT._firstCacheHitLogged      = false;
     hideCaptionStatus();
     // ASR overlay 內可能殘留中文 cue 文字(displayCues 已清,但渲染還在)。
@@ -3409,6 +3631,7 @@
     YT.captionLang        = null;       // v1.10.46: 補漏——殘留會讓下支影片 activation 早期用舊 lang 跑 already-in-target 判斷
     YT.captionSourceId    = null;       // v1.10.46: 來源身份隨 session 結束失效
     YT.displayCues        = [];         // G 路徑:清 overlay 顯示單位
+    YT.asrSegConsumed     = new Set();  // v2.0.54: captionMap 已清,取用紀錄留著會讓重啟後片段永遠不再送翻
     YT.ccPaused           = false;
     if (YT._ccButtonObserver) {
       YT._ccButtonObserver.disconnect();
@@ -3792,7 +4015,13 @@
     parseJson3,
     mergeAsr: _heuristicMergeAsr,
     parseAsrResponse: _parseAsrResponse,
-    normalizeAsrEntry: _normalizeAsrEntry, // v1.10.46: entry 對齊驗證（YT / Drive 共用）
+    // v2.0.54: entry 驗證 + 顯示時間軸分割（YT / Drive 共用,取代 normalizeAsrEntry
+    // 逐條驗證——LLM 的 e 不再採信,詳見 _resolveAsrEntryTimeline 註解)
+    resolveEntryTimeline: _resolveAsrEntryTimeline,
+    batchEndMs: _asrBatchEndMs,
+    // v2.0.54: 超長合句 code 端保底拆分(YT overlay / Drive 浮層共用,詳見
+    // _splitLongAsrCue 註解)
+    splitLongCue: _splitLongAsrCue,
   };
 
 })(window.__SK);

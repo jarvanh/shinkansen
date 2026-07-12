@@ -206,8 +206,24 @@ export function computeAnnotationDedupe(epubDoc, glossary) {
     if (!e || e.dedupeAnnotation !== true || typeof e.target !== 'string') continue;
     const m = e.target.match(ANNOTATED_RE);
     if (!m) continue;
-    // 預設「後續用原文」（2026-07-10 Jimmy 指定；明確選 target 才用譯文）
-    rules.push({ full: e.target, keep: e.dedupeKeep === 'target' ? m[1] : m[2], seen: false });
+    // v2.0.54:欄位可能是「譯文（原文）」或「原文（譯文）」(UI 依「後續用X」自動翻轉,
+    // 欄位 = 首次出現的長相)。哪個 token 是原文以 e.source 比對決定;都比不中時退回
+    // 舊慣例(lead=譯文、括號=原文)——涵蓋舊 session 存檔與手改過的欄位。
+    // 預設「後續用原文」（2026-07-10 Jimmy 指定；明確選 target 才用譯文）。
+    // 作品名 entry 的 lead token 帶書名號（「《Four Weddings》（妳是我今生的新娘）」,
+    // 2026-07-12 UI 翻轉起《》跟著 lead 走）:比對 source 先剝《》再比,keep token
+    // 用原樣——後續出現保住書名號（《Four Weddings》不是裸 Four Weddings）
+    const stripTitle = (s) => {
+      const t = s.trim();
+      const tw = t.match(/^《(.+)》$/);
+      return tw ? tw[1].trim() : t;
+    };
+    const src = typeof e.source === 'string' ? stripTitle(e.source) : '';
+    let sourceTok = m[2];
+    let targetTok = m[1];
+    if (src && stripTitle(m[1]) === src) { sourceTok = m[1]; targetTok = m[2]; }
+    else if (src && stripTitle(m[2]) === src) { sourceTok = m[2]; targetTok = m[1]; }
+    rules.push({ full: e.target, keep: e.dedupeKeep === 'target' ? targetTok : sourceTok, seen: false });
   }
   if (rules.length === 0) return out;
 

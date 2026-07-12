@@ -262,10 +262,13 @@
   async function _runOneBatchLlm(batch, batchIdx, totalBatches, msgType, engineLabel) {
     if (batch.length === 0) return;
 
-    const startMsSet = new Set(batch.map(seg => seg.startMs));
+    // v2.0.54:批次末條 e 改查 DRIVE.rawSegments 真實後繼片段起點(跟 YT _runAsrSubBatch
+    // 同源修法,固定 +1500ms 讓每批最後一句系統性提早消失)
+    const lastSeg = batch[batch.length - 1];
+    const batchEndMs = SK.ASR.batchEndMs(lastSeg.startMs, DRIVE.rawSegments);
     const inputArr = batch.map((seg, i) => {
       const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
+      const endMs = next ? next.startMs : batchEndMs;
       return { s: seg.startMs, e: endMs, t: seg.text };
     });
     const inputJson = JSON.stringify(inputArr);
@@ -302,18 +305,20 @@
       return;
     }
 
+    // v2.0.54: 驗證 + 顯示區間收斂到 SK.ASR.resolveEntryTimeline(YT _runAsrSubBatch 同源,
+    // 避免同協定雙實作 drift)——entry.s 必須等於某條原始 startMs(幻覺丟棄),顯示區間由
+    // 片段時間軸分割決定、不採信 LLM 的 e(挑錯 e 造成句尾提早消失);零長度區間不會產生
+    const { cues, droppedCount } = SK.ASR.resolveEntryTimeline(entries, batch, batchEndMs);
     let pushedCount = 0;
-    let droppedCount = 0;
-    for (const entry of entries) {
-      // v1.10.46: 對齊驗證收斂到 SK.ASR.normalizeAsrEntry(YT _runAsrSubBatch 同源，
-      // 避免同協定雙實作 drift)——entry.s 必須等於某條原始 startMs,LLM 幻覺時間戳丟棄。
-      const norm = SK.ASR.normalizeAsrEntry(entry, startMsSet);
-      if (!norm) { droppedCount++; continue; }
-      // Drive overlay 以 [startMs, endMs) 區間顯示，零長度 cue 永不可見 → 一併丟棄
-      // （YT 路徑 e 退回 s 仍有意義，因 captionMap 以 normText 定位、非區間顯示）
-      if (norm.endMs <= norm.startMs) { droppedCount++; continue; }
-      DRIVE.entries.push({ startMs: norm.startMs, endMs: norm.endMs, text: norm.text });
-      pushedCount++;
+    const _batchStarts = batch.map(seg => seg.startMs);
+    for (const cue of cues) {
+      // v2.0.54:超長合句過 splitLongCue 保底拆分(LLM 無視 prompt 字數上限時
+      // 浮層會折出 3+ 行;與 YT overlay 同源修法)。batchStarts 供切點吸附到
+      // 真實片段起點(函式內只取 cue 區間內的)
+      for (const piece of SK.ASR.splitLongCue(cue.startMs, cue.endMs, cue.text, _batchStarts)) {
+        DRIVE.entries.push({ startMs: piece.startMs, endMs: piece.endMs, text: piece.text });
+        pushedCount++;
+      }
     }
     DRIVE.entries.sort((a, b) => a.startMs - b.startMs);
     // 並行批次 push+sort 會移動既有索引——currentEntryIdx 是純數字索引，不失效的話
@@ -363,7 +368,8 @@
       const text = String(translations[i] || '').trim();
       if (!text) continue;
       const next = batch[i + 1];
-      const endMs = next ? next.startMs : seg.startMs + SK.ASR_LAST_CUE_FALLBACK_MS;
+      // v2.0.54:批次末條同 LLM 路徑改查 rawSegments 真實後繼片段起點
+      const endMs = next ? next.startMs : SK.ASR.batchEndMs(seg.startMs, DRIVE.rawSegments);
       DRIVE.entries.push({ startMs: seg.startMs, endMs, text });
       pushedCount++;
     }
@@ -392,7 +398,7 @@
       SK.sendLog('warn', 'drive', 'DRIVE_ASR_CAPTIONS payload missing json3');
       return;
     }
-    if (!SK.ASR?.parseJson3 || !SK.ASR?.parseAsrResponse || !SK.ASR?.normalizeAsrEntry) {
+    if (!SK.ASR?.parseJson3 || !SK.ASR?.parseAsrResponse || !SK.ASR?.resolveEntryTimeline) {
       SK.sendLog('warn', 'drive', 'SK.ASR helpers not available (load order issue?)');
       return;
     }

@@ -309,6 +309,11 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
 
   // 自動擷取術語對照表(頁面級,跨頁變;放在使用者級規則之後讓跨頁 cache 共享前段)
   // v1.8.20: 對 source / target 消毒,防止頁面內容塞 sentinel token 影響協定
+  // 2026-07-12: 措辭改「右欄整串都是譯名」——舊句尾「也不需加註英文原文」跟
+  // EPUB 全書術語表帶對照的 target（「《變換房間》（Changing Rooms）」）自相矛盾,
+  // 真 API probe(tools/probe-glossary-annotation.mjs)實測模型會因此剝掉（原文）
+  // 對照(3.5-flash 3 輪只保留 1 輪)。「對照一次」的後續出現裁剪由 writer 端
+  // computeAnnotationDedupe 確定性處理,LLM 層永遠輸出完整右欄
   if (glossary && glossary.length > 0) {
     const lines = glossary
       .map(e => `${sanitizeTermText(e.source)} → ${sanitizeTermText(e.target)}`)
@@ -316,7 +321,7 @@ export function buildEffectiveSystemInstruction(baseSystem, texts, joined, gloss
       .join('\n');
     if (lines) {
       parts.push(
-        '以下是本篇文章的術語對照表，遇到這些原文一律使用指定譯名，不可自行改寫，也不需加註英文原文：\n' + lines
+        '以下是本篇文章的術語對照表，遇到左欄原文時一律逐字使用右欄指定譯名。右欄字串的所有部分——包括其中的書名號與括號內的原文對照——都是指定譯名的一部分，每次出現都要完整輸出，不可自行增刪、改寫或省略括號對照；右欄已含書名號時不要在外面再包一層書名號或引號；右欄沒有括號對照時，也不要自行加註原文：\n' + lines
       );
     }
   }

@@ -193,6 +193,12 @@
         translatedWindowsSize:     YT.translatedWindows?.size ?? -1,
         translatedWindowsArray:    YT.translatedWindows ? Array.from(YT.translatedWindows).slice(0, 10) : [],
         displayCuesLen:            YT.displayCues?.length ?? -1,
+        // v2.0.54 debug:cue 時間軸內容(除錯 ASR 分句時間對齊必需;原本只有 len,
+        // 實機驗「太早消失/太晚出現」時拿不到 s/e)。text 截短防 payload 過大
+        displayCues:               (YT.displayCues || []).slice(0, 400).map(c => c ? ({
+          startMs: c.startMs, endMs: c.endMs,
+          targetText: String(c.targetText || '').slice(0, 40),
+        }) : null),
         captionLang:               YT.captionLang,
         isAsr:                     YT.isAsr,
       });

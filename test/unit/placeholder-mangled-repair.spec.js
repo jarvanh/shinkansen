@@ -21,6 +21,9 @@
 //    未刪 + 標記殼 + 標題 + hydrate 對齊）→ 還原全綠
 // 6. hydrate 的 editedHtml 優先分支 revert 成「一律從 raw 重算」→「editedHtml
 //    優先」case fail（translation 被 raw 舊值 京浜急行 蓋回）→ 還原全綠
+// 7. collapseDoubledTitleMarks 開頭加 `if (true) return s` → 3 條 fail（《《雷霆谷》》
+//    未收斂 ×2 + 全鏈「《 《」case）→ 還原全綠（2026-07-12 Jimmy 回報術語表
+//    含《》譯名被模型外包一層書名號）
 import { test, expect } from '@playwright/test';
 
 // ── Mock chrome（同 doc-batch-lang-mismatch-retry.spec.js 形狀）──
@@ -44,6 +47,7 @@ const {
   stripTrailingSeparatorGarbage,
   collapseCjkPlaceholderSpaces,
   collapseCjkAsciiSpaces,
+  collapseDoubledTitleMarks,
   alignTrailingPeriodWithSource,
   repairDocLlmArtifacts,
   stripPlaceholderTokens,
@@ -116,6 +120,28 @@ test.describe('collapseCjkPlaceholderSpaces', () => {
   test('stripPlaceholderTokens 後不殘留 CJK 間空格', () => {
     expect(stripPlaceholderTokens('男人稍微 ⟦/0⟧ ⟦1⟧ 歪 ⟦/1⟧ ⟦2⟧ 著頭，說道。 ⟦/2⟧'))
       .toBe('男人稍微歪著頭，說道。');
+  });
+});
+
+// ── collapseDoubledTitleMarks：雙重書名號收斂 ─────────────────
+test.describe('collapseDoubledTitleMarks', () => {
+  test('術語表譯名已含《》又被模型外包一層（2026-07-12 實測「《《雷霆谷》》」）→ 收斂', () => {
+    expect(collapseDoubledTitleMarks('電視上的《《雷霆谷》》；那一幕是'))
+      .toBe('電視上的《雷霆谷》；那一幕是');
+    expect(collapseDoubledTitleMarks('《《變換房間》》和《《大地之力》》'))
+      .toBe('《變換房間》和《大地之力》');
+  });
+
+  test('單層書名號與合法巢狀（開雙閉不雙）不動', () => {
+    const single = '看了《雷霆谷》三次。';
+    expect(collapseDoubledTitleMarks(single)).toBe(single);
+    const nested = '他寫了《《紅樓夢》研究》一書。';
+    expect(collapseDoubledTitleMarks(nested)).toBe(nested);
+  });
+
+  test('repairDocLlmArtifacts 全鏈：「《 《」間空格先收斂再收雙包', () => {
+    expect(repairDocLlmArtifacts('電視上的《 《雷霆谷》 》。'))
+      .toBe('電視上的《雷霆谷》。');
   });
 });
 

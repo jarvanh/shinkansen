@@ -203,6 +203,19 @@ if (window.__shinkansen_loaded) {
   // 可推 endMs 時,用 startMs + 此值當保守結尾。原本這個 magic 1500 在 content-drive.js
   // (×3)+ content-youtube.js(×2)各自寫死 → 任一處調整其他不會跟著改。集中成共用常數。
   SK.ASR_LAST_CUE_FALLBACK_MS = 1500;
+  // v2.0.54:批次末條 e 改查 rawSegments 真實後繼片段起點,此值是延伸上限——
+  // 後繼起點離末條起點超過 5s 代表真實靜默(音樂/停頓),cue 不該 linger 整段靜默
+  SK.ASR_LAST_CUE_MAX_EXTEND_MS = 5000;
+  // v2.0.54:ASR 視窗尾端「延伸到句尾標點」的上限(詳見 content-youtube.js
+  // _collectAsrWindowSegs)。real-data(cXot3z7ZPOo):被 150s 邊界切斷的句子到句尾
+  // 標點需再收 4 條片段(+10.8s),12s 上限涵蓋這類長句,同時擋住無標點軌的無界延伸
+  SK.ASR_WINDOW_MAX_TAIL_EXTEND_MS = 12000;
+  // v2.0.54:LLM 合句譯文超過此字元數時 code 端保底拆成多個顯示 cue(詳見
+  // content-youtube.js _splitLongAsrCue)。prompt 已要求單句 ≤35 全形字,此值取 40
+  // 留容差:36-40 字仍是兩行內,不值得切;>40 在窄播放器會折出第三行
+  SK.ASR_CUE_MAX_CHARS = 40;
+  // 拆分後每片最短顯示時長;cue 時長不夠拆 N 片時自動減片數,避免字幕閃跳
+  SK.ASR_CUE_MIN_PIECE_MS = 1200;
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     const markInteraction = () => { SK._lastInteractionT = Date.now(); };
     // capture phase + passive: 確保最早 fire,不阻塞網頁 listener。
