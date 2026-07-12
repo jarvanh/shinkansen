@@ -3578,13 +3578,20 @@ async function runConsistencyScan(doc) {
   const blockById = new Map();
   for (const ch of doc.chapters) for (const b of ch.blocks) blockById.set(b.blockId, b);
 
+  // 舊版自動替換殘影（「裸名（《譯名》）」）先確定性還原——這些段落含指定譯名
+  // 不會被列為違規，不修就永遠殘留（2026-07-12）
+  let autoFixes = repairComplianceMangles(doc, glossary);
+
   // 第一層違規中「譯文仍殘留原文詞」的段落直接自動替換（2026-07-10 Jimmy 指示：
   // 確定性動作不需使用者確認）；替換後重掃，殘留的違規（LLM 用了別種譯名、
   // 譯文找不到原文詞）留在清單，由結果頁「搜尋替換」與「略過」處理。
   // 已略過的 entry 全程排除（不列出、不自動替換——使用者已裁決不需替換）
   let tier1 = filterIgnoredViolations(checkGlossaryCompliance(doc.chapters, glossary));
-  const autoFixes = applyComplianceFixes(doc, tier1, blockById);
-  if (autoFixes.length > 0) tier1 = filterIgnoredViolations(checkGlossaryCompliance(doc.chapters, glossary));
+  const complianceFixes = applyComplianceFixes(doc, tier1, blockById);
+  if (complianceFixes.length > 0) {
+    autoFixes = mergeComplianceFixes(autoFixes, complianceFixes);
+    tier1 = filterIgnoredViolations(checkGlossaryCompliance(doc.chapters, glossary));
+  }
 
   // 已略過的漂移 term 連候選都不進（不送 LLM 對照，2026-07-10）
   const candidates = mineCandidates(doc.chapters, glossary)
@@ -3984,7 +3991,9 @@ function renderScanResults() {
 // 帶節點邊界 context——詞落在 text node 開頭 / 結尾時，節點內看不到相鄰節點的
 // 字元，空格規則會漏（2026-07-10 Jimmy 回報「贊助商Haas 車隊」前緣沒補空格）；
 // 把相鄰節點的前後字元交給 replaceTermInText 判斷
-function replaceInTextNodes(el, term, replacement) {
+// opts 穿透 replaceTermInText 的 ctx 選項（skipAnnotated / skipTitleAdjacent，
+// 合規自動替換用；搜尋替換 / 漂移套用不帶 opts、行為不變）
+function replaceInTextNodes(el, term, replacement, opts = null) {
   const nodes = [];
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let n;
@@ -3997,7 +4006,7 @@ function replaceInTextNodes(el, term, replacement) {
     for (let j = i - 1; j >= 0 && !prevChar; j--) prevChar = (nodes[j].nodeValue || '').slice(-1);
     let nextChar = '';
     for (let j = i + 1; j < nodes.length && !nextChar; j++) nextChar = (nodes[j].nodeValue || '').charAt(0);
-    const r = replaceTermInText(node.nodeValue, term, replacement, { prevChar, nextChar });
+    const r = replaceTermInText(node.nodeValue, term, replacement, { ...opts, prevChar, nextChar });
     if (r.count > 0) {
       node.nodeValue = r.text;
       hits += r.count;
@@ -4006,7 +4015,7 @@ function replaceInTextNodes(el, term, replacement) {
   // 第二遍:跨節點出現位置（v2.0.53）——inline 殼把詞切成多個 text node 時
   // 逐節點搜尋看不見完整詞（實例:日文書 ruby 逐字 slot,「我叫柏木⟦/0⟧⟦1⟧⟦/1⟧斉」
   // 搜「柏木斉」不中,2026-07-11 Jimmy 回報「搜尋替換找不到詞彙」）
-  hits += replaceAcrossTextNodes(nodes, term, replacement);
+  hits += replaceAcrossTextNodes(nodes, term, replacement, opts);
   return hits;
 }
 
@@ -4014,7 +4023,7 @@ function replaceInTextNodes(el, term, replacement) {
 // 寫入「頭 + 替換結果」,中間節點清空,尾節點留「尾」。邊界 / CJK↔拉丁空格
 // 語意經 synthetic context 字串（前鄰字 + term + 後鄰字）重用 replaceTermInText,
 // 不留雙實作:拉丁詞邊界拒絕時 r.count=0,空格增補會出現在 r.text 的中段
-function replaceAcrossTextNodes(nodes, term, replacement) {
+function replaceAcrossTextNodes(nodes, term, replacement, opts = null) {
   if (!term || typeof replacement !== 'string' || term === replacement) return 0;
   let hits = 0;
   let from = 0; // joined 座標,跨輪單調前進——替換結果含 term 時不回頭,防無限迴圈
@@ -4026,7 +4035,8 @@ function replaceAcrossTextNodes(nodes, term, replacement) {
     const prevChar = idx > 0 ? joined[idx - 1] : '';
     const nextChar = joined[idx + term.length] || '';
     const synth = prevChar + term + nextChar;
-    const r = replaceTermInText(synth, term, replacement, {});
+    // synth 已含相鄰字元，skip 類選項直接在 synth 內判斷（r.count=0 走拒絕分支）
+    const r = replaceTermInText(synth, term, replacement, { ...opts });
     if (r.count === 0) { from = idx + 1; continue; } // 拉丁詞邊界拒絕（Ann in Announcement）
     const middle = r.count === 1
       ? r.text.slice(prevChar.length, r.text.length - nextChar.length)
@@ -4106,7 +4116,20 @@ function applyComplianceFixes(doc, violations, blockByIdArg = null) {
     if (!b || b.translationStatus !== 'done') continue;
     const el = renderBlockForScanEdit(b, SK);
     if (!el) continue;
-    const hits = replaceInTextNodes(el, v.source, v.expected);
+    let hits = 0;
+    // 帶《》的指定譯名被模型輸出成「裸名（原文）」（書名號被剝、對照還在）→
+    // 補回書名號：整組「裸名（原文）」換成「《裸名》（原文）」。skipTitleAdjacent
+    // 防止已有《》的位置疊成《《》》（2026-07-12 Jimmy 回報 Bowfinger 案例）
+    if (v.annotation && /^《.+》$/.test(v.expected)) {
+      const bare = v.expected.slice(1, -1);
+      for (const wrapped of [`${bare}（${v.annotation}）`, `${bare}(${v.annotation})`]) {
+        hits += replaceInTextNodes(el, wrapped, `${v.expected}（${v.annotation}）`,
+          { skipTitleAdjacent: true });
+      }
+    }
+    // 殘留原文詞 → 指定譯名。skipAnnotated：包在括號內的「（原文）」是
+    // 「譯名（原文）」對照協定的一部分，不是殘留待譯詞，不可替換
+    hits += replaceInTextNodes(el, v.source, v.expected, { skipAnnotated: true });
     if (hits === 0) continue;
     b.editedHtml = el.innerHTML;
     b.translation = el.textContent;
@@ -4120,6 +4143,56 @@ function applyComplianceFixes(doc, violations, blockByIdArg = null) {
     g.hits += hits;
     g.blocks++;
     g.chapters.add(v.chapterIndex + 1);
+  }
+  if (changed) scheduleEpubSessionSave();
+  return [...groups.values()];
+}
+
+// 舊版合規自動替換殘影修復（2026-07-12）：v2.0.53~2.0.54 的自動替換會把
+// 「裸名（原文）」對照括號內的原文也換成譯名，產出「裸名（《譯名》）」
+//（實例：「大製騙家（《大製騙家》）」）。結構特徵：對照括號內容 = 帶書名號的
+// 譯名本體——對照協定該放原文，這個形狀只可能是程式誤替換產出，確定性還原為
+// 完整指定譯名「《譯名》（原文）」。只處理帶《》的 work 類 target（特徵無歧義）；
+// 已略過的 entry 不碰（使用者已裁決）。回傳 group 陣列（同 applyComplianceFixes）
+function repairComplianceMangles(doc, glossary) {
+  if (!Array.isArray(glossary) || glossary.length === 0) return [];
+  const SK = window.__SK;
+  const groups = new Map();
+  let changed = false;
+  for (const entry of glossary) {
+    if (!entry || entry.noTranslate === true) continue;
+    if (typeof entry.source !== 'string' || typeof entry.target !== 'string') continue;
+    const m = entry.target.trim().match(/^(《.+》)（(.+)）\s*$/);
+    if (!m) continue;
+    const base = m[1]; // 《大製騙家》
+    const annotation = m[2].trim(); // Bowfinger
+    if (!annotation) continue;
+    if (epubScanIgnored.has(scanIgnoreKey(entry.source.trim(), base))) continue;
+    const bare = base.slice(1, -1);
+    const sig = `${bare}（${base}）`;
+    const replacement = `${base}（${annotation}）`;
+    for (const ch of doc.chapters) {
+      for (const b of ch.blocks) {
+        if (b.translationStatus !== 'done') continue;
+        if (typeof b.translation !== 'string' || !b.translation.includes(sig)) continue;
+        const el = renderBlockForScanEdit(b, SK);
+        if (!el) continue;
+        const hits = replaceInTextNodes(el, sig, replacement);
+        if (hits === 0) continue;
+        b.editedHtml = el.innerHTML;
+        b.translation = el.textContent;
+        changed = true;
+        const key = entry.source.trim() + '\u0000' + base;
+        let g = groups.get(key);
+        if (!g) {
+          g = { source: entry.source.trim(), expected: base, hits: 0, blocks: 0, chapters: new Set() };
+          groups.set(key, g);
+        }
+        g.hits += hits;
+        g.blocks++;
+        g.chapters.add(ch.index + 1);
+      }
+    }
   }
   if (changed) scheduleEpubSessionSave();
   return [...groups.values()];

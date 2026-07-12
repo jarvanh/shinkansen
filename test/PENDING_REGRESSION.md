@@ -23,6 +23,7 @@
 - **修在**:(1) `lib/system-instruction.js` 注入措辭改「右欄字串的所有部分——包括書名號與括號內的原文對照——都是指定譯名的一部分,每次出現都要完整輸出」＋「已含書名號不要再外包一層」——新指令 probe 3.5-flash 5/5、lite 全保留、零雙書名號;(2) 雙重書名號已另走路徑 A(`collapseDoubledTitleMarks` 接收鏈確定性收斂,`test/unit/placeholder-mangled-repair.spec.js`,SANITY 過)。
 - **為什麼 (1) 進 PENDING**:斷言對象是「模型對帶對照 target 的服從度」,要打真 API、花錢、非決定性(機率性剝除),Playwright fixture 架構放不下。日後要覆蓋走 probe script 手動跑(需 `~/.shinkansen-test-key`),不進 `npm test`。屬永久 path B 性質,可由 Jimmy 決定結案。
 - **注意**:cache key 不含注入指令文字,舊快取(被剝對照的譯文)不會自動失效——bump 時 CHANGELOG 應寫「建議手動清快取」;既有書重勾章節真重翻即可吃到新 prompt。
+- **補充(2026-07-12,dev tail 2.0.54.1)**:同書再回報的「大製騙家(《大製騙家》)」症狀是**另一條路徑**——模型剝《》但保留對照時,合規掃描自動替換把對照括號內的原文也換成譯名(程式側 mangle,非 LLM 剝除)。該路徑已走**路徑 A**修復(`epub-translate.spec.js` SANITY ⑪:skipAnnotated 對照保護 + 補書名號 + 舊殘影修復),與本條 LLM 行為層互為補充,不影響本條結案判斷。
 
 ### Debug Bridge GET_STORAGE 對 orphan content script 的防護——reload 時序無法穩定 fixture 化（dev tail 2.0.52.1 修）
 - **症狀**:extension reload 後,舊分頁的 orphan content script 收到 Debug Bridge `GET_STORAGE` 請求時,`chrome.storage` 存取**同步** throw「Extension context invalidated」——`.catch` 接不到 → uncaught error 累積在 chrome://extensions 錯誤清單(2026-07-11 Jimmy 回報,實際觸發者是 Claude 對 reload 前的舊分頁跑 GET_STORAGE)。

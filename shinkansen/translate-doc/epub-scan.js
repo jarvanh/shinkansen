@@ -152,6 +152,13 @@ export function addCjkLatinSpacing(text, ctx = {}) {
  * 拉丁 term 用詞邊界（不讓 'Ann' 改到 'Announcement' 內部），非拉丁純 substring。
  * 逐一出現位置以 spliceCjkAware 替換（CJK↔拉丁邊界補 / 移空格）。
  * 掃描的自動替換 / 搜尋替換 / 漂移套用共用（單一資料源）。
+ * ctx 選項（除 prevChar / nextChar 邊界字元外）：
+ *   - skipAnnotated：跳過整顆包在括號內的出現位置「（term）」——那是
+ *     「譯名（原文）」對照協定的原文對照，不是殘留待譯詞（2026-07-12
+ *     Jimmy 回報：合規自動替換把「大製騙家（Bowfinger）」的對照內容
+ *     也換掉，變成「大製騙家（《大製騙家》）」）
+ *   - skipTitleAdjacent：跳過緊貼書名號的出現位置（前是《或後是》）——
+ *     補書名號的替換不可把已有《》的位置疊成《《》》
  * @returns { text, count }（count = 替換次數；term 空 / 等於 replacement 時 0）
  */
 export function replaceTermInText(text, term, replacement, ctx = {}) {
@@ -174,6 +181,15 @@ export function replaceTermInText(text, term, replacement, ctx = {}) {
       idx = out.indexOf(term, from);
     }
     if (idx === -1) break;
+    // 節點邊緣的出現位置看不到隔壁節點字元 → 用 ctx 邊界字元補位
+    const chBefore = idx > 0 ? out[idx - 1] : (ctx.prevChar || '');
+    const chAfter = out[idx + term.length] || (ctx.nextChar || '');
+    if ((ctx.skipAnnotated
+        && (chBefore === '（' || chBefore === '(') && (chAfter === '）' || chAfter === ')'))
+      || (ctx.skipTitleAdjacent && (chBefore === '《' || chAfter === '》'))) {
+      from = idx + term.length;
+      continue;
+    }
     const spliced = spliceCjkAware(out, idx, idx + term.length, replacement, ctx);
     out = spliced.text;
     count++;
@@ -209,12 +225,14 @@ export function checkGlossaryCompliance(chapters, glossary, { maxViolations = 20
     //（entry.target 可能是「譯名（原文）」對照格式，取括號前本體；
     //  含本體即算符合——對照 dedupe 後處理去掉括號也不誤報）
     let expected;
+    let annotation = null; // 帶對照 target 的括號內原文（自動修正補書名號用）
     if (entry.noTranslate === true) {
       expected = source;
     } else {
       if (typeof entry.target !== 'string' || !entry.target.trim()) continue;
       const m = entry.target.trim().match(ANNOTATED_RE);
       expected = (m ? m[1] : entry.target).trim();
+      if (m) annotation = m[2].trim() || null;
     }
     if (!expected) continue;
     const hasTerm = compileTermMatcher(source);
@@ -224,6 +242,7 @@ export function checkGlossaryCompliance(chapters, glossary, { maxViolations = 20
       violations.push({
         source,
         expected,
+        annotation,
         noTranslate: entry.noTranslate === true,
         chapterIndex: ch.index,
         chapterTitle: ch.title || '',
