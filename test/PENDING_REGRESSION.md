@@ -17,7 +17,8 @@
 
 ## 條目
 
-### 術語表帶（原文）對照的 target 被模型剝掉對照——LLM 行為層無法 fixture 化（dev tail 2.0.53.1 修）
+### ~~術語表帶（原文）對照的 target 被模型剝掉對照——LLM 行為層無法 fixture 化（dev tail 2.0.53.1 修）~~
+- ★ **關閉(2026-07-13,Jimmy 決定永久結案)**:修法已隨 v2.0.54 release(prompt 措辭 + collapseDoubledTitleMarks 路徑 A);LLM 服從度層打真 API、非決定性,永久 path B。日後回歸用 `tools/probe-glossary-annotation.mjs` 手動 probe。程式側 mangle 變體已另走路徑 A 修復(v2.0.55,`epub-translate.spec.js` SANITY ⑪)。
 - **症狀**:EPUB 全書術語表 entry「Changing Rooms → 《變換房間》（Changing Rooms）」（對照一次未勾）,譯文只出現《變換房間》,（Changing Rooms）對照被砍(2026-07-12 Jimmy 回報,session 真實資料 c9-b169);另一表現:模型在已含《》的譯名外再自包一層變「《《雷霆谷》》」。
 - **根因**:`system-instruction.js` 術語表注入指令句尾「…也不需加註英文原文」與帶對照的 target 自相矛盾——模型讀到就把 target 裡的（原文）剝掉。真 API probe(`tools/probe-glossary-annotation.mjs`,忠實重現 production prompt 組裝)重現:舊指令 3.5-flash 3 輪只保留 1 輪、lite 3 輪保留 2 輪。
 - **修在**:(1) `lib/system-instruction.js` 注入措辭改「右欄字串的所有部分——包括書名號與括號內的原文對照——都是指定譯名的一部分,每次出現都要完整輸出」＋「已含書名號不要再外包一層」——新指令 probe 3.5-flash 5/5、lite 全保留、零雙書名號;(2) 雙重書名號已另走路徑 A(`collapseDoubledTitleMarks` 接收鏈確定性收斂,`test/unit/placeholder-mangled-repair.spec.js`,SANITY 過)。
@@ -25,13 +26,15 @@
 - **注意**:cache key 不含注入指令文字,舊快取(被剝對照的譯文)不會自動失效——bump 時 CHANGELOG 應寫「建議手動清快取」;既有書重勾章節真重翻即可吃到新 prompt。
 - **補充(2026-07-12,dev tail 2.0.54.1)**:同書再回報的「大製騙家(《大製騙家》)」症狀是**另一條路徑**——模型剝《》但保留對照時,合規掃描自動替換把對照括號內的原文也換成譯名(程式側 mangle,非 LLM 剝除)。該路徑已走**路徑 A**修復(`epub-translate.spec.js` SANITY ⑪:skipAnnotated 對照保護 + 補書名號 + 舊殘影修復),與本條 LLM 行為層互為補充,不影響本條結案判斷。
 
-### Debug Bridge GET_STORAGE 對 orphan content script 的防護——reload 時序無法穩定 fixture 化（dev tail 2.0.52.1 修）
+### ~~Debug Bridge GET_STORAGE 對 orphan content script 的防護——reload 時序無法穩定 fixture 化（dev tail 2.0.52.1 修）~~
+- ★ **關閉(2026-07-13,Jimmy 決定永久結案)**:修法已隨 v2.0.53 release(try/catch 包 GET_STORAGE 分支);orphan 時序 Playwright 下不穩定,影響面僅 debug 工具(使用者不觸發 bridge),風險低。
 - **症狀**:extension reload 後,舊分頁的 orphan content script 收到 Debug Bridge `GET_STORAGE` 請求時,`chrome.storage` 存取**同步** throw「Extension context invalidated」——`.catch` 接不到 → uncaught error 累積在 chrome://extensions 錯誤清單(2026-07-11 Jimmy 回報,實際觸發者是 Claude 對 reload 前的舊分頁跑 GET_STORAGE)。
 - **根因**:bridge 內只有 GET_STORAGE 直接碰 chrome API(其餘 action 走 `SK.safeSendMessage`,該層已有 context-invalidated 防護),且同步 throw 不走 Promise `.catch`。
 - **修在**:`content.js` GET_STORAGE 分支整段包 try/catch,context 失效時 respond 明確錯誤訊息(respond 走 DOM CustomEvent,context 失效後仍可用)。
 - **為什麼進 PENDING**:最小重現需要「extension reload → 舊分頁 content script 變 orphan → 對 orphan dispatch bridge 事件」的時序編排,Playwright 下 RELOAD_EXTENSION + CDP isolated context 存活狀態不穩定,硬寫斷言會 flaky。影響面僅 debug 工具(使用者不觸發 bridge),風險低,可由 Jimmy 決定是否永久結案。
 
-### 術語表 prompt 日文 source 羅馬化——LLM 行為層無法 fixture 化（dev tail 2.0.51.1 修）
+### ~~術語表 prompt 日文 source 羅馬化——LLM 行為層無法 fixture 化（dev tail 2.0.51.1 修）~~
+- ★ **關閉(2026-07-13,Jimmy 決定永久結案)**:修法已隨 v2.0.52 release,真 API probe 已驗(新 prompt 3 輪 0 拉丁化);升級路徑已走路徑 A(`glossary-prompt-ja-source-upgrade.spec.js`)。模型字系服從度屬 LLM 行為層,永久 path B。
 - **症狀**:日文書 EPUB 抽全書術語表,212 條 source 全是羅馬拼音(Aizawa / Hitoshi Kashiwaki…)而非原文日文——譯後一致性掃描 `checkGlossaryCompliance` 拿 source 比對日文原文永遠比不中,整批條目默默失去保護;翻譯時譯名規則也變不可靠。
 - **根因**:舊 `DEFAULT_GLOSSARY_PROMPT` 自稱「英中對照術語表」+ 範例全拉丁字母,無「source 必須逐字取自原文」規則。**模型相依**:gemini-3.1-flash-lite 對日文輸入仍回日文 source(短文 / 8K / 60K 皆是),`gemini-3.5-flash` 則 17/17 全轉羅馬拼音(真 API probe 重現,2026-07-11)。
 - **修在**:`lib/storage.js` DEFAULT / UNIVERSAL_GLOSSARY_PROMPT 加 `<source_fidelity>` 區塊(source 逐字取自原文、保持原文字系、禁羅馬化)+ 日文範例(相沢→相澤)+ 日文漢字台灣字形規則;`_normalizePromptForComparison` 加 v2.0.52 rules 讓舊 saved 字面值視為未客製。
