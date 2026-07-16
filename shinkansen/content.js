@@ -95,6 +95,15 @@
         translating: STATE.translating,
         segmentCount: STATE.originalHTML.size,
       };
+      // 附 manifest version——cage / harness 在 RELOAD_EXTENSION 後以此判斷
+      // 「載入的是 working tree(dev tail 四段)還是商店版(三段)」,
+      // 不用依賴 isolated world evaluate(cage 的 javascript_tool 走 main world 搆不到)
+      try {
+        const _rt = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
+        out.version = _rt?.getManifest?.().version || null;
+      } catch (_) {
+        out.version = null;  // orphan content script:context 已失效
+      }
       if (SK.isYouTubePage?.() && SK.YT) {
         out.yt = {
           active:          SK.YT.active,
@@ -134,6 +143,74 @@
             ? 'extension 已重載,此分頁的 content script 已失效——請重新整理頁面後再試'
             : m,
         });
+      }
+    } else if (action === 'SET_GLOSSARY_ENABLED') {
+      // Debug Bridge:撥「術語表一致化」開關,寫入路徑等同 popup toggle
+      //(讀 glossary 物件 → 改 enabled → 寫回,保留其餘欄位)。
+      // 刻意只開放這一顆布林、不做通用 SET_STORAGE——bridge 對任意網頁常開,
+      // 通用寫入會讓惡意頁面能改 prompt / customProvider.baseUrl 等敏感設定;
+      // 單一布林最壞情況只是雜訊。供 cage / harness 自動化測試術語表路徑
+      //(cage 進不了 extension 的 popup / options 頁,沒有這條就得請使用者手撥)
+      const _enabled = !!(e.detail && e.detail.enabled);
+      try {
+        const _storage = (typeof browser !== 'undefined' && browser.storage) || (typeof chrome !== 'undefined' && chrome.storage);
+        if (!_storage || !_storage.sync) {
+          respond({ ok: false, error: 'storage.sync unavailable in this context' });
+        } else {
+          _storage.sync.get('glossary')
+            .then((data) => {
+              const gc = (data && data.glossary) || {};
+              gc.enabled = _enabled;
+              return _storage.sync.set({ glossary: gc });
+            })
+            .then(() => respond({ ok: true, enabled: _enabled }))
+            .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+        }
+      } catch (err) {
+        respond({ ok: false, error: err?.message || String(err) });
+      }
+    } else if (action === 'GET_CACHE_STATS') {
+      // Debug Bridge:cache 池健康度快照(唯讀)。tc_ / gloss_ / bookgloss_ 條數、
+      // bytes 佔用、tc_ 最舊/最新時間戳——診斷 LRU eviction(9.5MB 池被大量翻譯
+      // churn 掉導致「同頁隔天全部 cache miss」)時的直接證據。
+      // getBytesInUse 是 Chromium-only,沒有時 bytes 回 null(Firefox bridge 回讀本就不可用)
+      try {
+        const _storage = (typeof browser !== 'undefined' && browser.storage) || (typeof chrome !== 'undefined' && chrome.storage);
+        if (!_storage || !_storage.local) {
+          respond({ ok: false, error: 'storage.local unavailable in this context' });
+        } else {
+          _storage.local.get(null)
+            .then((all) => {
+              const stats = { tc: 0, gloss: 0, bookgloss: 0, other: 0, tcOldestT: null, tcNewestT: null, glossOldestT: null };
+              for (const k of Object.keys(all)) {
+                if (k.startsWith('tc_')) {
+                  stats.tc++;
+                  const t = all[k] && all[k].t;
+                  if (typeof t === 'number') {
+                    if (stats.tcOldestT === null || t < stats.tcOldestT) stats.tcOldestT = t;
+                    if (stats.tcNewestT === null || t > stats.tcNewestT) stats.tcNewestT = t;
+                  }
+                } else if (k.startsWith('gloss_')) {
+                  stats.gloss++;
+                  const t = all[k] && all[k].t;
+                  if (typeof t === 'number' && (stats.glossOldestT === null || t < stats.glossOldestT)) stats.glossOldestT = t;
+                } else if (k.startsWith('bookgloss_')) {
+                  stats.bookgloss++;
+                } else {
+                  stats.other++;
+                }
+              }
+              const respondWith = (bytes) => respond({ ok: true, bytes, stats });
+              if (typeof _storage.local.getBytesInUse === 'function') {
+                _storage.local.getBytesInUse(null).then(respondWith).catch(() => respondWith(null));
+              } else {
+                respondWith(null);
+              }
+            })
+            .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+        }
+      } catch (err) {
+        respond({ ok: false, error: err?.message || String(err) });
       }
     } else if (action === 'GET_USAGE_STATS') {
       // DEBUG(v1.10.18.x):用量統計查詢。usage-db 在背景(extension origin)的 IndexedDB,
@@ -372,6 +449,10 @@
 
   SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode } = {}) {
     const tu_entry = Date.now();
+    // 術語表對照「只出現一次」裁剪規則(content-inject.js):同一 glossary 參照
+    //(主 run 後的 rescan / SPA 續批帶 ctx.glossary 同一顆)不重建、seen 延續;
+    // 無 glossary 的 run 傳 null = 清規則
+    SK.setAnnotationDedupeRules?.(glossary || null);
     let serialized = units.map(unit => {
       if (unit.kind === 'fragment') {
         return SK.serializeFragmentWithPlaceholders(unit);
@@ -1549,6 +1630,9 @@
     // v1.10.46(批次 2-4):還原時 abort in-flight 的 rescan 批次,擋掉晚到回應再注入
     SK.abortRescanRuns();
     SK.stopSpaObserver();
+    // 術語表對照裁剪 seen 狀態跟頁面翻譯生命週期綁定:還原即歸零,
+    // 下一輪 translatePage 重新「第一次出現保留對照」
+    SK.clearAnnotationDedupeRules?.();
 
     // v1.5.0: dual 模式還原——只移除 wrapper，原文未動所以不需 innerHTML 還原。
     // v1.5.3: 改呼叫 SK.removeDualWrappers()——它同時清除 wrapper 與原段落上的
@@ -1624,6 +1708,8 @@
   // 相比 v1.4.1 的 serializeWithPlaceholders+⟦→【 轉換，本版大幅減少標記數量
   // （通常 2-4 個，而非 10+），Google MT 不再被過多標記搞亂位置。
   SK.translateUnitsGoogle = async function translateUnitsGoogle(units, { onProgress, signal } = {}) {
+    // Google MT 路徑無術語表:清掉前一輪(若有)的對照裁剪規則,避免跨引擎殘影
+    SK.clearAnnotationDedupeRules?.();
     // ── 序列化：只標 <a> 連結與 atomic 元素（footnote sup 等），其餘取純文字 ──
     // 使用 Google Translate 專用序列化（【N】標記），避免 Gemini 路徑的 ⟦N⟧ 標記
     // 在 Google MT 下位置錯亂（⟦⟧ 是數學符號；【】是 CJK 標點，Google MT 原樣保留）。

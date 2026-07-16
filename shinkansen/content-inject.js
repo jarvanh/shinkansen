@@ -402,6 +402,100 @@
       { text: (el.textContent || '').substring(0, 80) });
   }
 
+  // ─── 術語表對照「只出現一次」裁剪 ──────────────────────────
+  // 自動術語表 tech 類 target 依抽取 prompt(DEFAULT_GLOSSARY_PROMPT)自帶
+  // 「譯名（原文）」對照,而 system prompt 注入指令(lib/system-instruction.js)
+  // 要求模型每次出現都完整輸出(EPUB 抗剝除修法,見該處註解)——結果網頁譯文
+  // 每次出現都是「α-半乳糖（alpha-gal）」全對照,蓋掉主 prompt「僅首次加註」規則。
+  // 且整頁跨多批獨立 API 呼叫,模型層根本做不到「全頁只加註一次」;
+  // 確定性解只能做在注入端:整頁第一個注入的出現保留完整對照,後續只留譯名。
+  //
+  // 與 translate-doc/epub-writer.js computeAnnotationDedupe 是「對照裁剪」同一份
+  // 事實的雙實作(EPUB 端另有 per-entry flag / dedupeKeep 方向 / editedHtml text
+  // node 級處理等語意,模組系統也不同無法直接共用)。同步觸發:改「對照 target
+  // 解析 regex / 替換邊界 CJK 補空格」規則時,兩處一起檢查。
+  //
+  // seen 追蹤記 keptEl:content guard / framework restore 對同一元素 re-inject 時
+  // 不能因 seen=true 把當初保留的那份對照也裁掉(idempotent re-inject)。
+  const ANNOTATED_TARGET_RE = /^(.+)（(.+)）\s*$/;
+  const AD_CJK_EDGE_RE = /[㐀-鿿豈-﫿]/;
+  const AD_LATIN_EDGE_RE = /[A-Za-z0-9]/;
+
+  // 替換片段左右的 CJK↔拉丁邊界補空格(對齊 epub-writer spliceWithCjkSpacing)
+  function _adSplice(text, start, end, keep) {
+    const before = text.slice(0, start);
+    const after = text.slice(end);
+    let mid = keep;
+    if (before && AD_CJK_EDGE_RE.test(before[before.length - 1]) && AD_LATIN_EDGE_RE.test(mid[0] || '')) {
+      mid = ' ' + mid;
+    }
+    if (after && AD_LATIN_EDGE_RE.test(mid[mid.length - 1] || '') && AD_CJK_EDGE_RE.test(after[0])) {
+      mid = mid + ' ';
+    }
+    return before + mid + after;
+  }
+
+  // 由當前 run 的自動術語表建立裁剪規則。同一 glossary 陣列參照(主 run 之後的
+  // SPA rescan / 續批都帶 ctx.glossary 同一顆)不重建 → seen 狀態跨 rescan 延續,
+  // 整頁生命週期只保留一份對照;新 translatePage run 拿到新陣列 → 重建歸零。
+  SK.setAnnotationDedupeRules = function setAnnotationDedupeRules(glossary) {
+    if (STATE._annotationDedupeSrc === glossary) return;
+    STATE._annotationDedupeSrc = glossary || null;
+    const rules = [];
+    for (const e of glossary || []) {
+      if (!e || typeof e.target !== 'string' || typeof e.source !== 'string') continue;
+      const m = e.target.match(ANNOTATED_TARGET_RE);
+      if (!m) continue;
+      // 慣例是「譯名（原文）」→ 留 lead;lead 反而與 source 相符時代表欄位是
+      // 「原文（譯名）」變體 → 留括號內。書名號剝掉再比(對齊 epub-writer)
+      const stripTitle = (s) => {
+        const t = s.trim();
+        const w = t.match(/^《(.+)》$/);
+        return w ? w[1].trim() : t;
+      };
+      const src = stripTitle(e.source);
+      const keep = (src && stripTitle(m[1]) === src) ? m[2] : m[1];
+      if (!keep) continue;
+      rules.push({ full: e.target, keep, seen: false, keptEl: null });
+    }
+    STATE._annotationDedupeRules = rules.length > 0 ? rules : null;
+  };
+
+  SK.clearAnnotationDedupeRules = function clearAnnotationDedupeRules() {
+    STATE._annotationDedupeRules = null;
+    STATE._annotationDedupeSrc = null;
+  };
+
+  // 譯文字串層裁剪(佔位符 ⟦N⟧ 不受影響:indexOf 整串比對,對照被 inline 標記
+  // 從中切開時比不中 = 安全 no-op)。holderEl = unit.el,供 keeper re-inject 判斷。
+  SK.trimAnnotationDedupe = function trimAnnotationDedupe(translation, holderEl) {
+    const rules = STATE._annotationDedupeRules;
+    if (!rules || typeof translation !== 'string' || !translation) return translation;
+    let out = translation;
+    for (const rule of rules) {
+      if (!out.includes(rule.full)) continue;
+      const isKeeperEl = !rule.seen || (holderEl != null && rule.keptEl === holderEl);
+      let keptThisString = false;
+      let from = 0;
+      while (true) {
+        const idx = out.indexOf(rule.full, from);
+        if (idx === -1) break;
+        if (isKeeperEl && !keptThisString) {
+          // 整頁第一次出現(或 keeper 元素 re-inject 的第一個出現):保留完整對照
+          keptThisString = true;
+          rule.seen = true;
+          if (holderEl != null) rule.keptEl = holderEl;
+          from = idx + rule.full.length;
+          continue;
+        }
+        out = _adSplice(out, idx, idx + rule.full.length, rule.keep);
+        rule.seen = true;
+        from = idx + rule.keep.length + 2; // +2 = 最多補兩個空格的餘裕(保守前進)
+      }
+    }
+    return out;
+  };
+
   SK.injectTranslation = function injectTranslation(unit, translation, slots) {
     if (!translation) return;
     // v1.4.8: 統一在注入入口規範化字面 \n（反斜線+n，兩字元）→ 真正換行符（U+000A）。
@@ -419,6 +513,13 @@
     if ((!slots || slots.length === 0) && typeof translation === 'string'
         && SK.stripStrayPlaceholderMarkers) {
       translation = SK.stripStrayPlaceholderMarkers(translation);
+    }
+
+    // 術語表對照「只出現一次」:整頁第一個注入的出現保留「譯名（原文）」完整對照,
+    // 後續出現只留譯名(規則與 seen 狀態見上方 setAnnotationDedupeRules 區塊)。
+    // single / dual / fragment / streaming / rescan 都經此入口,一次裁全部
+    if (typeof translation === 'string' && STATE._annotationDedupeRules) {
+      translation = SK.trimAnnotationDedupe(translation, unit.el || null);
     }
 
     // 輸出語言守門:目標為拉丁字母語言(en/es/fr/de)時,若整段譯文是東亞文字,判定為
