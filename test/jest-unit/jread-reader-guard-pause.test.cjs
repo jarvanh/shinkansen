@@ -66,11 +66,15 @@ describe('v1.10.65: JRead 閱讀模式握手暫停 content guard', () => {
 
   test('原始碼：runContentGuard 與 onSpaObserverMutations 入口都查 contentGuardExternallyPaused', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', '..', 'shinkansen', 'content-spa.js'), 'utf8');
-    // runContentGuard 第一道 guard
-    expect(/function runContentGuard\(\)\s*\{\s*[\s\S]{0,200}contentGuardExternallyPaused\)\s*return;/.test(src)).toBe(true);
-    // onSpaObserverMutations 也讓位
+    // v2.0.57(洞 1):runContentGuard 讓位分支從「整段早退」改成「只停 innerHTML / dual
+    // 軌,nv 軌保留 sweep(reapplyOnly)後 return」——innerHTML / dual 軌讓位(防 JRead
+    // 閃動)不可退步,nv 軌保留(防盲窗)也不可退步,兩者都鎖進同一條結構斷言
+    expect(/if \(contentGuardExternallyPaused\)\s*\{[\s\S]{0,120}runContentGuardNvMutate\(false, true\);\s*return;\s*\}/.test(src)).toBe(true);
+    // onSpaObserverMutations 維持整段讓位（mutation reconcile 會重建子樹,是閃動來源）
     expect(/function onSpaObserverMutations\([\s\S]{0,300}contentGuardExternallyPaused\)\s*return;/.test(src)).toBe(true);
     // setContentGuardPaused 是唯一寫入點
     expect(/SK\.setContentGuardPaused\s*=\s*function/.test(src)).toBe(true);
+    // v2.0.57(洞 2):resume 補課——unpause 轉換時立即全量 nv reconcile
+    expect(/wasPaused && !contentGuardExternallyPaused[\s\S]{0,120}runContentGuardNvMutate\(true\)/.test(src)).toBe(true);
   });
 });

@@ -23,8 +23,13 @@
   // articleEl 重排成閱讀卡片,guard 每秒 sweep 會把它誤判成「譯文被 SPA 覆蓋」而重建
   // 子節點 → 使用者畫面每秒閃一下(只在 translate-first 後進閱讀模式才發生)。閱讀卡片
   // 就是 articleEl 本身、在 guard 管轄區內,JRead 端無法閃避,故由 guard 端在閱讀模式
-  // 期間讓位(早退)。runContentGuard / onSpaObserverMutations 入口都 check 此旗標。
+  // 期間讓位。runContentGuard / onSpaObserverMutations 入口都 check 此旗標。
   // 退出閱讀模式時 JRead 送 active:false 恢復。SK.setContentGuardPaused 是唯一寫入點。
+  // v2.0.57: 讓位範圍收斂——只停會重建子樹的 innerHTML / dual 軌與 mutation reconcile,
+  // nv 軌(純 nodeValue 重套,不動結構不閃)在暫停期間保留 sweep(reapplyOnly);
+  // 恢復時 setContentGuardPaused(false) 立即跑一次全量 nv reconcile 補課。
+  // Why:閱讀模式期間 NYT React 對 figure 間歇 re-render 把圖說 text node 打回英文,
+  // 整段早退讓 guard 全盲、退出後也接不回(2026-07-16 JRead 端 cage probe 診斷)。
   let contentGuardExternallyPaused = false;
 
   // v1.8.14: Guard sweep 改用 IntersectionObserver 維護「viewport 附近」的子集,
@@ -289,8 +294,18 @@
   // JRead 重排的 articleEl 誤判成「譯文被覆蓋」而每秒重建 → 消除畫面每秒閃動。
   // 不停 interval / 不 stopSpaObserver（恢復後無需重建、立即接續）。idempotent。
   SK.setContentGuardPaused = function setContentGuardPaused(paused) {
+    const wasPaused = contentGuardExternallyPaused;
     contentGuardExternallyPaused = !!paused;
     SK.sendLog('info', 'spa', 'content guard ' + (contentGuardExternallyPaused ? 'paused' : 'resumed') + ' (JRead reader mode)');
+    // v2.0.57(洞 2): unpause 補課——盲窗/暫停期間發生的 nv-mutate 回退,恢復當下
+    // 立即跑一次全量 reconcile(ignoreViewport=true,不等 viewport / 下一次 1s sweep)。
+    // 洞 1 的暫停期 nv sweep(reapplyOnly)已涵蓋大多數,這條是雙保險,同時接住
+    // reapplyOnly 刻意跳過的「內容已變」entry(此處走完整版,可 unmark+rescan)。
+    // 編輯模式 contenteditable 豁免在 runContentGuardNvMutate 迴圈內,不會被打破。
+    if (wasPaused && !contentGuardExternallyPaused && STATE.translated
+        && STATE.translatedMode !== 'dual') {
+      try { runContentGuardNvMutate(true); } catch (_) {}
+    }
   };
 
   // mousedown capture: framework 的 click handler 跑之前先把 nodeValue mutate
@@ -617,14 +632,24 @@
   // ─── Content Guard ────────────────────────────────────
 
   function runContentGuard() {
-    // v1.10.65: JRead 閱讀模式期間讓位——見 contentGuardExternallyPaused 宣告註解。
-    if (contentGuardExternallyPaused) return;
     if (!STATE.translated) return;
     // v1.6.10: 分頁隱藏時跳過——使用者看不到的內容無需即時修復,且 sweep
     // 每秒一次,每個 entry 都呼叫 getBoundingClientRect 強制 layout,長頁
     // (上百 entry) 在背景分頁是純浪費 CPU + 電力。切回前景時下一次 sweep
     // 在 1 秒內就會修復,使用者無感知差異。
     if (document.hidden) return;
+    // v2.0.57(洞 1): JRead 閱讀模式讓位從「整段早退」改成「只停 innerHTML / dual 軌,
+    // 保留 nv 軌」。v1.10.65 要防的每秒閃動來源是 innerHTML / dual 軌把 JRead 重排
+    // 誤判成「譯文被覆蓋」而重建子樹;nv 軌(runContentGuardNvMutate)是純 text node
+    // nodeValue 重套、不動元素結構,不會閃。整段早退會讓「閱讀模式期間 framework 把
+    // 譯文打回原文」(NYT React figcaption 實測)進入盲窗、英文一直掛在畫面上。
+    // reapplyOnly=true:暫停期間只做零 API 的原地重套,不走 unmark+rescan(rescan 是
+    // 完整 inject pipeline、會動結構);內容已變的 entry 留給 resume 補課
+    // (setContentGuardPaused(false) 的全量 reconcile)。
+    if (contentGuardExternallyPaused) {
+      if (STATE.translatedMode !== 'dual') runContentGuardNvMutate(false, true);
+      return;
+    }
     // v1.5.0: dual 模式分派——監看 wrapper 被 SPA 刪除後 re-append。
     if (STATE.translatedMode === 'dual') {
       runContentGuardDual(false);
@@ -684,7 +709,39 @@
   //      會把新內容蓋掉)。
   // 每元素干預上限 8 次:防 framework 持續重 render 的無限 ping-pong(重套免
   // API 成本低,上限放寬到足以撐過 Medium hydration 多波重 render)。
-  const nvGuardInterveneCount = new WeakMap();
+  // v2.0.57(洞 3):上限從 lifetime 計數改「滾動停損」——距上次介入超過
+  // NV_GUARD_INTERVENE_DECAY_MS 就歸零重計。lifetime 上限在長閱讀 session 會被
+  // 偶發重繪慢慢耗盡(NYT 滾動 lazy-load 每次重繪吃 1 次),之後 sweep 永久跳過
+  // 該元素 =「標 translated、畫面永遠原文」終態;真正要防的「站方持續對抗」
+  // ping-pong 是高頻連續介入,60s 視窗內照樣 8 次就停。上限打滿後 lastT 不再更新,
+  // 60s 後自動重新放行 → 最壞情況從「無限迴圈」變「每分鐘最多 8 次」受控頻率,
+  // 終態也因此可自癒。
+  const NV_GUARD_INTERVENE_MAX = 8;
+  const NV_GUARD_INTERVENE_DECAY_MS = 60_000;
+  const nvGuardInterveneCount = new WeakMap(); // el → { n, lastT }
+  function nvGuardTryIntervene(el) {
+    const now = Date.now();
+    const rec = nvGuardInterveneCount.get(el);
+    const n = (rec && now - rec.lastT <= NV_GUARD_INTERVENE_DECAY_MS) ? rec.n : 0;
+    if (n >= NV_GUARD_INTERVENE_MAX) return false;
+    nvGuardInterveneCount.set(el, { n: n + 1, lastT: now });
+    return true;
+  }
+
+  // v2.0.57(洞 3):不依賴 backup node refs / 值的「回到原文」判準。
+  // backup 的 originalValue 在多輪 guard 重建後可能是 stale 混合值(重建當下畫面
+  // 是「部分英文 + 部分譯文」,originalValue 就存成那個混合態),之後 framework 再
+  // 用 reuse-node 方式把全段打回原文時:node 沒 detach(allDetached 不成立)、
+  // curText 也比對不到任何 stale originalValue(nvMutateRevertedToOriginal 不成立)
+  // → 舊閘門永久跳過,卡「標 translated、畫面英文」終態(NYT figcaption + JRead
+  // 閱讀模式實測)。本判準直接拿 el.textContent 對 STATE.originalText 全等(空白
+  // 正規化後),不經任何 node ref,framework 換新 node / reuse node / 部分重繪一律涵蓋。
+  function nvRevertedToOrigText(origText, curText) {
+    if (!origText || !curText) return false;
+    if (curText === origText) return true;
+    const norm = (s) => s.replace(/\s+/g, ' ').trim();
+    return norm(curText) === norm(origText);
+  }
 
   // 2026-07-02: 判斷 nv-mutate 元素「譯文被 framework 打回原文(全部或部分)」。
   // 以「症狀」為準,涵蓋 framework 重繪的各種節點處理方式:
@@ -706,13 +763,16 @@
     });
   }
 
-  function runContentGuardNvMutate(ignoreViewport) {
+  function runContentGuardNvMutate(ignoreViewport, reapplyOnly) {
     if (!STATE.nodeValueMutateBackup || STATE.nodeValueMutateBackup.size === 0) return 0;
     let reapplied = 0;
     let unmarked = 0;
     for (const [el, backup] of STATE.nodeValueMutateBackup) {
       if (!el || !el.isConnected) continue;
       if (!backup || backup.length === 0) continue;
+      // v2.0.57: 編輯模式豁免(對齊 innerHTML / mutation-driven 軌)——使用者正在
+      // 編輯的元素不重套、不 unmark,否則 sweep 會把使用者剛改的字蓋回譯文。
+      if (el.getAttribute?.('contenteditable') === 'true') continue;
       const origText = STATE.originalText?.get?.(el);
       const savedTranslation = STATE.nvMutateTranslation?.get?.(el);
       const curText = (el.textContent || '').trim();
@@ -721,22 +781,25 @@
       // 只重繪部分節點)。取代原本只認「backup 全 detach」的判準——後者漏掉多 text node
       // 元素被「部分重繪 / reuse-node reset」打回原文的形(2026-07-02 NYT figcaption 實測)。
       const reverted = nvMutateRevertedToOriginal(backup, origText, curText);
-      // 介入條件:framework 換過整批 node(allDetached)或元素顯示出原文(reverted)。
-      // 健康譯文(沒被框架動過、顯示中文)兩者皆不成立 → 跳過維持 no-op。
+      // v2.0.57(洞 3):revertedToOrig 完全不依賴 backup refs / 值——backup 在多輪
+      // 重建後 originalValue 可能 stale(見 nvRevertedToOrigText 註解),只靠上兩個
+      // 判準會永久跳過「畫面已回到原文」的元素。
+      const revertedToOrig = nvRevertedToOrigText(origText, curText);
+      // 介入條件:framework 換過整批 node(allDetached)或元素顯示出原文(reverted /
+      // revertedToOrig)。健康譯文(沒被框架動過、顯示中文)皆不成立 → 跳過維持 no-op。
       // 「全 detach + 內容換新(非還原)」落到下方 path 2 unmark 重翻;
-      // 「部分 detach + 展開新內容(X show-more)」reverted=false 且 allDetached=false → 跳過,交給 A4。
-      if (!allDetached && !reverted) continue;
+      // 「部分 detach + 展開新內容(X show-more)」三判準皆 false → 跳過,交給 A4。
+      if (!allDetached && !reverted && !revertedToOrig) continue;
       if (!ignoreViewport) {
         const rect = el.getBoundingClientRect();
         if (rect.bottom < -500 || rect.top > window.innerHeight + 500) continue;
       }
-      const n = nvGuardInterveneCount.get(el) || 0;
-      if (n >= 8) continue;
-      nvGuardInterveneCount.set(el, n + 1);
+      if (!nvGuardTryIntervene(el)) continue;
 
-      if (savedTranslation && (reverted || curText === origText)) {
+      if (savedTranslation && (reverted || revertedToOrig)) {
         // 路徑 1:譯文被打回原文 → 重套譯文。先清 stale backup 讓
-        // tryInjectNodeValueMutate 以「現在的原文 node」重建 backup。
+        // tryInjectNodeValueMutate 以「現在的原文 node」重建 backup(新 refs)。
+        const prevBackup = STATE.nodeValueMutateBackup.get(el);
         STATE.nodeValueMutateBackup.delete(el);
         if (SK.tryInjectNodeValueMutate?.(el, savedTranslation, [])) {
           el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
@@ -744,7 +807,16 @@
           reapplied++;
           continue;
         }
-        // 重套失敗(結構特殊)→ fall through 走 unmark 路徑
+        // 重套失敗(結構特殊):reapplyOnly(JRead 暫停期間)把舊 backup 放回——
+        // 不放回的話 map entry 消失,resume 補課就看不到這個元素(新終態)。
+        if (reapplyOnly) {
+          STATE.nodeValueMutateBackup.set(el, prevBackup);
+          continue;
+        }
+        // 完整模式 → fall through 走 unmark 路徑
+      } else if (reapplyOnly) {
+        // 暫停期間不走 unmark+rescan(會動結構),留給 resume 補課
+        continue;
       }
       // 路徑 2:內容已變 / 無譯文紀錄 → unmark + rescan 重翻
       el.removeAttribute('data-shinkansen-nodevalue-mutated');
@@ -769,7 +841,7 @@
     }
     return reapplied + unmarked;
   }
-  SK._testRunContentGuardNvMutate = function() { return runContentGuardNvMutate(true); };
+  SK._testRunContentGuardNvMutate = function(reapplyOnly) { return runContentGuardNvMutate(true, !!reapplyOnly); };
 
   /**
    * v1.5.0: 雙語模式 Content Guard——遍歷 STATE.translationCache，
@@ -1132,10 +1204,11 @@
         const _saved = STATE.nvMutateTranslation?.get?.(el);
         const _cur = (el.textContent || '').trim();
         const _backupNow = STATE.nodeValueMutateBackup.get(el);
-        const _n = nvGuardInterveneCount.get(el) || 0;
-        if (_saved && _backupNow && _n < 8
-            && (_cur === origText || nvMutateRevertedToOriginal(_backupNow, origText, _cur))) {
-          nvGuardInterveneCount.set(el, _n + 1);
+        // v2.0.57(洞 3):判準與停損跟 runContentGuardNvMutate 對齊——
+        // nvRevertedToOrigText 不依賴 backup 值;nvGuardTryIntervene 滾動停損。
+        if (_saved && _backupNow
+            && (nvRevertedToOrigText(origText, _cur) || nvMutateRevertedToOriginal(_backupNow, origText, _cur))
+            && nvGuardTryIntervene(el)) {
           STATE.nodeValueMutateBackup.delete(el);
           if (SK.tryInjectNodeValueMutate?.(el, _saved, [])) {
             el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
