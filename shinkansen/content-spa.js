@@ -701,8 +701,9 @@
   // X show-more 展開重翻打架,把完整原文蓋回截斷版譯文)。
   // 兩條修復路徑(以「重 render 後的內容」分流):
   //   1. 同內容重 render(current textContent === STATE.originalText)→ 直接把
-  //      STATE.nvMutateTranslation 記錄的純文字譯文重套(SK.tryInjectNodeValueMutate
-  //      slots=[]),零 API、冪等,sweep 每秒一次直到贏過 framework 的 hydration 波
+  //      STATE.nvMutateTranslation 記錄的譯文重套(nvReapplySaved:先試 raw+slots
+  //      A3 同構配對保留 inline 結構,配對不成 fallback 純文字 slots=[]),零 API、
+  //      冪等,sweep 每秒一次直到贏過 framework 的 hydration 波
   //      (§15「reapply on detach+reattach」戰術)。unmark→rescan→重打 API 在
   //      hydration 波內會反覆被還原直到重試上限耗盡,實測救不回來。
   //   2. 內容已變(X show-more 展開等)→ unmark + rescan 重翻(不可重套舊譯文,
@@ -763,6 +764,42 @@
     });
   }
 
+  // v2.0.59: 「現況即譯文」判準——現在的可見文字去除全部空白後與純文字譯文全等。
+  // Why:nvMutateRevertedToOriginal 以「curText 含 backup originalValue 片段」判 reverted,
+  // 譯文保留原文專有名詞(人名 / 品牌名逐字出現在譯文)時會對健康譯文誤報 → sweep
+  // 對「已是譯文」的 DOM 重套。首翻 A3 對齊過的段落在譯文態 DOM 上重跑 A3 配對
+  // 必失敗(真實 Verge probe:okOnOrig=true / okOnTranslated=false,frag 文字 run 與
+  // 譯文態 text node 分佈不同)→ fallback 純文字 flatten,好譯文的 <a> 被打成空殼。
+  // 健康譯文直接跳過不動才是 no-op 正解;空白分佈允許不同(A3 各 node 首尾空白保留
+  // 自原文、flatten 版無此空白),故去空白比對。
+  function nvTextEqualsPlain(curText, plain) {
+    if (!curText || !plain) return false;
+    return curText.replace(/\s+/g, '') === plain.replace(/\s+/g, '');
+  }
+
+  // v2.0.59: 健康譯文第一訊號——backup 完好:所有 backup text node 仍 connected 且
+  // nodeValue 就是當初寫入的譯文值。成立 = 譯文原封沒被 framework 動過,guard 不該
+  // 介入(reverted 的 includes 判準在此仍可能誤報,見 nvTextEqualsPlain 註解)。
+  // 重套成功後 backup 都會以新 refs 重建,故「剛重套完的下一輪 sweep」此判準即成立,
+  // 不受譯文變體(slot 去重 / 自由 text 捨棄)造成的字面差異影響。
+  function nvBackupIntact(backup) {
+    return !!(backup && backup.length > 0 && backup.every(e =>
+      e && e.node && e.node.isConnected &&
+      typeof e.translatedValue === 'string' && e.node.nodeValue === e.translatedValue));
+  }
+
+  // v2.0.59: nv 重套統一入口。rec 來自 STATE.nvMutateTranslation({ plain, raw, slots })。
+  // A3 同構注入成功的段落,framework 打回原文後結構與首翻相同——先以帶佔位符的
+  // 原始譯文 + slots 重走 A3 配對,text node 各自套譯文、<a> 等 inline 結構保留;
+  // 配對不成(部分還原的混合態等)才 fallback 純文字重套(slots=[] Case 3b flatten,
+  // 原行為)。修 The Verge「guard 補課後段落內連結消失」(2026-07-16 回報)。
+  function nvReapplySaved(el, rec) {
+    if (!rec) return false;
+    if (rec.raw && rec.slots
+        && SK.tryInjectNodeValueMutate?.(el, rec.raw, rec.slots)) return true;
+    return !!(rec.plain && SK.tryInjectNodeValueMutate?.(el, rec.plain, []));
+  }
+
   function runContentGuardNvMutate(ignoreViewport, reapplyOnly) {
     if (!STATE.nodeValueMutateBackup || STATE.nodeValueMutateBackup.size === 0) return 0;
     let reapplied = 0;
@@ -776,6 +813,10 @@
       const origText = STATE.originalText?.get?.(el);
       const savedTranslation = STATE.nvMutateTranslation?.get?.(el);
       const curText = (el.textContent || '').trim();
+      // v2.0.59: 健康譯文守門(見 nvBackupIntact / nvTextEqualsPlain)——畫面已是
+      // 譯文就不介入,防 reverted 誤報(譯文保留原文專有名詞)把好譯文重套成 flatten
+      if (nvBackupIntact(backup)
+          || (savedTranslation && nvTextEqualsPlain(curText, savedTranslation.plain))) continue;
       const allDetached = backup.every(entry => !entry?.node?.isConnected);
       // reverted:譯文被 framework 打回原文(全部或部分,不論換新 node / reset nodeValue /
       // 只重繪部分節點)。取代原本只認「backup 全 detach」的判準——後者漏掉多 text node
@@ -801,7 +842,7 @@
         // tryInjectNodeValueMutate 以「現在的原文 node」重建 backup(新 refs)。
         const prevBackup = STATE.nodeValueMutateBackup.get(el);
         STATE.nodeValueMutateBackup.delete(el);
-        if (SK.tryInjectNodeValueMutate?.(el, savedTranslation, [])) {
+        if (nvReapplySaved(el, savedTranslation)) {
           el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
           el.setAttribute('data-shinkansen-translated', '1');
           reapplied++;
@@ -1200,6 +1241,11 @@
       // 全 detach、也不再只認「全等於 origText」。framework 重用 node 只 reset nodeValue、
       // 或只重繪「部分」text node(多 text node 圖說常見:說明 span 回英文、來源 span 仍中文)
       // 時,舊條件(_allDetached / _cur === origText)都不成立 → 卡「標 translated 顯示原文」。
+      // v2.0.59: 健康譯文守門只加在 1s sweep(runContentGuardNvMutate),A4 這裡不加——
+      // Path C(展開內容 unmark 重翻)/ Path D(attr-stripped selective restore)的觸發
+      // 態 backup 可能仍完好,閘門會搶走這兩條設計語意(spa-detect-expanded-nv-mutate
+      // spec 鎖定);A4 必須先有 trigger(framework 真的動過 DOM)才會走到這,誤報面
+      // 遠小於每秒空轉的 sweep。
       {
         const _saved = STATE.nvMutateTranslation?.get?.(el);
         const _cur = (el.textContent || '').trim();
@@ -1210,7 +1256,7 @@
             && (nvRevertedToOrigText(origText, _cur) || nvMutateRevertedToOriginal(_backupNow, origText, _cur))
             && nvGuardTryIntervene(el)) {
           STATE.nodeValueMutateBackup.delete(el);
-          if (SK.tryInjectNodeValueMutate?.(el, _saved, [])) {
+          if (nvReapplySaved(el, _saved)) {
             el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
             el.setAttribute('data-shinkansen-translated', '1');
             SK.sendLog?.('info', 'spa', `detect-expanded-nv-mutate: reapplied translation (was ${trigger})`);

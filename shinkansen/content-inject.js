@@ -28,15 +28,25 @@
     }
   };
 
-  // v1.10.49: nv-mutate 元素的純文字譯文紀錄(WeakMap el → plain translation)。
+  // v1.10.49: nv-mutate 元素的譯文紀錄(WeakMap el → { plain, raw, slots })。
   // Content Guard 在 framework「同內容重 render」把 backup text node 整批換新時
   // (Medium 劃線 highlight hydration 實測場景),用它直接重套譯文,不重打 API
   // (見 content-spa.js runContentGuardNvMutate)。restorePage 不需清:guard 以
   // STATE.nodeValueMutateBackup 為迭代來源,backup 項清掉後本表殘項只是等 GC 的孤兒。
-  function recordNvMutateTranslation(el, translation) {
-    if (!el || !translation) return;
+  // v2.0.59: 由「只存純文字」擴充為同時存帶佔位符的原始譯文 + slots——A3 同構注入
+  // 成功的段落(含 <a> 等 inline 結構),guard 重套若只有純文字可用,會走 slots=[] 的
+  // Case 3b flatten:整段塞第一個 text node、其餘(含 <a> 內)清空 → 連結變空殼
+  // (The Verge 重繪實測,2026-07-16)。存 raw + slots 讓重套能重走 A3 配對保留結構。
+  // slots 是序列化端產物(cloneReuse deserialize 全 clone、不 mutate),跨多輪重套安全。
+  function recordNvMutateTranslation(el, plain, raw, slots) {
+    if (!el || !plain) return;
     if (!STATE.nvMutateTranslation) STATE.nvMutateTranslation = new WeakMap();
-    STATE.nvMutateTranslation.set(el, translation);
+    const hasSlots = !!(raw && slots && slots.length > 0);
+    STATE.nvMutateTranslation.set(el, {
+      plain,
+      raw: hasSlots ? raw : null,
+      slots: hasSlots ? slots : null,
+    });
   }
 
   // 注入時對 el 套 locale-aware 樣式:
@@ -648,13 +658,15 @@
         // unmount/remount 全新 element 時 spaByTextReuse 用 innerHTML
         // 還原譯文（新 element 還沒被 React 互動過,innerHTML 寫入安全）。
         SK._recordTranslatedByText?.(unit.el, unit.el.innerHTML);
-        // v1.10.49: 記錄純文字譯文,供 Content Guard 在「framework 同內容重
+        // v1.10.49: 記錄譯文,供 Content Guard 在「framework 同內容重
         // render 把 backup node 整批換新」時直接重套(免 API,見 content-spa.js
-        // runContentGuardNvMutate)
+        // runContentGuardNvMutate)。v2.0.59: A3(帶 slots)場景連 raw + slots 一起
+        // 記,重套時先走 A3 同構配對保留 <a> 等 inline 結構。
         recordNvMutateTranslation(unit.el,
           slots && slots.length > 0 && SK.stripStrayPlaceholderMarkers
             ? SK.stripStrayPlaceholderMarkers(translation).trim()
-            : translation);
+            : translation,
+          translation, slots);
         return;
       }
 
