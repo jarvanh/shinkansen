@@ -262,12 +262,34 @@
     }
 
     // (A) clean slate path
-    while (target.firstChild) target.removeChild(target.firstChild);
-    if (isString) {
-      target.textContent = content;
-    } else {
-      target.appendChild(content);
+    //
+    // v2.0.61 media-sparing:直屬子樹「含媒體且自身無文字」的節點不清除、保留原位。
+    // 結構背景:媒體包在無文字 wrapper(如 AMP 頁 <amp-img> 自訂元素、lazy-load 圖殼)
+    // 時,serialize 端不會為它產生 slot(無文字),譯文 fragment 裡沒有它;而 target
+    // 同時有 ≥ 2 個帶文字子元素(圖卡:圖 + 多行 <b>資訊)會被 textBearingChildCount
+    // 守門踢出 (B),原本整顆清空 = 媒體蒸發(historyvshollywood 人物對照卡實例)。
+    // 譯文 fragment 插回「第一個被清除節點」的位置,維持媒體/文字相對順序。
+    // contentHasImg(fragment 已含 IMG clone,Google MT atomic path)時不 spare,
+    // 否則原圖 + clone 重複。
+    // 保留判準:自身無文字 + media-like(媒體 / embed / 無文字自訂元素,含 AMP
+    // lazy 升級前後兩種空殼狀態;判定單一資料源見 content-ns.js SK.containsMediaLike)。
+    // HR / 空 SPAN / BR 等一般空元素不 spare,維持既有 clean-slate 行為
+    //(vBulletin TD>DIV+HR+DIV 場景的 HR 順序問題即靠清除解,v1.4.14)。
+    const isMediaOnlyNode = (n) => n.nodeType === Node.ELEMENT_NODE
+      && (n.textContent || '').trim() === ''
+      && SK.containsMediaLike(n);
+    const node = isString ? target.ownerDocument.createTextNode(content) : content;
+    let insertRef = null;       // 譯文插入錨點 = 第一個被清除節點之後的首個保留節點
+    let removedAny = false;
+    for (const child of Array.from(target.childNodes)) {
+      if (!contentHasImg && isMediaOnlyNode(child)) {
+        if (removedAny && !insertRef) insertRef = child;
+        continue;
+      }
+      target.removeChild(child);
+      removedAny = true;
     }
+    target.insertBefore(node, insertRef);
   }
 
   /**

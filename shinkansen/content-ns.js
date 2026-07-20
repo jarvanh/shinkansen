@@ -690,6 +690,31 @@ if (window.__shinkansen_loaded) {
     return !!el.querySelector('img, picture, video, svg, canvas, audio');
   };
 
+  // ─── v2.0.61 media-like 判定(AMP / web component lazy 升級通則) ───
+  // 「media-like」= 傳統媒體 tag + embed 類,再加「無文字自訂元素」(tag 含 '-')。
+  // Why:AMP 等框架對視窗外元件 lazy 升級,升級前 <amp-img> 無子節點、升級後
+  // (responsive layout)也可能只有空 sizer——兩種狀態 querySelector 都掃不到媒體
+  // 後代,但它就是媒體 / widget 載體,清掉 = 圖片蒸發(historyvshollywood 內文圖)。
+  // 「無文字」守門:有文字的自訂元素(文字型 web component)照常走文字流翻譯。
+  SK.MEDIA_TAG_SELECTOR = 'img, picture, video, svg, canvas, audio, iframe, embed, object';
+  SK.isMediaLikeElement = function isMediaLikeElement(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (el.matches?.(SK.MEDIA_TAG_SELECTOR)) return true;
+    return el.tagName.includes('-') && (el.textContent || '').trim() === '';
+  };
+  // containsMediaLike:自身或後代含 media-like。後代自訂元素 CSS 選不到
+  //(選擇器語法沒有「tag 名含 -」),逐一掃 querySelectorAll('*')——呼叫端子樹
+  // 都很小(inline run 子節點 / 段落直屬子樹,已排除 block 子孫),成本可接受。
+  SK.containsMediaLike = function containsMediaLike(el) {
+    if (SK.isMediaLikeElement(el)) return true;
+    if (el.querySelector && el.querySelector(SK.MEDIA_TAG_SELECTOR)) return true;
+    if (!el.querySelectorAll) return false;
+    for (const d of el.querySelectorAll('*')) {
+      if (d.tagName.includes('-') && (d.textContent || '').trim() === '') return true;
+    }
+    return false;
+  };
+
   // 是否含有 block 後代（v1.1.9 重構：用 querySelector 取代 getElementsByTagName 迴圈）
   SK.containsBlockDescendant = function containsBlockDescendant(el) {
     return !!el.querySelector(SK.BLOCK_TAG_SELECTOR);
@@ -788,13 +813,33 @@ if (window.__shinkansen_loaded) {
     return true;
   };
 
+  // v2.0.61:isBlockMediaGroup——isTextlessBlockMediaGroup 的放寬版,允許帶文字。
+  // 「block-level display + 含 media-like」= 圖(或 widget)+ 圖說的結構群組,不是
+  // 行內文字流;被 extractInlineFragments 併進 run 的話,fragment 注入 startNode..
+  // endNode 整段移除重建會把整顆群組(含媒體)換成純譯文 text node
+  //(historyvshollywood `<div class="featdv"><amp-img/>圖說</div>` 實例)。
+  // 斷開 run 後群組由 walker 遞迴當 element 候選,媒體走 inject 端保留路徑。
+  // 行內 emoji / 行內媒體 wrapper(inline-level display)不受影響,仍留在 run。
+  SK.isBlockMediaGroup = function isBlockMediaGroup(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (!SK.containsMediaLike(el)) return false;
+    const cs = el.ownerDocument?.defaultView?.getComputedStyle?.(el);
+    if (!cs) return false;
+    const d = cs.display;
+    if (d === 'inline' || d === 'inline-block' || d === 'inline-flex'
+        || d === 'inline-grid' || d === 'inline-table' || d === 'contents') return false;
+    return true;
+  };
+
   SK.isInlineRunNode = function isInlineRunNode(child) {
     if (child.nodeType === Node.TEXT_NODE) return true;
     if (child.nodeType !== Node.ELEMENT_NODE) return false;
     if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) return false;
     if (SK.BLOCK_TAGS_SET.has(child.tagName)) return false;
     if (SK.containsBlockDescendant(child)) return false;
-    if (SK.isTextlessBlockMediaGroup(child)) return false;
+    // v2.0.61:從 isTextlessBlockMediaGroup 換成放寬版 isBlockMediaGroup
+    //(帶圖說文字的媒體群組也要斷 run;textless 版為其子集,語意見各自註解)
+    if (SK.isBlockMediaGroup(child)) return false;
     return true;
   };
 

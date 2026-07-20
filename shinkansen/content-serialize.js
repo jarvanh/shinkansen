@@ -237,7 +237,10 @@
           // 把 tgt 全集塞給第一個 ss,emoji 視覺跑到段尾。改 atomic 後 IMG 在 source
           // text 出現為【*N】marker,Google MT 看到不翻直接保留,deserialize 後 tgt
           // 還原 IMG 位置 → src/tgt 兩端 IMG 邊界對齊。
-          if (!degrade && child.tagName === 'IMG') {
+          // v2.0.61:media-like 元素(含無文字自訂元素,如 AMP 元件)比照 IMG atomic,
+          // 理由同 LLM 路徑 serializeNodeIterable 對應分支(透明展開會拆掉元件本體)。
+          // atomic 不產 paired 標記,不影響 GT_MAX_PAIRED_SLOTS 計數。
+          if (!degrade && (child.tagName === 'IMG' || SK.isMediaLikeElement(child))) {
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
             out += '【*' + idx + '】';
@@ -412,7 +415,12 @@
           // 且 v1.9.31 對齊邏輯靠「LLM 端 src/tgt 兩端 IMG 都不算 token」——element 路徑
           // 若多出 IMG slot 會破壞對齊 fallback dual(見 inject-a3-llm-img-emoji spec)。
           // fragment 一律 clean rebuild(injectFragmentTranslation),無此對齊顧慮。
-          if (imgAsSlot && child.tagName === 'IMG') {
+          // v2.0.61:media-like 元素(媒體 / embed / 無文字自訂元素,SK.isMediaLikeElement)
+          // 比照 IMG 走 atomic deep clone。原本自訂元素(如 AMP <amp-img>)不在
+          // PRESERVE_INLINE_TAGS → 透明展開,把框架內部實作節點(sizer img)抓成
+          // slot、元件本體從 source 流消失,fragment clean-rebuild 後只剩內部空殼
+          //(historyvshollywood 人物卡實例)。atomic 整顆 clone 讓元件完整還原。
+          if (imgAsSlot && (child.tagName === 'IMG' || SK.isMediaLikeElement(child))) {
             const idx = slots.length;
             slots.push({ atomic: true, node: child.cloneNode(true) });
             out += PH_OPEN + '*' + idx + PH_CLOSE;
