@@ -978,6 +978,10 @@
   //         單語:caller 切完 stopYouTubeTranslation(讓 YT 顯示原生中文)
   //         雙語:caller 切完不 stop(留 Shinkansen 監聽,使用者後續手動切到非 target
   //              軌時自動翻譯;_applyBilingualMode 在 captionLang=target 時不藏 native CC)
+  //   1.5) 模糊 base-lang 原生候選(zh-TW / zh-CN target 的 `zh` 軌,手動優先於 ASR)
+  //      → activeTrack 已是該軌(同 kind 無 translation)→ action='noop'(下游內容偵測接手)
+  //      → 否則 action='switch'(非 switch-to-native:繁簡未定,不可盲目 stop,
+  //         切軌後由 _shouldSkipBecauseAlreadyInTarget 內容偵測決定 skip 或翻譯)
   //   2) 影片原始語 manual track（kind=''，creator-uploaded）→ action='switch'
   //   3) 影片原始語 ASR track（kind='asr'）→ action='switch'
   //   都沒命中 / activeTrack 已對得上目標 → action='noop'，留 YT 既有行為
@@ -998,6 +1002,18 @@
     'es':    ['es', 'es-ES', 'es-MX'],
     'fr':    ['fr', 'fr-FR', 'fr-CA'],
     'de':    ['de', 'de-DE'],
+  };
+
+  // 模糊 base-lang:URL / track metadata 不足以分辨繁簡(YouTube 對部分人工字幕只標
+  // base lang `zh`,不附 -Hant / -Hans variant),target=zh-TW / zh-CN 時必須看字幕
+  // 內容才能決定要不要 skip。其他 target(en / ja / ko / es / fr / de)沒有此類歧義。
+  // 共用於兩處(單一資料源,避免 drift):
+  //   1) chooser P1.5:`zh` 軌視為「可能原生」候選 → action='switch' 切過去,
+  //      讓下游內容偵測決定 skip 或翻譯
+  //   2) _shouldSkipBecauseAlreadyInTarget:captionLang=`zh` 時抽字幕內容補判
+  const _AMBIGUOUS_LANGS_BY_TARGET = {
+    'zh-TW': new Set(['zh']),
+    'zh-CN': new Set(['zh']),
   };
 
   function _resolveTargetNativeLangs(targetLanguage) {
@@ -1026,6 +1042,31 @@
         return { action: 'skip', track: p1, reason: 'p1-active-already-native' };
       }
       return { action: 'switch-to-native', track: p1, reason: 'p1-switch-to-native' };
+    }
+
+    // P1.5: 模糊 base-lang 原生候選(zh-TW / zh-CN target 的 `zh` 軌,手動優先於 ASR)。
+    // metadata 分不出繁簡,不能走 'switch-to-native'(單語 caller 會盲目 stop,若軌
+    // 實際是簡中就留一版沒翻的簡中);改回 'switch' 切過去,由下游
+    // _shouldSkipBecauseAlreadyInTarget 抽字幕內容補判:已是 target → skip 顯示原生,
+    // 不是(如簡中對 zh-TW)→ 照常翻譯。
+    // 位置在 ASR 推導之前:有 `zh` 軌時優先用它(創作者人工中文字幕品質高於
+    // 「切到源語 ASR 再 LLM 翻譯」,且省 token);也涵蓋「只有一條 `zh` 手動軌、
+    // 沒 ASR 軌」的影片(否則 no-source-asr-track noop,YT 帳號 auto-translate
+    // 偏好會讓字幕停在英文自翻軌,Shinkansen 再把英文翻回中文)。
+    const ambigSet = _AMBIGUOUS_LANGS_BY_TARGET[targetLanguage];
+    if (ambigSet) {
+      const p1b = tracks.find(t => ambigSet.has(t.languageCode) && (!t.kind || t.kind === ''))
+               || tracks.find(t => ambigSet.has(t.languageCode));
+      if (p1b) {
+        const activeIsP1b = activeTrack
+          && activeTrack.languageCode === p1b.languageCode
+          && (activeTrack.kind || '') === (p1b.kind || '')
+          && !activeTrack.translationLanguageCode;
+        if (activeIsP1b) {
+          return { action: 'noop', track: p1b, sourceLanguage: p1b.languageCode, reason: 'p1b-ambiguous-native-active' };
+        }
+        return { action: 'switch', track: p1b, sourceLanguage: p1b.languageCode, reason: 'p1b-ambiguous-native' };
+      }
     }
 
     // 從唯一 ASR track 動態推導影片原始語（一支影片 YT 只會產一條 ASR）
@@ -2515,13 +2556,8 @@
     'fr':    new Set(['fr', 'fr-FR', 'fr-CA', 'fr-BE', 'fr-CH']),
     'de':    new Set(['de', 'de-DE', 'de-AT', 'de-CH']),
   };
-  // 模糊 lang:URL lang 不足以分辨繁簡(YouTube 對部分人工字幕只標 base lang `zh`,
-  // 不附 -Hant / -Hans variant),target=zh-TW / zh-CN 時必須看內容才能決定要不要 skip。
-  // 其他 target(en / ja / ko / es / fr / de)沒有此類歧義,維持只看 URL lang。
-  const _AMBIGUOUS_LANGS_BY_TARGET = {
-    'zh-TW': new Set(['zh']),
-    'zh-CN': new Set(['zh']),
-  };
+  // 模糊 lang(`zh`)的定義上移到 chooser 區塊的 _AMBIGUOUS_LANGS_BY_TARGET
+  // (chooser P1.5 與本 skip 判斷共用同一份,單一資料源)
   function _sampleCaptionText() {
     const segs = SK.YT.rawSegments;
     if (!segs || segs.length === 0) return '';

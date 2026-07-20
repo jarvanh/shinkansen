@@ -13,6 +13,9 @@
  *       不分單語 / 雙語都走 P1。雙語下使用者後續手動切到非 target 軌時,
  *       XHR interceptor 抓到 → translateWindowFrom 自動觸發 → captionMap 寫入
  *       → _applyBilingualMode 動態藏 native CC + 顯示 overlay。
+ *   P1.5) 模糊 base-lang `zh` 軌(zh-TW / zh-CN target,手動優先於 ASR)→ action='switch'
+ *       (繁簡未定不可盲目 stop,切軌後由下游內容偵測決定 skip 或翻譯;
+ *        active 已是該軌無 translation → 'noop' 留給下游)
  *   P2) 影片原始語 manual track（kind=''，source lang 從唯一 ASR track 動態推導）→ action='switch'
  *   P3) 影片原始語 ASR track（kind='asr'）→ action='switch'
  *   沒 ASR 軌 / activeTrack 已對齊目標 → action='noop'
@@ -25,6 +28,9 @@
  *   把 _chooseBestCaptionTrack 內 P1 分支拔掉 → P1 case 預期 'switch-to-native' 變 'switch' 失敗 → 還原 pass
  *   把「已對齊目標 → noop」分支拔掉 → already-on-target case 預期 'noop' 變 'switch' 失敗 → 還原 pass
  *   把 P1 內 activeIsP1 skip 分支拔掉 → 'P1 active 已是 native → skip' case 變 'switch-to-native' 失敗 → 還原 pass
+ *   把 P1.5 分支的 ambigSet 改 null(等效拔掉整個分支)→ 5 條 P1.5 case fail
+ *   (真實 bug 情境 / YT 自翻譯 en active / active 已是 zh 軌 / en ASR+zh manual 優先序 /
+ *    zh-CN target 皆 fail;「zh manual+zh ASR」與「target=en」兩條舊路徑同結果屬預期)→ 還原 30/30 pass
  */
 
 const fs = require('fs');
@@ -267,6 +273,83 @@ describe('_chooseBestCaptionTrack', () => {
     const decision = chooser(tracks, null, 'zh-TW');
     expect(decision.action).toBe('switch-to-native');
     expect(decision.track.languageCode).toBe('zh-TW');
+  });
+
+  // ─── P1.5:模糊 base-lang `zh` 原生候選(zh-TW / zh-CN target)─────
+  // Regression:台灣影片只有一條 `zh` 手動軌、沒 ASR 軌 → 舊版 chooser noop
+  // (no-source-asr-track),YT 帳號 auto-translate 偏好讓字幕停在英文自翻軌,
+  // Shinkansen 再把英文翻回中文(雙重翻譯)。修法:`zh` 軌視為可能原生候選,
+  // action='switch' 切過去,由下游內容偵測決定 skip(已是繁中)或翻譯(簡中)。
+
+  test('P1.5: 真實 bug 回報情境 — 只有 `zh` 手動軌沒 ASR + active=null → switch(不再 noop)', () => {
+    // 對應影片 6tzoIQman-s 的真實 player response track 結構
+    const tracks = [{ languageCode: 'zh', kind: '', isTranslatable: true, vssId: '.zh', name: '中文' }];
+    const decision = chooser(tracks, null, 'zh-TW');
+    expect(decision.action).toBe('switch');
+    expect(decision.reason).toBe('p1b-ambiguous-native');
+    expect(decision.track.languageCode).toBe('zh');
+    expect(decision.sourceLanguage).toBe('zh');
+  });
+
+  test('P1.5: `zh` 手動軌 + active 是 zh 被 YT 自翻譯成 en → switch(清掉自翻譯)', () => {
+    const tracks = [{ languageCode: 'zh', kind: '' }];
+    const activeTrack = { languageCode: 'zh', kind: '', translationLanguageCode: 'en' };
+    const decision = chooser(tracks, activeTrack, 'zh-TW');
+    expect(decision.action).toBe('switch');
+    expect(decision.reason).toBe('p1b-ambiguous-native');
+  });
+
+  test('P1.5: active 已是 `zh` 手動軌無 translation → noop(留給下游內容偵測)', () => {
+    const tracks = [{ languageCode: 'zh', kind: '' }];
+    const activeTrack = { languageCode: 'zh', kind: '', translationLanguageCode: null };
+    const decision = chooser(tracks, activeTrack, 'zh-TW');
+    expect(decision.action).toBe('noop');
+    expect(decision.reason).toBe('p1b-ambiguous-native-active');
+  });
+
+  test('P1.5: `zh` 手動軌 + `zh` ASR 軌 → 選手動軌', () => {
+    const tracks = [
+      { languageCode: 'zh', kind: 'asr' },
+      { languageCode: 'zh', kind: '' },
+    ];
+    const decision = chooser(tracks, null, 'zh-TW');
+    expect(decision.action).toBe('switch');
+    expect(decision.track.kind).toBe('');
+  });
+
+  test('P1.5 優先於 P2/P3: en ASR + `zh` 手動軌 → 切 `zh` 手動軌(不切去翻 en 源語)', () => {
+    const tracks = [
+      { languageCode: 'en', kind: 'asr' },
+      { languageCode: 'zh', kind: '' },
+    ];
+    const decision = chooser(tracks, null, 'zh-TW');
+    expect(decision.action).toBe('switch');
+    expect(decision.reason).toBe('p1b-ambiguous-native');
+    expect(decision.track.languageCode).toBe('zh');
+  });
+
+  test('P1 優先於 P1.5: zh-Hant 軌 + `zh` 軌 → switch-to-native(zh-Hant)', () => {
+    const tracks = [
+      { languageCode: 'zh',      kind: '' },
+      { languageCode: 'zh-Hant', kind: '' },
+    ];
+    const decision = chooser(tracks, null, 'zh-TW');
+    expect(decision.action).toBe('switch-to-native');
+    expect(decision.track.languageCode).toBe('zh-Hant');
+  });
+
+  test('P1.5 只對 zh target: target=en + 只有 `zh` 手動軌沒 ASR → 維持 noop', () => {
+    const tracks = [{ languageCode: 'zh', kind: '' }];
+    const decision = chooser(tracks, null, 'en');
+    expect(decision.action).toBe('noop');
+    expect(decision.reason).toBe('no-source-asr-track');
+  });
+
+  test('P1.5: target=zh-CN + 只有 `zh` 手動軌 → switch(簡中 target 同樣適用)', () => {
+    const tracks = [{ languageCode: 'zh', kind: '' }];
+    const decision = chooser(tracks, null, 'zh-CN');
+    expect(decision.action).toBe('switch');
+    expect(decision.reason).toBe('p1b-ambiguous-native');
   });
 
   // chooser 不再吃 bilingualMode 參數 — bilingual 的差異化處理移到 caller

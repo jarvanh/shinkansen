@@ -543,6 +543,130 @@
     );
   };
 
+  // 半殘配對修復(2026-07-20):輕量模型(gemini-3.1-flash-lite 實測)對高密度巢狀
+  // 佔位符段落常「開了標記忘記關」或「關了標記忘記開」——中文重組把片語拉長時,
+  // 模型丟收尾標記的機率大增(The Verge Installer 段 23 slots 實測 lite 6/8 輪半殘,
+  // 同段 gemini-3-flash-preview 0/8)。半殘 token 現行會被 stripStrayPlaceholderMarkers
+  // 當 stray 剝掉 → 整顆 <a>/<strong> 從譯文消失(文字還在、連結不見)。
+  //
+  // 修法(確定性,不猜語意):
+  //   A) open 有、close 無 → 從 open 往後掃,插入 ⟦/N⟧ 於最早遇到的:
+  //      - 外層配對的 close 之前(維持巢狀合法)
+  //      - 子句邊界標點(。？！；，、.!?;,或換行)之前
+  //      - 字串尾
+  //      掃描時跳過完整子配對(⟦M⟧…⟦/M⟧ 整組)與 atomic token——它們可能是本 slot
+  //      的合法子內容,不可把 close 插在子配對之前造成空殼。
+  //   B) close 有、open 無 → 從 close 往回掃,插入 ⟦N⟧ 於最近遇到的:
+  //      - 任一標記 token 之後(來源結構中 open 常緊貼前一 token,如 ⟦/14⟧⟦16⟧)
+  //      - 子句邊界標點之後
+  //      - 字串頭
+  //   兩向都只插標記、不動任何文字 → 內容零遺失;最壞退化是 slot 範圍到子句邊界
+  //   (連結範圍稍寬),仍優於整顆消失。
+  //
+  // 只修「slots 裡真實存在且是配對型」的 index(atomic 半殘不存在:單 token;
+  // 模型幻覺出的超界 N 不修,留給 stray 清除)。整組遺失(open+close 都沒)不在
+  // 本函式範圍——那是 tryRecoverLinkSlots / 佔位符遺失回收的領域。
+  SK.repairHalfBrokenPlaceholders = function repairHalfBrokenPlaceholders(text, slots) {
+    if (!text || !Array.isArray(slots) || slots.length === 0) return text;
+    if (text.indexOf(PH_OPEN) === -1) return text;
+
+    const isPairedSlot = (slot) => !!slot && (
+      slot.nodeType === Node.ELEMENT_NODE || (slot.reuseNode && !slot.atomic)
+    );
+
+    const tokRe = new RegExp(PH_OPEN + '(\\*)?(\\/)?(\\d+)' + PH_CLOSE, 'g');
+    const toks = [];
+    let m;
+    while ((m = tokRe.exec(text)) !== null) {
+      toks.push({ star: !!m[1], close: !!m[2], n: Number(m[3]), start: m.index, end: m.index + m[0].length });
+    }
+    if (toks.length === 0) return text;
+
+    // n → 首個 open token / 末個 close token(dup 由 selectBestSlotOccurrences 處理,
+    // 這裡取最寬解讀)
+    const opens = new Map();
+    const closes = new Map();
+    for (const t of toks) {
+      if (t.star) continue;
+      if (t.close) closes.set(t.n, t);
+      else if (!opens.has(t.n)) opens.set(t.n, t);
+    }
+
+    const BOUNDARY_RE = /[。？！；，、.!?;,\n]/;
+    const insertions = []; // { pos, marker, tieOrder }
+    const repairedNs = [];
+
+    // ─── A) open 無 close:往後掃插 close ───
+    const brokenOpens = [...opens.keys()]
+      .filter((n) => !closes.has(n) && isPairedSlot(slots[n]))
+      .sort((a, b) => opens.get(a).start - opens.get(b).start); // 外層(開得早)在前
+    for (const n of brokenOpens) {
+      const openTok = opens.get(n);
+      let cursor = openTok.end;
+      let pos = text.length;
+      const after = toks.filter((t) => t.start >= openTok.end).sort((a, b) => a.start - b.start);
+      for (let i = 0; i < after.length; i++) {
+        const t = after[i];
+        if (t.start < cursor) continue; // 已被完整配對跳過
+        const gap = text.slice(cursor, t.start);
+        const bm = gap.match(BOUNDARY_RE);
+        if (bm) { pos = cursor + bm.index; break; }
+        if (t.star) { cursor = t.end; continue; }
+        if (!t.close) {
+          // 另一個 open:完整配對(close 在其後)→ 整組跳過(可能是合法子內容);
+          // 也是半殘 open → 只跳 token(它的 close 由它自己那輪插)
+          const c = closes.get(t.n);
+          cursor = (c && c.start > t.start) ? c.end : t.end;
+          continue;
+        }
+        // close token:若是「開在本 slot 之前」的外層配對 close → 本 slot 必須先關
+        const o = opens.get(t.n);
+        if (o && o.start < openTok.start) { pos = t.start; break; }
+        cursor = t.end; // stray close,跳過
+      }
+      if (pos === text.length) {
+        const tail = text.slice(cursor);
+        const bm = tail.match(BOUNDARY_RE);
+        if (bm) pos = cursor + bm.index;
+      }
+      // tieOrder:同插入點時內層(開得晚)的 close 要在左邊 → 以 -openStart 排序讓
+      // 外層先套用(後套用者插在既有插入之前)
+      insertions.push({ pos, marker: PH_OPEN + '/' + n + PH_CLOSE, tieOrder: openTok.start });
+      repairedNs.push(n);
+    }
+
+    // ─── B) close 無 open:往回掃插 open ───
+    const brokenCloses = [...closes.keys()]
+      .filter((n) => !opens.has(n) && isPairedSlot(slots[n]));
+    for (const n of brokenCloses) {
+      const closeTok = closes.get(n);
+      let pos = 0;
+      const before = toks.filter((t) => t.end <= closeTok.start).sort((a, b) => b.end - a.end);
+      const nearestTokEnd = before.length ? before[0].end : 0;
+      const gap = text.slice(nearestTokEnd, closeTok.start);
+      // 取「最近標記 token 之後」與「gap 內最後一個邊界標點之後」較近(較右)者
+      let lastBoundary = -1;
+      const g = gap.match(new RegExp(BOUNDARY_RE.source, 'g'));
+      if (g) lastBoundary = gap.lastIndexOf(g[g.length - 1]);
+      pos = lastBoundary >= 0 ? nearestTokEnd + lastBoundary + 1 : nearestTokEnd;
+      // tieOrder:同點時外層(關得晚)的 open 要在左邊
+      insertions.push({ pos, marker: PH_OPEN + n + PH_CLOSE, tieOrder: -closeTok.start });
+      repairedNs.push(n);
+    }
+
+    if (insertions.length === 0) return text;
+    // 從右往左套用;同 pos 時 tieOrder 小者先套用(後套用者最終在左)
+    insertions.sort((a, b) => (b.pos - a.pos) || (a.tieOrder - b.tieOrder));
+    let out = text;
+    for (const ins of insertions) {
+      out = out.slice(0, ins.pos) + ins.marker + out.slice(ins.pos);
+    }
+    SK.sendLog('info', 'translate', 'repaired half-broken placeholder pairs', {
+      slots: repairedNs, preview: out.slice(0, 160),
+    });
+    return out;
+  };
+
   SK.selectBestSlotOccurrences = function selectBestSlotOccurrences(text) {
     if (!text) return text;
     const re = new RegExp(PH_OPEN + '(\\d+)' + PH_CLOSE + '([\\s\\S]*?)' + PH_OPEN + '\\/\\1' + PH_CLOSE, 'g');
@@ -609,6 +733,9 @@
     }
 
     translation = SK.collapseCjkSpacesAroundPlaceholders(translation);
+    // 半殘配對修復必須在 selectBestSlotOccurrences(要求完好配對)與 parseSegment
+    // (半殘 token 會落進 pushText 被 stripStray 剝掉)之前
+    translation = SK.repairHalfBrokenPlaceholders(translation, slots);
     translation = SK.selectBestSlotOccurrences(translation);
 
     const matchedRef = { count: 0, used: new Set() };
