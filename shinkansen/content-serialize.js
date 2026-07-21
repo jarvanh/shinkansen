@@ -117,9 +117,28 @@
   }
 
   function serializeNodeIterableForGoogle(topLevelNodes, opts) {
+    // 全文鎖進 inline CODE atomic → 重跑讓 CODE 走 paired(同 LLM 路徑
+    // serializeNodeIterable 的重跑機制,判斷條件見 allTextLockedInCodeSlots)。
+    // 額外 guard:重跑會讓每個 CODE 產一對【N】標記,不在 countPairedInlineForGT
+    // 鏡像計數內,CODE slot 數超過 GT_MAX_PAIRED_SLOTS 時不重跑(維持 atomic,
+    // 寧可不翻也不讓 Google MT 對過多 paired 標記 hallucinate)。
+    const first = serializeNodeIterableForGoogleOnce(topLevelNodes, opts);
+    if (allTextLockedInCodeSlots(first, /【[*\/]?\d+】/g)) {
+      const codeCount = first.slots.filter(
+        (s) => s && s.atomic && s.node && s.node.tagName === 'CODE'
+      ).length;
+      if (codeCount <= GT_MAX_PAIRED_SLOTS) {
+        return serializeNodeIterableForGoogleOnce(topLevelNodes, { ...(opts || {}), codeAsPaired: true });
+      }
+    }
+    return first;
+  }
+
+  function serializeNodeIterableForGoogleOnce(topLevelNodes, opts) {
     const slots = [];
     let out = '';
     const preserveNewlines = !!(opts && opts.preserveNewlines);
+    const codeAsPaired = !!(opts && opts.codeAsPaired);
     // v1.8.13: paired marker 過閾值 → 降級為純文字模式(slots 仍可含
     // atomic,但不再產生 paired【N】/【/N】標記)。
     const degrade = countPairedInlineForGT(topLevelNodes) > GT_MAX_PAIRED_SLOTS;
@@ -137,11 +156,20 @@
           // slot 保留(否則 GitHub PR description / 技術文章內的 <code>identifier</code>
           // 會被丟掉,grey background 樣式跟著消失)。必須先於 HARD_EXCLUDE 檢查。
           // PRE+code 仍然 continue(那是 code 區塊,跟 inline 不同)。
+          // codeAsPaired:全文鎖進 CODE atomic 的重跑模式(見 wrapper 註解)。
           if (child.tagName === 'CODE'
               && !(child.parentElement && child.parentElement.tagName === 'PRE')) {
-            const idx = slots.length;
-            slots.push({ atomic: true, node: child.cloneNode(true) });
-            out += '【*' + idx + '】';
+            if (codeAsPaired) {
+              const idx = slots.length;
+              slots.push(child.cloneNode(false));
+              out += '【' + idx + '】';
+              walk(child.childNodes);
+              out += '【/' + idx + '】';
+            } else {
+              const idx = slots.length;
+              slots.push({ atomic: true, node: child.cloneNode(true) });
+              out += '【*' + idx + '】';
+            }
             continue;
           }
           // 與 LLM serializer 同 pattern:inline <button> 走 paired marker 保留 wrapper。
@@ -340,11 +368,40 @@
     });
   };
 
+  // ─── 全文鎖進 inline CODE atomic 的重跑判斷 ─────────────
+  // 結構特徵:unit 序列化後,佔位符拿掉的殘餘文字沒有任何字母/數字,而實質文字
+  // 全在 CODE atomic slot 內(CMS 把整顆標題/段落包 <code> 當樣式,如 Ghost 站
+  // 的 <h2><code>Who will replace Fedorov?</code></h2>)。這時 payload 只剩
+  // ⟦*N⟧,模型無字可翻原樣返還 → echo 偵測標記已翻,整顆永遠停在原文。
+  // 對策:重跑一次讓 inline CODE 走 paired 標記——文字進 payload、<code> wrapper
+  // 樣式保留,「這是不是真 code 該不該翻」交給引擎判斷(LLM 對真 code identifier
+  // 會原樣保留 → 仍走 echo path,行為不變)。散在 prose 內的 inline CODE(殘餘
+  // 文字有字母)不受影響,維持 atomic 確定性保護。
+  function allTextLockedInCodeSlots(result, tokenRe) {
+    const residual = result.text.replace(tokenRe, '');
+    if (/[\p{L}\p{N}]/u.test(residual)) return false;
+    const codeSlots = result.slots.filter(
+      (s) => s && s.atomic && s.node && s.node.tagName === 'CODE'
+    );
+    if (!codeSlots.length) return false;
+    return codeSlots.some((s) => /[\p{L}\p{N}]/u.test(s.node.textContent || ''));
+  }
+
   function serializeNodeIterable(topLevelNodes, opts) {
+    const first = serializeNodeIterableOnce(topLevelNodes, opts);
+    const tokenRe = new RegExp(PH_OPEN + '[*\\/]?\\d+' + PH_CLOSE, 'g');
+    if (allTextLockedInCodeSlots(first, tokenRe)) {
+      return serializeNodeIterableOnce(topLevelNodes, { ...(opts || {}), codeAsPaired: true });
+    }
+    return first;
+  }
+
+  function serializeNodeIterableOnce(topLevelNodes, opts) {
     const slots = [];
     let out = '';
     const preserveNewlines = !!(opts && opts.preserveNewlines);
     const imgAsSlot = !!(opts && opts.imgAsSlot);
+    const codeAsPaired = !!(opts && opts.codeAsPaired);
     function walk(nodeList) {
       for (const child of nodeList) {
         if (child.nodeType === Node.TEXT_NODE) {
@@ -359,11 +416,21 @@
           // slot 保留(否則 GitHub PR description / 技術文章內的 <code>identifier</code>
           // 會被丟掉,grey background 樣式跟著消失)。必須先於 HARD_EXCLUDE 檢查。
           // PRE+code 仍然 continue(那是 code 區塊,跟 inline 不同)。
+          // codeAsPaired:全文鎖進 CODE atomic 的重跑模式(見 allTextLockedInCodeSlots)
+          // → CODE 改走 paired 標記,wrapper 保留、內文進 payload。
           if (child.tagName === 'CODE'
               && !(child.parentElement && child.parentElement.tagName === 'PRE')) {
-            const idx = slots.length;
-            slots.push({ atomic: true, node: child.cloneNode(true) });
-            out += PH_OPEN + '*' + idx + PH_CLOSE;
+            if (codeAsPaired) {
+              const idx = slots.length;
+              slots.push(child.cloneNode(false));
+              out += PH_OPEN + idx + PH_CLOSE;
+              walk(child.childNodes);
+              out += PH_OPEN + '/' + idx + PH_CLOSE;
+            } else {
+              const idx = slots.length;
+              slots.push({ atomic: true, node: child.cloneNode(true) });
+              out += PH_OPEN + '*' + idx + PH_CLOSE;
+            }
             continue;
           }
           // Inline <button>(段落內含 text 的 SPA「read more」/「show more」展開觸發
