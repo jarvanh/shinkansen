@@ -785,12 +785,14 @@
       const lo = Math.max(pos + 1, ideal - SEARCH);
       const hi = Math.min(total - 2, ideal + SEARCH);
       for (let i = lo; i <= hi; i++) {
-        if (_ASR_PUNCT_RE.test(t[i])) {
+        if (_isSentencePunctAt(t, i)) {
           const d = Math.abs(i + 1 - ideal);
           if (d < bestDist) { bestDist = d; cut = i + 1; }
         }
       }
       if (cut < 0) cut = ideal;          // 附近沒標點 → 均分硬切(寧可切也不要第三行)
+      // v2.0.63:切點落在拉丁單字／數字 run 內時吸附到 run 邊緣(Union 不切成 Un|ion)
+      cut = _snapCutOutOfWord(t, cut, pos, total);
       if (cut <= pos || cut >= total) continue;
       pieces.push(t.slice(pos, cut));
       pos = cut;
@@ -1261,6 +1263,50 @@
   // 對應:半形 , . : ; ! ?(0x21-0x3F)+ 全形 , . : ; ! ?(0xFF01-0xFF1F)+ 、 。(0x3001-0x3002)
   const _ASR_PUNCT_RE = /[\u002C\u002E\u003A\u003B\u0021\u003F\uFF0C\uFF0E\uFF1A\uFF1B\uFF01\uFF1F\u3001\u3002]/;
 
+  // v2.0.63(症狀:「Union Chapel」被硬切成「…倫敦 Un」+「ion Chapel…」兩條 cue):
+  // 拉丁字母／數字的連續 run 是不可分割 token,切點不可落在 run 內部,CJK 逐字可切
+  // 不受影響。字元集:A-Za-z0-9 + U+00C0-024F(Latin-1 Supplement / Extended-A/B
+  // 補充字母,café、naïve)+ 直撇號 U+0027 + 彎撇號 U+2019(don't 兩種寫法)
+  const _ASR_WORD_CHAR_RE = /[A-Za-z0-9À-ɏ'’]/;
+
+  // t[i] 是否屬於 word token:字母數字本身,或夾在字母數字之間的 . / -
+  // (GPT-4、3.5、U.S. 整串視為同一 token)
+  function _isWordCharAt(t, i) {
+    const c = t[i];
+    if (c == null) return false;
+    if (_ASR_WORD_CHAR_RE.test(c)) return true;
+    return /[.\-]/.test(c) &&
+      /[A-Za-z0-9]/.test(t[i - 1] || '') && /[A-Za-z0-9]/.test(t[i + 1] || '');
+  }
+
+  // 切點 cut 落在拉丁 word run 內時吸附到 run 較近一側邊緣。
+  // lo/hi:cut 的合法開區間(lo < cut < hi);run 佔滿整個合法區間時維持原切點
+  // (寧可切也不要不拆——與硬切 fallback 同哲學,避免超長不折沖出畫面)。
+  function _snapCutOutOfWord(t, cut, lo, hi) {
+    if (cut <= lo || cut >= hi) return cut;
+    if (!_isWordCharAt(t, cut - 1) || !_isWordCharAt(t, cut)) return cut;
+    let s = cut;
+    while (s > 0 && _isWordCharAt(t, s - 1)) s--;
+    let e = cut;
+    while (e < t.length && _isWordCharAt(t, e)) e++;
+    const sOk = s > lo;
+    const eOk = e < hi;
+    if (sOk && eOk) return (cut - s <= e - cut) ? s : e;
+    if (sOk) return s;
+    if (eOk) return e;
+    return cut;
+  }
+  SK._snapCutOutOfWord = _snapCutOutOfWord;   // regression spec 直接驅動用
+
+  // 「句間標點」判定:半形 , . : 夾在字母數字之間時是小數點／縮寫／千分位
+  // (3.5、9,999、p.m.),屬 token 內部,不可當切點候選
+  function _isSentencePunctAt(t, i) {
+    if (!_ASR_PUNCT_RE.test(t[i])) return false;
+    if (/[,.:]/.test(t[i]) &&
+        /[A-Za-z0-9]/.test(t[i - 1] || '') && /[A-Za-z0-9]/.test(t[i + 1] || '')) return false;
+    return true;
+  }
+
   function _calcMaxLineChars() {
     const video = document.querySelector('video');
     const fontSize = _readNativeCaptionFontSize() || 18;
@@ -1281,16 +1327,18 @@
       let cutIdx = -1;
       // 1. 從門檻往前找最近標點(讓首行 ≤ 門檻)
       for (let i = Math.min(rest.length - 2, maxLine); i >= 1; i--) {
-        if (_ASR_PUNCT_RE.test(rest[i])) { cutIdx = i + 1; break; }
+        if (_isSentencePunctAt(rest, i)) { cutIdx = i + 1; break; }
       }
       // 2. 找不到 → 從門檻+1 往後找最近標點(允許首行稍長)
       if (cutIdx < 0) {
         for (let i = maxLine + 1; i < rest.length - 1; i++) {
-          if (_ASR_PUNCT_RE.test(rest[i])) { cutIdx = i + 1; break; }
+          if (_isSentencePunctAt(rest, i)) { cutIdx = i + 1; break; }
         }
       }
       // 3. 全句沒標點 → 按 maxLine 硬切(不依賴 CSS wrap,確保視覺絕對折行)
       if (cutIdx < 0) cutIdx = maxLine;
+      // v2.0.63:折行點落在拉丁單字／數字 run 內時吸附到 run 邊緣(Union 不折成 Un|ion)
+      cutIdx = _snapCutOutOfWord(rest, cutIdx, 0, rest.length);
       lines.push(rest.slice(0, cutIdx).trim());
       rest = rest.slice(cutIdx).trim();
     }
