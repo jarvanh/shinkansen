@@ -51,9 +51,13 @@ async function installGeminiStub(sw) {
         globalThis.__geminiCalls.push(joined);
         const SEP = /\s*<<<SHINKANSEN_SEP>>>\s*/;
         const DELIM = '\n<<<SHINKANSEN_SEP>>>\n';
-        // 每個輸入段落產一段譯文(去掉 «N» marker),段數對齊避免 hadMismatch
+        // 每個輸入段落產一段譯文(去掉 «N» marker),段數對齊避免 hadMismatch。
+        // v2.0.65:mock 譯文必須含 CJK 字元(≥3)——echo 快取防護對 CJK target 會把
+        // 「長拉丁 + 零 CJK」的輸出判定為未翻譯而不寫快取(isSuspectEchoTranslation),
+        // 舊 mock '[ZH]'+英文原文 正好落進該判定 → 4 段全不進快取 → round 2 全 miss
+        // 重送整批,partial-reuse 斷言炸。加中文前綴讓 mock 譯文擬真(真 zh 譯文必含 CJK)。
         const outText = joined.split(SEP)
-          .map((s) => '[ZH]' + s.replace(/^«\d+»\s*/, ''))
+          .map((s) => '[ZH]中文譯文 ' + s.replace(/^«\d+»\s*/, ''))
           .join(DELIM);
         const evt = 'data: ' + JSON.stringify({
           candidates: [{ content: { parts: [{ text: outText }] }, finishReason: 'STOP' }],

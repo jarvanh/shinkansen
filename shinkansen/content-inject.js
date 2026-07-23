@@ -405,7 +405,7 @@
     return frag;
   }
 
-  function _revertEcho(el) {
+  function _revertEcho(el, translation) {
     var origHTML = STATE.originalHTML.get(el);
     if (origHTML != null) el.innerHTML = origHTML;
     var origLang = STATE.originalLang.get(el);
@@ -430,8 +430,12 @@
     // by-text reuse 也記一筆(value = 原文 innerHTML):SPA virtualization 同文字段
     // remount 成新元素時直接 reuse,不再進 API 候選。
     SK._recordTranslatedByText?.(el, el.innerHTML);
+    // v2.0.65: 加記 translationHead——區分「模型真 echo（譯文=英文原文）」vs
+    // 「注入層假 echo（譯文是好的，但寫入後 DOM 文字沒變 → 誤判）」。後者代表
+    // injection path 有洞，少這欄位只能瞎猜是哪一種（Verge Installer 頁除錯實例）
     SK.sendLog('warn', 'inject', 'echo detected: translation identical to source, marked translated (rescan will not re-send)',
-      { text: (el.textContent || '').substring(0, 80) });
+      { text: (el.textContent || '').substring(0, 80),
+        translationHead: (translation || '').substring(0, 80) });
   }
 
   // ─── 術語表對照「只出現一次」裁剪 ──────────────────────────
@@ -672,7 +676,7 @@
       // 配對失敗(multi text node、含 placeholder、含 \n 多段)→ fallback dual visible。
       if (SK.tryInjectNodeValueMutate?.(unit.el, translation, slots)) {
         if (_preText != null && (unit.el.textContent || '').trim() === _preText) {
-          _revertEcho(unit.el); return;
+          _revertEcho(unit.el, translation); return;
         }
         unit.el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
         unit.el.setAttribute('data-shinkansen-translated', '1');
@@ -746,7 +750,7 @@
         }
         if (plainTranslation && a35AnchorsOk && SK.tryInjectNodeValueMutate?.(unit.el, plainTranslation, [])) {
           if (_preText != null && (unit.el.textContent || '').trim() === _preText) {
-            _revertEcho(unit.el); return;
+            _revertEcho(unit.el, translation); return;
           }
           unit.el.setAttribute('data-shinkansen-nodevalue-mutated', '1');
           unit.el.setAttribute('data-shinkansen-translated', '1');
@@ -806,7 +810,7 @@
     }
 
     if (_preText != null && (el.textContent || '').trim() === _preText) {
-      _revertEcho(el); return;
+      _revertEcho(el, translation); return;
     }
     el.setAttribute('data-shinkansen-translated', '1');
     applyTargetLocaleStyling(el);
@@ -1832,6 +1836,15 @@
       const mutations = [];
       const aligned = collectA3Mutations(el, frag, mutations);
       if (!aligned) return false;
+      // v2.0.65: aligned 但 0 條 text mutation = 譯文一個字都寫不進去，不算注入成功。
+      // 結構成因：整段被單一 preservable inline（如帶 class 的 SPAN wrapper）包住時，
+      // 頂層對齊只有 inline↔inline 一對；而 collectA3Mutations 對 opaque inline 的
+      // 內部對齊失敗刻意不致命（v1.9.31 鬆綁，見該處註解）——內部不同構（模型弄壞
+      // 佔位符巢狀）時 strictMutations 收集到空陣列照樣 return true。這裡若不擋，
+      // 回 true 後 caller 的 echo 偵測看 DOM 文字沒變 → 誤判「模型 echo」→ 沖回
+      // 原文 + 標已翻，好譯文被靜默丟棄（Verge Installer 頁實例，cage MutationObserver
+      // 抓到零 characterData 寫入）。回 false 讓段落走 A3.5 flatten / dual fallback。
+      if (mutations.length === 0) return false;
       if (mutations.some(m => !m.node.isConnected)) return false;
       if (!STATE.nodeValueMutateBackup) STATE.nodeValueMutateBackup = new Map();
       if (!STATE.nodeValueMutateBackup.has(el)) {

@@ -2644,6 +2644,26 @@ async function runV198GoogleMtCacheClear(triggerLabel) {
 browser.runtime.onStartup?.addListener(() => { runV198GoogleMtCacheClear('onStartup'); });
 runV198GoogleMtCacheClear('sw-init');
 
+// v2.0.65 一次性 migration：英文段落 echo 壞快取清除。
+// Bug:isSuspectEchoTranslation 對 CJK target 只認假名/諺文字系特徵，整段英文
+// 內文被 echo（原文照抄）不觸發 → 壞 entry 寫進 tc_ 快取後，該段每次翻譯都
+// cache hit 直接吐英文，「永遠沒翻」。v2.0.65 已補「拉丁字母長內文 echo」判定
+// 擋住新增，但既有壞 entry 修法本身解不掉；快取 value 無法分辨「壞 echo」vs
+// 「合法譯文」（都是字串，無 metadata），一次性全清 tc_*（glossary 不動）。
+const V2065_ECHO_CACHE_FLAG = '__shinkansen_v2065_echo_cache_cleared';
+async function runV2065EchoCacheClear(triggerLabel) {
+  try {
+    const r = await cache.migrateClearTranslationCacheOnce(V2065_ECHO_CACHE_FLAG);
+    if (r.ranMigration) {
+      debugLog('info', 'cache', `v2.0.65 echo cache cleared (${triggerLabel})`, { cleared: r.cleared });
+    }
+  } catch (err) {
+    debugLog('warn', 'cache', 'v2.0.65 echo cache clear failed', { error: err && err.message, trigger: triggerLabel });
+  }
+}
+browser.runtime.onStartup?.addListener(() => { runV2065EchoCacheClear('onStartup'); });
+runV2065EchoCacheClear('sw-init');
+
 // 累計用量 path 合一（IndexedDB 為單一資料源）後，storage.local['usageStats'] 殘餘清掉
 browser.storage.local.remove('usageStats').catch(() => {});
 
@@ -2657,6 +2677,7 @@ browser.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
   await cache.checkVersionAndClear(currentVersion);
   await runW7CacheMigration('onInstalled');
   await runV198GoogleMtCacheClear('onInstalled');
+  await runV2065EchoCacheClear('onInstalled');
 
   // v1.6.5: CWS 自動更新到 major / minor 新版時，寫 welcomeNotice 讓使用者下次
   // 開 popup 或翻譯成功 toast 時看到「🎉 已升級至 vX.Y」+ 重大更新清單。

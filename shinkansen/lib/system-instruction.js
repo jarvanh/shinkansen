@@ -108,11 +108,32 @@ export function isValidGlossaryEntry(e) {
 // 等合法原樣保留(不含這些字系特徵)不受影響。
 // 用途:cache.setBatch 前過濾——echo 結果仍回給呼叫端顯示(跟原文一樣,顯示
 // 無差別),只是不寫快取,下次翻譯自然重試。
+//
+// v2.0.65：補「拉丁字母長內文未翻」判定。lite 級模型偶發把整段英文內文照抄
+// 回來（Verge Installer 頁實例）,CJK target 下純英文輸出不含假名/諺文特徵，
+// 舊判定放行 → 壞 entry 進快取後該段永遠 cache hit 吐英文。
+// 判定做在「譯文側」且**不要求譯文與原文字串相等**：模型 echo 時常順手動到
+// 佔位符 / 引號 / 空白（字串不等，內容照樣是沒翻的英文），等號 gate 會漏
+//（cage 實測：注入端 DOM 文字比對抓到 echo,cache 端字串相等比對放行）。
+// 門檻三條件（拉丁字母 ≥40 + 空白分詞 ≥8 + CJK 字元 ≤2）只抓「整段拉丁內文、
+// 幾乎零 CJK」的輸出：短句品牌名（Taylor Swift）、URL（無空白，分詞=1）、
+// 數字搆不到；合法譯文含大量英文引用時 CJK 字元遠超 2 也不受影響。
+// 誤判成本僅「不寫快取，下次重送」——例如整段就是一條長英文作品名 / 文獻
+// 條目、模型合法原樣保留時，該段每次翻譯都重打 API，顯示結果不受影響。
 export function isSuspectEchoTranslation(source, translation, targetLanguage) {
   if (typeof source !== 'string' || typeof translation !== 'string') return false;
   const s = source.trim();
-  if (!s || s !== translation.trim()) return false;
+  const t = translation.trim();
+  if (!s || !t) return false;
   const tl = String(targetLanguage || 'zh-TW');
+  const isCjkTarget = tl.startsWith('zh') || tl.startsWith('ja') || tl.startsWith('ko');
+  if (isCjkTarget) {
+    const tLatin = (t.match(/[A-Za-z]/g) || []).length;
+    const tWords = t.split(/\s+/).filter(Boolean).length;
+    const tCjk = (t.match(/[぀-ゟ゠-ヿ㐀-䶿一-鿿가-힣]/g) || []).length;
+    if (tLatin >= 40 && tWords >= 8 && tCjk <= 2) return true;
+  }
+  if (s !== t) return false;
   const kana = (s.match(/[ぁ-ゖァ-ヺ]/g) || []).length;
   const hangul = (s.match(/[가-힣]/g) || []).length;
   if (tl.startsWith('zh')) return kana >= 2 || hangul >= 2;

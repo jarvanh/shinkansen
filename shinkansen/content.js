@@ -210,6 +210,38 @@
       } catch (err) {
         respond({ ok: false, error: err?.message || String(err) });
       }
+    } else if (action === 'GET_CACHE_PEEK') {
+      // Debug Bridge:tc_ 快取條目內容查詢（唯讀）。detail.contains = 子字串，
+      // 掃 storage.local 所有 tc_ entry,value（譯文）或 key 含該字串的回傳
+      // {key, v, t}。診斷「壞譯文寫進快取」類 bug（例 echo 原文進快取）時，
+      // GET_CACHE_STATS 只有條數看不到內容，必須能對單條 entry 驗屍。
+      // 上限 detail.limit（預設 5）防整池 dump。
+      const _contains = String((e.detail && e.detail.contains) || '');
+      const _limit = Math.max(1, Math.min(20, (e.detail && e.detail.limit) || 5));
+      try {
+        const _storage = (typeof browser !== 'undefined' && browser.storage) || (typeof chrome !== 'undefined' && chrome.storage);
+        if (!_storage || !_storage.local || !_contains) {
+          respond({ ok: false, error: !_contains ? 'contains 必填' : 'storage.local unavailable in this context' });
+        } else {
+          _storage.local.get(null)
+            .then((all) => {
+              const hits = [];
+              for (const k of Object.keys(all)) {
+                if (!k.startsWith('tc_')) continue;
+                const entry = all[k];
+                const v = (entry && typeof entry === 'object') ? entry.v : entry; // 向下相容純字串舊格式
+                if (typeof v === 'string' && (v.includes(_contains) || k.includes(_contains))) {
+                  hits.push({ key: k, v, t: entry && entry.t });
+                  if (hits.length >= _limit) break;
+                }
+              }
+              respond({ ok: true, hits });
+            })
+            .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
+        }
+      } catch (err) {
+        respond({ ok: false, error: err?.message || String(err) });
+      }
     } else if (action === 'GET_USAGE_STATS') {
       // DEBUG(v1.10.18.x):用量統計查詢。usage-db 在背景(extension origin)的 IndexedDB,
       // content script / cage 都讀不到,故中繼給 background 的 QUERY_USAGE_STATS。
