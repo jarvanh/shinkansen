@@ -27,7 +27,7 @@ const bgErrMsg = (response) => {
   return (response && response.error) || '';
 };
 
-// 跟 content.js 共用相同 chunk size，行為一致(rate limiter / token cost / cache 命中規則一致)
+// 跟 content.js 共用相同 chunk size，行為一致(token cost / cache 命中規則一致)
 export const DOC_CHUNK_SIZE = 20;
 
 // ── batch 級輸出語言驗證（v2.0.52）──────────────────────────────

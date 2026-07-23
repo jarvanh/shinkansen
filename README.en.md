@@ -40,7 +40,6 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Translate opening only**: preview the first few paragraphs before deciding whether to translate the whole article. Saves tokens. Details in "Translate opening only" below.
 - **Full-text glossary consistency** (off by default): especially useful for long articles with many proper nouns. Automatically ensures the same name or term is translated consistently throughout. Details in "Glossary consistency" below.
 - **Translation cache + live cost report**: two-layer caching (local cache + Gemini implicit cache). After translation, the toast shows live cache hit rate and actual cost saved. Details in "Translation cache and cost calculation" below.
-- **API quota management**: Shinkansen manages your Gemini API usage in the background, so large pages don't get cut off mid-translation by Google, and you get an early warning before hitting the daily quota — no failure surprises. For most cases, picking the right Tier is all you need.
 - **Usage tracking**: every translation's token count and cost is logged, with charts and CSV export.
 - **Edit translations**: after a page is translated, you can directly edit the translated text on the page — handy for cleaning up before printing PDFs or letting Readwise Reader pick it up.
 - **Send to Instapaper**: save the whole translated article to your own Instapaper account via the Instapaper API — what gets saved is the translation you see, not the original. Unlike Instapaper's standard save (which stores the URL and lets the server re-fetch the original article), Shinkansen uploads the translated content directly, so you can re-read the translated version later.
@@ -231,7 +230,7 @@ In addition to Gemini and Google Translate, you can connect one OpenAI-compatibl
 - **Shared blocked-word list and custom glossary**: settings from those two tabs are auto-injected into the prompt end; custom models inherit them. Edit once, both engines apply.
 - **Cache partitioning**: the cache key includes a base URL hash — different endpoints with the same model name don't pollute each other
 - **API key not synced**: `customProvider.apiKey` lives only in your local browser — not synced across devices, not included in JSON export
-- **No rate limiter**: OpenRouter and friends handle quotas themselves; 429 retry-with-backoff is built in
+- **429 retry with backoff built in**: when a provider returns 429 (quota limit), requests are automatically retried with backoff
 - **Strong segment markers** (on by default): local quantized models (e.g. gemma-4 quantized) tend to mistranslate the compact `«1» «2»` segment markers as natural language ("N1, N2") and leak them into the output. With this on, multi-segment batches use `<<<SHINKANSEN_SEG-N>>>` instead — weak models don't mistranslate it. Cost: about 7 extra tokens per segment. Commercial APIs (OpenRouter / Groq, etc.) typically don't need this, but leaving it on is harmless
 
 ### Limitations
@@ -268,27 +267,9 @@ LLMs translating long articles tend to produce inconsistent renderings for the s
 
 Off by default. Recommended only for articles where precision matters (e.g., long-form journalism with many names, academic articles). Side effect: the glossary translation step bypasses some system prompt instructions — for example, if you originally configured "keep English names untranslated", enabling glossary consistency forces them to be translated. Building the glossary also costs an extra API call, increasing token usage and translation time slightly.
 
-## Gemini API rate limits reference (snapshotted 2026-04-10)
-
-### Tier 1
-
-| Model | RPM | TPM | RPD |
-|-------|-----|-----|-----|
-| Gemini 3.1 Flash Lite | 4K | 4M | 150K |
-| Gemini 3 Flash | 1K | 2M | 10K |
-| Gemini 3.5 Flash | 225 | 2M | 250 |
-
-### Tier 2
-
-| Model | RPM | TPM | RPD |
-|-------|-----|-----|-----|
-| Gemini 3.1 Flash Lite | 10K | 10M | 350K |
-| Gemini 3 Flash | 2K | 3M | 100K |
-| Gemini 3.5 Flash | 1K | 5M | 50K |
-
 ## Current version
 
-v2.0.63 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.0.64 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

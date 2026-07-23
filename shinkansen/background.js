@@ -9,14 +9,11 @@ import { translateGoogleBatch } from './lib/google-translate.js';
 import { getSettings, getSettingsCached, setSettings, cleanupLegacySyncKeys, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT, DEFAULT_DOC_SYSTEM_PROMPT, DOC_INLINE_MARKER_INSTRUCTION, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveAsrSubtitleSystemPrompt, getEffectiveDocSystemPrompt, getEffectiveGlossaryPrompt, LANG_LABELS } from './lib/storage.js';
 import { debugLog, getLogs, clearLogs, getPersistedLogs, clearPersistedLogs } from './lib/logger.js';
 import * as cache from './lib/cache.js';
-import { RateLimiter } from './lib/rate-limiter.js';
-import { getLimitsForSettings } from './lib/tier-limits.js';
 import * as usageDB from './lib/usage-db.js'; // v0.86: 用量紀錄 IndexedDB
 import { getPricingForModel } from './lib/model-pricing.js';  // v1.4.12: preset 依 model 查定價
 import { detectForbiddenTermLeaks } from './lib/forbidden-terms.js'; // v1.5.6
 import { filterEchoPairsForCache, isSuspectEchoTranslation } from './lib/system-instruction.js'; // v2.0.52: echo 快取防護
 import { checkForUpdate, markUpdateNoticeShown, localTodayKey } from './lib/update-check.js'; // v1.6.1
-import { shouldLogInit as _shouldLogRateLimitInit } from './lib/rate-limit-init-log-dedup.js'; // v1.8.60
 import { maybeWriteWelcomeNotice } from './lib/welcome-notice.js'; // v1.6.5
 import { refreshExchangeRate, getCachedRate, isCacheFresh } from './lib/exchange-rate.js'; // v1.8.41
 import { codedError } from './lib/bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
@@ -54,73 +51,6 @@ cleanupLegacySyncKeys();
 
 // v1.2.11: SUBTITLE_SYSTEM_PROMPT 已移至 lib/storage.js（DEFAULT_SUBTITLE_SYSTEM_PROMPT）
 // TRANSLATE_SUBTITLE_BATCH handler 從 ytSubtitle 設定讀取，不再使用硬碼常數。
-
-// ─── Rate Limiter（全域 singleton) ──────────────────────
-// 三維度 sliding window，同時約束 RPM / TPM / RPD。
-// 設定變更時會透過 storage.onChanged 重新套用上限。
-let limiter = null;
-
-// v1.10.46(批次 2-3):單一 in-flight promise lock(仿 _stickyHydratingPromise)。
-// 原本 module top-level fire-and-forget + handler 內 `if (!limiter) await initLimiter()`
-// 在 SW 冷啟動同時進來兩個翻譯請求時會並發跑兩次 init,各自 new RateLimiter——
-// 後完成者用空視窗覆蓋前者已記帳的 RPM/TPM sliding window,限流形同重置。
-let _limiterInitPromise = null;
-
-function initLimiter() {
-  if (_limiterInitPromise) return _limiterInitPromise;
-  _limiterInitPromise = (async () => {
-    const settings = await getSettings();
-    const limits = getLimitsForSettings(settings);
-    limiter = new RateLimiter(limits);
-    // v1.8.60: SW idle-die 每 5-25 分鐘 cold start → 此 log 在 Debug 分頁視覺上很雜。
-    // 加 24h 去重:同 limits 設定 24h 內只 log 一次;limits 變化(tier / override / model)
-    // 仍即時 log,值得記。dedup 邏輯抽到 lib/rate-limit-init-log-dedup.js 方便 unit test。
-    const payload = {
-      tier: settings.tier,
-      model: settings.geminiConfig.model,
-      rpm: limits.rpm,
-      tpm: limits.tpm,
-      rpd: limits.rpd,
-      safetyMargin: limits.safetyMargin,
-    };
-    try {
-      const { _rateLimitInitLog: prev } = await browser.storage.local.get('_rateLimitInitLog');
-      if (!_shouldLogRateLimitInit(prev, Date.now(), payload)) return;
-      await browser.storage.local.set({ _rateLimitInitLog: { payload, timestamp: Date.now() } });
-    } catch { /* storage 失敗就 fall through 寫 log,不阻 SW 啟動 */ }
-    debugLog('info', 'rate-limit', 'rate limiter initialized', payload);
-  })();
-  // 失敗別 cache:getSettings 偶發 storage 失敗時讓下次 initLimiter 重試,不永久卡死
-  _limiterInitPromise.catch(() => { _limiterInitPromise = null; });
-  return _limiterInitPromise;
-}
-initLimiter().catch(() => { /* 失敗交由下次 handler 內 initLimiter 重試 */ });
-
-browser.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync') return;
-  // 只要設定類相關欄位變動就重新套用上限
-  const relevant = ['tier', 'geminiConfig', 'safetyMargin', 'rpmOverride', 'tpmOverride', 'rpdOverride'];
-  if (relevant.some(k => k in changes)) {
-    getSettings().then(settings => {
-      const limits = getLimitsForSettings(settings);
-      if (limiter) {
-        limiter.updateLimits(limits);
-        debugLog('info', 'rate-limit', 'rate limiter limits updated', limits);
-      } else {
-        // v1.10.46(批次 2-3):走 initLimiter 的 promise lock,不直接 new——避免跟
-        // in-flight init 並發出兩顆 limiter 互相覆蓋(initLimiter 會自己重讀 settings)
-        initLimiter().catch(() => {});
-      }
-    });
-  }
-});
-
-/** 簡易 input token 估算：英文約 4 字元/token、中文約 1.5 字元/token，取中間值 3.5 偏保守。 */
-function estimateInputTokens(texts) {
-  let total = 0;
-  for (const t of texts) total += t?.length || 0;
-  return Math.ceil(total / 3.5);
-}
 
 // ─── 啟動時：版本檢查 ───────────────────
 // v1.8.45 起版本變更不再清快取，只更新標記。讓累積翻譯跨版本保留（避免每次 bump 都
@@ -751,7 +681,7 @@ const messageHandlers = {
     async: true,
     handler: async (payload, sender) => {
       // v1.2.51: 記錄 handler 收到訊息到真正呼叫 Gemini 的前置耗時
-      // 包含：getSettings() + cache lookup + rate limiter 等待
+      // 包含：getSettings() + cache lookup
       // 對照 api: translateBatch start 即可計算前置耗時
       const _tReceived = Date.now();
       const s = await getSettings();
@@ -839,7 +769,7 @@ const messageHandlers = {
       }
     },
   },
-  // v1.4.0: Google Translate 網頁翻譯（不需 API Key，不走 rate limiter，快取 key 用 _gt 後綴）
+  // v1.4.0: Google Translate 網頁翻譯（不需 API Key，快取 key 用 _gt 後綴）
   TRANSLATE_BATCH_GOOGLE: {
     async: true,
     handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt'),
@@ -850,7 +780,7 @@ const messageHandlers = {
   // 第一版以 plainText + modelOverride + glossary 為 hash 變數，跟既有網頁翻譯邏輯一致。
   //
   // payload: { texts: string[], modelOverride?: string, glossary?: [{source,target}] }
-  // 回應：{ result: string[], usage: {...}, rpdExceeded, hadMismatch }
+  // 回應：{ result: string[], usage: {...}, hadMismatch }
   TRANSLATE_DOC_BATCH: {
     async: true,
     handler: async (payload, sender) => {
@@ -913,7 +843,7 @@ const messageHandlers = {
     handler: (payload, sender) => handleTranslateGoogle(payload, sender, '_gt_drive'),
   },
   // v1.5.7: OpenAI-compatible 自訂 Provider 翻譯（chat.completions endpoint）
-  // 不走 rate limiter，cache key 加 baseUrl hash + model 分區。
+  // cache key 加 baseUrl hash + model 分區。
   TRANSLATE_BATCH_CUSTOM: {
     async: true,
     handler: (payload, sender) => handleTranslateCustom(payload, sender, '_oc'),
@@ -1183,24 +1113,6 @@ const messageHandlers = {
           resolve({ tabId: tab.id, timeout: true });
         }, 30000);
       });
-    },
-  },
-  CLEAR_RPD: {
-    async: true,
-    handler: async () => {
-      const all = await browser.storage.local.get(null);
-      const rpdKeys = Object.keys(all).filter(k => k.startsWith('rateLimit_rpd_'));
-      if (rpdKeys.length) await browser.storage.local.remove(rpdKeys);
-      if (limiter) {
-        limiter.rpdCount = 0;
-        limiter.rpdLoaded = false;
-        limiter.rpdLoadingPromise = null;
-        // v1.10.39(code review 2026-06-09 M9):清掉殘留 persist timer,避免它 30 秒後
-        // 用重置後的 rpdCount 又寫回剛被刪掉的 RPD key
-        limiter.clearRpdPersistTimer?.();
-      }
-      debugLog('info', 'rate-limit', 'RPD cleared via debug bridge', { removedKeys: rpdKeys });
-      return { removedKeys: rpdKeys };
     },
   },
   LOG_USAGE: {
@@ -1585,16 +1497,6 @@ async function handleTranslateStream(payload, sender, streamId, tabId, opts = {}
     onFirstChunk();
     for (const seg of cachedSegments) onSegment(seg.idx, seg.translation, false);
 
-    // 與 handleTranslate 對齊：streaming 請求同樣過 rate limiter(RPM/TPM 視窗記帳 +
-    // RPD 計數)。不過的話 batch 0 每頁繞過視窗統計 → batch 1+ 的節流基於低估的視窗，
-    // 免費層連續翻頁實際請求數超 cap 撞 429(translateBatchStream 明文不 retry，整批
-    // fallback 重跑 non-streaming 多等一輪);popup 顯示的 RPD 用量也每頁少計一筆。
-    if (!limiter) await initLimiter();
-    const streamAcquire = await limiter.acquire(estimateInputTokens(missingTexts), /* priority */ 1);
-    if (streamAcquire?.rpdExceeded) {
-      debugLog('warn', 'rate-limit', 'RPD exceeded (streaming batch)', { streamId });
-    }
-
     const result = await translateBatchStream(
       missingTexts,
       effectiveSettings,
@@ -1785,27 +1687,15 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
     misses: missingTexts.length,
   });
 
-  // 2. 缺的部分送 Gemini（透過 rate limiter 節流）
+  // 2. 缺的部分送 Gemini
   let fresh = [];
   let batchUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
   let batchCostUSD = 0;
   // v0.48: hoist 到 if 外面，讓後面組 return usage 能讀到
   let billedInputTokens = 0;
   let billedCostUSD = 0;
-  let acquireResult = null; // v0.90: hoist 到 if 外面，讓 return 讀得到 rpdExceeded
   let batchHadMismatch = false; // v0.94: hoist 到 if 外面，讓 return 讀得到 hadMismatch
   if (missingTexts.length) {
-    // 先過 rate limiter 取得一個 slot（RPM/TPM 硬限制；RPD 只回傳警告旗標）
-    if (!limiter) await initLimiter();
-    const estTokens = estimateInputTokens(missingTexts);
-    debugLog('info', 'rate-limit', 'acquire start', { estTokens, limiterExists: !!limiter });
-    const tAcq0 = Date.now();
-    acquireResult = await limiter.acquire(estTokens, /* priority */ 1);
-    const acquireMs = Date.now() - tAcq0;
-    if (acquireMs > 50) {
-      debugLog('info', 'rate-limit', 'rate limiter waited', { waitMs: acquireMs, estTokens });
-    }
-
     const t0 = Date.now();
     const totalChars = missingTexts.reduce((s, t) => s + (t?.length || 0), 0);
     debugLog('info', 'api', 'translateBatch start', { texts: missingTexts.length, chars: totalChars });
@@ -1926,8 +1816,6 @@ async function handleTranslate(payload, sender, geminiOverrides = {}, pricingOve
       billedCostUSD,
       cacheHits,
     },
-    // v0.90: RPD 軟性預算警告（不阻擋翻譯，只通知 content 端顯示提示）
-    rpdExceeded: acquireResult?.rpdExceeded || false,
     // v0.94: 本批翻譯是否觸發了 segment mismatch fallback
     hadMismatch: batchHadMismatch,
   };
@@ -2030,8 +1918,7 @@ async function testCustomProvider(payload) {
 }
 
 // ─── v1.5.7: OpenAI-compatible 自訂 Provider 批次處理 ─────────
-// 與 handleTranslate（Gemini）不同：bypass rate limiter（OpenRouter 等
-// provider 自己處理配額；既有 fetchWithRetry 的 429 退避已能應付），cache key
+// 與 handleTranslate（Gemini）不同：429 交由 fetchWithRetry 退避處理，cache key
 // 用 _oc base tag + baseUrl hash + safe model 分區，計價來自 customProvider 自填。
 // 與 Gemini 共用：fixedGlossary、forbiddenTerms、自動 glossary 注入、cache module。
 async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverrides = null, applyFixedGlossary = true, applyForbiddenTerms = true) {
@@ -2227,13 +2114,12 @@ async function handleTranslateCustom(payload, sender, cacheTag = '_oc', cpOverri
       ),
       cacheHits,
     },
-    rpdExceeded: false, // 不走 rate limiter
     hadMismatch: batchHadMismatch,
   };
 }
 
 // ─── v1.4.0: Google Translate 批次處理 ────────────────────────
-// 與 handleTranslate 不同：不走 rate limiter、不走術語表、費用 $0。
+// 與 handleTranslate 不同：不走術語表、費用 $0。
 // cacheSuffix：網頁翻譯用 '_gt'，字幕翻譯用 '_gt_yt'，確保快取與 Gemini 分開存放。
 // v1.8.61: targetLanguage 透傳給 translateGoogleBatch + 進 cache key,
 // zh-TW 不加 lang suffix(向下相容,既有 _gt cache 仍 hit),其他 target 加 _lang<x>。
@@ -2349,10 +2235,9 @@ async function handleExtractGlossary(payload, sender) {
     return { glossary: cached, usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, fromCache: true };
   }
 
-  // 2. v0.70: 跳過 rate limiter — 術語表是 best-effort 單次請求，
-  //    不走 limiter 避免被卡住（之前因 limiter 或 retry 導致 15 秒 timeout）。
-  //    extractGlossary 內部已改用 AbortController 自帶 20 秒 fetch timeout。
-  debugLog('info', 'glossary', 'calling Gemini (bypassing rate limiter)');
+  // 2. 術語表是 best-effort 單次請求，extractGlossary 內部用 AbortController
+  //    自帶 20 秒 fetch timeout 自保。
+  debugLog('info', 'glossary', 'calling Gemini');
 
   // P1: glossary prompt 走 getEffective(zh-TW 走原 DEFAULT,其他走 UNIVERSAL 注入後)
   // v2.0.11：EPUB 書籍模式可帶 promptSuffix（角色暱稱 / 變體收錄規則，translate-doc 頁送）。

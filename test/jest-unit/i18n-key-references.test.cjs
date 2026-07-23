@@ -72,7 +72,7 @@ describe('5-7d: JS 端 SK.t / _t 字面 key 必須存在於 zh-TW dict', () => {
   test('本批新增的 toast key 真的被 JS 引用（防 dict 加了沒接線）', () => {
     const refs = new Set(collectReferencedKeys().map((r) => r.key));
     for (const k of ['toast.done', 'toast.doneTruncated', 'toast.donePartial',
-      'toast.allCacheHit', 'toast.translateRemaining', 'toast.budgetWarningDetail',
+      'toast.allCacheHit', 'toast.translateRemaining',
       'toast.googleDone', 'toast.googleDoneTruncated', 'toast.googleFreeDetail',
       'toast.rescanPartialFailed', 'toast.rescanDone', 'toast.updateNoticeLink',
       'toast.welcomeNotice.html', 'toast.elapsedSec', 'toast.elapsedMinSec',

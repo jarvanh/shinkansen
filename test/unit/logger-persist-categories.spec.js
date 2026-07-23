@@ -61,16 +61,16 @@ test.describe('PERSIST_CATEGORIES routing', () => {
     expect(_writeCount).toBe(1);
   });
 
-  test('api / rate-limit / youtube 類仍進 yt_debug_log', async () => {
+  test('api / youtube 類仍進 yt_debug_log(rate-limit 類隨 v2.0.64 配額管理移除下架)', async () => {
     debugLog('info', 'api', 'gemini request', { segments: 11 });
-    debugLog('warn', 'rate-limit', 'acquire start', {});
+    debugLog('warn', 'rate-limit', 'acquire start', {});   // 已下架類別,不得再持久化
     debugLog('info', 'youtube', 'asr boundary', {});
 
     const logs = await getPersistedLogs();
-    expect(_writeCount).toBe(1); // 三筆同一批 flush
+    expect(_writeCount).toBe(1); // 兩筆同一批 flush
     const cats = logs.map(l => l.category);
     expect(cats).toContain('api');
-    expect(cats).toContain('rate-limit');
+    expect(cats).not.toContain('rate-limit');
     expect(cats).toContain('youtube');
   });
 

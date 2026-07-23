@@ -650,7 +650,6 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
 .log-cat-translate  { background: #e8f5e9; color: #2e7d32; }
 .log-cat-api        { background: #e3f2fd; color: #1565c0; }
 .log-cat-cache      { background: #fff3e0; color: #e65100; }
-.log-cat-rate-limit { background: #e8eaf6; color: #283593; }
 .log-cat-glossary   { background: #f3e5f5; color: #6a1b9a; }
 .log-cat-spa        { background: #e0f7fa; color: #00695c; }
 .log-cat-system     { background: #f5f5f5; color: #616161; }
@@ -660,6 +659,9 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
 .log-lvl-info  { color: #1565c0; }
 .log-lvl-warn  { color: #e65100; }
 .log-lvl-error { color: #c62828; }
+
+/* v2.0.64:模型清單警示(實測不建議用於翻譯)——picker option 與計價列共用 */
+.model-warn, select option.model-warn { color: #c62828; }
 
 /* 訊息 */
 .log-msg-text {

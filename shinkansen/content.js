@@ -78,8 +78,6 @@
       } else {
         respond({ ok: false, error: 'not translated' });
       }
-    } else if (action === 'CLEAR_RPD') {
-      forwardToBackground('CLEAR_RPD');
     } else if (action === 'GET_PERSISTED_LOGS') {
       // v1.2.52: 讀取跨 service worker 重啟仍保留的持久化 log
       forwardToBackground('GET_PERSISTED_LOGS');
@@ -584,7 +582,6 @@
       firstBatchActualChars: jobs[0]?.chars || 0,
     });
     const failures = [];
-    let rpdWarning = false;
     let hadAnyMismatch = false;
 
     const t0All = Date.now();
@@ -620,7 +617,6 @@
           pageUsage.billedCostUSD += response.usage.billedCostUSD || 0;
           pageUsage.cacheHits += response.usage.cacheHits || 0;
         }
-        if (response.rpdExceeded) rpdWarning = true;
         if (response.hadMismatch) hadAnyMismatch = true;
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
         // v1.8.39: dedup broadcast — 同一份譯文 broadcast 到所有 dup 原始位置，
@@ -979,7 +975,7 @@
 
     SK.sendLog('info', 'translate', 'translateUnits complete', { elapsed: Date.now() - t0All, done, total, failures: failures.length });
 
-    return { done, total, failures, pageUsage, rpdWarning };
+    return { done, total, failures, pageUsage };
   };
 
   // ─── Google Docs 偵測 ────────────────────────────────
@@ -1336,7 +1332,7 @@
 
     try {
       SK.sendLog('info', 'translate', 'milestone:before_translate_units', { t: Date.now() - entryTime });
-      const { done, failures, pageUsage, rpdWarning } = await SK.translateUnits(units, {
+      const { done, failures, pageUsage } = await SK.translateUnits(units, {
         glossary,
         signal: abortSignal,
         modelOverride: options.modelOverride || null,
@@ -1506,15 +1502,6 @@
             model: options.modelOverride || null,
           },
         }).catch(() => {});
-      }
-
-      if (rpdWarning) {
-        setTimeout(() => {
-          SK.showToast('error', SK.t('toast.budgetWarning'), {
-            detail: SK.t('toast.budgetWarningDetail'),
-            autoHideMs: 6000,
-          });
-        }, 1500);
       }
 
       scheduleRescanForLateContent();
@@ -1818,7 +1805,7 @@
   // 避免「首翻用 Google MT / openai-compat,rescan 卻 fallback 到預設 Gemini」這類 drift
   // (對應 CLAUDE.md 全域 §5 單一資料源原則)。
 
-  // 增量翻譯路徑:回傳 { done, total, failures, pageUsage?, rpdWarning? }。
+  // 增量翻譯路徑:回傳 { done, total, failures, pageUsage? }。
   // v1.9.8: Google MT 路徑改回 pageUsage: { cacheHits },讓 pickRescanToast 能
   // 正確判別「純 cache hit 應 silent」。先前回 null 讓 SPA rescan 每次撈 cache
   // 都跳「已翻譯 N 段新內容」success toast,在 X / Threads 等不斷 lazy-load 的
@@ -1838,7 +1825,7 @@
     }
     if (ctx.provider === 'google') {
       const r = await SK.translateUnitsGoogle(units, opts);
-      return { ...r, pageUsage: { cacheHits: r.cacheHits || 0 }, rpdWarning: null };
+      return { ...r, pageUsage: { cacheHits: r.cacheHits || 0 } };
     }
     // gemini / openai-compat 共用 SK.translateUnits,以 engine 欄位區分。
     return SK.translateUnits(units, {

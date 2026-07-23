@@ -69,9 +69,15 @@ test.describe('youtube-status-visible-asr-mode', () => {
     // 等 stylesheet 注入完
     await page.waitForFunction(() => !!document.getElementById('shinkansen-asr-hide-css'), null, { timeout: 5000 });
 
-    // 手動建一個 status element(模擬 showCaptionStatus 的 appendChild,不依賴翻譯流程觸發)
-    // + 加一個 .caption-window(模擬 YouTube 原生 CC 容器)以驗它仍被藏
-    await evaluate(`
+    // 手動建 status element(模擬 showCaptionStatus 的 appendChild,不依賴翻譯流程觸發)
+    // + 加一個 .caption-window(模擬 YouTube 原生 CC 容器)以驗它仍被藏。
+    // 2026-07-23:建立與量測必須在**同一個 evaluate**(同一個 JS turn)內完成——
+    // 上面派發的 captionsXHR 會真的啟動 ASR 翻譯 pipeline,無 API key 時 chunk 全
+    // 失敗的非同步路徑會呼叫 hideCaptionStatus() 把同 id 元素收掉;拆成兩個 evaluate
+    // 時失敗路徑落在中間空檔就 flake(v2.0.64 移除 rate limiter 等待後空檔變窄更常中)。
+    // 本 spec 驗的是「stylesheet 不得藏 status」,不驗 status 的生滅時序,同 turn
+    // 建立+量測不受 pipeline 時序影響。
+    const result = await evaluate(`
       (() => {
         const container = document.querySelector('.ytp-caption-window-container');
         if (!container) throw new Error('caption-window-container not found');
@@ -81,8 +87,9 @@ test.describe('youtube-status-visible-asr-mode', () => {
           cw.textContent = 'native English CC';
           container.appendChild(cw);
         }
-        if (!document.getElementById('__sk-yt-caption-status')) {
-          const el = document.createElement('div');
+        let el = document.getElementById('__sk-yt-caption-status');
+        if (!el) {
+          el = document.createElement('div');
           el.id = '__sk-yt-caption-status';
           el.textContent = '翻譯中…';
           // 模擬 showCaptionStatus 內 inline style(不含 visibility,讓 stylesheet 主導)
@@ -94,14 +101,6 @@ test.describe('youtube-status-visible-asr-mode', () => {
           });
           container.appendChild(el);
         }
-      })()
-    `);
-
-    // 驗祖先鏈沒有 opacity:0 / visibility:hidden(否則子樹 visual rendering 整個 fade 掉)
-    // 同時驗 .caption-window(native CC 真容器)仍必 hidden,確保藏 native CC 不退化
-    const result = await evaluate(`
-      (() => {
-        const el = document.getElementById('__sk-yt-caption-status');
         if (!el) return { found: false };
         const ancestors = [];
         let cur = el;

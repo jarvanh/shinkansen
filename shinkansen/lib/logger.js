@@ -1,7 +1,7 @@
 // logger.js — Shinkansen 統一 Log 系統（v0.88 重構）
 //
 // 所有 log 一律寫入記憶體 buffer（上限 1000 筆）。
-// 效能相關分類（youtube / api / rate-limit）同時非同步寫入
+// 效能相關分類（youtube / api / translate）同時非同步寫入
 // browser.storage.local（key: yt_debug_log，上限 100 筆），
 // 確保 service worker 重啟後仍可回查這些記錄。
 //
@@ -12,7 +12,6 @@
 //   translate  — 翻譯流程（段落偵測、分批、注入）
 //   api        — Gemini API 請求/回應
 //   cache      — 快取命中/淘汰/配額
-//   rate-limit — Rate limiter 配額/等待
 //   glossary   — 術語表擷取
 //   spa        — SPA 偵測/rescan/observer
 //   system     — Extension 啟動/版本/設定變更/badge
@@ -34,14 +33,14 @@ let logSeq = 0;
 // translate（v1.8.56 加入）：翻譯主流程的 main flow start / batch start / batch done /
 // stream firstChunkOrTimeout 等 log。原本只在記憶體 buffer 1000 筆環形保留，SW idle 重啟
 // 就丟失，使用者翻完文章切走幾分鐘回來看 Log 分頁就空白（上一輪 v1.8.55 撈 yt_debug_log
-// 只看到 api / rate-limit，看不出哪一篇文章 / 哪一次觸發，診斷盲區明顯）。加入後 persisted
+// 只看到 api，看不出哪一篇文章 / 哪一次觸發，診斷盲區明顯）。加入後 persisted
 // 會包含這些訊號，代價是更頻繁 storage write（每筆 translate log 都進 _persistQueue）。
-const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'rate-limit', 'translate']);
+const PERSIST_CATEGORIES = new Set(['youtube', 'api', 'translate']);
 const PERSIST_KEY = 'yt_debug_log';
 const PERSIST_MAX = 100;
 
 // v1.8.20: 序列化寫入避免平行 read-modify-write race(promise chain 排隊)。
-// 2026-07-08: 加 debounce 批次 flush——翻譯熱路徑每批產多筆 translate/api/rate-limit
+// 2026-07-08: 加 debounce 批次 flush——翻譯熱路徑每批產多筆 translate/api
 // log，原本每筆都是「get 整包 100 筆陣列 → push → set 整包寫回」，一分鐘內上百次
 // 全陣列重寫(每次 set 還 fire storage.onChanged 到所有 context)。改記憶體累積
 // 300ms 統一 flush 一次(一次 get + 一次 set 寫入全部 pending)。SW 被殺時最後一批
@@ -101,7 +100,7 @@ export async function clearPersistedLogs() {
  * 寫入一筆 log。不管 debugLog 開關都會進 buffer。
  *
  * @param {string} level   'info' | 'warn' | 'error'
- * @param {string} category 分類 key（translate / api / cache / rate-limit / glossary / spa / system）
+ * @param {string} category 分類 key（translate / api / cache / glossary / spa / system）
  * @param {string} message  摘要訊息
  * @param {object} [data]   結構化附加資料
  */

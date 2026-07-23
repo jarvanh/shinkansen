@@ -3,7 +3,6 @@
 
 import { browser } from '../lib/compat.js';
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault } from '../lib/storage.js';
-import { TIER_LIMITS } from '../lib/tier-limits.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
 import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js'; // v1.6.5
 import { IS_MAS_BUILD, IS_IOS_BUILD } from '../lib/distribution.js';
@@ -39,26 +38,6 @@ function getSelectedModel() {
 // 原本是「全域 model dropdown 切換時自動帶入參考價到後備路徑單價」的便利功能，
 // model dropdown 移除後不再有觸發點；且 v1.6.14 已加 per-model override 表
 // 取代「自動帶價」的 UX 功能。後備路徑單價現在純由使用者填，不自動連動 service tier。
-
-function applyTierToInputs(tier, model) {
-  const rpmEl = $('rpm');
-  const tpmEl = $('tpm');
-  const rpdEl = $('rpd');
-  if (tier === 'custom') {
-    rpmEl.readOnly = false;
-    tpmEl.readOnly = false;
-    rpdEl.readOnly = false;
-    return;
-  }
-  rpmEl.readOnly = true;
-  tpmEl.readOnly = true;
-  rpdEl.readOnly = true;
-  const table = TIER_LIMITS[tier] || {};
-  const limits = table[model] || { rpm: 60, tpm: 1000000, rpd: 1000 };
-  rpmEl.value = limits.rpm;
-  tpmEl.value = limits.tpm;
-  rpdEl.value = limits.rpd === Infinity ? _t('common.unlimited') : limits.rpd;
-}
 
 const $ = (id) => document.getElementById(id);
 
@@ -118,19 +97,16 @@ async function load() {
   fillOverride('override-flash-input', 'gemini-3-flash-preview', 'inputPerMTok');
   fillOverride('override-flash-output','gemini-3-flash-preview', 'outputPerMTok');
   fillOverrideDiscount('override-flash-discount', 'gemini-3-flash-preview');
-  fillOverride('override-pro-input',   'gemini-3.5-flash', 'inputPerMTok');
-  fillOverride('override-pro-output',  'gemini-3.5-flash', 'outputPerMTok');
-  fillOverrideDiscount('override-pro-discount', 'gemini-3.5-flash');
+  fillOverride('override-lite35-input',  'gemini-3.5-flash-lite', 'inputPerMTok');
+  fillOverride('override-lite35-output', 'gemini-3.5-flash-lite', 'outputPerMTok');
+  fillOverrideDiscount('override-lite35-discount', 'gemini-3.5-flash-lite');
+  fillOverride('override-pro-input',   'gemini-3.6-flash', 'inputPerMTok');
+  fillOverride('override-pro-output',  'gemini-3.6-flash', 'outputPerMTok');
+  fillOverrideDiscount('override-pro-discount', 'gemini-3.6-flash');
   $('whitelist').value = (s.domainRules.whitelist || []).join('\n');
   $('debugLog').checked = s.debugLog;
 
-  // 效能與配額
-  $('tier').value = s.tier || 'tier1';
-  applyTierToInputs($('tier').value, s.geminiConfig.model);
-  // 若有 override 則把 override 填進去覆蓋 tier 預設
-  if (s.rpmOverride) $('rpm').value = s.rpmOverride;
-  if (s.tpmOverride) $('tpm').value = s.tpmOverride;
-  if (s.rpdOverride) $('rpd').value = s.rpdOverride;
+  // 效能
   // v1.6.19: 統一用 ?? 不用 || ——使用者輸入 0(batch size 等）是合法
   // 設定意圖，|| 會把 0 當 falsy 默默改回預設值，造成 UI 「我設了 0 卻看到 10%」。
   // v1.8.19: 安全邊際從 UI 移除，程式碼內部維持 storage default 0.1 即可
@@ -981,7 +957,6 @@ async function _saveImpl() {
       whitelist: $('whitelist').value.split('\n').map(s => s.trim()).filter(Boolean),
     },
     debugLog: $('debugLog').checked,
-    tier: $('tier').value,
     // v1.6.19: 改用 parseUserNum——空字串/非法字元走 default，合法數字（含 0）保留。
     // 沿用 `|| default` 會把使用者明確打的 0 一律當 falsy 改回預設，造成 UI 不一致。
     // v1.8.19: safetyMargin 從 UI 移除，save() 不再寫，維持 storage 既有值（0.1)
@@ -997,10 +972,6 @@ async function _saveImpl() {
       enabled: $('partialModeEnabled').checked,
       maxUnits: parseUserNum($('partialModeMaxUnits').value, DEFAULTS.partialMode.maxUnits),
     },
-    // 只有 custom tier 才寫入 override（其他 tier 的數字從對照表讀，不存）
-    rpmOverride: $('tier').value === 'custom' ? (Number($('rpm').value) || null) : null,
-    tpmOverride: $('tier').value === 'custom' ? (Number($('tpm').value) || null) : null,
-    rpdOverride: $('tier').value === 'custom' ? (Number($('rpd').value) || null) : null,
     // v0.69: 術語表一致化
     glossary: {
       enabled: $('glossaryEnabled').checked,
@@ -1124,8 +1095,9 @@ async function _saveImpl() {
       };
       const rows = [
         collect('gemini-3.1-flash-lite', 'override-lite-input',  'override-lite-output',  'override-lite-discount'),
+        collect('gemini-3.5-flash-lite', 'override-lite35-input', 'override-lite35-output', 'override-lite35-discount'),
         collect('gemini-3-flash-preview',         'override-flash-input', 'override-flash-output', 'override-flash-discount'),
-        collect('gemini-3.5-flash',         'override-pro-input',   'override-pro-output',   'override-pro-discount'),
+        collect('gemini-3.6-flash',         'override-pro-input',   'override-pro-output',   'override-pro-discount'),
       ].filter(Boolean);
       const out = {};
       for (const r of rows) {
@@ -1412,10 +1384,6 @@ $('gemini-reset-all')?.addEventListener('click', () => {
     const el = $(id);
     if (el) el.value = '';
   }
-  // 配額（先填 tier 觸發 RPM/TPM/RPD readonly 帶值，再清掉 override）
-  $('tier').value = D.tier;
-  applyTierToInputs(D.tier, D.geminiConfig.model);
-  // v1.8.19: safetyMargin UI 已移除，reset 不再 touch
   $('maxRetries').value = D.maxRetries;
   // 效能
   $('maxConcurrentBatches').value = D.maxConcurrentBatches;
@@ -1707,14 +1675,6 @@ $('instapaper-unlink')?.addEventListener('click', async () => {
   if (resultEl) resultEl.hidden = true;
 });
 
-// Tier 變更 → 自動更新 RPM/TPM/RPD 顯示
-// v1.6.15: 全域 model dropdown 已移除，Service Tier 已搬到 LLM 參數微調 section。
-// applyModelPricing(model) 在這裡也失去意義（model 不再從 UI 變，計價走 v1.6.14 per-model
-// override 表；Service Tier 影響的是內建表 multiplier，但「後備路徑單價」不再隨 tier 變）。
-$('tier').addEventListener('change', () => {
-  applyTierToInputs($('tier').value, getSelectedModel());
-});
-// v1.8.19: safetyMargin slider UI 已移除，程式碼內部維持 storage default 0.1
 $('toastOpacity').addEventListener('input', () => {
   _renderToastOpacityLabel($('toastOpacity').value);
 });
@@ -1814,16 +1774,11 @@ function sanitizeImport(raw) {
   const topRules = {
     autoTranslate:       { type: 'boolean' },
     debugLog:            { type: 'boolean' },
-    tier:                { type: 'string', oneOf: ['free', 'tier1', 'tier2', 'custom'] },
-    safetyMargin:        { type: 'number', min: 0, max: 0.5 },
     maxRetries:          { type: 'number', min: 0, max: 10, int: true },
     maxConcurrentBatches:{ type: 'number', min: 1, max: 50, int: true },
     maxUnitsPerBatch:    { type: 'number', min: 1, max: 100, int: true },
     maxCharsPerBatch:    { type: 'number', min: 500, max: 20000, int: true },
     maxTranslateUnits:   { type: 'number', min: 0, max: 10000, int: true },
-    rpmOverride:         { type: 'number', min: 1, nullable: true },
-    tpmOverride:         { type: 'number', min: 1, nullable: true },
-    rpdOverride:         { type: 'number', min: 1, nullable: true },
     toastAutoHide:       { type: 'boolean' },
     popupButtonSlot:     { type: 'number', min: 1, max: 3, int: true }, // v1.6.6
     autoTranslateSlot:   { type: 'number', min: 1, max: 3, int: true }, // v1.6.13
@@ -3154,7 +3109,6 @@ const LOG_CAT_LABELS = {
   translate:   'translate',
   api:         'api',
   cache:       'cache',
-  'rate-limit':'rate-limit',
   glossary:    'glossary',
   spa:         'spa',
   system:      'system',

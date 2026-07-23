@@ -108,8 +108,35 @@ export function parseGeminiUsage(meta) {
  * @returns {object} 要 spread 進 generationConfig 的欄位(G3 為空物件)
  */
 export function buildSamplingFields(model, { topP, topK } = {}) {
+  if (modelDropsSamplingParams(model)) return {};
   if (/gemini-3/i.test(String(model || ''))) return {};
   return { topP, topK };
+}
+
+/**
+ * v2.0.64:Gemini 3.6 Flash / 3.5 Flash-Lite 起官方淘汰 temperature / top_p / top_k
+ * 取樣參數(目前被忽略,日後模型送了直接回 HTTP 400;官方指示「從所有要求中移除」),
+ * 確定性需求改由 systemInstruction 明確規則承擔。
+ * 判定:版本號 ≥ 3.6,或 3.5-flash-lite(此代起點;同版號的 gemini-3.5-flash 屬前代
+ * 不在列)。版本解析對使用者自填的未來模型 ID(gemini-4-* 等)也命中,future-proof。
+ */
+export function modelDropsSamplingParams(model) {
+  const m = String(model || '');
+  if (/gemini-3\.5-flash-lite/i.test(m)) return true;
+  const ver = m.match(/gemini-(\d+)(?:\.(\d+))?/i);
+  if (!ver) return false;
+  const major = Number(ver[1]);
+  const minor = Number(ver[2] || 0);
+  return major > 3 || (major === 3 && minor >= 6);
+}
+
+/**
+ * temperature 欄位的模型 gating(與 buildSamplingFields 同哲學):淘汰取樣參數的
+ * 模型回空物件,其餘照送。呼叫端用 spread 寫進 generationConfig。
+ */
+export function buildTemperatureField(model, temperature) {
+  if (modelDropsSamplingParams(model)) return {};
+  return { temperature };
 }
 
 /**
@@ -301,7 +328,8 @@ export async function extractGlossary(compressedText, settings) {
     contents: [{ role: 'user', parts: [{ text: compressedText }] }],
     systemInstruction: { parts: [{ text: glossaryPrompt }] },
     generationConfig: {
-      temperature: glossaryTemperature,
+      // v2.0.64:temperature 依模型 gating(3.6+/3.5-flash-lite 淘汰,見 buildTemperatureField)。
+      ...buildTemperatureField(model, glossaryTemperature),
       // v1.10.18:Gemini 3 不送 topP/topK(見 buildSamplingFields)。
       ...buildSamplingFields(model, { topP, topK }),
       maxOutputTokens: glossaryMaxOutput,
@@ -478,7 +506,7 @@ export async function extractTermRenderings(items, settings) {
     contents: [{ role: 'user', parts: [{ text: userText }] }],
     systemInstruction: { parts: [{ text: SCAN_RENDERINGS_PROMPT }] },
     generationConfig: {
-      temperature: glossaryConfig?.temperature ?? 1.0,
+      ...buildTemperatureField(model, glossaryConfig?.temperature ?? 1.0),
       ...buildSamplingFields(model, { topP: geminiConfig.topP, topK: geminiConfig.topK }),
       maxOutputTokens: Math.max(geminiConfig.maxOutputTokens || 0, 4096),
       thinkingConfig: pickThinkingConfig(model),
@@ -597,7 +625,7 @@ export async function summarizeArticle({ text, targetLangLabel, apiKey, model, s
     contents: [{ role: 'user', parts: [{ text: input }] }],
     systemInstruction: { parts: [{ text: systemInstruction }] },
     generationConfig: {
-      temperature: 1.0,
+      ...buildTemperatureField(model, 1.0),
       // Gemini 3 不送 topP/topK(見 buildSamplingFields)。
       ...buildSamplingFields(model),
       maxOutputTokens: 1024,
@@ -756,7 +784,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     contents: [{ role: 'user', parts: [{ text: joined }] }],
     systemInstruction: { parts: [{ text: effectiveSystem }] },
     generationConfig: {
-      temperature,
+      ...buildTemperatureField(model, temperature),
       // v1.10.18:Gemini 3 不送 topP/topK(見 buildSamplingFields)。
       ...buildSamplingFields(model, { topP, topK }),
       maxOutputTokens,
@@ -990,7 +1018,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
     contents: [{ role: 'user', parts: [{ text: joined }] }],
     systemInstruction: { parts: [{ text: effectiveSystem }] },
     generationConfig: {
-      temperature,
+      ...buildTemperatureField(model, temperature),
       // v1.10.18:Gemini 3 不送 topP/topK(見 buildSamplingFields)。
       ...buildSamplingFields(model, { topP, topK }),
       maxOutputTokens,

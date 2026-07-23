@@ -629,21 +629,11 @@ export const DEFAULT_SETTINGS = {
     // 預設 100 = 跟隨各平台原生字幕大小（桌面零改變）。設定在 popup,只在 YouTube 影片頁顯示。
     captionScale: 100,
   },
-  // v0.35 新增：並行翻譯 rate limiter 設定
-  // tier 對應 Gemini API 付費層級（free / tier1 / tier2)，決定 RPM/TPM/RPD 上限
-  // override 欄位若為 null 則使用 tier 對照表的值，非 null 時覆寫
-  tier: 'tier1',
-  safetyMargin: 0.1,
+  // 失敗重試次數(429 / 網路錯誤時 fetchWithRetry 的退避重試上限)
   maxRetries: 3,
-  rpmOverride: null,
-  tpmOverride: null,
-  rpdOverride: null,
-  // 每個 tab 同時最多飛出幾個翻譯批次（content.js 側的並發上限，與 limiter 雙重保險）
-  // v1.9.27: 10 → 30。Gemini tier1 1000 RPM (~16 RPS) 下 30 並行 safe；
-  // 對 free tier (60 RPM) 使用者建議在 options 降到 5-10,但 limiter 本身會
-  // throttle 不會真的瞬間爆 burst。長頁 (段落數 > 10) 初翻 latency 明顯下降。
-  // 對齊業界 reference (Immersive Translate default concurrency 200,但用非 LLM
-  // service 無 RPM 限制；Shinkansen 走 LLM 受 RPM 限制,30 是 Gemini tier1 sweet spot)。
+  // 每個 tab 同時最多飛出幾個翻譯批次(content.js 側的並發上限)。
+  // v1.9.27: 10 → 30。付費層 Gemini 下 30 並行 safe;免費層使用者遇 429 可在
+  // options 降到 5-10。長頁(段落數 > 10)初翻 latency 明顯下降。
   maxConcurrentBatches: 30,
   // v1.0.2: 每批段數上限與字元預算，使用者可在設定頁自行調整。
   // 段數上限：避免單批 placeholder slot 過多導致 LLM 對齊失準。
@@ -815,6 +805,11 @@ const CUSTOM_PROVIDER_API_KEY = 'customProviderApiKey';
 const LEGACY_SYNC_KEYS = [
   'ytPreserveLineBreaks',  // v1.2.38 移除（YouTube 字幕保留換行，改為永遠 true)
   'preserveLineBreaks',    // 同上（全頁翻譯版本，更早期）
+  'tier',                  // v2.0.64 移除（API 配額管理整項功能下架）
+  'safetyMargin',          // 同上
+  'rpmOverride',           // 同上
+  'tpmOverride',           // 同上
+  'rpdOverride',           // 同上
 ];
 
 let _legacyCleanupDone = false;
@@ -827,6 +822,10 @@ export async function cleanupLegacySyncKeys() {
     if (present.length > 0) {
       await browser.storage.sync.remove(present);
     }
+    // v2.0.64:配額管理下架的 local 殘留(rate limiter init log 去重標記)。
+    // rateLimit_rpd_<YYYYMMDD> 歷史計數 key 需 get(null) 全掃才列得出來,
+    // 為避免把整個快取池拉進記憶體,留作無害殘留不清。
+    await browser.storage.local.remove('_rateLimitInitLog');
   } catch {
     // 失敗不影響主流程
     _legacyCleanupDone = false;
@@ -854,9 +853,24 @@ async function migrateApiKeyIfNeeded(syncSaved) {
 export const GEMINI_FLASH_LITE_OLD_ID = 'gemini-3.1-flash-lite-preview';
 export const GEMINI_FLASH_LITE_NEW_ID = 'gemini-3.1-flash-lite';
 export async function migrateGeminiFlashLiteModelIfNeeded(syncSaved) {
+  return _migrateGeminiModelId(syncSaved, GEMINI_FLASH_LITE_OLD_ID, GEMINI_FLASH_LITE_NEW_ID);
+}
+
+// 一次性遷移(v2.0.64):gemini-3.5-flash 自模型清單下架(由同價位帶的
+// gemini-3.6-flash 接替,$1.50 input 同級、output $9.00 → $7.50 更便宜)。
+// 存了舊 ID 的使用者設定改寫成 3.6-flash,避免 dropdown 選不到 / pricing 查不到。
+// 精確字串比對,不會誤傷 gemini-3.5-flash-lite(新增模型,非下架對象)。
+export const GEMINI_35_FLASH_OLD_ID = 'gemini-3.5-flash';
+export const GEMINI_35_FLASH_NEW_ID = 'gemini-3.6-flash';
+export async function migrateGemini35FlashModelIfNeeded(syncSaved) {
+  return _migrateGeminiModelId(syncSaved, GEMINI_35_FLASH_OLD_ID, GEMINI_35_FLASH_NEW_ID);
+}
+
+// 共用實作:掃 saved 設定裡所有可能存模型 ID 的欄位(geminiConfig.model /
+// glossary.model / ytSubtitle.model / translatePresets[*].model /
+// modelPricingOverrides key)把 OLD 改寫成 NEW 後 storage.sync.set 寫回。
+async function _migrateGeminiModelId(syncSaved, OLD, NEW) {
   if (!syncSaved) return;
-  const OLD = GEMINI_FLASH_LITE_OLD_ID;
-  const NEW = GEMINI_FLASH_LITE_NEW_ID;
   const patch = {};
 
   if (syncSaved.geminiConfig && syncSaved.geminiConfig.model === OLD) {
@@ -936,6 +950,7 @@ export async function getSettings() {
   const saved = await browser.storage.sync.get(null);
   await migrateApiKeyIfNeeded(saved);
   await migrateGeminiFlashLiteModelIfNeeded(saved);
+  await migrateGemini35FlashModelIfNeeded(saved);
   // 從 local 讀 apiKey（v0.62 起的正規位置）
   const { [API_KEY_STORAGE_KEY]: apiKey = '' } = await browser.storage.local.get(API_KEY_STORAGE_KEY);
   // P1: 先決定 targetLanguage,後面 forbiddenTerms 預設依此分歧。

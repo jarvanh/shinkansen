@@ -1470,7 +1470,7 @@ test('翻譯設定：每批段數生效 / Google preset 禁選 / 換模型重算
       translateDoc: { batchSize: 2 },
       translatePresets: [
         { slot: 1, engine: 'gemini', model: 'gemini-3.1-flash-lite', label: 'lite' },
-        { slot: 2, engine: 'gemini', model: 'gemini-3.5-flash', label: 'flash' },
+        { slot: 2, engine: 'gemini', model: 'gemini-3.6-flash', label: 'flash' },
         { slot: 3, engine: 'google', label: 'gt' },
       ],
     }),
@@ -1514,7 +1514,7 @@ test('翻譯設定：每批段數生效 / Google preset 禁選 / 換模型重算
   await page.locator('#settings-epub-paragraph-spacing').check();
 
   // PRESET_DISPLAY 顯示順序 slot 2 排最前（主要預設）→ nth(0) 才是 slot 2
-  await rows3.nth(0).click(); // 選 slot 2（gemini-3.5-flash）
+  await rows3.nth(0).click(); // 選 slot 2（gemini-3.6-flash）
   await page.click('#translate-settings-save-btn');
   await page.waitForTimeout(400);
   const costAfter = await page.locator('.chapter-row').nth(3).locator('.chapter-cost').textContent();
