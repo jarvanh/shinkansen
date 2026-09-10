@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.12
+- 目前 Extension 版本：2.4.13
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.12 為止）
+### 2.1 已實作（v2.4.13 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -42,7 +42,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 雙語對照模式 | ✅ | 譯文以 wrapper 形式附在原段落後；4 種視覺標記；顯示模式同時決定字幕雙語與否 |
 | YouTube 字幕翻譯 | ✅ | 自動偵測字幕即時翻譯；ASR（自動字幕）AI 分句；時間視窗批次；雙語 overlay；字幕大小與顏色跟隨原生設定；行動版 `m.youtube.com` 支援；`/watch` 與 `/live/<id>`（直播 / 直播存檔分享連結）路徑皆支援 |
 | SPA 支援 | ✅ | 站內導航自動偵測；動態載入內容補翻；譯文防覆蓋保護；續翻模式 |
-| 段落偵測 | ✅ | 結構化 DOM walker；技術性排除（code / 表單 / 站底 footer）；內容品味判斷交給 system prompt |
+| 段落偵測 | ✅ | 結構化 DOM walker；技術性排除（code / 表單 / 站底 footer）；尊重頁面宣告的 `translate="no"` / `notranslate` 與 icon 字型；內容品味判斷交給 system prompt |
 | 佔位符序列化 | ✅ | 行內元素（連結 / 粗斜體等）與媒體在譯文中完整保留 |
 | 並行翻譯 | ✅ | 併發批次池（`maxConcurrentBatches`）；429 退避重試 |
 | 自動術語擷取 | ✅ | 預翻前擷取全文專有名詞對照表；長度三級策略；術語快取 |
@@ -272,6 +272,8 @@ single 模式譯文**一律注入回原 element**（不做 sibling overlay——
 
 - **納入**：常見文字 block 元素（段落 / 標題 / 列表 / 引用 / 表格格 / 圖說等）與偵測為段落的 inline 結構
 - **技術性排除**：script / style / 程式碼區塊（含語法高亮 `<pre>`）/ 表單控制項 / 站底 footer（無文章祖先時）/ ARIA search 等；`<nav>` 不硬排除（交給 prompt）
+- **頁面作者宣告的不翻譯訊號**：HTML 標準 `translate="no"` 屬性與 `notranslate` class（Google Translate 慣例）整顆跳過，`translate="yes"` 可在其中重新開放；段落內 inline 的同類元素（人名、代號）原樣保留不送翻譯。掛在 `<html>` / `<body>` 或涵蓋頁面大半文字的 app root 上的文件級宣告不採信（那是 SPA 避開 Google Translate 改 DOM 的 workaround，不代表內容不可翻）
+- **icon 字型 ligature**：以文字當 icon 名的元素（computed font-family 為 icon / symbol 類字型、內容為單一識別字 token，如 Material Icons 的 `star`）不翻譯也不送翻譯，避免 icon 變成中文字
 - **可見性**：隱藏元素與 a11y visually-hidden 元素不收
 - 特定站點結構補抓 selector、mixed-content fragment 切分、BUTTON 長文放行等細節見 SPEC-PRIVATE §32
 

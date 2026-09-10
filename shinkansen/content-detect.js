@@ -393,20 +393,58 @@
   // 重複呼叫，實測同一個祖先鏈會被走過數百次。Map<el, bool> 把每個祖先
   // 第一次計算後的結果記下，後續任何後代命中即 O(1) 短路。memo 為純函式
   // 結果緩存（DOM 在單次 collectParagraphs 內不變動），語意完全等價。
+  // v2.4.13: 「文件級」notranslate 宣告不採信。SPA 常把 notranslate / translate="no"
+  // 掛在 app root（<div id="app" class="notranslate">）以避開 Google Translate 改 DOM
+  // 造成的 framework 崩潰，這不是「內容不可翻」的意思；採信會讓整站翻不到。
+  // 判準：被標記的容器文字量佔 body 一半以上 = 文件級 wrapper。葉節點 / 小容器
+  //（人名 span、icon、一小段 notranslate 區塊）不會達標，照常排除。
+  // body 文字長度快取 1 秒：同一輪 collectParagraphs 內多個標記容器共用，不重算。
+  let _bodyTextLenCache = { t: 0, len: 0 };
+  function isDocumentLevelNoTranslate(el) {
+    if (!el.children || el.children.length === 0) return false;
+    const now = Date.now();
+    if (now - _bodyTextLenCache.t > 1000) {
+      _bodyTextLenCache = { t: now, len: (document.body?.textContent || '').length };
+    }
+    const bodyLen = _bodyTextLenCache.len;
+    if (bodyLen === 0) return false;
+    return (el.textContent || '').length * 2 >= bodyLen;
+  }
+
   function isInsideExcludedContainer(el, memo) {
     if (memo && memo.has(el)) return memo.get(el);
 
     const visited = [];
     let cur = el;
     let result = false;
+    // v2.4.13: translate="yes" 依 HTML 規範可在 translate="no" 祖先內重新開放翻譯。
+    // 走到 yes 之後，更上層的 no 標記不再採信；yesIdx 記下 yes 元素在 visited 的
+    // 位置，memo 只快取 yes 元素（含）以下的節點——yes 以上的祖先對「不在 yes 內
+    // 的其他後代」結論不同，不能拿這條路徑的結果去快取
+    let yesIdx = -1;
     while (cur && cur !== document.body) {
-      if (memo && memo.has(cur)) {
+      // 走過 translate="yes" 之後不讀 memo:祖先的快取值可能來自「沒有 yes 的其他後代」
+      // 走到 translate="no" 容器的結論,對本路徑不成立
+      if (memo && yesIdx < 0 && memo.has(cur)) {
         result = memo.get(cur);
         break;
       }
       visited.push(cur);
 
       const tag = cur.tagName;
+      // v2.4.13: 頁面作者明確宣告的「不翻譯」訊號（translate="no" / notranslate）
+      // 與 icon 字型 ligature（只看 el 自身：computed font-family 已含祖先繼承，
+      // 祖先層再查是重複成本）。判斷本體在 content-ns.js SK.isNoTranslateMarked /
+      // SK.isIconFontLigature，與序列化層 isAtomicPreserve 共用。
+      {
+        const _tr = cur.getAttribute && cur.getAttribute('translate');
+        if (_tr != null && _tr.trim().toLowerCase() === 'yes') {
+          if (yesIdx < 0) yesIdx = visited.length - 1;
+        } else if (yesIdx < 0 && SK.isNoTranslateMarked(cur) && !isDocumentLevelNoTranslate(cur)) {
+          result = true; break;
+        }
+        if (cur === el && SK.isIconFontLigature(cur)) { result = true; break; }
+      }
       if (tag === 'FOOTER' && isContentFooter(cur)) {
         cur = cur.parentElement;
         continue;
@@ -448,7 +486,8 @@
     }
 
     if (memo) {
-      for (const v of visited) memo.set(v, result);
+      const cacheUpTo = yesIdx >= 0 ? yesIdx + 1 : visited.length;
+      for (let i = 0; i < cacheUpTo; i++) memo.set(visited[i], result);
     }
     return result;
   }
@@ -1253,6 +1292,10 @@
                 if (text.length < 2) continue;
                 if (!SK.isVisible(leaf)) continue;
                 if (!isCandidateText(leaf)) continue;
+                // v2.4.13: leaf 自身或 el 以下的中間層可能帶 translate="no" / notranslate
+                //(Google Chat DM 列表的人名 leaf SPAN),容器層檢查蓋不到,leaf 要各自查
+                //(memo 讓祖先鏈 O(1) 短路)
+                if (isInsideExcludedContainer(leaf, excludedMemo)) continue;
                 results.push({ kind: 'element', el: leaf });
                 seen.add(leaf);
               }
@@ -1555,6 +1598,8 @@
         const lt = (leaf.textContent || '').trim();
         if (lt.length < 2) continue;
         if (!SK.isVisible(leaf)) continue;
+        // v2.4.13: leaf 自身的 translate="no" / notranslate / icon ligature 要各自查
+        if (isInsideExcludedContainer(leaf, excludedMemo)) continue;
         results.push({ kind: 'element', el: leaf });
         seen.add(leaf);
         leaf.querySelectorAll('span').forEach(s => seen.add(s));
@@ -1580,6 +1625,8 @@
         if (txt.length < _sbThreshold) return;
         if (!SK.isVisible(leaf)) return;
         if (!isCandidateText(leaf)) return;
+        // v2.4.13: 同 Case F leaf 補抓——leaf 自身 / 中間層的 translate="no" 要各自查
+        if (isInsideExcludedContainer(leaf, excludedMemo)) return;
         results.push({ kind: 'element', el: leaf });
         seen.add(leaf);
         if (stats) stats.shortBlockLeaf = (stats.shortBlockLeaf || 0) + 1;
@@ -1661,6 +1708,8 @@
               if (leaf.hasAttribute('data-shinkansen-translated')) continue;
               if (!SK.isVisible(leaf)) continue;
               if (!isCandidateText(leaf)) continue;
+              // v2.4.13: leaf 自身的 translate="no" / notranslate / icon ligature 要各自查
+              if (isInsideExcludedContainer(leaf, excludedMemo)) continue;
               results.push({ kind: 'element', el: leaf });
               seen.add(leaf);
             }

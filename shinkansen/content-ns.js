@@ -823,11 +823,51 @@ if (window.__shinkansen_loaded) {
     return SK.hasSubstantiveText(el.innerText || el.textContent || '');
   };
 
+  // ─── v2.4.13: 「不翻譯」結構訊號（偵測層 isInsideExcludedContainer 與序列化層
+  // isAtomicPreserve 共用同一組判斷，單一資料源，避免兩條 path drift）───
+  //
+  // (1) HTML 標準 `translate="no"` 屬性 / `notranslate` class（後者是 Google Translate
+  //     的既定慣例，Google 自家站全站用它標人名與 icon）。這是頁面作者對「這段不是
+  //     可翻譯內容」的明確宣告，比任何 selector 黑名單都可靠。
+  //     例外：標在 <html> / <body> 上的文件級宣告不採信——那多半是 SPA 為了避開
+  //     Google Translate 改 DOM 造成 React 崩潰的 workaround，不代表內容不該翻；
+  //     採信會讓整站翻不到。呼叫端（isInsideExcludedContainer 走到 body 前停、
+  //     isAtomicPreserve 只看 inline child）自然不會碰到 html / body。
+  // (2) icon 字型 ligature：Material Icons / Google Symbols 這類字型用「文字」當
+  //     icon 名（<i class="material-icons">star</i> 渲染成 ★），送 LLM 會被翻成
+  //     「星號」，字型比對不到 ligature 就直接顯示中文字、icon 消失、工具列爆寬。
+  //     判準是 computed font-family 第一個字型名含 icon / symbol / glyph（結構性
+  //     CSS 特徵，不綁站點）+ 文字是單一 token（ligature 名一定是 `expand_more`
+  //     這種無空白識別字），token 限制讓 getComputedStyle 只在極少數候選上跑。
+  SK.isNoTranslateMarked = function isNoTranslateMarked(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    const tr = el.getAttribute('translate');
+    if (tr != null && tr.trim().toLowerCase() === 'no') return true;
+    return !!(el.classList && el.classList.contains('notranslate'));
+  };
+
+  const _ICON_FONT_RE = /icon|symbol|glyph/i;
+  const _LIGATURE_TOKEN_RE = /^[A-Za-z0-9_-]{1,40}$/;
+  SK.isIconFontLigature = function isIconFontLigature(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (el.children.length > 0) return false;
+    const txt = (el.textContent || '').trim();
+    if (!txt || !_LIGATURE_TOKEN_RE.test(txt)) return false;
+    let ff = '';
+    try { ff = el.ownerDocument?.defaultView?.getComputedStyle?.(el)?.fontFamily || ''; } catch (_e) { return false; }
+    const first = (ff.split(',')[0] || '').replace(/^["'\s]+|["'\s]+$/g, '');
+    return _ICON_FONT_RE.test(first);
+  };
+
   // 「原子保留」子樹
   SK.isAtomicPreserve = function isAtomicPreserve(el) {
     if (el.tagName === 'SUP' && el.classList && el.classList.contains('reference')) return true;
     // v1.4.10: <hr> 是區塊分隔線，序列化時保留為 ⟦*N⟧，避免 clean slate 注入後丟失
     if (el.tagName === 'HR') return true;
+    // v2.4.13: 段落內 inline 的 translate="no" / notranslate / icon ligature 整顆
+    // 保留為 ⟦*N⟧ 不送 LLM（人名、icon 名）。偵測層對同樣訊號整顆 skip，見
+    // content-detect.js isInsideExcludedContainer。
+    if (SK.isNoTranslateMarked(el) || SK.isIconFontLigature(el)) return true;
     return false;
   };
 

@@ -7,6 +7,8 @@
 
 ## v2.4.x
 
+**v2.4.13**——**尊重頁面的「不翻譯」宣告，icon 不再被翻成中文字**。（1）HTML 標準 `translate="no"` 屬性與 `notranslate` class 標記的元素整顆不翻譯、不送 LLM（人名、代號等），段落內 inline 的同類元素原樣保留；`translate="yes"` 可在其中重新開放。掛在 `<html>` / `<body>` 或涵蓋頁面大半文字的 app root 上的文件級宣告不採信（SPA 避開 Google Translate 改 DOM 的 workaround，不代表內容不可翻），避免整站翻不到；（2）icon 字型 ligature（computed font-family 為 icon / symbol 類字型、文字為單一識別字，如 Material Icons 的 `star`）不再被翻成「星號」導致 icon 消失、工具列爆寬；（3）多段 inline 容器等 leaf 拆分路徑也各自檢查 leaf 自身的標記。實測 Google Chat 側欄：送翻段落 141 → 89，icon 與 `translate="no"` 人名 0 個被翻。**不需清快取**。
+
 **v2.4.12**——**文件與說明文字對齊現況（無功能變更）**。（1）設定頁「翻譯快速鍵」iOS 說明（8 語）：四指長按實際走次要預設（Alt+A 那組，預設 Gemini 3.8 Flash），原文誤寫為「第一組預設（Flash Lite）」，自 v1.10.67 主要 / 次要預設對調後未更新；（2）`content-touch.js` / `background.js` / `popup.js` 註解同步修正 slot 對映描述；（3）設定頁 preset 模型下拉找不到已存值時的 fallback、測試 API Key 未帶模型時的 fallback 改為 `gemini-3.8-flash`（與預設 Flash 一致；正常路徑不會走到）；（4）SPEC.md：功能摘要表的快速鍵描述（移除早已不存在的 Option+G）、懸浮按鈕預設值改為「全平台預設開」（與程式碼一致）、快速鍵表 Alt+A 標明 Gemini 3.8 Flash。**不需清快取**。
 
 **v2.4.11**——**預設 Flash 快速鍵（Alt+A / Option+A）改用 Gemini 3.8 Flash**。三組翻譯快速鍵的預設模型調整：`Alt+A` 的「Flash」preset 預設模型從 `gemini-3-flash-preview` 改為 `gemini-3.8-flash`（$0.75 / $3.75，品質優先）；`Alt+S` 維持 Flash Lite（省成本，推薦日常用）、`Alt+D` 維持 Google Translate。四指 tap / 工具列「預設模型」選 Flash 時也對應到 3.8 Flash。只影響尚未自訂快速鍵模型的使用者；已在設定頁改過的 preset 不受影響。README 快速鍵說明同步改為 Alt+S 優先。**不需清快取**。
