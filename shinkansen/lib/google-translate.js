@@ -92,6 +92,16 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
     let curEncodedLen = 0;
     for (const item of items) {
       const eLen = encodeURIComponent(item.text).length + encodedSep;
+      // 2026-09-11 code review §3.5-4：單段 encode 後就超過上限（超長段落 / 大量 CJK
+      // 每字 9 bytes）→ 原本照樣塞進一組送出，URL 過長被端點拒絕，整批一起陪葬。
+      // 改成獨立一組 + 標記 long，翻譯時在句界切成多次請求再串回（見 _translateLongText）
+      if (eLen > MAX_URL_ENCODED_CHARS) {
+        if (cur.length > 0) { groups.push(cur); cur = []; curEncodedLen = 0; }
+        const solo = [item];
+        solo.long = true;
+        groups.push(solo);
+        continue;
+      }
       if (cur.length > 0 && curEncodedLen + eLen > MAX_URL_ENCODED_CHARS) {
         groups.push(cur);
         cur = [];
@@ -114,9 +124,45 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
   // 是每筆獨立再打一次:單筆送 sl=auto 偵測通常更準,真翻得出來。
   const needsRetry = [];
   let hadSepLoss = false;  // v2.0.78:SEP 丟失的 retry 不可被「整頁已是 target」skip 誤殺
+  // §3.5-4：逐組容錯。原本任一組 fetch throw 就整批 reject——其他組已翻好的譯文一起丟、
+  // 呼叫端整批標 failed。改成失敗組以原文 placeholder 進逐筆 retry（同 SEP 丟失處理），
+  // 其他組正常回傳；只有「沒有任何一組成功、逐筆 retry 也全失敗」才 throw 最後一個錯誤
+  //（不可靜默回整批 echo——呼叫端會當「已是 target」寫進快取）
+  let anyGroupOk = false;
+  let lastGroupErr = null;
   for (const group of groups) {
+    if (group.long) {
+      // 單段超長：在句界切成多次請求後串回（見上方分組註解）
+      const g = group[0];
+      try {
+        result[g.idx] = await _translateLongText(g.text, tl);
+        anyGroupOk = true;
+      } catch (err) {
+        lastGroupErr = err;
+        await debugLog('warn', 'api', 'google long segment fetch failed — keep source text', {
+          chars: g.text.length, error: err?.message || String(err),
+        });
+        result[g.idx] = g.text;
+      }
+      continue;
+    }
     const joined = group.map(g => g.text).join(SEP);
-    const parts = await _fetchTranslate(joined, tl);
+    let parts;
+    try {
+      parts = await _fetchTranslate(joined, tl);
+      anyGroupOk = true;
+    } catch (err) {
+      lastGroupErr = err;
+      await debugLog('warn', 'api', 'google group fetch failed — whole group to retry', {
+        size: group.length, error: err?.message || String(err),
+      });
+      hadSepLoss = true;  // placeholder 是原文，跟 echo 分不開，不可套「整頁已是 target」skip
+      for (const g of group) {
+        result[g.idx] = g.text;
+        needsRetry.push(g);
+      }
+      continue;
+    }
     // v2.0.78：段數不符 = SEP 邊界丟失。原本只擋「尾端缺（parts[j] == null）」——
     // Google 吞掉「中間」一個 SEP 時 parts 整體前移，合併點之後每段都拿到上一段的
     // 譯文（非 null 也非 echo，三檢查全 pass）→ 錯位譯文靜默回傳並被呼叫端永久寫進
@@ -180,9 +226,58 @@ export async function translateGoogleBatch(texts, targetLanguage = 'zh-TW') {
       attempted: needsRetry.length,
       recovered: recoveredCount,
     });
+    if (!anyGroupOk && recoveredCount === 0 && lastGroupErr) {
+      // 整批沒有任何一次 fetch 成功（網路斷 / 端點全擋）：拋錯讓呼叫端顯示真實錯誤，
+      // 不可把全原文 placeholder 當譯文回去（會被當「已是 target」寫進快取）
+      throw lastGroupErr;
+    }
+  } else if (!anyGroupOk && lastGroupErr) {
+    throw lastGroupErr;
   }
 
   return { translations: result, chars: totalChars };
+}
+
+// §3.5-4：單段超長的切分翻譯。在句界（換行 / 句末標點）切成 encode 後 ≤ 上限的片段，
+// 逐片請求後直接串回（片段保留原有的尾端空白 / 換行，串接不失真）。單句本身就超長時
+// 退回按字元硬切。每片各自 sl=auto，同一段內語言一致，不會有混批問題。
+async function _translateLongText(text, tl) {
+  const pieces = _splitForUrlLimit(text, MAX_URL_ENCODED_CHARS);
+  const out = [];
+  for (const piece of pieces) {
+    const parts = await _fetchTranslate(piece, tl);
+    out.push(parts.join(''));
+  }
+  await debugLog('info', 'api', 'google long segment translated in pieces', {
+    chars: text.length, pieces: pieces.length,
+  });
+  return out.join('');
+}
+
+function _splitForUrlLimit(text, maxEncoded) {
+  // 句界：換行、或中英句末標點後（保留標點與其後空白在前一片）
+  const sentences = String(text).match(/[^\n.!?。！？]*[.!?。！？]+["'”’)]*\s*|[^\n]+\n?|\n/g) || [text];
+  const pieces = [];
+  let cur = '';
+  const encLen = (s) => encodeURIComponent(s).length;
+  const pushCur = () => { if (cur) { pieces.push(cur); cur = ''; } };
+  for (const sent of sentences) {
+    if (encLen(sent) > maxEncoded) {
+      // 單句超長：先把累積的送出，再按字元硬切
+      pushCur();
+      let buf = '';
+      for (const ch of sent) {
+        if (buf && encLen(buf + ch) > maxEncoded) { pieces.push(buf); buf = ''; }
+        buf += ch;
+      }
+      if (buf) pieces.push(buf);
+      continue;
+    }
+    if (cur && encLen(cur + sent) > maxEncoded) pushCur();
+    cur += sent;
+  }
+  pushCur();
+  return pieces.length > 0 ? pieces : [text];
 }
 
 // Google Translate 非官方端點 fetch timeout。15s 對齊 Gemini / OpenAI 主翻譯路徑;

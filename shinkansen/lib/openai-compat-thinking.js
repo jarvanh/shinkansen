@@ -3,11 +3,16 @@
 //
 // 各家 provider thinking schema 差異對照(2026-04 校準,文件來源見 CHANGELOG):
 //   OpenRouter unified  : reasoning: { effort: 'low'/'medium'/'high', exclude: true }
-//   DeepSeek native     : extra_body.thinking: { type: 'enabled'/'disabled' } + effort
+//   DeepSeek native     : thinking: { type: 'enabled'/'disabled' }（request body 頂層）
 //   Anthropic Claude    : thinking: { type: 'enabled'/'disabled'/'adaptive', budget_tokens }
 //   OpenAI o-series     : reasoning_effort: 'minimal'/'low'/'medium'/'high'
 //   Grok (xAI)          : reasoning_effort: 'low'/'medium'/'high'/'xhigh'(只多 agent model 支援)
-//   Qwen                : enable_thinking: true/false (extra_body)
+//   Qwen                : enable_thinking: true/false（request body 頂層）
+//
+//   2026-09-11 code review §3.5-3：DeepSeek / Qwen 原本包在 `extra_body` 字面 key 下——那是
+//   Python SDK 的客戶端包裝（SDK 會把 extra_body 內容攤平到 HTTP body），我們是直接 fetch
+//   raw JSON，送 `{ extra_body: {...} }` 對端點是未知欄位被忽略 = thinking 設定 no-op。
+//   改成頂層 `thinking` / `enable_thinking`（各家 curl 範例的 raw body 形態）。
 //   OpenAI-compat 通用  : reasoning_effort: 'none'/'low'/'medium'/'high'（OpenAI 標準，
 //                         所有 aggregator / Fireworks / Together / Groq / DeepInfra / Cerebras 等
 //                         與自架 OpenAI-compat proxy（LiteLLM 等）的最大公約數）
@@ -26,7 +31,7 @@
  * 偵測順序:OpenRouter(host)→ 其他依 baseUrl host → fallback 走 OpenAI-compat 通用。
  *
  * 為什麼不用 model name 推 vendor schema：過去版本曾在 baseUrl 不認得時改用 model 名
- * 推 vendor（例 model 含 'qwen' → 走 Qwen 原生 extra_body.enable_thinking），但實際上
+ * 推 vendor（例 model 含 'qwen' → 走 Qwen 原生 enable_thinking），但實際上
  * 「未知 baseUrl」最常見的場景是 aggregator（Fireworks / Together / Groq / DeepInfra 等）
  * 或自架 OpenAI-compat proxy（LiteLLM），這些都吃 OpenAI 標準 reasoning_effort，
  * 不認 vendor 原生欄位 → 送錯會被靜默忽略（thinking 設定無效）。改成 default 走通用
@@ -56,11 +61,11 @@ export function detectProvider(baseUrl, model) {
  *   - 'auto' 永遠回 {}(不干涉,讓 provider 自選預設)
  *   - 各 provider 的 'off' 寫法不同:
  *     OpenRouter 沒真 disable,只能 exclude(內部 reason 但不回 token)
- *     DeepSeek extra_body.thinking.type='disabled'
+ *     DeepSeek thinking.type='disabled'
  *     Claude thinking.type='disabled'
  *     OpenAI o-series 沒 disable,最低用 'minimal'
  *     Grok 不支援 disable,off 時索性不送
- *     Qwen extra_body.enable_thinking=false
+ *     Qwen enable_thinking=false
  *     OpenAI-compat 通用 reasoning_effort='none'(OpenAI 標準 disable 寫法)
  */
 export function buildNativeThinking(provider, level) {
@@ -72,7 +77,8 @@ export function buildNativeThinking(provider, level) {
       return { reasoning: { effort: level } };
 
     case 'deepseek':
-      return { extra_body: { thinking: { type: level === 'off' ? 'disabled' : 'enabled' } } };
+      // 頂層 thinking（非 extra_body，見檔頭 §3.5-3 註解）
+      return { thinking: { type: level === 'off' ? 'disabled' : 'enabled' } };
 
     case 'claude':
       if (level === 'off') return { thinking: { type: 'disabled' } };
@@ -89,7 +95,8 @@ export function buildNativeThinking(provider, level) {
       return { reasoning_effort: level };
 
     case 'qwen':
-      return { extra_body: { enable_thinking: level !== 'off' } };
+      // 頂層 enable_thinking（非 extra_body，見檔頭 §3.5-3 註解）
+      return { enable_thinking: level !== 'off' };
 
     case 'openai-compat-generic':
     default:

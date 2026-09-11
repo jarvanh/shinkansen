@@ -203,6 +203,73 @@ export async function upsertGoogleUsage(record, mergeWindowMs = 180000) {
 }
 
 /**
+ * 2026-09-11 code review §3.6-1：網頁翻譯成功批次由 background 逐批落地時的合併寫入。
+ * 原本網頁翻譯只在 content 端整輪結束時發一筆 LOG_USAGE（整頁合計）——關分頁 / SPA
+ * 導航 / 中途 throw 都讓前面已付費批次一筆不記。改由 background 在 cache.setBatch 後
+ * 逐批寫入，為了維持用量列表「一頁一筆」的閱讀體驗，以 (url + engine + model) 在
+ * mergeWindowMs 內合併（對齊 upsertGoogleUsage 的 3 分鐘視窗：一頁多批 < 1 分鐘，
+ * 3 分鐘留給「翻完馬上重翻」；超過視為另一次工作 session 拆筆）。
+ *
+ * 零 token 零費用的批次（整批本地快取命中）只在視窗內已有同 key 紀錄時把 cacheHits
+ * 併進去，不另建空紀錄（與 LOG_USAGE handler 的 shouldSkipUsageRecord 語意一致）。
+ *
+ * @param {Object} record — 同 logTranslation 的 shape，需含 url / engine / model / timestamp
+ * @param {number} [mergeWindowMs=180000]
+ * @returns {Promise<number|null>} 被寫入 / 更新的紀錄 id；零 token 且無可合併紀錄時 null
+ */
+export async function upsertPageUsage(record, mergeWindowMs = 180000) {
+  const url = record?.url;
+  const engine = record?.engine;
+  const model = record?.model;
+  if (!url || !engine || !model) {
+    return shouldSkipUsageRecord(record) ? null : logTranslation(record);
+  }
+  const now = record.timestamp || Date.now();
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const index = store.index('timestamp');
+    const range = IDBKeyRange.lowerBound(now - mergeWindowMs);
+    const req = index.openCursor(range, 'prev');
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const v = cursor.value;
+        // 只合併同型網頁紀錄：字幕（source 有值）/ Google（engine 不同）不會撞到
+        if (!v.source && v.url === url && v.engine === engine && v.model === model) {
+          const merged = {
+            ...v,
+            inputTokens:       (v.inputTokens       || 0) + (record.inputTokens       || 0),
+            outputTokens:      (v.outputTokens      || 0) + (record.outputTokens      || 0),
+            cachedTokens:      (v.cachedTokens      || 0) + (record.cachedTokens      || 0),
+            billedInputTokens: (v.billedInputTokens || 0) + (record.billedInputTokens || 0),
+            billedCostUSD:     (v.billedCostUSD     || 0) + (record.billedCostUSD     || 0),
+            segments:          (v.segments          || 0) + (record.segments          || 0),
+            cacheHits:         (v.cacheHits         || 0) + (record.cacheHits         || 0),
+            durationMs:        (v.durationMs        || 0) + (record.durationMs        || 0),
+            timestamp:         now,
+            title:             record.title || v.title || '',
+          };
+          const putReq = cursor.update(merged);
+          putReq.onsuccess = () => resolve(v.id);
+          putReq.onerror = () => reject(putReq.error);
+          return;
+        }
+        cursor.continue();
+      } else if (shouldSkipUsageRecord(record)) {
+        resolve(null);
+      } else {
+        const addReq = store.add(record);
+        addReq.onsuccess = () => resolve(addReq.result);
+        addReq.onerror = () => reject(addReq.error);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
  * 依時間範圍查詢紀錄（按時間倒序）。
  * @param {Object} opts
  * @param {number} [opts.from] — 起始 timestamp（含）

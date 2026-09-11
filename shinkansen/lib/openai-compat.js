@@ -339,15 +339,10 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   const finishReason = choice?.finish_reason || 'unknown';
   const text = choice?.message?.content || '';
 
-  if (!text) {
-    await debugLog('error', 'api', 'openai-compat empty content', {
-      elapsed: ms, finishReason, choicesLength: json?.choices?.length || 0,
-    });
-    throw codedError('customEmptyContent', { reason: finishReason },
-      `自訂 Provider 回傳空內容（finish_reason: ${finishReason}）。`);
-  }
-
   // 抽 usage（OpenAI / OpenRouter 標準結構）
+  // 2026-09-11 code review §3.5-2：提前到 empty 檢查之前——空內容（reasoning 模型把
+  // 預算燒在 thinking 上）時 prompt + completion token 已計費，掛 err.usage 讓
+  // translateBatch 外層加總、background 記帳（對齊 gemini.js 兩條路徑）。
   const u = json?.usage || {};
   const chunkUsage = {
     inputTokens: u.prompt_tokens || 0,
@@ -355,6 +350,16 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     // OpenAI 2024-09 起加的 cache 命中欄位（OpenRouter 也支援）
     cachedTokens: u.prompt_tokens_details?.cached_tokens || u.cached_tokens || 0,
   };
+
+  if (!text) {
+    await debugLog('error', 'api', 'openai-compat empty content', {
+      elapsed: ms, finishReason, choicesLength: json?.choices?.length || 0,
+    });
+    const err = codedError('customEmptyContent', { reason: finishReason },
+      `自訂 Provider 回傳空內容（finish_reason: ${finishReason}）。`);
+    err.usage = { ...chunkUsage };
+    throw err;
+  }
 
   await debugLog('info', 'api', 'openai-compat response', {
     elapsed: ms,
@@ -380,7 +385,17 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
         r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary, forbiddenTerms);
       } catch (err) {
         // 逐段 fallback 半途失敗：整批 + 已完成段的 usage 掛上 err(對齊 gemini.js 慣例)
-        if (err && typeof err === 'object' && !err.usage) err.usage = { ...aggUsage };
+        // 2026-09-11 code review §3.5-2：失敗那一段自己的 usage(empty / 截斷 throw 現在
+        // 都掛 err.usage）要「相加」進來——原 `!err.usage` 才設會把整批 + 已完成段的
+        // 累積整個丟掉；gemini.js 原是覆蓋，兩邊統一成相加。
+        if (err && typeof err === 'object') {
+          const own = err.usage || {};
+          err.usage = {
+            inputTokens: aggUsage.inputTokens + (own.inputTokens || 0),
+            outputTokens: aggUsage.outputTokens + (own.outputTokens || 0),
+            cachedTokens: (aggUsage.cachedTokens || 0) + (own.cachedTokens || 0),
+          };
+        }
         throw err;
       }
       aligned.push(r.parts[0] || '');
@@ -390,6 +405,24 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     }
     return { parts: aligned, usage: aggUsage, hadMismatch: true };
   };
+
+  // 2026-09-11 code review §3.5-1:finish_reason 'length' 帶部分文字 = 輸出被 max_tokens
+  // 截斷，末段殘缺。原本當成功往下走，段數恰好對齊或 realign 救回時截斷譯文會寫進永久
+  // 快取。多段 chunk 走逐段 fallback（每段輸出小；與段數不符同款）；單段沒更小單位可退，
+  // 拋 customTruncated 讓使用者縮批 / 在進階 JSON 提高 max_tokens,usage 掛上供記帳。
+  // 必須排在 realign / 段數比對之前（對齊 gemini.js MAX_TOKENS 處理）。
+  if (finishReason === 'length') {
+    if (texts.length > 1) {
+      await debugLog('warn', 'api', 'openai-compat output truncated (finish_reason=length) — fallback to per-segment', {
+        segments: texts.length, elapsed: ms, textLength: text.length,
+      });
+      return perSegmentFallback();
+    }
+    const err = codedError('customTruncated', { reason: finishReason },
+      '自訂 Provider 輸出被截斷（finish_reason: length）。請減少每批段落數，或在進階 JSON 提高 max_tokens。');
+    err.usage = { ...chunkUsage };
+    throw err;
+  }
 
   // 段數不符先試序號標記二次對齊(v2.0.69,對齊 gemini.js;用本批選的 marker),
   // 救不回才 fallback 逐段翻譯

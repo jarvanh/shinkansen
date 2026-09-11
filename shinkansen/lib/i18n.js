@@ -139,6 +139,7 @@
     'error.bg.emptyContent': 'Gemini 回傳空內容（finishReason: {reason}）',
     'error.bg.customBadResponse': '自訂 Provider 回應格式異常（非 JSON）：HTTP {status}。前 200 字：{preview}',
     'error.bg.customEmptyContent': '自訂 Provider 回傳空內容（finish_reason: {reason}）',
+    'error.bg.customTruncated': '自訂 Provider 輸出被截斷（finish_reason: {reason}）。請減少每批段落數，或在進階 JSON 提高 max_tokens',
     'error.bg.gtTimeout': 'Google Translate 逾時（{ms}ms）',
 
     // ── lang 名稱（toast 動態插入「此頁面已是X」用）──────
@@ -485,7 +486,7 @@
     'options.cp.thinkingLow': '低',
     'options.cp.thinkingMid': '中',
     'options.cp.thinkingHigh': '高',
-    'options.cp.thinkingHint.html': '依 baseUrl 與模型自動翻譯成對應 provider 的 thinking API(OpenRouter <code>reasoning.effort</code>、Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、Grok <code>reasoning_effort</code>、Qwen <code>extra_body.enable_thinking</code>)。翻譯任務 thinking 通常無感但會多花 token；建議「關閉」省成本，除非你的模型只能在 thinking 開啟時翻譯（如 QwQ）。不認識的 provider 走「自動」',
+    'options.cp.thinkingHint.html': '依 baseUrl 與模型自動翻譯成對應 provider 的 thinking API(OpenRouter <code>reasoning.effort</code>、Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、Grok <code>reasoning_effort</code>、Qwen <code>enable_thinking</code>)。翻譯任務 thinking 通常無感但會多花 token；建議「關閉」省成本，除非你的模型只能在 thinking 開啟時翻譯（如 QwQ）。不認識的 provider 走「自動」',
     'options.cp.strongMarker': '強化段序號標記（適合本機量化模型）',
     'options.cp.strongMarkerHint.html': '本機量化模型（如 gemma-4 量化版）會把預設的「<code>«1»</code> <code>«2»</code>」段序號誤譯為「N1、N2」洩漏到譯文。開啟後改用 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 格式，弱模型不會誤翻；代價是每段批次多約 7 tokens（input + output 雙倍開銷）。商用 API（OpenRouter / Groq 等）不需此選項，但開啟也無害',
     'options.cp.extraBodyLabel': '自訂 request body 額外參數（JSON，覆蓋上方思考強度）',
@@ -1166,6 +1167,7 @@
     'error.bg.emptyContent': 'Gemini 返回空内容（finishReason: {reason}）',
     'error.bg.customBadResponse': '自定义 Provider 响应格式异常（非 JSON）：HTTP {status}。前 200 字：{preview}',
     'error.bg.customEmptyContent': '自定义 Provider 返回空内容（finish_reason: {reason}）',
+    'error.bg.customTruncated': '自定义 Provider 输出被截断（finish_reason: {reason}）。请减少每批段落数，或在高级 JSON 中提高 max_tokens',
     'error.bg.gtTimeout': 'Google Translate 超时（{ms}ms）',
 
     // ── lang 名稱 ──────────────────────────────────────────
@@ -1510,7 +1512,7 @@
     'options.cp.thinkingLow': '低',
     'options.cp.thinkingMid': '中',
     'options.cp.thinkingHigh': '高',
-    'options.cp.thinkingHint.html': '依 baseUrl 与模型自动翻译成对应 provider 的 thinking API（OpenRouter <code>reasoning.effort</code>、Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、Grok <code>reasoning_effort</code>、Qwen <code>extra_body.enable_thinking</code>）。翻译任务 thinking 通常无感但会多花 token；建议「关闭」省成本，除非你的模型只能在 thinking 开启时翻译（如 QwQ）。不认识的 provider 走「自动」',
+    'options.cp.thinkingHint.html': '依 baseUrl 与模型自动翻译成对应 provider 的 thinking API（OpenRouter <code>reasoning.effort</code>、Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、Grok <code>reasoning_effort</code>、Qwen <code>enable_thinking</code>）。翻译任务 thinking 通常无感但会多花 token；建议「关闭」省成本，除非你的模型只能在 thinking 开启时翻译（如 QwQ）。不认识的 provider 走「自动」',
     'options.cp.strongMarker': '强化段序号标记（适合本地量化模型）',
     'options.cp.strongMarkerHint.html': '本地量化模型（如 gemma-4 量化版）会把默认的「<code>«1»</code> <code>«2»</code>」段序号误译为「N1、N2」泄漏到译文。开启后改用 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 格式，弱模型不会误翻；代价是每段批次多约 7 tokens（input + output 双倍开销）。商用 API（OpenRouter / Groq 等）不需此选项，但开启也无害',
     'options.cp.extraBodyLabel': '自定义 request body 额外参数（JSON，覆盖上方思考强度）',
@@ -2189,6 +2191,7 @@
     'error.bg.emptyContent': 'Gemini returned empty content (finishReason: {reason})',
     'error.bg.customBadResponse': 'Unexpected custom provider response (not JSON): HTTP {status}. First 200 chars: {preview}',
     'error.bg.customEmptyContent': 'Custom provider returned empty content (finish_reason: {reason})',
+    'error.bg.customTruncated': 'Custom provider output was truncated (finish_reason: {reason}). Reduce paragraphs per batch, or raise max_tokens in the advanced JSON',
     'error.bg.gtTimeout': 'Google Translate timed out ({ms}ms)',
 
     // ── lang names ────────────────────────────────────────
@@ -2533,7 +2536,7 @@
     'options.cp.thinkingLow': 'Low',
     'options.cp.thinkingMid': 'Medium',
     'options.cp.thinkingHigh': 'High',
-    'options.cp.thinkingHint.html': "Auto-translates to the corresponding provider's thinking API based on baseUrl and model (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>extra_body.enable_thinking</code>). Thinking is usually unnoticeable for translation but burns extra tokens; \"Off\" is recommended for cost savings, unless your model only translates with thinking on (e.g. QwQ). Unknown providers default to \"Auto\"",
+    'options.cp.thinkingHint.html': "Auto-translates to the corresponding provider's thinking API based on baseUrl and model (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>enable_thinking</code>). Thinking is usually unnoticeable for translation but burns extra tokens; \"Off\" is recommended for cost savings, unless your model only translates with thinking on (e.g. QwQ). Unknown providers default to \"Auto\"",
     'options.cp.strongMarker': 'Strong segment markers (suitable for local quantized models)',
     'options.cp.strongMarkerHint.html': 'Local quantized models (e.g. gemma-4 quantized) often mistranslate the default "<code>«1»</code> <code>«2»</code>" segment markers as "N1, N2", leaking into the translation. When enabled, switches to <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> format which weak models won\'t mistranslate; cost is ~7 extra tokens per segment per batch (input + output, double overhead). Commercial APIs (OpenRouter / Groq, etc.) don\'t need this option, but enabling it does no harm',
     'options.cp.extraBodyLabel': 'Custom request body extra params (JSON, overrides thinking effort above)',
@@ -3212,6 +3215,7 @@
     'error.bg.emptyContent': 'Gemini が空のコンテンツを返しました（finishReason: {reason}）',
     'error.bg.customBadResponse': 'カスタム Provider のレスポンス形式が異常です（非 JSON）：HTTP {status}。先頭 200 文字：{preview}',
     'error.bg.customEmptyContent': 'カスタム Provider が空のコンテンツを返しました（finish_reason: {reason}）',
+    'error.bg.customTruncated': 'カスタム Provider の出力が途中で切れました（finish_reason: {reason}）。1 バッチあたりの段落数を減らすか、詳細 JSON で max_tokens を増やしてください',
     'error.bg.gtTimeout': 'Google Translate がタイムアウトしました（{ms}ms）',
 
     // ── lang 名称（toast 動的挿入「このページは既に X」用）──────
@@ -3556,7 +3560,7 @@
     'options.cp.thinkingLow': '低',
     'options.cp.thinkingMid': '中',
     'options.cp.thinkingHigh': '高',
-    'options.cp.thinkingHint.html': 'baseUrl とモデルに基づき、対応 provider の thinking API に自動翻訳されます（OpenRouter <code>reasoning.effort</code>、Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、Grok <code>reasoning_effort</code>、Qwen <code>extra_body.enable_thinking</code>）。翻訳タスクで thinking は通常体感差が少なく token を多く消費するため、コスト節約には「オフ」推奨。ただし thinking を有効にしないと翻訳できないモデル（QwQ など）の場合は除く。認識されない provider は「自動」へ',
+    'options.cp.thinkingHint.html': 'baseUrl とモデルに基づき、対応 provider の thinking API に自動翻訳されます（OpenRouter <code>reasoning.effort</code>、Claude <code>thinking.type</code>、OpenAI o-series <code>reasoning_effort</code>、Grok <code>reasoning_effort</code>、Qwen <code>enable_thinking</code>）。翻訳タスクで thinking は通常体感差が少なく token を多く消費するため、コスト節約には「オフ」推奨。ただし thinking を有効にしないと翻訳できないモデル（QwQ など）の場合は除く。認識されない provider は「自動」へ',
     'options.cp.strongMarker': 'セグメント番号マーカーを強化（ローカル量子化モデル向け）',
     'options.cp.strongMarkerHint.html': 'ローカル量子化モデル（gemma-4 量子化版など）はデフォルトの「<code>«1»</code> <code>«2»</code>」セグメント番号を「N1、N2」と誤訳して訳文に漏らすことがあります。有効にすると <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 形式に変更され、弱いモデルでも誤訳しません。コストは 1 バッチあたり約 7 tokens の追加（input + output 双方）。商用 API（OpenRouter / Groq など）には不要ですが、有効化しても害はありません',
     'options.cp.extraBodyLabel': 'カスタム request body 追加パラメータ（JSON、上の思考強度を上書き）',
@@ -4235,6 +4239,7 @@
     'error.bg.emptyContent': 'Gemini가 빈 콘텐츠를 반환했습니다 (finishReason: {reason})',
     'error.bg.customBadResponse': '사용자 지정 Provider 응답 형식 이상 (비 JSON): HTTP {status}. 처음 200자: {preview}',
     'error.bg.customEmptyContent': '사용자 지정 Provider가 빈 콘텐츠를 반환했습니다 (finish_reason: {reason})',
+    'error.bg.customTruncated': '사용자 지정 Provider 출력이 잘렸습니다 (finish_reason: {reason}). 배치당 단락 수를 줄이거나 고급 JSON에서 max_tokens를 높이세요',
     'error.bg.gtTimeout': 'Google Translate 시간 초과 ({ms}ms)',
 
     // ── lang 이름 (toast 동적 삽입 "이 페이지는 이미 X" 용) ──────
@@ -4579,7 +4584,7 @@
     'options.cp.thinkingLow': '낮음',
     'options.cp.thinkingMid': '중간',
     'options.cp.thinkingHigh': '높음',
-    'options.cp.thinkingHint.html': 'baseUrl과 모델에 따라 자동으로 대응 provider의 thinking API로 변환됩니다 (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>extra_body.enable_thinking</code>). 번역 작업에서 thinking은 보통 체감이 적지만 token을 더 소비합니다; 비용 절감을 위해 "꺼짐" 권장, 단 thinking 활성화 시에만 번역 가능한 모델 (QwQ 등)은 예외. 인식되지 않는 provider는 "자동" 사용',
+    'options.cp.thinkingHint.html': 'baseUrl과 모델에 따라 자동으로 대응 provider의 thinking API로 변환됩니다 (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>enable_thinking</code>). 번역 작업에서 thinking은 보통 체감이 적지만 token을 더 소비합니다; 비용 절감을 위해 "꺼짐" 권장, 단 thinking 활성화 시에만 번역 가능한 모델 (QwQ 등)은 예외. 인식되지 않는 provider는 "자동" 사용',
     'options.cp.strongMarker': '단락 번호 마커 강화 (로컬 양자화 모델용)',
     'options.cp.strongMarkerHint.html': '로컬 양자화 모델 (gemma-4 양자화 버전 등)은 기본 "<code>«1»</code> <code>«2»</code>" 단락 번호를 "N1, N2"로 오역하여 번역문에 누출시킵니다. 활성화 후 <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> 형식으로 변경되어 약한 모델도 오역하지 않습니다; 대가는 배치당 약 7 tokens 추가 (input + output 양쪽 비용). 상용 API (OpenRouter / Groq 등)에는 불필요하지만, 활성화해도 무해',
     'options.cp.extraBodyLabel': '커스텀 request body 추가 매개변수 (JSON, 위의 사고 강도 덮어쓰기)',
@@ -5257,6 +5262,7 @@
     'error.bg.emptyContent': 'Gemini devolvió contenido vacío (finishReason: {reason})',
     'error.bg.customBadResponse': 'Respuesta anómala del proveedor personalizado (no JSON): HTTP {status}. Primeros 200 caracteres: {preview}',
     'error.bg.customEmptyContent': 'El proveedor personalizado devolvió contenido vacío (finish_reason: {reason})',
+    'error.bg.customTruncated': 'La salida del proveedor personalizado se truncó (finish_reason: {reason}). Reduzca los párrafos por lote o aumente max_tokens en el JSON avanzado',
     'error.bg.gtTimeout': 'Google Translate agotó el tiempo ({ms} ms)',
 
     // ── nombre de idioma (inserción dinámica en toast "Esta página ya está en X") ──────
@@ -5601,7 +5607,7 @@
     'options.cp.thinkingLow': 'Bajo',
     'options.cp.thinkingMid': 'Medio',
     'options.cp.thinkingHigh': 'Alto',
-    'options.cp.thinkingHint.html': 'Según baseUrl y modelo, se traduce automáticamente al thinking API del proveedor correspondiente (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>extra_body.enable_thinking</code>). Para tareas de traducción el thinking suele no notarse pero gasta tokens extra; se recomienda "Desactivado" para ahorrar coste, salvo si tu modelo solo traduce con thinking activado (QwQ, etc.). Proveedores no reconocidos van por "Automático"',
+    'options.cp.thinkingHint.html': 'Según baseUrl y modelo, se traduce automáticamente al thinking API del proveedor correspondiente (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>enable_thinking</code>). Para tareas de traducción el thinking suele no notarse pero gasta tokens extra; se recomienda "Desactivado" para ahorrar coste, salvo si tu modelo solo traduce con thinking activado (QwQ, etc.). Proveedores no reconocidos van por "Automático"',
     'options.cp.strongMarker': 'Reforzar marcador de número de segmento (para modelos cuantizados locales)',
     'options.cp.strongMarkerHint.html': 'Los modelos cuantizados locales (como variantes cuantizadas de gemma-4) traducen mal los marcadores "<code>«1»</code> <code>«2»</code>" como "N1, N2" y se cuelan en la traducción. Si lo activas, se cambia a formato <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> y los modelos débiles no lo traducen mal; el coste son ~7 tokens extra por lote (input + output, doble). Las APIs comerciales (OpenRouter / Groq, etc.) no necesitan esta opción, pero activarla no causa problemas',
     'options.cp.extraBodyLabel': 'Parámetros extra del request body (JSON, sobrescribe el nivel de razonamiento de arriba)',
@@ -6279,6 +6285,7 @@
     'error.bg.emptyContent': 'Gemini a renvoyé un contenu vide (finishReason: {reason})',
     'error.bg.customBadResponse': 'Réponse anormale du fournisseur personnalisé (non JSON) : HTTP {status}. 200 premiers caractères : {preview}',
     'error.bg.customEmptyContent': 'Le fournisseur personnalisé a renvoyé un contenu vide (finish_reason: {reason})',
+    'error.bg.customTruncated': 'La sortie du fournisseur personnalisé a été tronquée (finish_reason: {reason}). Réduisez le nombre de paragraphes par lot ou augmentez max_tokens dans le JSON avancé',
     'error.bg.gtTimeout': 'Google Translate : délai dépassé ({ms} ms)',
 
     // ── nom de langue (insertion dynamique « Cette page est déjà en X » dans le toast) ──────
@@ -6623,7 +6630,7 @@
     'options.cp.thinkingLow': 'Faible',
     'options.cp.thinkingMid': 'Moyen',
     'options.cp.thinkingHigh': 'Élevé',
-    'options.cp.thinkingHint.html': 'Selon baseUrl et modèle, traduit automatiquement vers le thinking API du fournisseur correspondant (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>extra_body.enable_thinking</code>). Pour la traduction, le thinking est généralement imperceptible mais consomme des tokens supplémentaires ; recommandé sur « Désactivé » pour économiser, sauf si votre modèle ne traduit qu\'avec thinking activé (QwQ, etc.). Pour les fournisseurs non reconnus, utilisez « Automatique »',
+    'options.cp.thinkingHint.html': 'Selon baseUrl et modèle, traduit automatiquement vers le thinking API du fournisseur correspondant (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>enable_thinking</code>). Pour la traduction, le thinking est généralement imperceptible mais consomme des tokens supplémentaires ; recommandé sur « Désactivé » pour économiser, sauf si votre modèle ne traduit qu\'avec thinking activé (QwQ, etc.). Pour les fournisseurs non reconnus, utilisez « Automatique »',
     'options.cp.strongMarker': 'Renforcer le marqueur de numéro de segment (pour les modèles quantifiés locaux)',
     'options.cp.strongMarkerHint.html': 'Les modèles quantifiés locaux (comme les versions quantifiées de gemma-4) traduisent par erreur les numéros de segment « <code>«1»</code> <code>«2»</code> » par défaut en « N1, N2 », fuitant dans la traduction. Une fois activé, on passe au format <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> que les modèles faibles ne traduisent pas mal ; le coût est environ 7 tokens supplémentaires par lot (input + output, double). Les API commerciales (OpenRouter / Groq, etc.) n\'ont pas besoin de cette option, mais l\'activer ne nuit pas',
     'options.cp.extraBodyLabel': 'Paramètres supplémentaires du request body (JSON, écrase l\'intensité de raisonnement ci-dessus)',
@@ -7301,6 +7308,7 @@
     'error.bg.emptyContent': 'Gemini hat leeren Inhalt zurückgegeben (finishReason: {reason})',
     'error.bg.customBadResponse': 'Unerwartete Antwort des benutzerdefinierten Providers (kein JSON): HTTP {status}. Erste 200 Zeichen: {preview}',
     'error.bg.customEmptyContent': 'Benutzerdefinierter Provider hat leeren Inhalt zurückgegeben (finish_reason: {reason})',
+    'error.bg.customTruncated': 'Die Ausgabe des benutzerdefinierten Providers wurde abgeschnitten (finish_reason: {reason}). Reduzieren Sie die Absätze pro Batch oder erhöhen Sie max_tokens im erweiterten JSON',
     'error.bg.gtTimeout': 'Google Translate: Zeitüberschreitung ({ms} ms)',
 
     // ── Sprachname (dynamisch in toast „Diese Seite ist bereits auf X" eingefügt) ──────
@@ -7645,7 +7653,7 @@
     'options.cp.thinkingLow': 'Niedrig',
     'options.cp.thinkingMid': 'Mittel',
     'options.cp.thinkingHigh': 'Hoch',
-    'options.cp.thinkingHint.html': 'Wird basierend auf baseUrl und Modell automatisch in die Thinking-API des entsprechenden Providers übersetzt (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>extra_body.enable_thinking</code>). Bei Übersetzungsaufgaben ist Thinking meist nicht spürbar, verbraucht aber zusätzliche Tokens; „Aus" wird zur Kostenersparnis empfohlen, außer dein Modell kann nur mit aktiviertem Thinking übersetzen (QwQ usw.). Unbekannte Provider gehen über „Automatisch"',
+    'options.cp.thinkingHint.html': 'Wird basierend auf baseUrl und Modell automatisch in die Thinking-API des entsprechenden Providers übersetzt (OpenRouter <code>reasoning.effort</code>, Claude <code>thinking.type</code>, OpenAI o-series <code>reasoning_effort</code>, Grok <code>reasoning_effort</code>, Qwen <code>enable_thinking</code>). Bei Übersetzungsaufgaben ist Thinking meist nicht spürbar, verbraucht aber zusätzliche Tokens; „Aus" wird zur Kostenersparnis empfohlen, außer dein Modell kann nur mit aktiviertem Thinking übersetzen (QwQ usw.). Unbekannte Provider gehen über „Automatisch"',
     'options.cp.strongMarker': 'Segmentnummern-Marker verstärken (für lokale quantisierte Modelle)',
     'options.cp.strongMarkerHint.html': 'Lokale quantisierte Modelle (z. B. quantisierte Versionen von gemma-4) übersetzen die Standard-Segmentnummern „<code>«1»</code> <code>«2»</code>" fälschlicherweise als „N1, N2" und lassen sie in die Übersetzung durchsickern. Wenn aktiviert, wird auf das Format <code>&lt;&lt;&lt;SHINKANSEN_SEG-N&gt;&gt;&gt;</code> umgestellt, das schwächere Modelle nicht falsch übersetzen; der Preis sind ca. 7 zusätzliche Tokens pro Batch (Input + Output, doppelter Aufwand). Kommerzielle APIs (OpenRouter / Groq usw.) brauchen diese Option nicht, das Aktivieren schadet aber nicht',
     'options.cp.extraBodyLabel': 'Zusätzliche Parameter im Request-Body (JSON, überschreibt obige Denkstärke)',

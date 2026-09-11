@@ -655,6 +655,9 @@
       inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUSD: 0,
       billedInputTokens: 0, billedCostUSD: 0,
       cacheHits: 0,
+      // §3.6-1：任一批次 usage 沒帶 logged（background 落地失敗 / 舊協定）才需要整頁
+      // LOG_USAGE 補記；全部已由 background 逐批落地時 content 不再發，避免重複計
+      unlogged: false,
     };
     // v1.8.3: partialMode 啟用時，第一批 limit 用使用者設定的 maxUnits;chars 仍用 BATCH0_CHARS 內部限制
     // v1.8.8: ignorePartialMode 路徑（「翻譯剩餘段落」按鈕）走全頁翻譯，batch 0 用標準 BATCH0_UNITS
@@ -715,6 +718,7 @@
           pageUsage.billedInputTokens += response.usage.billedInputTokens || 0;
           pageUsage.billedCostUSD += response.usage.billedCostUSD || 0;
           pageUsage.cacheHits += response.usage.cacheHits || 0;
+          if (!response.usage.logged) pageUsage.unlogged = true;
         }
         if (response.hadMismatch) hadAnyMismatch = true;
         // v1.8.10 A:strip LLM 偷懶殘留的 SEP / «N» 標記
@@ -955,12 +959,17 @@
           // v1.8.10 B:hadMismatch=true(LLM 偷懶把 N 段合併成 1 段）時 reject,
           // 觸發既有 mid-failure catch 重翻 batch 0 走 non-streaming（整批 resolve 後一次 split)。
           // segment 0 可能已被 streaming 注入合併譯文（A 已 sanitize),retry 會用乾淨版本覆蓋。
-          if (message.payload.hadMismatch) {
+          // 2026-09-11 code review §3.5-1：finishReason MAX_TOKENS = 輸出被截斷，末段殘缺，
+          // 與 hadMismatch 同款處理（reject → non-streaming 重翻，該路徑有 packChunks + 逐段
+          // fallback）。background 已把 MAX_TOKENS 併進 hadMismatch（不寫快取 + discard 記帳），
+          // 這裡再讀 finishReason 是雙保險——背景漏折時 content 端仍不會把截斷譯文當完成。
+          const truncated = message.payload.finishReason === 'MAX_TOKENS';
+          if (message.payload.hadMismatch || truncated) {
             // _anomaly：進低流量異常 ring（lib/logger.js），供「翻好的字被另一版
             // 中文覆蓋」類回報事後排查（2026-07-27 scotto.me 排查缺口——一般
             // persisted ring 100 筆數小時內被日常 log 擠光）。injectedSoFar =
             // 已串流上屏、即將被 non-streaming 重翻覆蓋的段數
-            SK.sendLog('warn', 'translate', `batch 1/${jobs.length} stream DONE with hadMismatch, triggering retry`, { elapsed, totalSegments: message.payload.totalSegments, injectedSoFar: batch0StreamDone, _anomaly: true });
+            SK.sendLog('warn', 'translate', `batch 1/${jobs.length} stream DONE with hadMismatch, triggering retry`, { elapsed, totalSegments: message.payload.totalSegments, injectedSoFar: batch0StreamDone, truncated, finishReason: message.payload.finishReason, _anomaly: true });
             _clearIdleWatchdog();
             browser.runtime.onMessage.removeListener(onMessage);
             firstChunkResolve(true);
@@ -976,6 +985,7 @@
           // 沒帶 cacheHits 的真送 API streaming 視為 0 hit。漏接此欄位會讓 pickRescanToast 判定不到
           // 純 cache hit,SPA rescan toast 一律跳「已翻 N 段新內容」誤導使用者以為又花了 token。
           pageUsage.cacheHits += usage.cacheHits || 0;
+          if (!usage.logged) pageUsage.unlogged = true;
           SK.sendLog('info', 'translate', `batch 1/${jobs.length} stream done`, { elapsed, totalSegments: message.payload.totalSegments, hadMismatch: false });
           _clearIdleWatchdog();
           browser.runtime.onMessage.removeListener(onMessage);
@@ -1791,7 +1801,10 @@
 
       // 記錄用量到 IndexedDB(convertOnly 純本地轉換零 API 用量,不寫紀錄——
       // usage-db 是 API 對帳工具,0 token entry 只會稀釋統計)
-      if (done > 0 && !convertOnly) {
+      // 2026-09-11 code review §3.6-1：網頁路徑成功批次已由 background 逐批落地
+      //（usage.logged），這裡只補「沒帶 logged」的情況（背景落地失敗）；否則整頁再發
+      // 一筆會重複計。關分頁 / SPA 導航 / 中途 throw 不再漏帳的保證來自背景那側
+      if (done > 0 && !convertOnly && pageUsage.unlogged) {
         SK.safeSendMessage({
           type: 'LOG_USAGE',
           payload: {

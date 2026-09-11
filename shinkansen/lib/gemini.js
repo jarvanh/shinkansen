@@ -400,7 +400,7 @@ export async function extractGlossary(compressedText, settings) {
     clearTimeout(abortTimer);
   }
   const ms = Date.now() - t0;
-  // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
+  // v1.10.18:outputTokens 計入 thoughtsTokenCount（見 parseGeminiUsage)。
   const usage = parseGeminiUsage(json?.usageMetadata);
 
   if (!resp.ok) {
@@ -881,12 +881,21 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   const finishReason = candidate?.finishReason || 'unknown';
   const text = candidate?.content?.parts?.[0]?.text || '';
 
+  // v1.10.18:outputTokens 計入 thoughtsTokenCount（見 parseGeminiUsage)。
+  // cachedTokens 為 Gemini 2.5+ implicit cache 命中的 input 子集，未命中欄位不出現 → 0。
+  // 2026-09-11 code review §3.5-2：提前到 blocked / empty 檢查之前——這兩條 throw 之前
+  // input(+thinking)token 已計費，要掛 err.usage 讓 translateBatch 外層加總、background
+  // 記帳（streaming 路徑早有掛，non-streaming 漏掉 → 兩路 drift,thinking 燒掉的 token 漏帳）。
+  const chunkUsage = parseGeminiUsage(json?.usageMetadata);
+
   // 檢查 promptFeedback（整個 prompt 被擋的情況，candidates 會是空陣列）
   const blockReason = json?.promptFeedback?.blockReason;
   if (blockReason) {
     await debugLog('error', 'api', 'gemini prompt blocked', { blockReason, elapsed: ms });
-    throw codedError('blocked', { reason: blockReason },
+    const err = codedError('blocked', { reason: blockReason },
       `Gemini 拒絕處理此請求（promptFeedback.blockReason: ${blockReason}）。可能是安全過濾器誤判，請嘗試縮短段落或調整內容。`);
+    err.usage = { ...chunkUsage }; // blocked 前的 input token 已計費，交呼叫端記帳
+    throw err;
   }
 
   // 檢查 candidates 為空或無文字輸出
@@ -905,7 +914,9 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     };
     const friendlyMsg = reasonMessages[finishReason]
       || `Gemini 回傳空內容（finishReason: ${finishReason}）。`;
-    throw codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason }, friendlyMsg);
+    const err = codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason }, friendlyMsg);
+    err.usage = { ...chunkUsage }; // 空輸出時 input(+thinking)token 已計費，交呼叫端記帳
+    throw err;
   }
 
   // finishReason 異常警告（有文字但不是正常結束）
@@ -913,9 +924,6 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     await debugLog('warn', 'api', 'gemini unusual finishReason', { finishReason, elapsed: ms, textLength: text.length });
   }
 
-  // v1.10.18:outputTokens 計入 thoughtsTokenCount(見 parseGeminiUsage)。
-  // cachedTokens 為 Gemini 2.5+ implicit cache 命中的 input 子集,未命中欄位不出現 → 0。
-  const chunkUsage = parseGeminiUsage(json?.usageMetadata);
   await debugLog('info', 'api', 'gemini response', {
     elapsed: ms,
     segments: texts.length,
@@ -947,7 +955,16 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
       } catch (err) {
         // v1.10.46(批次 2-5):逐段 fallback 半途失敗——本批原始請求 + 已完成的逐段
         // 都付過費,把累積 usage 掛在 error 上交給 translateBatch 外層加總(見上)。
-        if (err && typeof err === 'object') err.usage = { ...aggUsage };
+        // 2026-09-11 code review §3.5-2：失敗那一段自己的 usage(blocked / empty / 截斷
+        // throw 現在都掛 err.usage）要「相加」進來，不可覆蓋——與 openai-compat.js 同款。
+        if (err && typeof err === 'object') {
+          const own = err.usage || {};
+          err.usage = {
+            inputTokens: aggUsage.inputTokens + (own.inputTokens || 0),
+            outputTokens: aggUsage.outputTokens + (own.outputTokens || 0),
+            cachedTokens: (aggUsage.cachedTokens || 0) + (own.cachedTokens || 0),
+          };
+        }
         throw err;
       }
       await debugLog('info', 'api', `fallback segment ${fi + 1}/${texts.length}`, { elapsed: Date.now() - tSeg0 });
@@ -959,6 +976,25 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     await debugLog('warn', 'api', 'fallback complete', { segments: texts.length, fallbackElapsed: Date.now() - tFallback0, originalElapsed: ms });
     return { parts: aligned, usage: aggUsage, hadMismatch: true };
   };
+
+  // 2026-09-11 code review §3.5-1:MAX_TOKENS 帶部分文字 = 輸出在上限處被截斷，末段殘缺。
+  // 原本只 warn 就當成功往下走——段數恰好對齊（截在最後一段內部）或 realignByMarkers
+  // 救回時，截斷譯文會被 background 寫進永久快取，之後每次都命中壞譯文。多段 chunk 走
+  // 逐段 fallback（每段輸出小，不會再撞上限；與段數不符同款處理）；單段 chunk 沒有更小
+  // 的單位可退，拋 emptyMaxTokens 同碼錯誤讓使用者提高上限 / 縮批，usage 掛上供記帳。
+  // 必須排在 realign / 段數比對之前，否則截斷輸出可能被對齊成功而放行。
+  if (finishReason === 'MAX_TOKENS') {
+    if (texts.length > 1) {
+      await debugLog('warn', 'api', 'gemini output truncated (MAX_TOKENS) — fallback to per-segment', {
+        segments: texts.length, elapsed: ms, textLength: text.length,
+      });
+      return perSegmentFallback();
+    }
+    const err = codedError('emptyMaxTokens', { reason: finishReason },
+      '輸出超過 maxOutputTokens 上限（譯文被截斷）。請到設定頁提高上限，或減少每批段落數。');
+    err.usage = { ...chunkUsage };
+    throw err;
+  }
 
   // 若回傳段數不符，且本批不只一段：先試序號標記二次對齊(v2.0.69,模型吃掉 SEP
   // 但段首 «N» 都在的場景,見 realignByMarkers 註解),救不回才 fallback 逐段翻譯

@@ -37,6 +37,9 @@
     overlaySrcEl: null,
     iframeEl: null,
     registeredListening: false,
+    // 2026-09-11 code review §3.4-3：翻譯輪世代。每次新字幕 payload（換軌）+1；
+    // 舊輪 in-flight 批次回來時比對不符即丟棄，不把舊軌譯文 push 進新軌 entries
+    runId: 0,
   };
 
   // ─── overlay UI helpers(top-level,gate 之前定義,讓 spec 能呼叫)──
@@ -287,11 +290,20 @@
     }).catch(() => {});
   }
 
+  // §3.4-3：舊輪判定（單一資料源，LLM / Google 兩條批次路徑共用）
+  function _isStaleRun(runId, batchIdx, totalBatches, engineLabel) {
+    if (runId === DRIVE.runId) return false;
+    SK.sendLog('info', 'drive', `batch ${batchIdx + 1}/${totalBatches} discarded — stale run (${engineLabel})`, {
+      batchRunId: runId, currentRunId: DRIVE.runId,
+    });
+    return true;
+  }
+
   // ─── 單批翻譯：LLM D' 模式（自由合句 + 時間戳對齊）─────────
   // Gemini 與 OpenAI-compat（自訂 Provider）共用同一條核心，只差送的 message type
   // （background 走 handleTranslate / handleTranslateCustom）與 log 標籤；兩者都用同一份
   // ASR JSON timestamp 協定 + parseAsrResponse，跟 YouTube ASR 自訂 Provider 路徑同源。
-  async function _runOneBatchLlm(batch, batchIdx, totalBatches, msgType, engineLabel) {
+  async function _runOneBatchLlm(batch, batchIdx, totalBatches, msgType, engineLabel, runId) {
     if (batch.length === 0) return;
 
     // v2.0.54:批次末條 e 改查 DRIVE.rawSegments 真實後繼片段起點(跟 YT _runAsrSubBatch
@@ -327,6 +339,10 @@
 
     // 記帳放在 parse 之前——API 已回應即已付費，parseAsrResponse 失敗丟棄結果錢也花了
     _logDriveUsage(batch.length, res.usage, engineLabel);
+
+    // §3.4-3：await 期間換軌（新 payload 進來 runId 已 +1、entries 已清）→ 本批屬舊軌，
+    // 譯文丟棄（錢已記帳），不可 push 進新軌 entries 造成新舊譯文交錯
+    if (_isStaleRun(runId, batchIdx, totalBatches, engineLabel)) return;
 
     const rawText = res.result?.[0] || '';
     let entries;
@@ -371,7 +387,7 @@
 
   // ─── 單批翻譯:Google Translate 模式(逐段翻、不合句、免費) ──
   // input/output 都是 N 條 1:1 對應(ASR 不合句),時間戳沿用 raw segment 的 startMs。
-  async function _runOneBatchGoogle(batch, batchIdx, totalBatches) {
+  async function _runOneBatchGoogle(batch, batchIdx, totalBatches, runId) {
     if (batch.length === 0) return;
 
     const texts = batch.map(seg => seg.text);
@@ -395,6 +411,9 @@
       });
       return;
     }
+
+    // §3.4-3：同 LLM 路徑——await 期間換軌則丟棄本批
+    if (_isStaleRun(runId, batchIdx, totalBatches, 'google')) return;
 
     const translations = Array.isArray(res.result) ? res.result : [];
     let pushedCount = 0;
@@ -460,6 +479,9 @@
     // 之間跳動；雙語 .src 又從新軌 rawSegments 撈，出現源文配舊軌譯文的錯配
     DRIVE.entries = [];
     DRIVE.currentEntryIdx = -2;
+    // §3.4-3：新輪世代。舊輪 worker 的 in-flight 批次回來時 runId 不符 → 丟棄；
+    // 舊輪 worker 派下一批前也檢查 → 停派（不再為舊軌燒 API）
+    const runId = ++DRIVE.runId;
 
     // v1.8.54:存 raw segments 給雙語 overlay .src 撈對應時段原文
     DRIVE.rawSegments = rawSegments;
@@ -497,12 +519,17 @@
           SK.sendLog('info', 'drive', 'autoTranslate turned off mid-translation, stopping');
           return;
         }
+        // §3.4-3：換軌後舊輪 worker 不再派新批（in-flight 的由批次函式內 stale guard 丟棄）
+        if (runId !== DRIVE.runId) {
+          SK.sendLog('info', 'drive', 'track switched mid-translation, old run stops dispatching', { runId, currentRunId: DRIVE.runId });
+          return;
+        }
         if (engine === 'google') {
-          await _runOneBatchGoogle(batches[idx], idx, totalBatches);
+          await _runOneBatchGoogle(batches[idx], idx, totalBatches, runId);
         } else if (engine === 'openai-compat') {
-          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat');
+          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH_CUSTOM', 'openai-compat', runId);
         } else {
-          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH', 'gemini');
+          await _runOneBatchLlm(batches[idx], idx, totalBatches, 'TRANSLATE_DRIVE_ASR_SUBTITLE_BATCH', 'gemini', runId);
         }
       }
     }
@@ -513,6 +540,8 @@
       totalBatches,
       totalEntries: DRIVE.entries.length,
       elapsedMs: Date.now() - tStart,
+      runId,
+      superseded: runId !== DRIVE.runId,
     });
     // v2.0.78（批次 3 C3）：翻譯全失敗（無 API key / 網路斷 / !res.ok 都只 log 就
     // return）時回滾 fingerprint——fp 在翻譯開始「前」latch，全失敗不回滾的話，
