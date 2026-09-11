@@ -41,7 +41,7 @@ PDF-TRANSLATION-PLAN.md
 PLAN-send-to-instapaper.md
 SPEC-PRIVATE.md
 DEBUG-BOARD.md
-CODE-REVIEW-2026-08-03.md
+CODE-REVIEW-*.md
 
 # Claude Code 本機工作流(專案 skill / transient lock 等,含個人資訊,
 # 跟 CLAUDE.md 同待遇不入公開 repo)

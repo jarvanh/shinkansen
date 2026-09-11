@@ -23,7 +23,7 @@
 // tokenizeParagraph / mergeRunItems / composeTranslatedParagraph / spliceEdits 等）
 // 直接 import 可測，parseDocxFile / buildTranslatedDocx 才需要瀏覽器環境。
 
-import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS } from './epub-engine.js';
+import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS, HAS_LETTER_RE } from './epub-engine.js';
 
 export class DocxParseError extends Error {
   constructor(code, message) {
@@ -484,8 +484,6 @@ function applyDocxSerializerPolicy(SK) {
 // ─── 解析主入口（瀏覽器環境）──────────────────────────────
 // part 掃描順序：body → headers/footers → footnotes/endnotes → comments。
 // 各附加 part 自成章節（i18n 標題由 index.js 填，這裡回 partKind 供對映）。
-const HAS_LETTER_RE = /[A-Za-zÀ-ÿЀ-ӿ㐀-鿿぀-ヿ가-힯]/;
-
 function naturalSort(a, b) {
   return a.localeCompare(b, undefined, { numeric: true });
 }

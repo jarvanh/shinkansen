@@ -400,8 +400,9 @@ async function init() {
 
   // 送到 Instapaper：只有「已啟用且已連結」才顯示按鈕
   try {
-    const { instapaperEnabled = false, instapaperToken } =
-      await browser.storage.sync.get(['instapaperEnabled', 'instapaperToken']);
+    const { instapaperEnabled = false } = await browser.storage.sync.get(['instapaperEnabled']);
+    // token 在 storage.local（2026-09-11 起，見 storage.js migrateInstapaperTokenIfNeeded）
+    const { instapaperToken } = await browser.storage.local.get(['instapaperToken']);
     $('send-to-instapaper-btn').hidden = !(instapaperEnabled === true && !!instapaperToken);
   } catch { /* 讀取失敗維持 hidden */ }
 
@@ -662,7 +663,7 @@ $('send-to-instapaper-btn').addEventListener('click', async () => {
     } catch (_) { /* 摘要失敗不擋送出 */ }
     statusEl.textContent = t('instapaper.sending');
     const { instapaperToken, instapaperTokenSecret } =
-      await browser.storage.sync.get(['instapaperToken', 'instapaperTokenSecret']);
+      await browser.storage.local.get(['instapaperToken', 'instapaperTokenSecret']);
     const payload = buildInstapaperPayload({ url: page.url, html: page.html, title: page.title, description });
     const r = await saveToInstapaper({ token: instapaperToken, tokenSecret: instapaperTokenSecret, payload });
     if (r.ok) {

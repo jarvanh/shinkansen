@@ -23,6 +23,13 @@
 
 import { getPricingForModel } from '../lib/model-pricing.js';
 
+// 「有可翻文字」判斷的單一資料源（epub / docx / txt / md / subtitle 各引擎共用）。
+// 2026-09-11 code review P1-3：原本各引擎各自手寫「拉丁 / Latin-1 / 西里爾 / CJK / 假名 / 諺文」區段三份，
+// 整個漏掉希臘 / 希伯來 / 阿拉伯 / 泰 / 天城文等文字系統——阿拉伯文 SRT 全段 verbatim
+// 報「空檔案」、希臘文 EPUB 每章 0 字。改 Unicode 屬性 \p{L}（任何文字系統的字母，
+// 刻意不含數字：純數字 / 標點段不送翻）。網頁路徑 content-detect 早已用 \p{L}。
+export const HAS_LETTER_RE = /\p{L}/u;
+
 // ─── 限制（SPEC-PRIVATE §30.5）─────────────────────────────
 // 硬上限走檔案 bytes（EPUB 大多是圖片撐大，跟翻譯成本無關，設寬鬆防呆值）；
 // 軟警告走「可翻譯字元數」（成本相關維度），超過時 UI 要使用者確認。
@@ -204,7 +211,7 @@ export function collectChapterBlocks(xhtmlDoc, chapterIndex, SK) {
     const plainText = normalizeText(el.textContent);
     if (!plainText) continue;
     // 純數字 / 純標點（頁碼、分隔符）不送翻
-    if (!/[A-Za-zÀ-ÿЀ-ӿ㐀-鿿぀-ヿ가-힯]/.test(plainText)) continue;
+    if (!HAS_LETTER_RE.test(plainText)) continue;
 
     const htmlClone = htmlCloneFromXhtml(el);
     if (!htmlClone) continue;

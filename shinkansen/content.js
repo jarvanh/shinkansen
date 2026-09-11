@@ -32,6 +32,21 @@
       window.dispatchEvent(new CustomEvent('shinkansen-debug-response', { detail }));
     };
 
+    // 2026-09-11 code review S-1（隱私 / 安全 gate，預設全關）：bridge 對任意網頁常開，
+    // 任何頁面 JS 都能 dispatch 這個事件並監聽回應。原本只有 GET_CACHE_PEEK /
+    // TOGGLE_EDIT_MODE 逐條加 dev tail gate，其餘商店版照開——GET_STORAGE 回整包
+    // storage.sync（曾含 Instapaper OAuth token）、GET_LOGS 帶其他分頁 URL 與段落片段、
+    // TRANSLATE* 用使用者金鑰翻惡意頁塞的內容、CLEAR_CACHE / RELOAD_EXTENSION 破壞狀態。
+    // 改成「預設只在 dev tail（四段版本 = unpacked working tree）開放」，商店版白名單只留
+    // GET_STATE（唯讀、無敏感資料；cage 驗版本用）與 GET_CACHE_STATS（只有條數 / bytes）。
+    // 除錯本來就跑 dev tail，除錯能力不受影響。
+    // GET_CACHE_STATS 只回條數 / bytes / 時間戳，無內容，既有 spec 鎖定商店版可用（診斷 LRU）
+    const _RELEASE_SAFE_ACTIONS = new Set(['GET_STATE', 'GET_CACHE_STATS']);
+    if (!_RELEASE_SAFE_ACTIONS.has(action) && !SK.isDevTailBuild()) {
+      respond({ ok: false, error: `${action} disabled in release build (dev tail only)` });
+      return;
+    }
+
     // v1.5.4: 全部走 Promise 風格——Chrome 88+ 跟 Firefox 全版本都支援，
     // 而 callback 風格 Firefox 不認；此前混用會在 Firefox 直接壞。
     // Chrome 端兩種寫法走同一條 native code path，效能 0 影響。
@@ -82,19 +97,10 @@
       // Debug Bridge:切換編輯譯文模式(等同 popup 按鈕)。cage / harness 進不了
       // extension 的 popup 頁,沒這條就無法自動化驗編輯模式相關 bug(例 Content
       // Guard 編輯豁免與 framework revert 的互動)。僅 dev tail(四段版本)啟用,
-      // 與 GET_CACHE_PEEK 同款 gate——bridge 對任意網頁常開,行為開關不對商店版
-      // 開放。detail.force = true/false 指定開關,省略 = toggle
-      let _editDevTail = false;
-      try {
-        const _rt = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
-        _editDevTail = String(_rt?.getManifest?.().version || '').split('.').length >= 4;
-      } catch (_) { /* orphan context 取不到版本 → 視同商店版拒絕 */ }
-      if (!_editDevTail) {
-        respond({ ok: false, error: 'TOGGLE_EDIT_MODE disabled in release build (dev tail only)' });
-      } else {
-        const _force = (e.detail && typeof e.detail.force === 'boolean') ? e.detail.force : undefined;
-        respond(toggleEditMode(_force));
-      }
+      // 商店版由 listener 頂端的統一 gate 擋掉（2026-09-11 起全 bridge 預設 dev tail only）。
+      // detail.force = true/false 指定開關，省略 = toggle
+      const _force = (e.detail && typeof e.detail.force === 'boolean') ? e.detail.force : undefined;
+      respond(toggleEditMode(_force));
     } else if (action === 'GET_PERSISTED_LOGS') {
       // v1.2.52: 讀取跨 service worker 重啟仍保留的持久化 log
       forwardToBackground('GET_PERSISTED_LOGS');
@@ -238,16 +244,7 @@
       // Gmail / 內部文件等其他站翻過的內容全文)——惡意頁 dispatch bridge 事件
       // 換關鍵字反覆探測即可跨站撈譯文。僅 dev tail 版本(四段版本號 = unpacked
       // working tree）啟用；商店版（三段）直接回 error。除錯本來就跑 dev tail，
-      // 除錯能力不受影響。
-      let _isDevTail = false;
-      try {
-        const _rt = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
-        _isDevTail = String(_rt?.getManifest?.().version || '').split('.').length >= 4;
-      } catch (_) { /* orphan context 等取不到版本 → 視同商店版拒絕 */ }
-      if (!_isDevTail) {
-        respond({ ok: false, error: 'GET_CACHE_PEEK disabled in release build (dev tail only)' });
-        return;
-      }
+      // 除錯能力不受影響。（2026-09-11 起 gate 統一移到 listener 頂端，全 bridge 適用）
       const _contains = String((e.detail && e.detail.contains) || '');
       const _limit = Math.max(1, Math.min(20, (e.detail && e.detail.limit) || 5));
       try {
@@ -1178,6 +1175,11 @@
       SK.sendLog('info', 'translate', 'embedded player frame, skip translate', { url: location.href });
       return;
     }
+    // 同頁單一 instance 選舉（content-ns.js）：另一份 Shinkansen 排名較高時靜默讓位
+    if (SK.isInstanceLeader && !SK.isInstanceLeader()) {
+      SK.sendLog('info', 'translate', 'skip translate (another instance leads)', { url: location.href });
+      return;
+    }
 
     // v1.8.8 instrumentation: 入口 STATE 狀態
     SK.sendLog('info', 'translate', 'translatePage entry', {
@@ -1947,6 +1949,11 @@
     const _noRestoreData = STATE.originalHTML.size === 0
       && (!STATE.translationCache || STATE.translationCache.size === 0)
       && (!STATE.nodeValueMutateBackup || STATE.nodeValueMutateBackup.size === 0);
+    if (_noRestoreData && SK.INSTANCE?.stoodDown) {
+      // 讓位的 instance 沒有還原素材是正常的（marker 是 leader 的），不可 reload 把 leader 譯文炸掉
+      SK.sendLog?.('info', 'system', 'restorePage ignored (instance stood down, markers belong to leader)');
+      return;
+    }
     if (_noRestoreData && SK.isPageTranslated()) {
       SK.sendLog?.('warn', 'system', 'restorePage: markers present but no restore data, reloading to original');
       // reload 前先清 marker,避免重載前的瞬間 isPageTranslated 仍判為已翻譯
@@ -2227,6 +2234,10 @@
     // v2.0.79: 嵌入式播放器 frame 靜默結束（同 translatePage,見 issue #58）
     if (SK.isEmbeddedPlayerFrame?.(document, window)) {
       SK.sendLog('info', 'translate', 'embedded player frame, skip translate (google)', { url: location.href });
+      return;
+    }
+    if (SK.isInstanceLeader && !SK.isInstanceLeader()) {
+      SK.sendLog('info', 'translate', 'skip translate (another instance leads, google)', { url: location.href });
       return;
     }
     // 若同一引擎已翻譯 → 還原（toggle）
@@ -2668,6 +2679,14 @@
     // opts.force（懸浮按鈕長按選單選引擎時帶）：直接用指定 preset 重新翻譯，而非 toggle 還原。
     // 一般入口（短按 / 快速鍵 / popup）維持 toggle 語意：已譯 → 還原。
     const force = opts.force === true;
+    // 同頁單一 instance 選舉（content-ns.js）：已讓位的 instance 所有觸發靜默結束。
+    // 不只擋翻譯入口——本函式接著會用 DOM marker 判「已翻譯 → restorePage」，而 marker 是
+    // leader 注入的，讓位方的還原資料 Map 全空 → restorePage 殭屍保底會 location.reload()
+    // 把 leader 的譯文整頁重載掉（2026-09-11 code review）。
+    if (SK.INSTANCE?.stoodDown) {
+      SK.sendLog('info', 'translate', 'preset ignored (this instance stood down)', { slot });
+      return;
+    }
     // v1.10.57: 翻譯中判斷必須在「已翻譯」之前 —— 已翻譯改以 DOM marker 為準
     // (SK.isPageTranslated),而翻譯途中譯文是逐段注入的,marker 會提前出現,
     // 若先判 isPageTranslated 會把「翻譯中按鍵取消」誤導成 restorePage。

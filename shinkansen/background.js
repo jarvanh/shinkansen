@@ -945,8 +945,12 @@ const messageHandlers = {
     handler: async (payload, sender) => {
       const s = await getSettings();
       const yt = s.ytSubtitle || {};
-      const ytPrompt = (yt.systemPrompt || '').trim();
-      const overrides = ytPrompt ? { systemPrompt: ytPrompt } : null;
+      // 2026-09-11 code review P1-2：原本把 yt.systemPrompt 原字串當 override 直接塞——
+      // getSettings 對 ytSubtitle 深 merge，這個值永遠是非空的預設繁中字幕 prompt，
+      // handleTranslateCustom 看到 override 就不再包 getEffective → targetLanguage = en / ja
+      // 的使用者用自訂 Provider 翻人工字幕全部變繁中。改跟 Gemini 字幕路徑（711 / 771）與
+      // ASR 自訂路徑對齊：依 target 選 UNIVERSAL / zh-TW 版，使用者客製 prompt 照常優先。
+      const overrides = { systemPrompt: getEffectiveSubtitleSystemPrompt(s.targetLanguage, yt.systemPrompt) };
       // v1.5.8: 字幕路徑同 Gemini 字幕路徑，預設不套用固定術語表 / 黑名單
       return handleTranslateCustom(payload, sender, '_oc_yt', overrides,
         yt.applyFixedGlossary === true,
@@ -2731,8 +2735,12 @@ async function handleSendToInstapaperCommand() {
     browser.tabs.sendMessage(tab.id, { type: 'INSTAPAPER_TOAST', status }).catch(() => {});
 
   // enable gate：未啟用或未連結 → 提示後 no-op
-  const { instapaperEnabled = false, instapaperToken, instapaperTokenSecret, instapaperSummaryEnabled = true } =
-    await browser.storage.sync.get(['instapaperEnabled', 'instapaperToken', 'instapaperTokenSecret', 'instapaperSummaryEnabled']);
+  // token / secret 在 storage.local（2026-09-11 起，比照 apiKey：sync 會被 Debug Bridge
+  // GET_STORAGE / 匯出設定整包帶出；storage.js migrateInstapaperTokenIfNeeded 一次性搬遷）
+  const { instapaperEnabled = false, instapaperSummaryEnabled = true } =
+    await browser.storage.sync.get(['instapaperEnabled', 'instapaperSummaryEnabled']);
+  const { instapaperToken, instapaperTokenSecret } =
+    await browser.storage.local.get(['instapaperToken', 'instapaperTokenSecret']);
   if (instapaperEnabled !== true || !instapaperToken || !instapaperTokenSecret) {
     toast('not-enabled');
     return;

@@ -166,6 +166,7 @@
     'options.action.saved': '✓ 已儲存',
     'options.action.dirtyBar': '儲存中⋯',
     'options.action.savedBar': '已自動儲存',
+    'options.action.saveFailed': '自動儲存失敗：{error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 有新版可下載',
@@ -1191,6 +1192,7 @@
     'options.action.saved': '✓ 已保存',
     'options.action.dirtyBar': '保存中⋯',
     'options.action.savedBar': '已自动保存',
+    'options.action.saveFailed': '自动保存失败：{error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 有新版可下载',
@@ -2212,6 +2214,7 @@
     'options.action.saved': '✓ Saved',
     'options.action.dirtyBar': 'Saving…',
     'options.action.savedBar': 'Auto-saved',
+    'options.action.saveFailed': 'Auto-save failed: {error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Update available',
@@ -3233,6 +3236,7 @@
     'options.action.saved': '✓ 保存しました',
     'options.action.dirtyBar': '保存中⋯',
     'options.action.savedBar': '自動保存しました',
+    'options.action.saveFailed': '自動保存に失敗しました：{error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 新バージョンあり',
@@ -4254,6 +4258,7 @@
     'options.action.saved': '✓ 저장됨',
     'options.action.dirtyBar': '저장 중⋯',
     'options.action.savedBar': '자동 저장됨',
+    'options.action.saveFailed': '자동 저장 실패: {error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 새 버전 있음',
@@ -5274,6 +5279,7 @@
     'options.action.saved': '✓ Guardado',
     'options.action.dirtyBar': 'Guardando…',
     'options.action.savedBar': 'Guardado automáticamente',
+    'options.action.saveFailed': 'Error al guardar automáticamente: {error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Nueva versión disponible',
@@ -6294,6 +6300,7 @@
     'options.action.saved': '✓ Enregistré',
     'options.action.dirtyBar': 'Enregistrement…',
     'options.action.savedBar': 'Enregistré automatiquement',
+    'options.action.saveFailed': 'Échec de l\'enregistrement automatique : {error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Nouvelle version disponible',
@@ -7314,6 +7321,7 @@
     'options.action.saved': '✓ Gespeichert',
     'options.action.dirtyBar': 'Wird gespeichert…',
     'options.action.savedBar': 'Automatisch gespeichert',
+    'options.action.saveFailed': 'Automatisches Speichern fehlgeschlagen: {error}',
 
     // ── options banner ───────────────────────────────────
     'options.updateBanner.title': '📦 Neue Version verfügbar',

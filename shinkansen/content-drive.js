@@ -130,20 +130,15 @@
   // ─── active entry finder + 雙語原文撈取 ───────────────
   // commit 4b entries 數量小(11 句),linear search 即可。commit 5 整支翻完
   // (~250 句)再考慮 binary search。
+  // 2026-09-11 code review：原本是 content-youtube.js _findActiveCue 的手抄鏡像（effectiveEnd
+  // 鄰接 clamp），ASR_CUE_LEAD_MS 加進 YT 端時這裡沒跟上 → YT 提前 1s、Drive 貼齊語音。
+  // 改走 SK.ASR.findActiveCueIdx 單一實作（含 lead 與 clamp），兩條顯示路徑不再各自維護。
   function _findActiveEntryIdx() {
-    const t = DRIVE.currentTimeMs;
-    const entries = DRIVE.entries;
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
-      // effectiveEnd clamp 到下一條 startMs(對齊 content-youtube.js _findActiveCue):
-      // 批尾 fallback endMs(+1500ms)或 LLM 給的 e 值跨 entry 重疊時，first-match 會
-      // 讓上一句多掛、吃掉下一句開頭
-      const nextStart = entries[i + 1] ? entries[i + 1].startMs : Infinity;
-      const effectiveEnd = Math.min(e.endMs, nextStart);
-      if (t >= e.startMs && t < effectiveEnd) return i;
-    }
-    return -1;
+    const find = SK.ASR && SK.ASR.findActiveCueIdx;
+    if (typeof find !== 'function') return -1;
+    return find(DRIVE.entries, DRIVE.currentTimeMs);
   }
+  SK._driveFindActiveEntryIdx = _findActiveEntryIdx;   // regression spec 用
 
   // 從 rawSegments 撈 [startMs, endMs) 區間的英文 join 出來。
   // Google 路徑 1:1 對應(每個 entry 包一個 raw segment);
@@ -442,7 +437,7 @@
       SK.sendLog('warn', 'drive', 'SK.ASR helpers not available (load order issue?)');
       return;
     }
-    const rawSegments = SK.ASR.parseJson3(json3);
+    const rawSegments = SK.ASR.parseJson3(json3, { perLineTiming: true });   // Drive 字幕軌皆 ASR，多行 event 各行獨立 startMs
     SK.sendLog('info', 'drive', 'asr segments parsed', {
       count: rawSegments.length,
       firstStartMs: rawSegments[0]?.startMs,

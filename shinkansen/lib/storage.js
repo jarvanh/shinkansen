@@ -935,6 +935,22 @@ async function migrateApiKeyIfNeeded(syncSaved) {
   await browser.storage.sync.remove('apiKey');
 }
 
+// 一次性遷移（2026-09-11 code review S-1）：Instapaper OAuth token / secret 從 sync 搬到
+// local。sync 整包會被 Debug Bridge GET_STORAGE 與 options「匯出設定」帶出，帳號憑證不該
+// 跟設定偏好同一個池（與 apiKey 同設計）。username 非機密，留在 sync 供 options 顯示連結狀態。
+export const INSTAPAPER_LOCAL_KEYS = ['instapaperToken', 'instapaperTokenSecret'];
+export async function migrateInstapaperTokenIfNeeded(syncSaved) {
+  if (!syncSaved) return;
+  const present = INSTAPAPER_LOCAL_KEYS.filter((k) => typeof syncSaved[k] === 'string' && syncSaved[k]);
+  if (present.length === 0) return;
+  const local = await browser.storage.local.get(INSTAPAPER_LOCAL_KEYS);
+  const toSet = {};
+  for (const k of present) if (!local[k]) toSet[k] = syncSaved[k];
+  if (Object.keys(toSet).length) await browser.storage.local.set(toSet);
+  // 無論 local 原本有沒有，sync 裡的一律清掉（避免之後又被同步回來）
+  await browser.storage.sync.remove(INSTAPAPER_LOCAL_KEYS);
+}
+
 // 一次性遷移(v1.9.14):Gemini 3.1 Flash Lite 從 preview 轉正式版,model ID 由
 // 'gemini-3.1-flash-lite-preview' 改成 'gemini-3.1-flash-lite'。掃使用者 saved
 // 設定裡所有可能存舊 ID 的欄位(geminiConfig.model / glossary.model / ytSubtitle.model /
@@ -1059,6 +1075,7 @@ export async function getSettingsCached() {
 export async function getSettings() {
   const saved = await browser.storage.sync.get(null);
   await migrateApiKeyIfNeeded(saved);
+  await migrateInstapaperTokenIfNeeded(saved);
   await migrateGeminiFlashLiteModelIfNeeded(saved);
   await migrateGemini35FlashModelIfNeeded(saved);
   await migrateGemini36FlashModelIfNeeded(saved);

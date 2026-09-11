@@ -175,7 +175,12 @@ async function load() {
   $('instapaperEnabled').checked = s.instapaperEnabled === true;
   // 摘要開關預設開（!== false）：既有使用者沒此 key 時也視為開
   $('instapaperSummaryEnabled').checked = s.instapaperSummaryEnabled !== false;
-  renderInstapaperLinkState(saved);
+  // token 在 storage.local（2026-09-11 起，見 storage.js migrateInstapaperTokenIfNeeded）；
+  // username 仍在 sync。合併後交給 render 判「已連結」
+  try {
+    const { instapaperToken } = await browser.storage.local.get('instapaperToken');
+    renderInstapaperLinkState({ instapaperToken, instapaperUsername: saved.instapaperUsername });
+  } catch { renderInstapaperLinkState({}); }
 
   // v1.0.21: 頁面層級繁中偵測開關
 
@@ -927,6 +932,14 @@ async function save() {
       _savePending = false;
       await _saveImpl();
     }
+  } catch (err) {
+    // 2026-09-11 code review P1-1：storage.sync 每個 key 上限 8KB（Chrome
+    // QUOTA_BYTES_PER_ITEM），長 prompt / 大量固定術語表會讓 sync.set reject。原本沒接
+    // rejection → 紅色「未儲存」bar 永遠停著、無任何訊息，且之後每次 autosave 都同樣失敗、
+    // 關頁全丟。至少把錯誤顯示出來，讓使用者知道要刪東西。
+    const msg = err?.message || String(err);
+    console.warn('[Shinkansen options] save failed', err);
+    showSaveBar('dirty', _t('options.action.saveFailed', { error: msg }));
   } finally {
     _saveInFlight = false;
   }
@@ -1688,11 +1701,12 @@ $('instapaper-connect')?.addEventListener('click', async () => {
   try {
     const r = await instapaperXAuth({ email, password });
     if (r.ok) {
-      await browser.storage.sync.set({
+      // token / secret 進 local（不隨 sync 被匯出 / bridge 讀走），username 進 sync
+      await browser.storage.local.set({
         instapaperToken: r.token,
         instapaperTokenSecret: r.tokenSecret,
-        instapaperUsername: email,
       });
+      await browser.storage.sync.set({ instapaperUsername: email });
       $('instapaper-password').value = ''; // 密碼用完即丟，不存
       resultEl.dataset.state = 'ok';
       resultEl.textContent = '✓ ' + _t('options.instapaper.connectOk');
@@ -1711,6 +1725,8 @@ $('instapaper-connect')?.addEventListener('click', async () => {
 });
 
 $('instapaper-unlink')?.addEventListener('click', async () => {
+  await browser.storage.local.remove(['instapaperToken', 'instapaperTokenSecret']);
+  // sync 端也清（含遷移前殘留的舊 token）
   await browser.storage.sync.remove(['instapaperToken', 'instapaperTokenSecret', 'instapaperUsername']);
   renderInstapaperLinkState({});
   const resultEl = $('instapaper-connect-result');
@@ -1794,6 +1810,9 @@ $('export-settings').addEventListener('click', async () => {
   const all = await browser.storage.sync.get(null);
   // apiKey 不納入匯出（apiKey 本來就存在 local 不在 sync，defensive 再 delete 一次）
   delete all.apiKey;
+  // 2026-09-11 code review：Instapaper 帳號連結（token / secret 已搬 local，username 是
+  // email）不進備份檔——備份檔常被貼到 issue / 分享，帳號憑證不該跟著走；匯入端本來就不還原它們
+  for (const k of RESET_PRESERVE_KEYS) delete all[k];
   const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

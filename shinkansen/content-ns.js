@@ -289,6 +289,13 @@ if (window.__shinkansen_loaded) {
   SK.ASR_CUE_MAX_CHARS = 40;
   // 拆分後每片最短顯示時長;cue 時長不夠拆 N 片時自動減片數,避免字幕閃跳
   SK.ASR_CUE_MIN_PIECE_MS = 1200;
+  // 2026-09-11（dev tail 2.4.13.4）：ASR 顯示 cue 統一提前量。cue 起點在 parseJson3
+  // perLineTiming 修正後已對齊真實語音起點（real-data 平均早 0.1s），但譯文字幕慣例是
+  // 略早於語音出現（讀者要先讀完整句譯文），修正前兩行合一 event 的第二行句子系統性
+  // 提早 1.3–2.6s 出現、平均早 1s，使用者習慣了那個節奏，對齊後反而感覺「落後 1–2 秒」。
+  // 改為所有 cue 統一提前 1s：_findActiveCue 以 currentTime + 此值查表，iOS 原生字幕軌
+  // 的 VTTCue 時間軸整體前移同值，兩條顯示路徑一致。
+  SK.ASR_CUE_LEAD_MS = 1000;
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     const markInteraction = () => { SK._lastInteractionT = Date.now(); };
     // capture phase + passive: 確保最早 fire,不阻塞網頁 listener。
@@ -339,8 +346,31 @@ if (window.__shinkansen_loaded) {
   //      仍能被 caller 看到； 只把 invalidated 錯誤吞掉
   //
   // caller 端 invalidated 時拿到 undefined, 配合 `if (!res?.ok)` 防禦即可。
+  // extension context 是否還活著：reload / 停用後的 orphan content script 這裡回 false
+  //（chrome.runtime.id 變 undefined）。safeSendMessage 的 fast path 與 instance 選舉的
+  // ping listener 共用同一判準；spec 可覆寫模擬 orphan。
+  SK.isExtensionContextAlive = function isExtensionContextAlive() {
+    return !!globalThis.chrome?.runtime?.id;
+  };
+
+  // 是否 dev tail build（manifest version 四段 = unpacked working tree）。Debug Bridge
+  // 行為開關 / 隱私敏感 action 只對 dev tail 開放，商店版（三段）拒絕。每次呼叫都重讀
+  // getManifest（spec 覆寫 getManifest 即生效；取不到版本的 orphan context 視同商店版）。
+  // 另認 manifest.version_name 帶 'test-build' 標記：release 輪 full test gate 跑在三段
+  // manifest 上，test/fixtures/extension.js 會複製一份 extension 加上這個標記（version 本身
+  // 不動，version-check.spec 才對得上），讓 bridge 驅動的 spec 在三段版本下照常可用。
+  // 商店 / 打包 build 永遠沒有 version_name。
+  SK.isDevTailBuild = function isDevTailBuild() {
+    try {
+      const rt = (typeof browser !== 'undefined' && browser.runtime) || (typeof chrome !== 'undefined' && chrome.runtime);
+      const m = rt?.getManifest?.() || {};
+      if (String(m.version || '').split('.').length >= 4) return true;
+      return /\btest-build\b/.test(String(m.version_name || ''));
+    } catch (_) { return false; }
+  };
+
   SK.safeSendMessage = function safeSendMessage(msg) {
-    if (!globalThis.chrome?.runtime?.id) return Promise.resolve(undefined);
+    if (!SK.isExtensionContextAlive()) return Promise.resolve(undefined);
     try {
       return browser.runtime.sendMessage(msg).catch((err) => {
         const m = String(err?.message || err);
@@ -812,7 +842,11 @@ if (window.__shinkansen_loaded) {
   // 只有拉丁 / 西里爾 / 漢字 / 數字,純假名文字(日文小說對白「いえ、いいんです」)
   // 被判「無實質文字」:EPUB 錨點政策把帶 id 的純假名元素當原子保留 ⟦*N⟧(整段
   // 永不送翻),網頁路徑純假名 inline run 也不收集。
-  SK.SUBSTANTIVE_CHAR_RE = /[A-Za-zÀ-ÿ\u0400-\u04FF\u3040-\u30FF\u31F0-\u31FF\u3400-\u9fff\uAC00-\uD7A3\uFF66-\uFF9D0-9]/;
+  // 2026-09-11 code review P1-3：手寫區段漏掉希臘 / 阿拉伯 / 希伯來 / 泰 / 印度系等整個
+  // 文字系統（純希臘文段被判「無實質文字」）。改用 Unicode 屬性：\p{L} 任何文字系統的
+  // 字母 + \p{N} 數字。translate-doc 各引擎的 HAS_LETTER_RE 同步改 \p{L}（那邊刻意不含
+  // 數字：純數字段落不送翻）。
+  SK.SUBSTANTIVE_CHAR_RE = /[\p{L}\p{N}]/u;
 
   SK.hasSubstantiveText = function hasSubstantiveText(txt) {
     return SK.SUBSTANTIVE_CHAR_RE.test(txt || '');
@@ -1320,4 +1354,73 @@ if (window.__shinkansen_loaded) {
       text,
     };
   };
+
+  // ─── 同頁單一 instance 選舉（2026-09-11） ─────────────────────────
+  // Why：使用者同時裝了兩份 Shinkansen（商店版 + unpacked dev、或兩個瀏覽器 profile 共用
+  //   分頁）時，兩份 content script 各自翻譯（API 費用雙倍）、各自維護字幕 cue，卻共用
+  //   同一個 DOM（YouTube overlay 以 tag 名找既有 host），每次 timeupdate 互相覆寫 →
+  //   使用者看到字幕在兩個譯本之間閃動（real-data 2026-09-11：2.4.13.x + 2.4.0 同頁）。
+  // How：所有 instance 共用 window CustomEvent 通道。要開始翻譯（整頁 / YouTube 字幕）前
+  //   派 ping，其他 instance 同步回 pong（DOM 事件跨 isolated world 同步派送，Debug Bridge
+  //   同機制），大家依「版本高者優先，同版本 extension id 小者優先」排序，只有第一名動手。
+  //   後載入的較高版 instance 派 ping 時，正在翻譯的較低版 instance 收到即讓位（停掉字幕
+  //   翻譯、之後所有觸發都靜默結束）。單一 instance 的一般情境：ping 無人回，零影響。
+  const _INSTANCE_PING = 'shinkansen-instance-ping';
+  const _INSTANCE_PONG = 'shinkansen-instance-pong';
+  SK.INSTANCE = {
+    id: (globalThis.chrome?.runtime?.id) || ('anon-' + Math.random().toString(36).slice(2)),
+    version: (() => { try { return browser.runtime.getManifest().version || '0'; } catch (_) { return '0'; } })(),
+    stoodDown: false,
+  };
+  // 版本比較：逐段數值比，缺段視為 -1（dev tail 四段 > 同號商店版三段）；同版本比 id 字串
+  function _instanceCmp(a, b) {
+    const va = String(a.version || '0').split('.').map(Number);
+    const vb = String(b.version || '0').split('.').map(Number);
+    const n = Math.max(va.length, vb.length);
+    for (let i = 0; i < n; i++) {
+      const x = Number.isFinite(va[i]) ? va[i] : -1;
+      const y = Number.isFinite(vb[i]) ? vb[i] : -1;
+      if (x !== y) return y - x;   // 版本高者排前
+    }
+    return String(a.id).localeCompare(String(b.id));
+  }
+  SK._instanceCmp = _instanceCmp;   // regression spec 用
+  function _instanceStandDown(reason, other) {
+    if (SK.INSTANCE.stoodDown) return;
+    SK.INSTANCE.stoodDown = true;
+    SK.sendLog('info', 'system', 'instance stood down (another Shinkansen on this page wins)', {
+      reason, me: SK.INSTANCE.version, other: other ? `${other.version}@${other.id}` : null,
+    });
+    try { if (SK.YT?.active) SK.stopYouTubeTranslation?.(); } catch (_) {}
+  }
+  window.addEventListener(_INSTANCE_PING, (e) => {
+    const d = e.detail;
+    if (!d || !d.id || d.id === SK.INSTANCE.id) return;
+    // orphan 不參選（2026-09-11 code review）：extension 被停用 / reload 後，舊 content
+    // script 的 isolated world 不會被銷毀，這個 listener 仍在。若照回 pong，「停用 dev
+    // 版想測商店版」時 dev 的 orphan 仍以較高版本壓制商店版 → 該分頁直到重新整理前
+    // 沒人翻譯、也沒有任何提示。context 死掉的 instance 一律靜默。
+    if (!SK.isExtensionContextAlive()) return;
+    window.dispatchEvent(new CustomEvent(_INSTANCE_PONG, {
+      detail: { id: SK.INSTANCE.id, version: SK.INSTANCE.version, replyTo: d.id },
+    }));
+    // 對方排在我前面 → 我讓位（對方接手翻譯）
+    if (_instanceCmp(d, SK.INSTANCE) < 0) _instanceStandDown('higher-ranked instance pinged', d);
+  });
+  // 翻譯入口呼叫：true = 本 instance 是同頁第一名，可以動手；false = 靜默結束
+  SK.isInstanceLeader = function isInstanceLeader() {
+    if (SK.INSTANCE.stoodDown) return false;
+    const me = { id: SK.INSTANCE.id, version: SK.INSTANCE.version };
+    const others = [];
+    const onPong = (e) => { if (e.detail && e.detail.replyTo === me.id) others.push(e.detail); };
+    window.addEventListener(_INSTANCE_PONG, onPong);
+    try { window.dispatchEvent(new CustomEvent(_INSTANCE_PING, { detail: me })); }
+    finally { window.removeEventListener(_INSTANCE_PONG, onPong); }
+    if (others.length === 0) return true;
+    const winner = [me, ...others].sort(_instanceCmp)[0];
+    if (winner.id === me.id) return true;
+    _instanceStandDown('lost election', winner);
+    return false;
+  };
+
 }

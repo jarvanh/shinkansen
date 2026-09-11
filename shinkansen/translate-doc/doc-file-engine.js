@@ -27,7 +27,7 @@
 // translate.js 以「epubSerializedText != null」走 raw 保留路徑，
 // renderBlockContent / session 存檔 / 一致性掃描全部原樣可用。
 
-import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS } from './epub-engine.js';
+import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS, HAS_LETTER_RE } from './epub-engine.js';
 // epub-writer 走 lazy import（buildTranslatedHtmlDoc 內）：該檔頂層有
 // new XMLSerializer()，頂層 import 會讓 Node 端 unit spec 無法載入本模組
 //（txt / md / CSV 解析是純函式，unit 測試直接 import 驗）
@@ -62,9 +62,9 @@ export function preflightDocFile(file) {
 }
 
 // ─── 共用小工具 ───────────────────────────────────────────
-// 「有可翻文字」判斷：與 epub-engine collectChapterBlocks 的字母集合同源
-//（拉丁 / 西里爾 / CJK / 假名 / 諺文）。純數字 / 標點 / 分隔線不送翻
-export const HAS_LETTER_RE = /[A-Za-zÀ-ÿЀ-ӿ㐀-鿿぀-ヿ가-힯]/;
+// 「有可翻文字」判斷：單一資料源在 epub-engine（docx / epub / txt / md / subtitle 共用）。
+// 純數字 / 標點 / 分隔線不送翻
+export { HAS_LETTER_RE };
 
 // 超長段落切塊上限（無空行的整檔 txt 防呆；一般段落遠低於此值）。
 // 行邊界優先，單行超長退到句界
@@ -93,7 +93,8 @@ export function stripBom(rawText) {
 // 日文須有足夠假名、韓文須有足夠常用音節（亂碼是均勻隨機字，比例極低）。
 const COMMON_HANZI = new Set(('的一是不了在人有我他這这個个們们中來来上大為为和國国地到以說说時时要就出會会可也你對对生能而子那得於于著着下自之年過过發发後后作裡里用道行所然家種种事成方多經经麼么去法學学如都同現现當当沒没動动面起看定天分還还進进好小部其些主樣样理心她本前開开但因只從从想實实日軍军者意無无力它與与長长把機机十民第公此已工使情明性知全三又關关點点正業业外將将兩两高間间由問问很最重並并物手應应戰战向頭头文體体政美相見见被利什二等產产或新己制身果加西斯月話话合回特代內内信表化老給给世位次度門门任常先海通教兒儿原東东聲声提立及比員员解水名真論论處处走義义各入幾几口認认條条平系氣气題题活爾尔更別别打女變变四神總总何電电數数安少報报才結结反受目太量再感建務务做接必場场件計计管期市直德資资命山金指克許许統统區区保至隊队形社便空決决治展馬马科司五基眼書书非則则聽听白卻却界達达光放強强即像難难且權权思王象完設设式色路記记南品住告類类求據据程北邊边死張张該该交規规萬万取拉格望覺觉術术領领共確确傳传師师觀观清今切院讓让識识候帶带導导爭争運运笑飛飞風风步改收根幹干造言聯联持組组每濟济車车親亲極极林服快辦办議议往元英士證证近失轉转夫令準准布始怎呢存未遠远叫台單单影具羅罗字愛爱擊击流備备兵連连調调深商算質质團团集百需價价花黨党華华城石級级整府離离況况亞亚請请技際际約约示復复病息究線线似官火斷断精滿满支視视消越器容照須须九增研寫写稱称企八功嗎吗包片史委乎查輕轻易早曾除農农找裝装廣广顯显吧阿李標标談谈吃圖图念六引歷历首醫医局突專专費费號号盡尽另周較较注語语僅仅考落青隨随選选奇嚴严江省板半友陽阳獎奖雲云輪轮啊哦喔嘿唉哪誰谁').split(''));
 const COMMON_HANGUL = new Set('이다는을를에의가하고한지로도기서나것게니사아그수어있자으시리인대정보들주해요면상없않만우전소내적마라경생되와실학국제일부오무세처장신문'.split(''));
-const LETTER_ANY_RE = /[A-Za-zÀ-ÿЀ-ӿ㐀-鿿぀-ヿ가-힯]/g;
+// 2026-09-11 code review P1-3：手寫區段漏掉希臘 / 阿拉伯 / 泰 / 印度系等文字系統，改 \p{L}
+const LETTER_ANY_RE = /\p{L}/gu;
 const count = (s, re) => (s.match(re) || []).length;
 const ratioIn = (s, re, set) => {
   const chars = s.match(re) || [];

@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.13
+- 目前 Extension 版本：2.4.14
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.13 為止）
+### 2.1 已實作（v2.4.14 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -40,7 +40,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 |---------|------|------|
 | 網頁翻譯 | ✅ | Option+S / Option+A（Gemini）/ Option+D（Google Translate）三組快速鍵；單語覆蓋 / 雙語對照雙模式；漸進分批注入；還原原文 |
 | 雙語對照模式 | ✅ | 譯文以 wrapper 形式附在原段落後；4 種視覺標記；顯示模式同時決定字幕雙語與否 |
-| YouTube 字幕翻譯 | ✅ | 自動偵測字幕即時翻譯；ASR（自動字幕）AI 分句；時間視窗批次；雙語 overlay；字幕大小與顏色跟隨原生設定；行動版 `m.youtube.com` 支援；`/watch` 與 `/live/<id>`（直播 / 直播存檔分享連結）路徑皆支援 |
+| YouTube 字幕翻譯 | ✅ | 自動偵測字幕即時翻譯；ASR（自動字幕）AI 分句，譯文字幕統一比語音提前 1 秒出現；時間視窗批次；雙語 overlay；字幕大小與顏色跟隨原生設定；行動版 `m.youtube.com` 支援；`/watch` 與 `/live/<id>`（直播 / 直播存檔分享連結）路徑皆支援 |
 | SPA 支援 | ✅ | 站內導航自動偵測；動態載入內容補翻；譯文防覆蓋保護；續翻模式 |
 | 段落偵測 | ✅ | 結構化 DOM walker；技術性排除（code / 表單 / 站底 footer）；尊重頁面宣告的 `translate="no"` / `notranslate` 與 icon 字型；內容品味判斷交給 system prompt |
 | 佔位符序列化 | ✅ | 行內元素（連結 / 粗斜體等）與媒體在譯文中完整保留 |
@@ -372,6 +372,8 @@ shinkansen/
 7. background 查快取 → 未命中呼叫對應 provider API
 8. 每批回來立即注入 DOM，Toast 更新進度
 9. 全部完成後顯示成功 Toast（含 token 數、費用、快取命中率）
+
+**同頁多份 Shinkansen**：同一個分頁若同時載入多份 Shinkansen（例如商店版與開發版並存），只有版本最高的一份會翻譯（整頁與 YouTube 字幕），其餘靜默讓位，避免重複計費與字幕互相覆寫。舊版沒有此機制，不會讓位，須先停用或更新。
 
 ---
 
