@@ -295,7 +295,7 @@
   // 都通用)，不依賴任何站點 class / id，符合硬規則 §6 / §8。
   // 兩條都成立才 reject——只 monospace 沒 pre 可能是 inline `<code>` 風格的小品味，
   // 一般文章正文不會兩條同時成立。
-  const _MONOSPACE_FONT_RE = /(?:^|[\s,'"])(monospace|Menlo|Consolas|Monaco|Courier|Fira(?:\s+Code|\s+Mono)?|Source\s+Code|JetBrains|Cascadia|Roboto\s+Mono|SFMono|SF\s+Mono|ui-monospace)(?:[\s,'"]|$)/i;
+  const _MONOSPACE_FONT_RE = /(?:^|[\s,'"])(monospace|Menlo|Consolas|Monaco|Courier|Fira\s+(?:Code|Mono)|Source\s+Code|JetBrains\s+Mono|Cascadia|Roboto\s+Mono|SFMono|SF\s+Mono|ui-monospace)(?:[\s,'"]|$)/i;
 
   // 自然語言 inline 元素：出現在 <pre> 內表示是引用文字（Medium 留言等)，不是 code。
   const PROSE_INLINE_TAGS = new Set(['A', 'EM', 'STRONG', 'I', 'B', 'CITE', 'Q', 'MARK', 'SMALL', 'INS', 'DEL', 'U']);
@@ -411,7 +411,11 @@
     return (el.textContent || '').length * 2 >= bodyLen;
   }
 
-  function isInsideExcludedContainer(el, memo) {
+  // stopAt（可選，exclusive）：只檢查 el 到 stopAt 之間的祖先。grid-cell 補抓 pass 用——
+  // 該 pass 存在的前提就是 table[role="grid"] 已在 EXCLUDE_ROLES 內，走到 body 一定 true；
+  // 以 td 的父層為界只驗 cell 內部的排除訊號。帶 stopAt 時 caller 必須用獨立 memo
+  //（同一節點的有界 / 無界結論不同，不可共用快取）。
+  function isInsideExcludedContainer(el, memo, stopAt) {
     if (memo && memo.has(el)) return memo.get(el);
 
     const visited = [];
@@ -422,7 +426,7 @@
     // 位置，memo 只快取 yes 元素（含）以下的節點——yes 以上的祖先對「不在 yes 內
     // 的其他後代」結論不同，不能拿這條路徑的結果去快取
     let yesIdx = -1;
-    while (cur && cur !== document.body) {
+    while (cur && cur !== document.body && cur !== stopAt) {
       // 走過 translate="yes" 之後不讀 memo:祖先的快取值可能來自「沒有 yes 的其他後代」
       // 走到 translate="no" 容器的結論,對本路徑不成立
       if (memo && yesIdx < 0 && memo.has(cur)) {
@@ -1874,6 +1878,9 @@
     });
 
     // v1.0.22: grid cell leaf text 補抓
+    // 2026-09-11：有界排除檢查用獨立 memo（以 td 父層為界，結論與 excludedMemo 的全程
+    // 結論不同，不可共用）
+    const gridExcludedMemo = new Map();
     scopeRoot.querySelectorAll('table[role="grid"] td').forEach(td => {
       // v1.6.9: textContent 取代 innerText
       const tdText = (td.textContent || '').trim();
@@ -1883,6 +1890,11 @@
       td.querySelectorAll('*').forEach(el => {
         if (seen.has(el)) return;
         if (el.hasAttribute('data-shinkansen-translated')) return;
+        // 2026-09-11 code review §3.2-2：本 pass 用 querySelectorAll 繞過 TreeWalker，
+        // 之前完全沒走 isInsideExcludedContainer——grid 內的 translate="no" / notranslate /
+        // dual wrapper / contenteditable / code 容器全部失效（上方 leaf DIV / anchor 補抓
+        // 路徑都有擋，此處對齊）。以 td 父層為界：grid 本身在 EXCLUDE_ROLES，無界必 true。
+        if (isInsideExcludedContainer(el, gridExcludedMemo, td.parentElement)) return;
 
         for (const child of el.children) {
           if ((child.textContent || '').trim().length >= 15) return;

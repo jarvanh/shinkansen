@@ -443,7 +443,19 @@
 
   function _revertEcho(el, translation) {
     var origHTML = STATE.originalHTML.get(el);
-    if (origHTML != null) el.innerHTML = origHTML;
+    // 2026-09-11 code review §3.1-2：nv-mutate 路徑（framework branch）的 echo 還原改走
+    // backup 逐 text node 寫回 nodeValue，不重 parse innerHTML——整段重 parse 正是這條
+    // 路徑要避免的事（React 持有的 text node ref 變孤兒、後續 re-render 可能崩）。
+    // 非 nv-mutate 路徑維持 innerHTML 還原，但 innerHTML 沒變的元素不重寫。
+    var nvBackup = STATE.nodeValueMutateBackup?.get(el);
+    if (nvBackup && nvBackup.length > 0) {
+      for (var bi = 0; bi < nvBackup.length; bi++) {
+        var b = nvBackup[bi];
+        if (b && b.node && b.node.nodeValue !== b.originalValue) b.node.nodeValue = b.originalValue;
+      }
+    } else if (origHTML != null && el.innerHTML !== origHTML) {
+      el.innerHTML = origHTML;
+    }
     var origLang = STATE.originalLang.get(el);
     if (origLang === null) el.removeAttribute('lang');
     else if (origLang != null) el.setAttribute('lang', origLang);

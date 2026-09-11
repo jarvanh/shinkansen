@@ -70,7 +70,8 @@
     let _spaStripped = 0;
     STATE.originalHTML.forEach((originalHTML, el) => {
       // AMO source review: originalHTML 來自本 extension 翻譯前自存的原始 DOM 字串,純還原用。
-      el.innerHTML = originalHTML;
+      // 2026-09-11 code review §3.1-2：innerHTML 沒動過的元素不重寫（同 content.js restore 守門）
+      if (el.innerHTML !== originalHTML) el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
       SK.restoreLocaleStyling?.(el);
       _spaStripped++;
@@ -179,6 +180,14 @@
     resetForSpaNavigation();
 
     await new Promise(r => setTimeout(r, SK.SPA_NAV_SETTLE_MS));
+    // 2026-09-11 code review §3.3-1：settle 期間又有新導航（站點 canonical URL 改寫、
+    // 連點兩篇文章）→ 本輪已 stale，交給較新的那輪續翻；否則本輪的 handleTranslatePreset
+    // 會先啟動翻譯，較新那輪進來看到 STATE.translating 把它 abort，兩輪互相取消
+    // → 最終沒翻。hash 路徑上方已有同款 guard，一般路徑補齊。
+    if (spaLastUrl !== newUrl) {
+      SK.sendLog('info', 'spa', 'SPA nav: superseded by newer navigation during settle, skipping', { staleUrl: newUrl, currentUrl: spaLastUrl });
+      return;
+    }
 
     if (wasSticky) {
       // v1.4.12: 上次若由 preset 快速鍵觸發就按同 slot 續翻，保留 engine+model；

@@ -754,12 +754,22 @@
               for (const origIdx of allOrigIndices) {
                 const u = units[origIdx];
                 if (shouldSkipDupInject(u)) { injectedThisBatch++; continue; }  // 跳過注入但計入進度
-                SK.injectTranslation(u, sanitized, slotsList[origIdx]);
+                // 2026-09-11 code review §3.1-3：per-unit try/catch（對齊 streaming 路徑）——
+                // 一段 inject throw 不得讓該批剩餘 unit 全部不注入、整批標失敗、進度倒退
+                try {
+                  SK.injectTranslation(u, sanitized, slotsList[origIdx]);
+                } catch (injectErr) {
+                  SK.sendLog('warn', 'translate', 'inject failed (unit skipped)', { batch: batchIdx + 1, origIdx, error: injectErr.message });
+                }
                 injectedThisBatch++;
               }
             } else {
               // 防呆 fallback:dedup map 沒命中（理論上不會發生）→ 退回單次 inject
-              SK.injectTranslation(job.units[j], sanitized, job.slots[j]);
+              try {
+                SK.injectTranslation(job.units[j], sanitized, job.slots[j]);
+              } catch (injectErr) {
+                SK.sendLog('warn', 'translate', 'inject failed (unit skipped)', { batch: batchIdx + 1, j, error: injectErr.message });
+              }
               injectedThisBatch++;
             }
           });
@@ -1867,7 +1877,11 @@
       if (!el.isConnected) detached++;
       // AMO source review: originalHTML 來自 STATE.originalHTML（本 extension 翻譯前用
       // el.innerHTML 讀出來自存的原始 DOM 字串），純還原用，無 user input 流入。
-      el.innerHTML = originalHTML;
+      // 2026-09-11 code review §3.1-2：innerHTML 從未被動過的元素（dual 原段落、
+      // nv-mutate 已由上方 backup 逐 text node 寫回的元素、snapshotOnce 收進來但最終
+      // 沒注入的段落）不重寫——重 parse 會讓站方掛在子節點上的 listener 全丟、
+      // framework 持有的 text node ref 變孤兒。
+      if (el.innerHTML !== originalHTML) el.innerHTML = originalHTML;
       el.removeAttribute('data-shinkansen-translated');
       SK.restoreLocaleStyling?.(el);
     });
@@ -2083,7 +2097,12 @@
           if (slots?.length && SK.ensureCJKSlotSpacing) {
             restored = SK.ensureCJKSlotSpacing(restored);
           }
-          SK.injectTranslation(unit, restored, slots || []);
+          // 2026-09-11 code review §3.1-3：per-unit try/catch（同 Gemini 非 streaming 路徑）
+          try {
+            SK.injectTranslation(unit, restored, slots || []);
+          } catch (injectErr) {
+            SK.sendLog('warn', 'translate', 'google inject failed (unit skipped)', { batch: batchIdx + 1, j, error: injectErr.message });
+          }
         });
         done += job.texts.length;
         if (onProgress) onProgress(done, total);
@@ -2695,8 +2714,17 @@
     // （translatePage / translatePageGoogle 入口會同步接管 run state）
     if (STATE.translating) {
       if (STATE.abortController && !STATE.abortController.signal.aborted) {
-        abortInProgressTranslation();
-        return;
+        // 2026-09-11 code review §3.1-1：in-flight 的是背景 convertOnly run（autoConvertZh
+        // 頁面載入 / SPA nav 的簡繁轉換）→ 靜默擠掉、往下照常開新一輪，不當成「翻譯中
+        // 按鍵 = 取消」。translatePage 內雖有同款判斷，但快速鍵 / popup / 懸浮 / SPA
+        // sticky 全部先進本函式，之前在這裡就 non-silent abort + return，永遠到不了那條。
+        if (STATE.translatingConvertOnly) {
+          abortInProgressTranslation({ silent: true });
+          // fall through：下方 isPageTranslated 看到的是已還原的原文，接著開新一輪
+        } else {
+          abortInProgressTranslation();
+          return;
+        }
       }
     }
     // 已翻譯（以 DOM 注入痕跡為準，不信 STATE.translated）：

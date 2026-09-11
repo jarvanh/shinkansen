@@ -2703,10 +2703,15 @@
     const _t0 = Date.now();
     const _batchApiMs = new Array(subBatches.length).fill(0);
 
-    if (subBatches.length === 0) return;
+    if (subBatches.length === 0) return 0;
 
+    // 2026-09-11 code review §3.4-2：回傳「res.ok 的子批數」給 translateWindowFrom 判
+    // 視窗成功——視窗內 unit 全是 captionMap 已有的 key（副歌 / 重複字幕）時 captionMap
+    // size 不會長，靠 size 判斷會誤判失敗 → 永遠不進 translatedWindows → 每次 seek 重送。
+    let _okBatches = 0;
     try {
       await _runAsrSubBatch(subBatches[0], 0, _t0, _batchApiMs);
+      _okBatches++;
       YT.lastApiMs = _batchApiMs[0]; // 第一批 = 最快字幕回填
     } catch (err) {
       SK.sendLog('error', 'youtube', 'asr sub-batch 0 failed', { error: err.message });
@@ -2714,7 +2719,7 @@
     }
     if (!YT.active) {
       YT.batchApiMs = _batchApiMs;
-      return;
+      return _okBatches;
     }
     if (subBatches.length > 1) {
       const settled = await Promise.allSettled(
@@ -2725,6 +2730,8 @@
           SK.sendLog('error', 'youtube', `asr sub-batch ${i + 1} failed`, {
             error: r.reason?.message || String(r.reason),
           });
+        } else {
+          _okBatches++;
         }
       });
     }
@@ -2737,7 +2744,9 @@
       sessionOffsetMs: Date.now() - YT.sessionStartTime,
       subBatchTimings: _batchApiMs,
       captionMapSize: YT.captionMap.size,
+      okBatches: _okBatches,
     });
+    return _okBatches;
   }
 
   // ─── F 模式:啟發式合句後逐句翻譯(reuse 既有 batch streaming pattern) ─────
@@ -2862,15 +2871,19 @@
         });
       });
 
+    // 2026-09-11 code review §3.4-2：回傳 res.ok 的批數（同 _runAsrWindow），供
+    // translateWindowFrom 的視窗成功判斷用
+    let _okBatches = 0;
     if (batches.length > 0) {
       try {
         await _runBatch(batches[0], 0);
+        _okBatches++;
         YT.lastApiMs = _batchApiMs[0];
       } catch (err) {
         SK.sendLog('error', 'youtube', 'asr heuristic batch 0 failed', { error: err.message });
         _notifyTranslationError(err.message);
       }
-      if (!YT.active) { YT.batchApiMs = _batchApiMs; return; }
+      if (!YT.active) { YT.batchApiMs = _batchApiMs; return _okBatches; }
       if (batches.length > 1) {
         const settled = await Promise.allSettled(
           batches.slice(1).map((bu, i) => _runBatch(bu, i + 1))
@@ -2880,6 +2893,8 @@
             SK.sendLog('error', 'youtube', `asr heuristic batch ${i + 1} failed`, {
               error: r.reason?.message || String(r.reason),
             });
+          } else {
+            _okBatches++;
           }
         });
       }
@@ -2891,7 +2906,9 @@
       totalElapsedMs: Date.now() - _t0,
       sessionOffsetMs: Date.now() - YT.sessionStartTime,
       captionMapSize: YT.captionMap.size,
+      okBatches: _okBatches,
     });
+    return _okBatches;
   }
   // 暴露給 spec 端直接驅動 heuristic 批次路徑(M8 res.result 缺失防禦回歸測試用),
   // 不影響 production behaviour。
@@ -2962,12 +2979,19 @@
     return true;
   }
   SK._shouldShowTranslatingStatus = _shouldShowTranslatingStatus;   // regression spec 用
+  // 2026-09-11：暴露給 regression spec（youtube-error-notify-hides-status.spec.js）直接驅動
+  // status show → error notify 的順序，不必繞整條視窗翻譯路徑
+  SK._showCaptionStatus = showCaptionStatus;
+  SK._notifyTranslationError = _notifyTranslationError;
 
   function _notifyTranslationError(errorMessage) {
     const YT = SK.YT;
+    // 2026-09-11 code review §3.4-1：hide 必須在 _errorNotified guard 之前——guard 只是
+    // 「同 session 不重複彈 toast」，但每次視窗失敗都可能又 show 過「翻譯中…」status，
+    // 第二次以後的失敗若被 guard 早退，status 會卡住直到 stop。
+    hideCaptionStatus();
     if (YT._errorNotified) return;
     YT._errorNotified = true;
-    hideCaptionStatus();
     SK.showToast('error', SK.t('toast.translateFailed', { error: errorMessage }), { autoHideMs: 8000 });
   }
 
@@ -3027,6 +3051,12 @@
     // 空白(status 不顯示因 !translatedWindows.has=false,翻譯不重試因同 guard)。
     const _cmSizeBefore = YT.captionMap.size;
     const _cuesCountBefore = YT.displayCues.length;
+    // 2026-09-11 code review §3.4-2：size 比對對「視窗內 unit 全是 captionMap 既有 key」
+    // （副歌 / 重複字幕 / seek 回已翻區）的視窗會誤判失敗——captionMap.set 同 key 不長
+    // size、displayCues 非 ASR 路徑也不長 → 永遠不進 translatedWindows → 每次 seek
+    // 回來重送 API + 閃「翻譯中…」。改以「至少一批 res.ok」計數器為主判斷，size 比對
+    // 保留為輔（partial 成功仍算成功，與原語意一致）。
+    let _okBatchCount = 0;
 
     // 找出本視窗內的字幕（[windowStartMs, windowEndMs)）。
     // v2.0.54:ASR 走 _collectAsrWindowSegs——尾端延伸到句尾標點(邊界不切在句中)
@@ -3080,7 +3110,7 @@
 
       if (asrMode === 'heuristic' || asrMode === 'progressive') {
         try {
-          await _runAsrHeuristicWindow(windowSegs, windowStartMs, { isUrgent: _isUrgent });
+          _okBatchCount += (await _runAsrHeuristicWindow(windowSegs, windowStartMs, { isUrgent: _isUrgent })) || 0;
         } catch (err) {
           SK.sendLog('error', 'youtube', 'asr heuristic translation failed', { error: err.message });
         }
@@ -3099,7 +3129,7 @@
           });
         } else {
           try {
-            await _runAsrWindow(windowSegs, windowStartMs, windowEndMs);
+            _okBatchCount += (await _runAsrWindow(windowSegs, windowStartMs, windowEndMs)) || 0;
           } catch (err) {
             SK.sendLog('error', 'youtube', 'asr window translation failed', { error: err.message });
           }
@@ -3230,6 +3260,7 @@
             const elapsed = Date.now() - _t0;
             _batchApiMs[b] = elapsed;
             if (!res?.ok) throw new Error(SK.i18n.bgErrorMessage(res) || SK.t('common.errorUnknown'));
+            _okBatchCount++;
             _logWindowUsage(batchUnits.length, res.usage);
             _injectBatchResult(batchUnits, res.result || [], b, elapsed);
           });
@@ -3364,7 +3395,8 @@
                 ? Promise.allSettled(batches.slice(1).map((bu, i) => _runBatch(bu, i + 1)))
                 : Promise.resolve([]);
               try {
-                await stream.donePromise;
+                const _doneRes = await stream.donePromise;
+                if (_doneRes?.ok) _okBatchCount++;
                 YT.lastApiMs = _batchApiMs[0];
               } catch (streamErr) {
                 SK.sendLog('warn', 'youtube', 'streaming mid-failure, retrying batch 0 non-streaming', { error: streamErr.message });
@@ -3447,14 +3479,14 @@
       SK.sendLog('info', 'youtube', 'window finished after caption source switch — not marking translated', {
         windowStartMs, gen: _myCaptionGen, currentGen: YT.captionSourceGen,
       });
-    } else if (windowSegs.length === 0 || _windowProducedTranslation) {
+    } else if (windowSegs.length === 0 || _okBatchCount > 0 || _windowProducedTranslation) {
       YT.translatedWindows.add(windowStartMs); // Set 精確記錄,供 seek-back 跳過判斷用
     } else {
       // v2.0.54:視窗沒產出 → 釋放本視窗取走的片段,retry 時重新收集(含尾端延伸)。
       // 不釋放的話片段永遠掛在 asrSegConsumed,重試視窗收不到片段 → 永久空白。
       if (_myConsumedSet) windowSegs.forEach(s => _myConsumedSet.delete(s.startMs));
       SK.sendLog('warn', 'youtube', 'window translation produced nothing — leaving open for retry', {
-        windowStartMs, segCount: windowSegs.length,
+        windowStartMs, segCount: windowSegs.length, okBatchCount: _okBatchCount,
         captionMapSize: YT.captionMap.size,
         displayCuesLen: YT.displayCues.length,
       });

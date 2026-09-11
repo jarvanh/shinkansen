@@ -14,7 +14,10 @@
 // 自動更新機制不需要這層提示。只對 'development'（unpacked）與 'sideload'
 // 兩種需要手動安裝的情境觸發。
 //
-// GitHub API rate limit：未驗證 60 req/hr/IP，本模組 24h 才一次離爆量很遠。
+// GitHub API rate limit：未驗證 60 req/hr/IP。三層觸發本身不保證 24h 一次——MV3 SW
+// 每次冷啟都會跑「第一次喚醒 fire-and-forget」那層（unpacked 使用者一小時可達 60+ 次
+// 冷啟 → 403），所以 checkForUpdate 內以 storage.local 的 updateCheckLastAt 節流
+// （2026-09-11 code review §3.6-2）。
 
 import { browser } from './compat.js';
 import { debugLog } from './logger.js';
@@ -23,6 +26,12 @@ import { IS_MAS_BUILD } from './distribution.js';
 const GITHUB_RELEASES_URL =
   'https://api.github.com/repos/jimmysu0309/shinkansen/releases/latest';
 const STORAGE_KEY = 'updateAvailable';
+// 上次真的打過 GitHub API 的時間（storage.local，跨 SW 冷啟）。與 updateAvailable 分開存：
+// up-to-date 時 updateAvailable 會被 remove，節流時間戳不能跟著消失。
+const LAST_CHECK_KEY = 'updateCheckLastAt';
+// 23h 而非 24h：alarm 週期是 24h，若節流窗剛好也是 24h，alarm 觸發時距上次冷啟檢查
+// 可能只差幾分鐘就被擋掉，下一次要再等 24h（實際間隔拉到 48h）。留 1h 餘裕。
+export const UPDATE_CHECK_MIN_INTERVAL_MS = 23 * 60 * 60 * 1000;
 
 /**
  * 取「今日」鍵字串 'YYYY-MM-DD' — **使用本地時區**而非 UTC。
@@ -123,6 +132,13 @@ export async function checkForUpdate() {
   if (!isManualInstall()) {
     return { checked: false, hasUpdate: false, error: 'CWS install — skipped' };
   }
+  // 節流：距上次實際打 API 未滿 UPDATE_CHECK_MIN_INTERVAL_MS 直接跳過。
+  // lastAt 在未來（時鐘回撥）視為未節流，避免永久卡死。
+  const { [LAST_CHECK_KEY]: lastAt } = await browser.storage.local.get(LAST_CHECK_KEY);
+  const sinceLast = typeof lastAt === 'number' ? Date.now() - lastAt : Infinity;
+  if (sinceLast >= 0 && sinceLast < UPDATE_CHECK_MIN_INTERVAL_MS) {
+    return { checked: false, hasUpdate: false, error: 'throttled' };
+  }
   const currentVersion = browser.runtime.getManifest().version;
   let resp;
   // v1.8.20: AbortController 15s timeout——MV3 SW 30s idle 上限,網路差時若不主動 abort
@@ -141,6 +157,9 @@ export async function checkForUpdate() {
     return { checked: false, hasUpdate: false, error: isAbort ? 'timeout' : err.message };
   }
   clearTimeout(timeoutId);
+  // 只要 GitHub 有回應（含 403 / 5xx）就記時間戳——節流的目的正是別在 rate limit 期間
+  // 繼續打；網路層失敗（offline / timeout）不記，下次觸發照常重試。
+  await browser.storage.local.set({ [LAST_CHECK_KEY]: Date.now() });
   if (!resp.ok) {
     debugLog('warn', 'update-check', `GitHub API ${resp.status}`, { status: resp.status });
     return { checked: false, hasUpdate: false, error: `HTTP ${resp.status}` };

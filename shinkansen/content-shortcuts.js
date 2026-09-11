@@ -49,6 +49,10 @@
 
   function onKeyDown(e) {
     if (!table) return;
+    // 2026-09-11 code review §3.3-2：按住不放的 auto-repeat keydown 不觸發——每個 repeat
+    // 都會再進 handleTranslatePreset，變成「翻譯 / 取消」交替閃動。browser 層 commands
+    // 本身對長按只觸發一次，這裡對齊。
+    if (e.repeat) return;
     // IME 組字第一階段不攔——但僅在「沒按 ⌥/⌃」時。
     // macOS Safari 把 ⌥（Option）當成特殊字元組字鍵,按 ⌥+任何字母 的 keydown 都會
     // 回報 keyCode 229 / isComposing（Chrome 只有真正的 dead key 如 ⌥E/⌥U 才會）。
