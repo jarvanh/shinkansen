@@ -932,6 +932,7 @@
     'doc.reader.download.loadingFont': '載入字型…',
     'doc.reader.download.downloadingFont': '下載字型 {received} / {total} MB…',
     'doc.reader.fontFallback': '該目標語言的專用字型下載失敗，本次譯文以內建繁中字型輸出，部分字元可能顯示為方框；連上網路後重新開啟閱讀器即可重試',
+    'doc.reader.buildFailed': '譯文 PDF 產生失敗：{error}。翻譯結果仍在，可先開「翻譯紀錄」複製譯文，或重新上傳後再試',
     'doc.reader.download.done': '已下載 {size} MB',
     'doc.reader.download.failed': '失敗：{error}',
 
@@ -1957,6 +1958,7 @@
     'doc.reader.download.loadingFont': '加载字体…',
     'doc.reader.download.downloadingFont': '下载字体 {received} / {total} MB…',
     'doc.reader.fontFallback': '该目标语言的专用字体下载失败，本次译文以内置繁中字体输出，部分字符可能显示为方框；联网后重新打开阅读器即可重试',
+    'doc.reader.buildFailed': '译文 PDF 生成失败：{error}。翻译结果仍在，可先打开“翻译记录”复制译文，或重新上传后再试',
     'doc.reader.download.done': '已下载 {size} MB',
     'doc.reader.download.failed': '失败：{error}',
 
@@ -2981,6 +2983,7 @@
     'doc.reader.download.loadingFont': 'Loading font…',
     'doc.reader.download.downloadingFont': 'Downloading font {received} / {total} MB…',
     'doc.reader.fontFallback': 'The font for this target language could not be downloaded, so this PDF uses the built-in Traditional Chinese font; some characters may show as boxes. Reopen the reader once you are online to retry',
+    'doc.reader.buildFailed': 'Could not build the translated PDF: {error}. The translation is still available — open “Translation log” to copy the text, or upload the file again to retry',
     'doc.reader.download.done': 'Downloaded {size} MB',
     'doc.reader.download.failed': 'Failed: {error}',
 
@@ -4005,6 +4008,7 @@
     'doc.reader.download.loadingFont': 'フォント読み込み中…',
     'doc.reader.download.downloadingFont': 'フォントをダウンロード中 {received} / {total} MB…',
     'doc.reader.fontFallback': 'この翻訳先言語用フォントをダウンロードできなかったため、内蔵の繁体字フォントで出力しました。一部の文字が□で表示される場合があります。オンラインでリーダーを開き直すと再試行します',
+    'doc.reader.buildFailed': '翻訳済み PDF を生成できませんでした：{error}。翻訳結果は残っています。「翻訳ログ」から訳文をコピーするか、ファイルを再アップロードして再試行してください',
     'doc.reader.download.done': '{size} MB をダウンロードしました',
     'doc.reader.download.failed': '失敗：{error}',
 
@@ -5029,6 +5033,7 @@
     'doc.reader.download.loadingFont': '폰트 로딩 중…',
     'doc.reader.download.downloadingFont': '폰트 다운로드 중 {received} / {total} MB…',
     'doc.reader.fontFallback': '대상 언어 전용 폰트를 다운로드하지 못해 내장 번체 중국어 폰트로 출력했습니다. 일부 글자가 네모로 표시될 수 있습니다. 온라인 상태에서 리더를 다시 열면 재시도합니다',
+    'doc.reader.buildFailed': '번역 PDF를 생성하지 못했습니다: {error}. 번역 결과는 남아 있습니다. “번역 기록”에서 번역문을 복사하거나 파일을 다시 업로드해 재시도하세요',
     'doc.reader.download.done': '{size} MB 다운로드됨',
     'doc.reader.download.failed': '실패: {error}',
 
@@ -6052,6 +6057,7 @@
     'doc.reader.download.loadingFont': 'Cargando fuente…',
     'doc.reader.download.downloadingFont': 'Descargando fuente {received} / {total} MB…',
     'doc.reader.fontFallback': 'No se pudo descargar la fuente del idioma de destino; este PDF usa la fuente china tradicional integrada y algunos caracteres pueden aparecer como cuadros. Vuelve a abrir el lector con conexión para reintentar',
+    'doc.reader.buildFailed': 'No se pudo generar el PDF traducido: {error}. La traducción sigue disponible; abre «Registro de traducción» para copiar el texto o vuelve a subir el archivo para reintentar',
     'doc.reader.download.done': 'Descargados {size} MB',
     'doc.reader.download.failed': 'Error: {error}',
 
@@ -7075,6 +7081,7 @@
     'doc.reader.download.loadingFont': 'Chargement de la police…',
     'doc.reader.download.downloadingFont': 'Téléchargement de la police {received} / {total} Mo…',
     'doc.reader.fontFallback': 'La police de la langue cible n’a pas pu être téléchargée ; ce PDF utilise la police chinoise traditionnelle intégrée et certains caractères peuvent apparaître sous forme de carrés. Rouvrez le lecteur une fois en ligne pour réessayer',
+    'doc.reader.buildFailed': 'Impossible de générer le PDF traduit : {error}. La traduction est conservée ; ouvrez « Journal de traduction » pour copier le texte ou réimportez le fichier pour réessayer',
     'doc.reader.download.done': '{size} Mo téléchargés',
     'doc.reader.download.failed': 'Échec : {error}',
 
@@ -8098,6 +8105,7 @@
     'doc.reader.download.loadingFont': 'Schriftart wird geladen…',
     'doc.reader.download.downloadingFont': 'Schriftart wird heruntergeladen {received} / {total} MB…',
     'doc.reader.fontFallback': 'Die Schriftart für die Zielsprache konnte nicht heruntergeladen werden; dieses PDF verwendet die integrierte traditionell-chinesische Schriftart, einige Zeichen können als Kästchen erscheinen. Öffnen Sie den Reader online erneut, um es noch einmal zu versuchen',
+    'doc.reader.buildFailed': 'Das übersetzte PDF konnte nicht erstellt werden: {error}. Die Übersetzung bleibt erhalten; öffnen Sie „Übersetzungsprotokoll“, um den Text zu kopieren, oder laden Sie die Datei erneut hoch',
     'doc.reader.download.done': '{size} MB heruntergeladen',
     'doc.reader.download.failed': 'Fehler: {error}',
 

@@ -136,6 +136,19 @@ export async function parsePdf(file, onProgress = () => {}, options = {}) {
   }
 }
 
+// 頁面 viewport 摘要：尺寸之外帶 PDF.js viewport.transform（user space → canvas，含
+// /Rotate 與 CropBox 位移）與 /Rotate 角度。pdf-renderer 對每頁抽 metadata 失敗時
+// 以此當 fallback 反算譯文 overlay 矩陣，/Rotate 頁不再錯位（code review
+// 2026-09-11 §3.9-4）；解析成功即代表這份資料可信，是 overlay 座標的單一來源
+function viewportInfo(page, viewport) {
+  return {
+    width: viewport.width,
+    height: viewport.height,
+    transform: Array.isArray(viewport.transform) ? viewport.transform.slice() : null,
+    rotation: ((page.rotate % 360) + 360) % 360,
+  };
+}
+
 // parsePdf 本體:從已開啟的 pdfDoc 抽每頁 text run。中途 throw 時由 parsePdf
 // 統一釋放 pdfDoc,本函式內不需要逐分支 destroy
 async function extractRawDoc(pdfDoc, file, onProgress, options) {
@@ -180,15 +193,16 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
 
     let textContent;
     try {
+      // vendored pdf.js 4.10.38 的 getTextContent 一律回每個 text run 一個 item
+      //（舊版 `disableCombineTextItems` 選項已移除，傳了也被靜默忽略——code review
+      // 2026-09-11 §3.9-6），版面分析需要的 per-run bbox 由此保證
       textContent = await page.getTextContent({
-        // 不要把相鄰 item 合成一條長字串——保留每個 text run 的 bbox 才能做版面分析
-        disableCombineTextItems: false,
         includeMarkedContent: false,
       });
     } catch (err) {
       pages.push({
         pageIndex,
-        viewport: { width: viewport.width, height: viewport.height },
+        viewport: viewportInfo(page, viewport),
         textRuns: [],
         textRunError: err && err.message ? err.message : String(err),
       });
@@ -380,7 +394,7 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
 
     pages.push({
       pageIndex,
-      viewport: { width: viewport.width, height: viewport.height },
+      viewport: viewportInfo(page, viewport),
       textRuns,
     });
     page.cleanup();

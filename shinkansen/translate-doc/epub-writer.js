@@ -51,7 +51,11 @@ function editedHtmlToFrag(html) {
 // importNode / replaceChildren 對 DOMParser('text/html') 的 document 同樣成立）
 export function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual = false) {
   const el = block.el;
-  if (!el) return false;
+  if (!el) {
+    // 容器直接文字的 fragment block（epub-engine collectChapterBlocks，§3.8-9）
+    if (block.fragStart) return applyFragmentTranslation(SK, xhtmlDoc, block, override, bilingual);
+    return false;
+  }
   // 同一份 xhtmlDoc 會被重複下載重複套用（單語 replaceChildren 會毀掉 DOM 內
   // 原文；雙語需要原文還在）：首次套用前快照原文子節點，之後每次先還原再套，
   // 讓「下載單語 → 切雙語重下載」與重複下載都 idempotent
@@ -60,6 +64,16 @@ export function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual =
   } else {
     el.replaceChildren(...block._srcChildNodes.map((n) => n.cloneNode(true)));
   }
+  const content = resolveBlockContent(SK, xhtmlDoc, block, override);
+  if (!content) return false;
+  if (bilingual) return insertDualTranslation(xhtmlDoc, el, content);
+  el.replaceChildren(content);
+  return true;
+}
+
+// 譯文內容節點（editedHtml → ⟦N⟧ 反序列化 → 純文字 fallback），element / fragment
+// 兩條寫回路徑共用同一份優先序
+function resolveBlockContent(SK, xhtmlDoc, block, override) {
   let content = null;
   // override.editedHtml = dedupe 後處理過的編輯版（2026-07-10）
   const editedHtml = override?.editedHtml ?? block.editedHtml;
@@ -82,9 +96,58 @@ export function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual =
       content = xhtmlDoc.createTextNode(plain);
     }
   }
-  if (!content) return false;
-  if (bilingual) return insertDualTranslation(xhtmlDoc, el, content);
-  el.replaceChildren(content);
+  return content;
+}
+
+// fragment block 寫回（§3.8-9）：以 fragStart..fragEnd 這段連續 sibling（容器的
+// 裸文字 + inline 元素 run）為單位。首次套用快照 run 的原節點與插入位置（父節點 +
+// run 後方的第一個節點；run 是極大連續段，後方必為區塊元素或 null，不會被其他
+// block 的寫回動到），之後每次先移除上次放進去的節點、還原原文，再套——與
+// element 路徑同樣 idempotent。雙語：原文 run 留著，後面接一個 span.sk-dual-tr
+//（display:block）放譯文
+function applyFragmentTranslation(SK, xhtmlDoc, block, override, bilingual) {
+  if (!block._srcFragNodes) {
+    const nodes = [];
+    let cur = block.fragStart;
+    while (cur) {
+      nodes.push(cur);
+      if (cur === block.fragEnd) break;
+      cur = cur.nextSibling;
+    }
+    const parent = block.fragStart.parentNode;
+    if (!parent) return false;
+    block._fragParent = parent;
+    block._fragNext = block.fragEnd.nextSibling;
+    block._srcFragNodes = nodes.map((n) => n.cloneNode(true));
+    block._placedNodes = nodes;
+  }
+  const parent = block._fragParent;
+  for (const n of block._placedNodes) {
+    if (n.parentNode) n.parentNode.removeChild(n);
+  }
+  const next = (block._fragNext && block._fragNext.parentNode === parent) ? block._fragNext : null;
+  const insert = (node) => parent.insertBefore(node, next);
+  const srcClones = block._srcFragNodes.map((n) => n.cloneNode(true));
+
+  const content = resolveBlockContent(SK, xhtmlDoc, block, override);
+  if (!content) {
+    for (const n of srcClones) insert(n);
+    block._placedNodes = srcClones;
+    return false;
+  }
+  if (bilingual) {
+    for (const n of srcClones) insert(n);
+    const holder = xhtmlDoc.createElementNS(XHTML_NS, 'span');
+    holder.setAttribute('class', 'sk-dual-tr');
+    holder.appendChild(content);
+    for (const n of [...holder.querySelectorAll('[id]')]) n.removeAttribute('id');
+    insert(holder);
+    block._placedNodes = [...srcClones, holder];
+    return true;
+  }
+  const placed = content.nodeType === 11 ? [...content.childNodes] : [content];
+  insert(content);
+  block._placedNodes = placed;
   return true;
 }
 

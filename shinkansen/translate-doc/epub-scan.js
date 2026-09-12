@@ -264,7 +264,7 @@ function excerptAround(text, term, radius = 60) {
 }
 
 // 拉丁專有名詞候選：連續 Capitalized 詞組；片假名連串（日文源書的人名/外來語）
-const RE_LATIN_NAME = /[A-Z][A-Za-z''-]+(?:\s+[A-Z][A-Za-z''-]+)*/g;
+const RE_LATIN_NAME = /[A-Z][A-Za-z'\u2019-]+(?:\s+[A-Z][A-Za-z'\u2019-]+)*/g;
 const RE_KATAKANA = /[ァ-ヺー・]{2,}/g;
 
 /**
@@ -287,7 +287,7 @@ export function mineCandidates(chapters, glossary, { minBlocks = 2, maxCandidate
   // 注意不可把整段 lowercase 再收集——那會讓每個大寫詞的小寫形都「存在」
   const lowerWords = new Set();
   for (const { b } of blocks) {
-    for (const m of b.plainText.matchAll(/(?<![A-Za-z])[a-z][a-z''-]*/g)) {
+    for (const m of b.plainText.matchAll(/(?<![A-Za-z])[a-z][a-z'\u2019-]*/g)) {
       lowerWords.add(m[0]);
     }
   }
@@ -327,7 +327,7 @@ export function mineCandidates(chapters, glossary, { minBlocks = 2, maxCandidate
   // Smith 也要算到自己的後接)。
   const followedByCapMap = new Map();
   {
-    const reToken = /(?<![A-Za-z])[A-Z][A-Za-z''-]*/g;
+    const reToken = /(?<![A-Za-z])[A-Z][A-Za-z'\u2019-]*/g;
     const reFollow = /\.?\s+[A-Z0-9]/y;
     for (const m of corpus.matchAll(reToken)) {
       reFollow.lastIndex = m.index + m[0].length;

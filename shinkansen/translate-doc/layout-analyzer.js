@@ -646,6 +646,15 @@ function absorbSupSubLines(lines, medianLineHeight) {
     absorbedIdx.add(si);
     if (!hostExtraRuns.has(host)) hostExtraRuns.set(host, []);
     hostExtraRuns.get(host).push(...(s.runs || []));
+    // 鏈式（code review 2026-09-11 §3.9-1）：s 先前已當過別人的 host（上標的上標 /
+    // 巢狀下標，處理順序依 top 排序時內層先被吸進 s），s 自己再被吸走時要把已併入
+    // 的 runs 一起帶到新 host——否則 s 被跳過、hostExtraRuns[s] 沒人合併，內層文字
+    // 從 block 消失但 mask 仍蓋
+    const carried = hostExtraRuns.get(si);
+    if (carried) {
+      hostExtraRuns.get(host).push(...carried);
+      hostExtraRuns.delete(si);
+    }
   }
   if (absorbedIdx.size === 0) return lines;
   const out = [];
@@ -774,12 +783,19 @@ function kmeans1d(values, k) {
     const mean = values.reduce((a, b) => a + b, 0) / values.length;
     return { centers: [mean], assignment: values.map(() => 0) };
   }
-  // 初始化：取 values 中按位置等距的 k 個 quantile 當 seed
+  // 初始化：取 values 中按位置等距的 k 個 quantile 當 seed。
+  // 以「去重後的值」取 quantile（code review 2026-09-11 §3.9-3）：欄位 x 高度重複
+  //（同欄 line 左緣幾乎同值），少數欄佔比 18%–25% 時原本兩個 quantile 都落在多數欄
+  // 的同一個值 → 兩 seed 相等 → 少數欄 cluster 永遠空 → 回 null → 永遠單欄，
+  // MIN_COLUMN_LINE_RATIO = 0.18 的門檻實際上達不到。去重後不足 k 個相異值時
+  // 本來就分不出 k 群，直接回 null 讓呼叫端退到 k-1
   const sorted = values.slice().sort((a, b) => a - b);
+  const uniq = sorted.filter((v, i) => i === 0 || v !== sorted[i - 1]);
+  if (uniq.length < k) return null;
   let centers = [];
   for (let i = 0; i < k; i++) {
-    const idx = Math.floor((i + 0.5) * sorted.length / k);
-    centers.push(sorted[Math.min(idx, sorted.length - 1)]);
+    const idx = Math.floor((i + 0.5) * uniq.length / k);
+    centers.push(uniq[Math.min(idx, uniq.length - 1)]);
   }
 
   let assignment = new Array(values.length).fill(0);

@@ -14,7 +14,7 @@ import { formatMoney } from '../lib/format.js';
 import { getCachedRate, FALLBACK_USD_TWD_RATE } from '../lib/exchange-rate.js';
 // EPUB 翻譯（v2.0.11）
 import {
-  parseEpub, preflightEpubFile, estimateChapterCostUSD, EPUB_LIMITS,
+  parseEpub, preflightEpubFile, estimateChapterCostUSD, cjkRatioOfBlocks, EPUB_LIMITS,
   buildBookGlossaryRounds, mergeBookGlossaries, glossaryGroupOf, normalizeNameSeparators,
   BOOK_GLOSSARY_MAX_TERMS,
 } from './epub-engine.js';
@@ -268,6 +268,9 @@ function releaseCurrentDoc() {
   epubScanIgnored = new Map();
   epubScanIgnoredDrift = new Set();
   if (window.__skLayoutDoc) delete window.__skLayoutDoc;
+  // dev probe 的 EPUB 引用也一併放掉——否則上一本書解壓後的 entries / xhtmlDoc
+  // 常駐到換下一本（code review 2026-09-11 §3.8-5）
+  if (window.__skEpubDoc) delete window.__skEpubDoc;
 }
 
 // dev hook(批次 8 G6):verify harness 抽到 dev-verify.js,harness / spec 端先呼叫
@@ -1265,6 +1268,7 @@ function bindReaderUI() {
       } else {
         btn.textContent = t('doc.reader.download.generating');
         result = await downloadBilingualPdf(currentOriginalArrayBuffer, currentDoc, {
+          pdfDoc: currentPdfDoc, // 共用解析階段的 PDF.js doc（§6.4）
           onProgress: (p) => {
             if (p.stage === 'page') {
               btn.textContent = t('doc.reader.download.processingPage', { current: p.current, total: p.total });
@@ -1303,25 +1307,38 @@ async function openReader() {
     currentReaderHandle = null;
   }
   const myGen = ++readerGeneration;
-  const handle = await renderReader(
-    currentDoc,
-    currentPdfDoc,
-    currentOriginalArrayBuffer,
-    $('reader-col-original'),
-    $('reader-col-translated'),
-    {
-      modelOverride: currentModelOverride,
-      engine: currentEngine,
-      glossary: injectableArticleGlossary(),
-      extraPrompt: currentDocExtraPrompt || null,
-      onFontFallback: () => showReaderError(t('doc.reader.fontFallback')),
-    },
-  );
+  let handle = null;
+  try {
+    handle = await renderReader(
+      currentDoc,
+      currentPdfDoc,
+      currentOriginalArrayBuffer,
+      $('reader-col-original'),
+      $('reader-col-translated'),
+      {
+        modelOverride: currentModelOverride,
+        engine: currentEngine,
+        glossary: injectableArticleGlossary(),
+        extraPrompt: currentDocExtraPrompt || null,
+        onFontFallback: () => showReaderError(t('doc.reader.fontFallback')),
+      },
+    );
+  } catch (err) {
+    // buildBilingualPdf / PDF.js 開檔 throw（字型嵌入失敗、pdf-lib 拒收等）：
+    // 原本 exception 直接冒出 → reader 兩欄空白、沒有任何訊息，翻譯費已花。
+    // 改成留在 reader 顯示原因（code review 2026-09-11 §3.8-3）
+    console.error('[Shinkansen] openReader 失敗', err);
+    if (myGen === readerGeneration) {
+      showReaderError(t('doc.reader.buildFailed', { error: (err && err.message) || String(err) }));
+      refreshSummaryButtonAlert();
+    }
+    return false;
+  }
   // await 期間使用者換檔 / 重新上傳(releaseCurrentDoc bump gen)→ 這輪作廢：
   // destroy 剛建好的 handle 釋放 PDF.js doc，不寫回 state、不掛 scroll sync
   if (myGen !== readerGeneration) {
     try { handle?.destroy(); } catch (_) { /* ignore */ }
-    return;
+    return false;
   }
   currentReaderHandle = handle;
   // 套用 sync toggle + 重設 zoom 顯示
@@ -1330,6 +1347,7 @@ async function openReader() {
     $('reader-zoom-level').textContent = `${Math.round(currentReaderHandle.getZoom() * 100)}%`;
   }
   refreshSummaryButtonAlert();
+  return true;
 }
 
 // 從 currentDoc 算當前實際失敗段數(不依賴 lastTranslateSummary,因為使用者可能
@@ -1986,10 +2004,11 @@ async function _startTranslateImpl() {
   }
 
   // 直接進雙頁閱讀器(原本中介的 stage-translated 已砍掉)
-  await openReader();
+  const opened = await openReader();
   // G9：整體失敗（translateDocument throw）時在 reader 顯示原因；成功則清掉上輪殘留
+  //（openReader 自己失敗時 banner 已由它顯示，不清）
   if (summary.error) showReaderError(summary.error);
-  else clearReaderError();
+  else if (opened) clearReaderError();
 }
 
 // ---------- 文章術語表編輯（v1.8.49）----------
@@ -2750,6 +2769,23 @@ function epubHasAnyTranslation() {
     && currentDoc.chapters.some((c) => c.blocks.some((b) => b.translationStatus === 'done')));
 }
 
+// 估價用 CJK 佔比（§3.8-7）：章節解析時已算好 cjkRatio 的直接用，沒有的（txt /
+// md / html / docx / 字幕）就地從 block 算；多章按字數加權
+function chapterCjkRatio(ch) {
+  if (Number.isFinite(ch.cjkRatio)) return ch.cjkRatio;
+  ch.cjkRatio = cjkRatioOfBlocks(ch.blocks || []);
+  return ch.cjkRatio;
+}
+function chaptersCjkRatio(chapters) {
+  let chars = 0;
+  let cjk = 0;
+  for (const ch of chapters) {
+    chars += ch.charCount || 0;
+    cjk += (ch.charCount || 0) * chapterCjkRatio(ch);
+  }
+  return chars > 0 ? cjk / chars : 0;
+}
+
 function formatUsdApprox(usd) {
   if (usd == null || !Number.isFinite(usd)) return '—';
   return '≈ $' + (usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2));
@@ -2822,7 +2858,7 @@ async function renderChapterList() {
     const costSpan = document.createElement('span');
     costSpan.className = 'chapter-cost';
     costSpan.textContent = ch.charCount > 0
-      ? formatUsdApprox(estimateChapterCostUSD(ch.charCount, estModel, settings))
+      ? formatUsdApprox(estimateChapterCostUSD(ch.charCount, estModel, settings, chapterCjkRatio(ch)))
       : '';
 
     const statusSpan = document.createElement('span');
@@ -2902,7 +2938,7 @@ function selectedEpubChapters() {
 function updateChapterSummaryLine(estModel, settings) {
   const sel = selectedEpubChapters();
   const chars = sel.reduce((acc, c) => acc + c.charCount, 0);
-  const cost = estimateChapterCostUSD(chars, estModel, settings);
+  const cost = estimateChapterCostUSD(chars, estModel, settings, chaptersCjkRatio(sel));
   $('chapters-selected-summary').textContent = t(chapterKey('selectedSummary'), {
     chapters: sel.length,
     chars: chars.toLocaleString('en-US'),
@@ -2938,7 +2974,7 @@ async function startEpubTranslate() {
   const selChars = selected.reduce((acc, c) => acc + c.charCount, 0);
   if (selChars > EPUB_LIMITS.softWarnChars) {
     const settings = await getSettings();
-    const est = estimateChapterCostUSD(selChars, modelOverride || settings.geminiConfig?.model || '', settings);
+    const est = estimateChapterCostUSD(selChars, modelOverride || settings.geminiConfig?.model || '', settings, chaptersCjkRatio(selected));
     if (!confirm(t(chapterKey('confirm.softWarn'), {
       chars: selChars.toLocaleString('en-US'),
       cost: formatUsdApprox(est),
@@ -2948,11 +2984,16 @@ async function startEpubTranslate() {
   // 已翻章節被重勾 → 明確警告會以當前術語表 / 設定重翻並重新計費。
   // 確認後清掉這些段落的翻譯快取——否則設定沒變時逐塊 cache hit，看起來
   // 「沒有真的重翻」（2026-07-10 Jimmy 回報 bug）。正常續翻 / 中斷恢復
-  // 不走這條（done 章節預設已取消勾選），快取仍然有效
-  const hasDone = selected.some((c) => c.blocks.some((b) => b.translationStatus === 'done'));
-  if (hasDone) {
+  // 不走這條（done 章節預設已取消勾選），快取仍然有效。
+  // 「重翻」只認整章 done（code review 2026-09-11 §3.8-1）：partial（取消 / 失敗
+  // 中斷過的章）是續翻語意——已 done 的段落由 blockFilter 跳過，只補沒翻的，
+  // 不彈重翻確認、不清快取、不重新付費
+  const retranslateIdx = new Set(
+    selected.filter((c) => chapterDoneState(c) === 'done').map((c) => c.index),
+  );
+  if (retranslateIdx.size > 0) {
     if (!confirm(t(chapterKey('confirm.retranslate')))) return;
-    await clearEpubBlocksCache(selected);
+    await clearEpubBlocksCache(selected.filter((c) => retranslateIdx.has(c.index)));
   }
 
   currentModelOverride = modelOverride;
@@ -2977,6 +3018,19 @@ async function startEpubTranslate() {
 
   const selIdx = new Set(selected.map((c) => c.index));
   translateAbortController = new AbortController();
+  // 本書累計費用逐批落地（code review 2026-09-11 §3.8-7）：原本只在整輪結束加總，
+  // 翻到一半關頁 / reload 這輪費用整段蒸發。每次進度回呼把新增費用即時累進並排程
+  // session 存檔（done 段落也一併落地，關頁重開不掉進度）；結束時只補最後差額
+  let costAccounted = 0;
+  const onEpubProgress = (p) => {
+    setProgress(p);
+    const cost = Number.isFinite(p.cumulativeCostUSD) ? p.cumulativeCostUSD : 0;
+    if (cost > costAccounted) {
+      epubCumulativeCostUSD += cost - costAccounted;
+      costAccounted = cost;
+      if (currentDoc === doc) scheduleEpubSessionSave();
+    }
+  };
   let summary;
   try {
     summary = await translateDocument(doc, {
@@ -2984,10 +3038,11 @@ async function startEpubTranslate() {
       engine,
       glossary,
       signal: translateAbortController.signal,
-      onProgress: setProgress,
-      // 章節選翻：只翻勾選章節。勾選章節內全部重跑（重勾已翻章節時由上方 confirm
-      // 把關；設定沒變時逐塊 cache hit，不重新計費）
-      blockFilter: (block, page) => selIdx.has(page.chapterIndex),
+      onProgress: onEpubProgress,
+      // 章節選翻：只翻勾選章節。整章 done 被重勾的章全部重跑（上方 confirm 把關）；
+      // partial 章只補未 done 的段落（續翻）
+      blockFilter: (block, page) => selIdx.has(page.chapterIndex)
+        && (retranslateIdx.has(page.chapterIndex) || block.translationStatus !== 'done'),
       // 全書術語表批次級過濾注入（§30.3 第 4 層）
       filterGlossary: true,
       // 本書獨立禁用詞（2026-07-10）：background 與 options 共通清單合併，
@@ -3012,7 +3067,7 @@ async function startEpubTranslate() {
   }
   translateAbortController = null;
   lastTranslateSummary = summary;
-  epubCumulativeCostUSD += summary.cumulativeCostUSD || 0;
+  epubCumulativeCostUSD += Math.max(0, (summary.cumulativeCostUSD || 0) - costAccounted);
 
   // 術語表譯名後模型自加的「（原文）」對照確定性清掉（書籍式文件全套用；
   // 快取命中的舊譯文重跑也治癒）。在 session 存檔 / 章節清單刷新之前
@@ -4588,7 +4643,13 @@ async function persistEpubSession() {
   const doneIds = new Set();
   for (const ch of currentDoc.chapters) {
     for (const b of ch.blocks) {
-      if (b.translationStatus !== 'done') continue;
+      if (b.translationStatus !== 'done') {
+        // 翻譯途中（pending / translating）但翻譯前已有譯文的 block（translate.js
+        // snapshotDoneBlock）：已落地的舊紀錄留著，新譯文成功才覆蓋、失敗 / 取消
+        // 還原後也還在——中途關頁重開拿得回舊譯文
+        if (b._skPrevDone) doneIds.add(b.blockId);
+        continue;
+      }
       doneIds.add(b.blockId);
       const raw = b.translationRaw ?? null;
       const plain = b.translation ?? null;

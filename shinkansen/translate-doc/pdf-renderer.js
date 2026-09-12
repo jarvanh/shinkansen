@@ -39,9 +39,10 @@
 // 加進新 page 的 /Annots
 //
 // Bold preservation:vendor 兩把字型 NotoSansTC-Regular.ttf + NotoSansTC-Bold.ttf,
-// 用 PDF.js commonObjs 拿原 PDF 每個 fontName 的 .bold 屬性 / name regex,把
-// textContent items 標 isBold,對每個 layout block 算 bold 字符比例 ≥ 50% 為
-// bold block,drawTranslatedOverlay 對 bold block 用 boldFont 寫
+// 粗斜體以 block.styleSegments（pdf-engine 逐 run 的字型名判讀）→ 譯文 inline
+// marker → translationSegments 傳到 piece 層，drawTranslatedOverlay 對 isBold piece
+// 用 boldFont 寫（原本另以 PDF.js commonObjs 對 textContent items 標 isBold 反推
+// block-level bold，W7 起無消費者，2026-09-11 §5.2 已刪）
 
 import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
 import { TRANSLATABLE_TYPES } from './block-types.js';
@@ -176,15 +177,24 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
   const origPages = origDoc.getPages().slice(0, pageCount);
   const embeddedPages = await newDoc.embedPages(origPages);
 
-  // 並行抽原 PDF 每頁的 link + 字型 metadata(PDF.js 一次解全頁,內部會 cache,
-  // 比 link / bold 各跑一次省一半)
-  const pdfMetaByPage = await extractPdfMetaForOverlay(originalArrayBuffer, pageCount, layoutDoc);
+  // 抽原 PDF 每頁的 link / 底色 / viewport metadata。共用解析階段已開的 PDF.js doc
+  //（options.pdfDoc 或 layoutDoc.pdfDoc），並把結果快取在 layoutDoc._overlayMeta——
+  // 原本每次 build（首次 / retry regenerate / 下載）都把整份 PDF 重新解析一次、每頁
+  // getOperatorList 再跑一次（code review 2026-09-11 §6.4）
+  const sharedPdfDoc = options.pdfDoc || layoutDoc.pdfDoc || null;
+  let pdfMetaByPage = Array.isArray(layoutDoc._overlayMeta) && layoutDoc._overlayMeta.length >= pageCount
+    ? layoutDoc._overlayMeta
+    : null;
+  if (!pdfMetaByPage) {
+    pdfMetaByPage = await extractPdfMetaForOverlay(originalArrayBuffer, pageCount, layoutDoc, sharedPdfDoc);
+    if (pdfMetaByPage.length >= pageCount) layoutDoc._overlayMeta = pdfMetaByPage;
+  }
 
   for (let i = 0; i < pageCount; i++) {
     onProgress({ stage: 'page', current: i + 1, total: pageCount });
     const layoutPage = layoutDoc.pages[i];
     const pageH = layoutPage.viewport.height;
-    const meta = pdfMetaByPage[i] || { links: [], items: [], rotation: 0, viewportTransform: null };
+    const meta = resolveOverlayMeta(pdfMetaByPage[i], layoutPage);
     // 新頁一律沿用原頁的 MediaBox / CropBox / Rotate,原頁 1:1 嵌在 MediaBox 原點,譯文 overlay
     // 在 cm 矩陣 M = T⁻¹ · [1 0 0 -1 0 H](T = PDF.js viewport.transform,含 /Rotate 與 CropBox
     // 位移)下以 viewport 座標畫。三種原本錯位的情境一次收斂:
@@ -211,7 +221,9 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
       ? matMulAffine(invertAffine(meta.viewportTransform), [1, 0, 0, -1, 0, pageH])
       : [1, 0, 0, 1, 0, 0];
     const rotated = hasTransform;
-    newPage.pushOperators(pushGraphicsState(), concatTransformationMatrix(...overlayMatrix));
+    // q / Q 必須成對：只有真的要 concat 矩陣才 push graphics state（原本無條件 q、
+    // 只在 rotated 時 Q，metadata 降級路徑留下沒配對的 q——§3.9-4）
+    if (rotated) newPage.pushOperators(pushGraphicsState(), concatTransformationMatrix(...overlayMatrix));
     // 上層蓋譯文(白底 + 中文，只對 translatable block + 有 translation 才蓋)。
     // W7:回傳譯文 link piece 對應的 device rect(PDF y-up),addLinkAnnotations
     // 用譯文 rect 而非原 PDF rect(譯文長度跟原文不同,原 rect 對不到譯文位置)。
@@ -233,6 +245,17 @@ export async function buildBilingualPdf(originalArrayBuffer, layoutDoc, options 
   const filename = `${baseName}-shinkansen.pdf`;
   // fontFallback：需要遠端字型（zh-CN / ja / ko）但抓不到、退回內建 TC——呼叫端提示使用者
   return { bytes: pdfBytes, filename, byteLength: pdfBytes.byteLength, fontSource: fontSel.source, fontFallback: fontSel.fallback };
+}
+
+// 每頁 overlay 用的 metadata 決議（§3.9-4）：抽取成功用抽取結果；抽取失敗（整份或
+// 單頁）退回解析階段記在 layoutPage.viewport 的 transform / rotation——/Rotate 或
+// CropBox 頁的譯文座標仍正確，只少 link / 底色。export 供 unit spec 直接驗
+export function resolveOverlayMeta(extracted, layoutPage) {
+  if (extracted) return extracted;
+  const vp = (layoutPage && layoutPage.viewport) || {};
+  const transform = Array.isArray(vp.transform) && vp.transform.length === 6 ? vp.transform.slice() : null;
+  const rotation = Number.isFinite(vp.rotation) ? ((vp.rotation % 360) + 360) % 360 : 0;
+  return { links: [], items: [], blockColors: {}, rotation, viewportTransform: transform };
 }
 
 /**
@@ -328,6 +351,7 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
   const pageH = layoutPage.viewport.height;
   const translatedLinkRects = [];
   let clippedBlocks = 0;
+  let droppedPieces = 0;
   // 每 block 的遮罩色 / 文字色（extractPdfMetaForOverlay 影像取樣）。沒取樣到 → 白底黑字（舊行為）
   const maskColorOf = (block) => {
     const c = blockColors[block.blockId];
@@ -496,8 +520,11 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
     let cy = pdfTop - fontSize; // baseline 起點(PDF y-up)
     // 可見行數：baseline 落在框底以上的行。塞不下的 block（fit.overflow）在最後一行可見行
     // 結尾補「…」，其餘行以隱形模式畫在最後一行 baseline（位置不重要，只為文字層完整）
+    // 可見的條件是「字身底部（baseline − descender）不低於框底」：原本放寬到 baseline 比
+    // 框底再低一行仍算可見，塞不下的 block 末行整行畫到框外、壓到下方 block，而 mask
+    // 以 finalBox 底封頂蓋不到它（fallback scale 路徑才會塞不下——§3.9-2）
     let visibleCount = 0;
-    for (let k = 0, y = cy; k < lines.length; k++, y -= lineHeight) { if (y < pdfBottom - lineHeight) break; visibleCount++; }
+    for (let k = 0, y = cy; k < lines.length; k++, y -= lineHeight) { if (y - fontSize * DESCENT_RATIO < pdfBottom - FIT_HEIGHT_TOLERANCE_PT) break; visibleCount++; }
     // 框矮到連一行都放不下時仍畫第一行（帶「…」）：有一行總比整塊空白好
     if (visibleCount === 0 && lines.length > 0) visibleCount = 1;
     const clipped = visibleCount < lines.length;
@@ -530,6 +557,11 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
         try {
           page.drawText(piece.text, opts);
         } catch (err) {
+          // 2026-09-12 驗證（§3.9-5 PLAUSIBLE）：vendored NotoSansTC + fontkit subset 對
+          // emoji / 孤立 surrogate / NUL / 非字元 / 阿拉伯文 / 控制字元等 14 種輸入
+          // drawText 與 widthOfTextAtSize 都不 throw，重現不了；保留 catch 當防線，
+          // 但不再靜默——計數並在 build 結束 log，讓 harness / console 看得到
+          droppedPieces++;
           console.warn('[Shinkansen] drawText 跳過：', piece.text.slice(0, 30), err.message);
         }
         // widthOfTextAtSize 與 drawText 走同一條 fontkit layout 路徑,編不進字型的
@@ -563,6 +595,7 @@ export function drawTranslatedOverlay(page, layoutPage, fontRegular, fontBold, i
     if (invisible) page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill));
   }
   if (clippedBlocks > 0) console.info(`[Shinkansen] 譯文塞不下截斷 ${clippedBlocks} 塊（末行「…」+ 隱形文字補齊文字層）`);
+  if (droppedPieces > 0) console.warn(`[Shinkansen] drawText 失敗跳過 ${droppedPieces} 個 piece（mask 已蓋、該段文字缺席）`);
   return translatedLinkRects;
 }
 
@@ -586,14 +619,14 @@ function computeDrawnExtent(fit, fontRegular, fontBold) {
   return { w: maxW, h };
 }
 
-// fit-to-box(港 BabelDOC `_find_optimal_scale_and_layout` 演算法到 JS):
+// fit-to-box(縮放 + 擴框的四階段搜尋,以「先縮字、再往下擴、再往右擴、最後極端縮」為序):
 //   Phase A: 原 box scale 1.0 → 0.7 試
 //   Phase B: 擴 box 往下(找最近下方阻擋 block,留 buffer)→ 重試 1.0 → 0.7
 //   Phase C: 再擴 box 往右(找最近右側阻擋 block)→ 重試 1.0 → 0.7
 //   Phase D: 0.65 → MIN_SCALE 繼續縮(極端 case)
 //
-// CJK line_skip 用 1.5(原文是英文 1.3 vs 中文 1.5 的 BabelDOC 經驗值,中文
-// ascender + descender 比英文多,行間距要大一點才不視覺擠)
+// CJK line_skip 用 1.5(英文排版常用 1.3,中文 ascender + descender 比英文多,
+// 行間距要大一點才不視覺擠)
 //
 // 高度估算:Noto Sans TC ascent ≈ 0.88 + |descent| ≈ 0.21 + 餘裕 0.12
 // → 第 1 行視覺占用 = fontSize × FIRST_LINE_VISUAL_RATIO(1.21)
@@ -602,6 +635,11 @@ const MIN_SCALE = 0.5;
 const PHASE_A_SCALES = [1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7];
 const PHASE_D_SCALES = [0.65, 0.55, 0.5];
 const FIRST_LINE_VISUAL_RATIO = 1.21;
+const DESCENT_RATIO = 0.21; // Noto Sans TC descender / fontSize（可見行判定用）
+// fit-to-box 接受「所需視覺高 ≤ 框高 + 1pt」的容差；Pass 2 可見行判定必須用同一個數，
+// 否則剛好靠容差塞進去的最後一行會被判成溢出補「…」（2026-09-12 pdf-corpus 實測：
+// 無容差版讓 clipped-ellipsis 從 33 檔暴增到 89 檔）
+const FIT_HEIGHT_TOLERANCE_PT = 1;
 // 1-line block 的 requiredH 放寬:容許 descender 略超 box(ratio 1.0 而非 1.21)。
 // Why:heading 類短 block 的原 PDF bbox 高度往往只 = fontSize × 1.0(英文 ascent +
 // descent 加總略 < 1.0 塞得下);中文 Noto Sans TC ascent 0.88 + descent 0.21 = 1.09
@@ -642,7 +680,7 @@ function fitSegmentsToBox(segments, fontRegular, fontBold, originalFontSize, cur
     if (lines.atomicSplit) return null;
     const visualRatio = lines.length === 1 ? SINGLE_LINE_VISUAL_RATIO : FIRST_LINE_VISUAL_RATIO;
     const requiredH = fontSize * visualRatio + (lines.length - 1) * lineHeight;
-    if (requiredH <= blockH + 1) return { fontSize, lineHeight, lines, finalBox: b };
+    if (requiredH <= blockH + FIT_HEIGHT_TOLERANCE_PT) return { fontSize, lineHeight, lines, finalBox: b };
     return null;
   }
 
@@ -747,7 +785,7 @@ function hasCJK(text) {
   return false;
 }
 
-// 港 BabelDOC `get_max_bottom_space` 到 JS。canvas 座標(y 由上往下),所以
+// 往下擴框的阻擋邊界。canvas 座標(y 由上往下),所以
 // 「下方」= y 較大。對當前 block,找頁面所有「在當前 block 下方且水平有重疊」
 // 的其他 block,取最小的 y0 為阻擋邊界,留 2pt buffer
 function getMaxBottomY(currentBlock, layoutPage) {
@@ -765,7 +803,7 @@ function getMaxBottomY(currentBlock, layoutPage) {
   return Math.max(cy1, minBlockerY0 - 2);
 }
 
-// 港 BabelDOC `get_max_right_space`。對當前 block,找頁面所有「在當前 block
+// 往右擴框的阻擋邊界。對當前 block,找頁面所有「在當前 block
 // 右側且垂直有重疊」的其他 block,取最小的 x0 為阻擋邊界,留 5pt buffer
 function getMaxRightX(currentBlock, layoutPage) {
   const [, cy0, cx1, cy1] = currentBlock.bbox;
@@ -954,83 +992,94 @@ async function renderPageSamples(page, viewport, layoutPage) {
   return out;
 }
 
-async function extractPdfMetaForOverlay(arrayBuffer, pageCount, layoutDoc = null) {
+// sharedPdfDoc：解析階段已開的 PDF.js doc（layoutDoc.pdfDoc / options.pdfDoc）。有就
+// 直接用，不再把整份 PDF 重新 getDocument；沒有（dev-verify 等）才自己開、用完
+// destroy。單頁失敗只影響該頁（回 null → 呼叫端 resolveOverlayMeta 降級），不再
+// 整份放棄；自己開的 doc 逐頁 cleanup 釋放 opList / 字型（§6.4）
+async function extractPdfMetaForOverlay(arrayBuffer, pageCount, layoutDoc = null, sharedPdfDoc = null) {
+  let pdfDoc = sharedPdfDoc;
+  const owned = !sharedPdfDoc;
   try {
-    const task = pdfjsLib.getDocument({
-      data: arrayBuffer.slice(0),
-      disableFontFace: false,
-      password: '',
-    });
-    const pdfDoc = await task.promise;
+    if (!pdfDoc) {
+      const task = pdfjsLib.getDocument({
+        data: arrayBuffer.slice(0),
+        disableFontFace: false,
+        password: '',
+      });
+      pdfDoc = await task.promise;
+    }
     const out = [];
     const n = Math.min(pageCount, pdfDoc.numPages);
     for (let i = 0; i < n; i++) {
-      const page = await pdfDoc.getPage(i + 1);
-      const viewport = page.getViewport({ scale: 1 });
-
-      // links
-      const annotations = await page.getAnnotations();
-      const links = annotations
-        .filter((a) => a.subtype === 'Link')
-        .map((a) => ({ rect: a.rect, url: a.url || a.unsafeUrl || null }))
-        .filter((l) => !!l.url);
-
-      // items + bold flag(getOperatorList 觸發 worker font load,後續 commonObjs.get 才有資料)
-      const opList = await page.getOperatorList();
-      const tc = await page.getTextContent();
-      const styles = tc.styles || {};
-      const fontIsBold = {};
-      for (const fn of Object.keys(styles)) {
-        try {
-          const font = await new Promise((resolve) => page.commonObjs.get(fn, resolve));
-          const name = (font && font.name) || '';
-          fontIsBold[fn] = (font && font.bold === true) || /Bold|Black|Heavy|Demi|Semi/i.test(name);
-        } catch {
-          fontIsBold[fn] = false;
-        }
-      }
-
-      const items = tc.items
-        .filter((it) => typeof it.str === 'string' && it.str.trim().length > 0)
-        .map((it) => {
-          // 套 viewport.transform × item.transform → canvas 座標(同 pdf-engine.js 邏輯)
-          const m = pdfjsLib.Util.transform(viewport.transform, it.transform);
-          const fontSize = Math.hypot(m[2], m[3]);
-          const left = m[4];
-          const baselineY = m[5];
-          const top = baselineY - fontSize;
-          const right = left + (it.width || 0);
-          const bottom = baselineY;
-          return {
-            str: it.str,
-            bbox: [left, top, right, bottom],
-            isBold: fontIsBold[it.fontName] || false,
-          };
-        });
-
-      // /Rotate 頁:layout / items 都在「轉正後」的 viewport 座標系,而 embedPages 嵌進去的
-      // 原頁內容流是未旋轉的使用者座標系。譯文頁要保留 /Rotate 並把 overlay 轉回使用者
-      // 座標系,需要 viewport.transform(PDF user space → canvas)供 buildBilingualPdf 反算
-      // 底色 / 字色取樣（失敗不擋生成，退回白底黑字）
-      let blockColors = {};
+      let page = null;
       try {
-        // 純文字頁（沒有任何填色 / 影像 / 漸層 / form 繪圖指令）不可能有彩色底，跳過 render：
-        // 書籍 / 論文類 200 頁文件實測 render 每頁 ≈ 0.2s，跳過後生成時間回到取樣前
-        if (pageMayHaveColoredBackground(opList)) {
-          blockColors = await renderPageSamples(page, viewport, layoutDoc && layoutDoc.pages ? layoutDoc.pages[i] : null);
-        }
+        page = await pdfDoc.getPage(i + 1);
+        out.push(await extractPageMetaForOverlay(page, i, layoutDoc));
       } catch (err) {
-        console.warn('[Shinkansen] 底色取樣失敗，該頁維持白底黑字：', err && err.message);
+        console.warn(`[Shinkansen] 第 ${i + 1} 頁 overlay metadata 抽取失敗，該頁不含 link / 底色：`, err && err.message);
+        out.push(null);
+      } finally {
+        if (owned && page) { try { page.cleanup(); } catch (_) { /* ignore */ } }
       }
-      out.push({ links, items, blockColors, rotation: ((page.rotate % 360) + 360) % 360, viewportTransform: viewport.transform.slice() });
     }
-    await pdfDoc.destroy();
     return out;
   } catch (err) {
-    // 抽取失敗不該卡住整份 PDF 生成,降級成「沒 link / 沒 bold」
-    console.warn('[Shinkansen] extractPdfMetaForOverlay 失敗,譯文 PDF 將不含 link / bold:', err && err.message);
+    // 抽取失敗不該卡住整份 PDF 生成,降級成「沒 link / 沒底色」（座標由 layoutPage.viewport 補）
+    console.warn('[Shinkansen] extractPdfMetaForOverlay 失敗,譯文 PDF 將不含 link / 底色:', err && err.message);
     return [];
+  } finally {
+    if (owned && pdfDoc) { try { await pdfDoc.destroy(); } catch (_) { /* ignore */ } }
   }
+}
+
+async function extractPageMetaForOverlay(page, i, layoutDoc) {
+  const viewport = page.getViewport({ scale: 1 });
+
+  // links
+  const annotations = await page.getAnnotations();
+  const links = annotations
+    .filter((a) => a.subtype === 'Link')
+    .map((a) => ({ rect: a.rect, url: a.url || a.unsafeUrl || null }))
+    .filter((l) => !!l.url);
+
+  // items（mask 範圍擴展用的原文 item bbox）。原本另抓每個 font 的 bold flag——
+  // W7 起 bold 走 styleSegments，items.isBold 沒有任何消費者，每頁多付
+  // commonObjs.get 純屬死工作（§5.2 已刪）
+  const opList = await page.getOperatorList();
+  const tc = await page.getTextContent();
+
+  const items = tc.items
+    .filter((it) => typeof it.str === 'string' && it.str.trim().length > 0)
+    .map((it) => {
+      // 套 viewport.transform × item.transform → canvas 座標(同 pdf-engine.js 邏輯)
+      const m = pdfjsLib.Util.transform(viewport.transform, it.transform);
+      const fontSize = Math.hypot(m[2], m[3]);
+      const left = m[4];
+      const baselineY = m[5];
+      const top = baselineY - fontSize;
+      const right = left + (it.width || 0);
+      const bottom = baselineY;
+      return {
+        str: it.str,
+        bbox: [left, top, right, bottom],
+      };
+    });
+
+  // /Rotate 頁:layout / items 都在「轉正後」的 viewport 座標系,而 embedPages 嵌進去的
+  // 原頁內容流是未旋轉的使用者座標系。譯文頁要保留 /Rotate 並把 overlay 轉回使用者
+  // 座標系,需要 viewport.transform(PDF user space → canvas)供 buildBilingualPdf 反算
+  // 底色 / 字色取樣（失敗不擋生成，退回白底黑字）
+  let blockColors = {};
+  try {
+    // 純文字頁（沒有任何填色 / 影像 / 漸層 / form 繪圖指令）不可能有彩色底，跳過 render：
+    // 書籍 / 論文類 200 頁文件實測 render 每頁 ≈ 0.2s，跳過後生成時間回到取樣前
+    if (pageMayHaveColoredBackground(opList)) {
+      blockColors = await renderPageSamples(page, viewport, layoutDoc && layoutDoc.pages ? layoutDoc.pages[i] : null);
+    }
+  } catch (err) {
+    console.warn('[Shinkansen] 底色取樣失敗，該頁維持白底黑字：', err && err.message);
+  }
+  return { links, items, blockColors, rotation: ((page.rotate % 360) + 360) % 360, viewportTransform: viewport.transform.slice() };
 }
 
 // 對單一新 page 加回 Link annotations。每條 Link 構造一個 PDFDict 註冊成

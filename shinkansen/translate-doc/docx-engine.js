@@ -226,7 +226,11 @@ export function tokenizeParagraph(spanXml) {
       const rid = /r:id="([^"]*)"/.exec(attrs)?.[1] || '';
       const anchor = /w:anchor="([^"]*)"/.exec(attrs)?.[1] || '';
       if (spanXml.charCodeAt(gt - 1) === 47) { i = gt + 1; continue; } // 自閉合：無內容
-      items.push({ k: 'linkStart', rid, anchor });
+      // 開頭 tag 的完整屬性字串原樣保留（w:tooltip / w:history / w:tgtFrame 等），
+      // 寫回時整串回放；rid / anchor 仍另抽供預覽 href 與舊資料 fallback
+      //（code review 2026-09-11 §3.8-13）
+      const attrsXml = attrs.slice('<w:hyperlink'.length, -1).trim();
+      items.push({ k: 'linkStart', rid, anchor, attrsXml });
       i = gt + 1;
       // 內部 run 由主迴圈繼續掃；碰到 </w:hyperlink> 時收尾
       continue;
@@ -405,15 +409,38 @@ export function composeTranslatedParagraph(para, runsXml) {
 
 // 雙語模式的譯文段：pPr 剝 numPr（清單項雙語不重複編號）
 export function stripNumPr(pPrXml) {
+  return stripPPrChildren(pPrXml, ['w:numPr']);
+}
+
+// 雙語譯文段不能原樣複製的 pPr 子元素（code review 2026-09-11 §3.8-8）：
+//   - w:numPr：清單編號會重複
+//   - w:sectPr：段落層 sectPr = 「本節到此為止」；複製一份就多一個分節，
+//     nextPage 型多一頁空白
+//   - w:framePr：文字框定位；兩段同框會互相疊在同一位置
+const DUAL_PPR_STRIP_TAGS = ['w:numPr', 'w:sectPr', 'w:framePr'];
+
+export function stripPPrChildren(pPrXml, tags) {
   if (!pPrXml) return pPrXml;
-  const idx = pPrXml.indexOf('<w:numPr');
-  if (idx === -1) return pPrXml;
-  const { end } = findElementEnd(pPrXml, idx, 'w:numPr');
-  return pPrXml.slice(0, idx) + pPrXml.slice(end);
+  let out = pPrXml;
+  for (const tag of tags) {
+    let idx = out.indexOf('<' + tag);
+    while (idx !== -1) {
+      // 只認完整 tag 名（<w:numPr 不可吃到 <w:numPrX>）
+      const after = out.charCodeAt(idx + tag.length + 1);
+      if (after === 62 /* > */ || after === 32 /* space */ || after === 47 /* / */) {
+        const { end } = findElementEnd(out, idx, tag);
+        out = out.slice(0, idx) + out.slice(end);
+        idx = out.indexOf('<' + tag, idx);
+      } else {
+        idx = out.indexOf('<' + tag, idx + 1);
+      }
+    }
+  }
+  return out;
 }
 
 export function composeDualParagraph(para, runsXml) {
-  return '<w:p>' + stripNumPr(para.pPrXml) + runsXml + '</w:p>';
+  return '<w:p>' + stripPPrChildren(para.pPrXml, DUAL_PPR_STRIP_TAGS) + runsXml + '</w:p>';
 }
 
 // 一個 text run 的 XML
@@ -686,6 +713,8 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
       // block ↔ para 連結：以 data-sk-docx-para 索引對回
       const byIdx = new Map(paraEls.map((pe, n) => [String(n), pe]));
       for (const b of blocks) {
+        // 段落 HTML 是扁平 <p>，不會產生容器直接文字的 fragment block（el = null），防禦性守門
+        if (!b.el) continue;
         const pe = byIdx.get(b.el.getAttribute('data-sk-docx-para'));
         if (!pe) continue;
         pe.para.block = b;
@@ -766,6 +795,7 @@ function buildParagraphHtml(htmlDoc, para, groups, rels) {
       const a = htmlDoc.createElement('a');
       if (g.rid) a.setAttribute('data-sk-rid', g.rid);
       if (g.anchor) a.setAttribute('data-sk-anchor', g.anchor);
+      if (g.attrsXml) a.setAttribute('data-sk-link-attrs', g.attrsXml);
       const url = g.rid && rels.get(g.rid);
       a.setAttribute('href', url || (g.anchor ? '#' + g.anchor : '#'));
       el.appendChild(a);
@@ -919,9 +949,12 @@ export function buildRunsFromFragment(frag, para, opts = {}) {
       const rid = child.getAttribute && child.getAttribute('data-sk-rid');
       const anchor = child.getAttribute && child.getAttribute('data-sk-anchor');
       if (tag === 'A' && (rid || anchor) && linkDepth === 0) {
-        out.push('<w:hyperlink'
-          + (rid ? ' r:id="' + escapeXmlAttr(rid) + '"' : '')
-          + (anchor ? ' w:anchor="' + escapeXmlAttr(anchor) + '"' : '') + '>');
+        // 原 tag 屬性整串回放（tooltip 等不丟）；沒有時（舊 session 編輯過的
+        // 內容 / 手動加的連結）退回只寫 r:id / w:anchor
+        const attrsXml = child.getAttribute('data-sk-link-attrs');
+        const fallbackAttrs = (rid ? ' r:id="' + escapeXmlAttr(rid) + '"' : '')
+          + (anchor ? ' w:anchor="' + escapeXmlAttr(anchor) + '"' : '');
+        out.push('<w:hyperlink' + (attrsXml ? ' ' + attrsXml : fallbackAttrs) + '>');
         walk(child, childRpr(child, rpr, para), 1);
         out.push('</w:hyperlink>');
         continue;

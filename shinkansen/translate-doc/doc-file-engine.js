@@ -626,12 +626,25 @@ export function translatedDocFilename(originalName, kind) {
 // translationSegments）與網頁翻譯路徑不同，另案處理。
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// 原文自帶的括號對照不是模型自加（code review 2026-09-11 §3.8-11）：原文
+// “FBI (Federal Bureau of Investigation)” 或 “the Bureau (FBI)” 這種 source 本身
+// 就在括號旁 / 括號內的段落，譯文「聯邦調查局（FBI）」是忠實翻譯，不能砍。
+// 判斷只看原文純文字：source 緊接左括號、或 source 被括號包住 → 該 entry 在
+// 這段跳過。方向是「有疑慮就不清」——清理本來只是安全網
+function sourceHasOwnAnnotation(plainText, source) {
+  if (typeof plainText !== 'string' || !plainText) return false;
+  const src = escapeRe(source);
+  return new RegExp(`${src}\\s*[（(]|[（(]\\s*${src}\\s*[）)]`, 'i').test(plainText);
+}
+
 /**
  * @param {string} text — translationRaw / translation
  * @param {Array<{source:string,target:string}>|null} glossary
+ * @param {string} [plainText] — 該段原文純文字；原文自帶「source（…）」/「（source）」
+ *   對照時該 entry 不清
  * @returns {{ text: string, count: number }}
  */
-export function stripGlossaryAnnotations(text, glossary) {
+export function stripGlossaryAnnotations(text, glossary, plainText = '') {
   if (typeof text !== 'string' || !text || !Array.isArray(glossary) || glossary.length === 0) {
     return { text: text || '', count: 0 };
   }
@@ -642,8 +655,11 @@ export function stripGlossaryAnnotations(text, glossary) {
     const target = e.target.trim();
     const source = e.source.trim();
     if (!target || !source || /[（(]/.test(target)) continue;
-    const re = new RegExp(`${escapeRe(target)}[ \u3000]?[（(]\\s*${escapeRe(source)}\\s*[）)]`, 'gi');
-    out = out.replace(re, () => { count++; return target; });
+    if (sourceHasOwnAnnotation(plainText, source)) continue;
+    // 譯名與括號之間容忍 ⟦/N⟧ 類佔位符（譯名在 inline wrapper 內、對照落在 wrapper
+    // 外側：「⟦0⟧伊拉克⟦/0⟧（Iraq）」）——raw 與去標記後的 plain 才會清到同一處
+    const re = new RegExp(`(${escapeRe(target)})((?:\u27E6\\/?\\d+\u27E7)*)[ \u3000]?[（(]\\s*${escapeRe(source)}\\s*[）)]`, 'gi');
+    out = out.replace(re, (_m, t, tokens) => { count++; return t + tokens; });
   }
   return { text: out, count };
 }
@@ -661,13 +677,27 @@ export function applyGlossaryAnnotationCleanup(doc, glossary) {
     for (const b of ch.blocks) {
       if (b.translationStatus !== 'done') continue;
       if (typeof b.editedHtml === 'string' && b.editedHtml.length > 0) continue;
-      if (typeof b.translationRaw === 'string') {
-        const r = stripGlossaryAnnotations(b.translationRaw, glossary);
-        if (r.count > 0) { b.translationRaw = r.text; total += r.count; }
-      }
-      if (typeof b.translation === 'string') {
-        const r = stripGlossaryAnnotations(b.translation, glossary);
-        if (r.count > 0) b.translation = r.text;
+      // raw（下載 / 預覽的反序列化來源）與 plain（掃描 / 對照用）必須清到同一處：
+      // 原本各清各的，raw 因佔位符夾在中間沒清到、plain 清到了 → 預覽與下載檔含
+      // 對照、掃描端卻認為沒有。規則：兩欄都在時以 raw 為準——raw 清到才兩欄一起
+      // 落地；raw 沒清到（對照落在 regex 搆不到的形態）plain 也不動，寧可保留對照
+      // 也不讓兩欄漂移
+      const rawRes = typeof b.translationRaw === 'string'
+        ? stripGlossaryAnnotations(b.translationRaw, glossary, b.plainText) : null;
+      const plainRes = typeof b.translation === 'string'
+        ? stripGlossaryAnnotations(b.translation, glossary, b.plainText) : null;
+      if (rawRes && plainRes) {
+        if (rawRes.count > 0) {
+          b.translationRaw = rawRes.text;
+          b.translation = plainRes.text;
+          total += rawRes.count;
+        }
+      } else if (rawRes && rawRes.count > 0) {
+        b.translationRaw = rawRes.text;
+        total += rawRes.count;
+      } else if (plainRes && plainRes.count > 0) {
+        b.translation = plainRes.text;
+        total += plainRes.count;
       }
     }
   }

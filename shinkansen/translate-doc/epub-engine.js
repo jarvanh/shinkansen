@@ -205,16 +205,19 @@ export function collectChapterBlocks(xhtmlDoc, chapterIndex, SK) {
   const blocks = [];
   const candidates = body.querySelectorAll(BLOCK_CANDIDATE_SELECTOR);
   let n = 0;
+  const leafSet = new Set();
   for (const el of candidates) {
     if (hasCandidateDescendant(el)) continue;           // leaf 原則
     if (isInsideSkippedSubtree(el, body)) continue;      // pre/svg/nav 等子樹內不收
-    const plainText = normalizeText(el.textContent);
+    leafSet.add(el);
+    const htmlClone = htmlCloneFromXhtml(el);
+    if (!htmlClone) continue;
+    stripRubyAnnotations(htmlClone);
+    const plainText = normalizeText(htmlClone.textContent);
     if (!plainText) continue;
     // 純數字 / 純標點（頁碼、分隔符）不送翻
     if (!HAS_LETTER_RE.test(plainText)) continue;
 
-    const htmlClone = htmlCloneFromXhtml(el);
-    if (!htmlClone) continue;
     const { text: serializedText, slots } = SK.serializeWithPlaceholders(htmlClone);
     if (!serializedText || !serializedText.trim()) continue;
 
@@ -231,7 +234,110 @@ export function collectChapterBlocks(xhtmlDoc, chapterIndex, SK) {
       translationError: null,
     });
   }
+
+  // 容器直接文字（code review 2026-09-11 §3.8-9）：leaf 原則只收「不含另一個候選」
+  // 的候選元素，容器自己的裸文字 / inline run 永遠不進翻譯單位——
+  // <li>Chapter one<ol>…</ol></li> 的「Chapter one」、轉檔書 <div>正文<h2>標題</h2>
+  // 正文</div> 的兩段正文。比照網頁路徑 extractInlineFragments：每個非 leaf 元素
+  //（含 body）把連續的 text / inline 子節點切成 run，run 內有字母即成一個 fragment
+  // block（el = null、fragStart / fragEnd 指向 XHTML 原節點，writer 以 run 為單位
+  // 寫回）。blockId 走獨立的 f 序號，既有 session 的 b 序號不受影響
+  let m = 0;
+  const containers = [body, ...body.getElementsByTagName('*')];
+  for (const container of containers) {
+    if (container !== body) {
+      if (SKIP_SUBTREE_TAGS.has(container.localName)) continue;
+      if (leafSet.has(container)) continue;
+      // 只有區塊型元素才是「容器」：inline 元素（em / a / span…）的文字已由所在
+      // leaf block 或所在容器的 run 涵蓋，再當容器會重複收集
+      if (!RUN_BREAK_TAGS.has(container.localName) && !hasCandidateDescendant(container)) continue;
+      if (isInsideSkippedSubtree(container, body)) continue;
+    }
+    for (const run of inlineRunsOf(container)) {
+      const wrapper = document.createElement('span');
+      for (const node of run) wrapper.appendChild(document.importNode(node, true));
+      stripRubyAnnotations(wrapper);
+      const plainText = normalizeText(wrapper.textContent);
+      if (!plainText || !HAS_LETTER_RE.test(plainText)) continue;
+      const { text: serializedText, slots } = SK.serializeWithPlaceholders(wrapper);
+      if (!serializedText || !serializedText.trim()) continue;
+      m++;
+      blocks.push({
+        blockId: null,                        // 排序後依文件順序編 f 序號（下方）
+        type: 'paragraph',
+        el: null,
+        fragStart: run[0],                    // XHTML 原節點 run（epub-writer 寫回用）
+        fragEnd: run[run.length - 1],
+        plainText,
+        epubSerializedText: serializedText,
+        slots,
+        translation: null,
+        translationRaw: null,
+        translationStatus: 'pending',
+        translationError: null,
+      });
+    }
+  }
+  if (m > 0) {
+    sortBlocksByDocumentOrder(blocks);
+    let f = 0;
+    for (const b of blocks) if (b.blockId == null) b.blockId = `c${chapterIndex}-f${f++}`;
+  }
   return blocks;
+}
+
+// 一個容器的直接子節點切成 inline run：text / inline 元素連續段為一個 run，
+// 遇到區塊型子元素（候選 / 清單 / 表格 / 分節等，或本身含候選的元素）與整棵跳過
+// 的子樹（pre / svg / nav…）就斷開
+const RUN_BREAK_TAGS = new Set([
+  ...BLOCK_CANDIDATE_TAGS,
+  'ul', 'ol', 'dl', 'table', 'thead', 'tbody', 'tfoot', 'tr',
+  'section', 'article', 'aside', 'header', 'footer', 'figure', 'hr', 'main',
+  'address', 'details', 'summary', 'form', 'fieldset', 'body',
+]);
+
+function inlineRunsOf(container) {
+  const runs = [];
+  let cur = [];
+  const flush = () => { if (cur.length > 0) runs.push(cur); cur = []; };
+  for (const node of container.childNodes) {
+    if (node.nodeType === 3) { cur.push(node); continue; }
+    if (node.nodeType !== 1) continue; // comment / PI：不進 run、不斷 run
+    const tag = node.localName;
+    if (SKIP_SUBTREE_TAGS.has(tag) || RUN_BREAK_TAGS.has(tag) || hasCandidateDescendant(node)) {
+      flush();
+      continue;
+    }
+    cur.push(node);
+  }
+  flush();
+  return runs;
+}
+
+function blockAnchorNode(b) {
+  return b.el || b.fragStart;
+}
+
+function sortBlocksByDocumentOrder(blocks) {
+  blocks.sort((a, b) => {
+    const na = blockAnchorNode(a);
+    const nb = blockAnchorNode(b);
+    if (na === nb) return 0;
+    const pos = na.compareDocumentPosition(nb);
+    if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  });
+}
+
+// 日文 EPUB 的 <ruby> 讀音假名（code review 2026-09-11 §3.8-10）：<rt> / <rp> 是
+// 標注，不是正文——透明展開會把「東京とうきょう」串進送翻原文、術語表抽出
+// 「柏木かしわぎ」。EPUB 政策層在 HTML clone 上直接剝掉（plainText / 序列化文字
+// 同一份來源），<ruby> 本體維持透明、基底文字照常進正文。原 XHTML 不動：
+// 雙語輸出原文段的 ruby 完整保留
+function stripRubyAnnotations(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  for (const n of root.querySelectorAll('rt, rp')) n.remove();
 }
 
 // ─── TOC（nav doc / NCX）─────────────────────────────────
@@ -293,7 +399,10 @@ function parseTocTitles(entries, opfDir, manifest, spineTocId) {
 }
 
 // ─── front / back matter 啟發式（章節清單「一鍵排除」候選）────
-const MATTER_FILENAME_RE = /(cover|titlepage|title-page|copyright|colophon|imprint|toc|nav|contents|dedication|halftitle)/i;
+// 關鍵字兩側要求非字母（code review 2026-09-11 §3.8-12）：原本無詞邊界，
+// stock_market.xhtml（toc）/ navy.xhtml（nav）/ discovery.xhtml（cover）正文章
+// 都被判成附屬頁預設不勾。數字 / 底線 / 連字號仍算邊界（cover01 / ch_toc 照舊命中）
+const MATTER_FILENAME_RE = /(?<![a-z])((?:front|back|book)?cover|titlepage|title-page|copyright|colophon|imprint|toc|nav|contents|tableofcontents|table-of-contents|dedication|halftitle|half-title)(?![a-z])/i;
 
 function suggestSkipChapter(ch) {
   if (ch.linear === 'no') return true;
@@ -421,6 +530,7 @@ export async function parseEpub(file, onProgress = () => {}, opts = {}) {
       parseFailed,
       blocks,
       charCount,
+      cjkRatio: cjkRatioOfBlocks(blocks), // 估價係數（§3.8-7）
       selected: true,       // UI 填 suggestSkip 後調整
       suggestSkip: false,
     };
@@ -546,16 +656,38 @@ export function glossaryGroupOf(entry) {
 
 // ─── 費用預估 ─────────────────────────────────────────────
 // 粗估 heuristic（UI 標示「約」）：
-//   input tokens ≈ chars / 4（拉丁文平均 ~4 chars/token；CJK 原文會低估，
-//   但 CJK→zh 通常整段被 source-lang skip，誤差可接受）+ 每批 prompt 殘餘
-//   ~600 tokens（systemInstruction 大部分被 implicit cache 折掉，取折後殘值）
-//   output tokens ≈ chars × 0.5（英文原文 → 繁中譯文的實測量級）
+//   拉丁文：input tokens ≈ chars / 4（平均 ~4 chars/token）、output ≈ chars × 0.5
+//          （英文原文 → 繁中譯文的實測量級）
+//   CJK 原文（日文 / 韓文 / 中文書譯成另一種中文等，code review 2026-09-11 §3.8-7）：
+//          input ≈ chars / 1.5（一個字約 0.7 token）、output ≈ chars × 1.2（譯文字數與
+//          原文相近、CJK 每字約 1 token，再加 thinking 模型計入 output 的思考量）。
+//          係數以 2026-07-11 實測校準：178,756 字日文書拉丁公式估 $0.91、實花 $2.4
+//         （低估 2.6 倍），新係數在同計價下約 2.4 倍
+//   每批 prompt 殘餘 ~600 tokens（systemInstruction 大部分被 implicit cache 折掉，
+//   取折後殘值）
+// cjkRatio = 該段文字中 CJK 字元佔比（0–1），兩種係數按比例混合。
 // 回傳 null = 查不到該 model 計價（自訂 Provider 等），UI 顯示「—」。
-export function estimateChapterCostUSD(charCount, model, settings) {
+export function estimateChapterCostUSD(charCount, model, settings, cjkRatio = 0) {
   const pricing = getPricingForModel(model, settings);
   if (!pricing || !charCount) return null;
+  const ratio = Number.isFinite(cjkRatio) ? Math.min(1, Math.max(0, cjkRatio)) : 0;
+  const cjkChars = charCount * ratio;
+  const latinChars = charCount - cjkChars;
   const batches = Math.max(1, Math.ceil(charCount / 4000));
-  const inTok = charCount / 4 + batches * 600;
-  const outTok = charCount * 0.5;
+  const inTok = latinChars / 4 + cjkChars / 1.5 + batches * 600;
+  const outTok = latinChars * 0.5 + cjkChars * 1.2;
   return (inTok * pricing.inputPerMTok + outTok * pricing.outputPerMTok) / 1e6;
+}
+
+// 一組 block 的 CJK 字元佔比（估價係數用）：漢字 / 假名 / 諺文 / 全形標點
+const CJK_CHAR_RE = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g;
+export function cjkRatioOfBlocks(blocks) {
+  let total = 0;
+  let cjk = 0;
+  for (const b of blocks) {
+    const t = (b && b.plainText) || '';
+    total += t.length;
+    cjk += (t.match(CJK_CHAR_RE) || []).length;
+  }
+  return total > 0 ? cjk / total : 0;
 }

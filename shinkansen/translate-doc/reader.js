@@ -86,7 +86,8 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       try { await translatedPdfDoc.destroy(); } catch (_) { /* ignore */ }
       translatedPdfDoc = null;
     }
-    const built = await buildBilingualPdf(originalArrayBuffer, doc);
+    // 共用解析階段的 PDF.js doc：renderer 不再重新解析整份 PDF（§6.4）
+    const built = await buildBilingualPdf(originalArrayBuffer, doc, { pdfDoc: originalPdfDoc });
     // zh-CN / ja / ko 需要遠端字型但抓不到 → 已退回內建 TC，讓 index.js 提示使用者
     if (built.fontFallback && typeof onFontFallback === 'function') onFontFallback(built.fontSource);
     translatedBytes = built.bytes;
@@ -315,6 +316,14 @@ export async function renderReader(doc, originalPdfDoc, originalArrayBuffer, ori
       sync.destroy();
       leftIO.disconnect();
       rightIO.disconnect();
+      // 已 render 的 canvas bitmap 一併釋放（每頁約 18MB）：換檔 / 重開 reader 時
+      // 舊欄的 page div 雖然會被 innerHTML = '' 清掉，bitmap 仍等 GC；主動歸零
+      //（code review 2026-09-11 §3.8-6）
+      for (const [pageEl, meta] of pageMeta) {
+        meta.rendered = false;
+        releaseCanvas(pageEl);
+      }
+      pageMeta.clear();
       if (window.__skReaderRenderAll === renderAllPages) delete window.__skReaderRenderAll;
       if (translatedPdfDoc) {
         translatedPdfDoc.destroy().catch(() => {});
