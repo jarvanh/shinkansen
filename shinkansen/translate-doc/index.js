@@ -19,6 +19,7 @@ import {
   BOOK_GLOSSARY_MAX_TERMS,
 } from './epub-engine.js';
 import { buildTranslatedEpub, translatedEpubFilename, computeAnnotationDedupe } from './epub-writer.js';
+import { resolveBlockFragment } from './block-output.js';
 // 譯後一致性掃描（v2.0.11，SPEC §17.10.10）
 import {
   checkGlossaryCompliance, mineCandidates, buildScanBatches, aggregateRenderings, sourceHasTerm,
@@ -61,11 +62,11 @@ const BOOK_DOC_KINDS = new Set(['epub', 'txt', 'md', 'html', 'subtitle', 'docx']
 const isBookDoc = (doc) => !!doc && BOOK_DOC_KINDS.has(doc.kind);
 
 // i18n shortcut。lib/i18n.js 由 index.html `<script src>` 載入,attach 到
-// window.__SK.i18n。fallback:i18n 還沒載入時回傳 fallback 字串(避免 init race)。
-const t = (key, params, fallback) => {
+// window.__SK.i18n。i18n 還沒載入時（init race）回 key 本身。
+const t = (key, params) => {
   const i18n = window.__SK?.i18n;
   if (i18n && typeof i18n.t === 'function') return i18n.t(key, params);
-  return fallback != null ? fallback : key;
+  return key;
 };
 
 // ─── 「書」味文案分流（2026-08-24）───────────────────────────
@@ -607,10 +608,6 @@ async function renderDebugPage() {
   const scale = renderInfo.scale;
 
   setBlockDetail(null);
-
-  // dev probe:exposed 給 harness / 手動 console inspect
-  window.__skDebugSvg = svg;
-  window.__skDebugBlocks = layoutPage.blocks;
 
   for (const block of layoutPage.blocks) {
     if (isolateOrder !== null && !Number.isNaN(isolateOrder) && block.readingOrder !== isolateOrder) continue;
@@ -4469,39 +4466,29 @@ function commitEditedBlock(b, el) {
 }
 
 function renderBlockContent(b, SK, override = null) {
-  const edited = override?.editedHtml ?? b.editedHtml;
-  if (typeof edited === 'string' && edited.length > 0) {
-    const el = document.createElement('div');
-    el.innerHTML = edited;
-    return { el, usedEdited: true };
-  }
-  const raw = override?.translationRaw ?? b.translationRaw;
-  if (typeof raw === 'string' && raw && Array.isArray(b.slots)
-      && typeof SK?.deserializeWithPlaceholders === 'function') {
-    const { frag, ok } = SK.deserializeWithPlaceholders(raw, b.slots, { cloneReuse: true });
-    if (ok || (b.slots.length === 0 && frag.childNodes.length > 0)) {
-      const el = document.createElement('div');
-      el.appendChild(frag);
-      return { el, usedEdited: false };
-    }
-  }
-  let plain = override?.translation ?? b.translation;
-  if (typeof plain === 'string' && plain) {
-    // 字幕 block（slots=null、tagSlots 字串級對映）走這裡；句末句號去除在輸出端套用，
-    // 與下載 buildTranslatedSubtitleText 同一條規則（所見即所得）
-    if (subtitleStripPeriodOn && Array.isArray(b.tagSlots)) plain = stripCueTrailingPeriod(plain);
-    // 純文字內的 \n（字幕一則多行）渲染成 <br>：textContent 塞進 white-space:normal 的段落
-    // 會把換行折疊成一個空格（「將海珊 趕下台」），預覽與下載檔不一致。<br> 與
-    // editedHtmlToPlain 的 <br> → \n 對偶，編輯存回換行不丟
-    const el = document.createElement('div');
-    const lines = plain.split('\n');
-    lines.forEach((line, i) => {
-      if (i > 0) el.appendChild(document.createElement('br'));
-      el.appendChild(document.createTextNode(line));
-    });
-    return { el, usedEdited: false };
-  }
-  return null;
+  // 優先鏈走 block-output.js resolveBlockFragment（與 epub-writer / docx / txt 同一份）；預覽端只決定
+  // 純文字分支怎麼渲染（字幕句末句號、\n → <br>）與外層 div
+  const picked = resolveBlockFragment(SK, b, override, {
+    renderPlain: (plainIn) => {
+      let plain = plainIn;
+      // 字幕 block（slots=null、tagSlots 字串級對映）走這裡；句末句號去除在輸出端套用，
+      // 與下載 buildTranslatedSubtitleText 同一條規則（所見即所得）
+      if (subtitleStripPeriodOn && Array.isArray(b.tagSlots)) plain = stripCueTrailingPeriod(plain);
+      // 純文字內的 \n（字幕一則多行）渲染成 <br>：textContent 塞進 white-space:normal 的段落
+      // 會把換行折疊成一個空格（「將海珊 趕下台」），預覽與下載檔不一致。<br> 與
+      // editedHtmlToPlain 的 <br> → \n 對偶，編輯存回換行不丟
+      const frag = document.createDocumentFragment();
+      plain.split('\n').forEach((line, k) => {
+        if (k > 0) frag.appendChild(document.createElement('br'));
+        frag.appendChild(document.createTextNode(line));
+      });
+      return frag;
+    },
+  });
+  if (!picked) return null;
+  const el = document.createElement('div');
+  el.appendChild(picked.frag);
+  return { el, usedEdited: picked.source === 'edited' };
 }
 
 function renderBlockForScanEdit(b, SK) {

@@ -191,10 +191,7 @@ button.secondary:hover { background: #f0f7ff; }
 
 .btn-row { display: flex; gap: 8px; }
 
-.triple { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-.triple label { margin: 0; }
 
-#save-status { font-size: 12px; color: #34c759; }
 
 /* v0.94: 儲存狀態提示條（固定在頁面頂端） */
 .save-bar {
@@ -216,18 +213,6 @@ button.secondary:hover { background: #f0f7ff; }
 .save-bar.saved {
   background: #34c759;
   color: #fff;
-}
-
-#log-view {
-  margin-top: 8px;
-  padding: 10px;
-  background: #1d1d1f;
-  color: #d2d2d7;
-  font: 11px 'SF Mono', Menlo, monospace;
-  max-height: 300px;
-  overflow: auto;
-  border-radius: 6px;
-  white-space: pre-wrap;
 }
 
 kbd {
@@ -680,6 +665,17 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
 .log-cat-glossary   { background: #f3e5f5; color: #6a1b9a; }
 .log-cat-spa        { background: #e0f7fa; color: #00695c; }
 .log-cat-system     { background: #f5f5f5; color: #616161; }
+/* 2026-09-12 批次 6：補齊 logger 實際會出現、原本沒底色的分類 */
+.log-cat-inject       { background: #e8eaf6; color: #283593; }
+.log-cat-guard        { background: #fce4ec; color: #ad1457; }
+.log-cat-youtube,
+.log-cat-youtube-debug{ background: #ffebee; color: #c62828; }
+.log-cat-drive        { background: #fffde7; color: #f57f17; }
+.log-cat-scan         { background: #ede7f6; color: #4527a0; }
+.log-cat-summary      { background: #e0f2f1; color: #00695c; }
+.log-cat-update-check,
+.log-cat-exchange-rate,
+.log-cat-host-settings{ background: #eceff1; color: #455a64; }
 
 /* 等級 */
 .log-lvl { font-weight: 600; }
@@ -846,18 +842,6 @@ body.runtime-safari .usage-date-label input[type="date"]::-webkit-datetime-edit 
   padding: 4px 12px;
 }
 
-.badge-beta {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: #ff9500;
-  color: #fff;
-  vertical-align: middle;
-  margin-left: 6px;
-  letter-spacing: 0.04em;
-}
 .glossary-delete-domain-btn:hover { background: #fff5f5; }
 
 /* v1.5.6: 中國用語黑名單表格——禁用詞 / 替換詞欄位寬度收窄，
@@ -1347,8 +1331,6 @@ shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-de
   /* tab 折行後一列塞得下更多顆 */
   .tab-btn { padding: 10px 12px; }
   /* RPM / TPM / RPD 三欄太擠 → 直疊 */
-  .triple { grid-template-columns: 1fr; }
-  .triple label { margin: 12px 0; }
   /* 用量彙總四卡 → 2×2 */
   .usage-summary { grid-template-columns: 1fr 1fr; }
   /* per-model 計價列：固定欄 110+110+90 必溢出 → label 整列 + 三個數字欄一列 */

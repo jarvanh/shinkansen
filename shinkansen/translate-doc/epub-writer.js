@@ -12,6 +12,8 @@
 //
 // 未翻章節 / 失敗 block：保留原文原樣（部分譯本下載天然支援）。
 
+import { resolveBlockFragment } from './block-output.js';
+
 const XML_SER = new XMLSerializer();
 const XML_DECL = '<?xml version="1.0" encoding="utf-8"?>\n';
 const XHTML_NS = 'http://www.w3.org/1999/xhtml';
@@ -22,22 +24,6 @@ function getSK() {
     throw new Error('serializer not loaded');
   }
   return SK;
-}
-
-// 使用者在預覽頁 contenteditable 編輯過的 HTML → 消毒後 parse 成頁面 frag。
-// 消毒：剝 script / style / template 元素與 on* 事件屬性（貼上內容可能夾帶）
-function editedHtmlToFrag(html) {
-  const container = document.createElement('div');
-  container.innerHTML = html;
-  for (const bad of container.querySelectorAll('script, style, template')) bad.remove();
-  for (const el of container.querySelectorAll('*')) {
-    for (const attr of [...el.attributes]) {
-      if (/^on/i.test(attr.name)) el.removeAttribute(attr.name);
-    }
-  }
-  const frag = document.createDocumentFragment();
-  while (container.firstChild) frag.appendChild(container.firstChild);
-  return frag;
 }
 
 // 譯文寫回單一 block。優先序：
@@ -71,32 +57,12 @@ export function applyBlockTranslation(SK, xhtmlDoc, block, override, bilingual =
   return true;
 }
 
-// 譯文內容節點（editedHtml → ⟦N⟧ 反序列化 → 純文字 fallback），element / fragment
-// 兩條寫回路徑共用同一份優先序
+// 譯文內容節點（editedHtml → ⟦N⟧ 反序列化 → 純文字 fallback）：優先鏈走 block-output.js
+// resolveBlockFragment（與 docx / txt / 預覽四個消費端同一份），這裡只負責 importNode 進 xhtmlDoc。
+// element / fragment 兩條寫回路徑共用
 function resolveBlockContent(SK, xhtmlDoc, block, override) {
-  let content = null;
-  // override.editedHtml = dedupe 後處理過的編輯版（2026-07-10）
-  const editedHtml = override?.editedHtml ?? block.editedHtml;
-  if (typeof editedHtml === 'string' && editedHtml.length > 0) {
-    content = xhtmlDoc.importNode(editedHtmlToFrag(editedHtml), true);
-  }
-  if (!content) {
-    const raw = override?.translationRaw ?? block.translationRaw;
-    if (typeof raw === 'string' && raw.length > 0 && Array.isArray(block.slots)) {
-      // cloneReuse：frag 不注回序列化來源（HTML clone），slot 一律 clone 殼重建
-      const { frag, ok } = SK.deserializeWithPlaceholders(raw, block.slots, { cloneReuse: true });
-      if (ok || (block.slots.length === 0 && frag.childNodes.length > 0)) {
-        content = xhtmlDoc.importNode(frag, true);
-      }
-    }
-  }
-  if (!content) {
-    const plain = override?.translation ?? block.translation;
-    if (typeof plain === 'string' && plain.length > 0) {
-      content = xhtmlDoc.createTextNode(plain);
-    }
-  }
-  return content;
+  const picked = resolveBlockFragment(SK, block, override);
+  return picked ? xhtmlDoc.importNode(picked.frag, true) : null;
 }
 
 // fragment block 寫回（§3.8-9）：以 fragStart..fragEnd 這段連續 sibling（容器的

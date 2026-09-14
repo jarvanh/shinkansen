@@ -264,6 +264,8 @@ The glossary has two layers: "Global" applies to all sites; "Domain-specific" on
 
 The custom glossary takes priority over auto glossary consistency. During translation, glossary instructions are placed at the very end of the system prompt — the position the LLM weights most heavily. After editing the glossary, no need to manually clear the cache; Shinkansen invalidates old entries automatically.
 
+The custom glossary and the term blacklist are stored locally in your browser (not subject to the browser sync quota of 8KB per item, so hundreds of entries fit) and are not synced across devices; to move them to another device use "Export / Import settings" on the options page — the backup file includes both lists.
+
 ## Custom models (OpenAI-compatible endpoints)
 
 In addition to Gemini and Google Translate, you can connect one OpenAI-compatible endpoint to use any model other than Gemini — for example:
@@ -330,7 +332,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.4.17 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.4.18 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

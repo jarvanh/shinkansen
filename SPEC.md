@@ -7,7 +7,7 @@
 - 最後更新：2026-08-06（v2.0.85，文件瘦身改版）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.4.17
+- 目前 Extension 版本：2.4.18
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.4.17 為止）
+### 2.1 已實作（v2.4.18 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -157,6 +157,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 - **API 逾時** `fetchTimeoutSec`（預設 90 秒，範圍 5–600）：本機 LLM 冷啟動可調高
 - **API Key**：存 `chrome.storage.local`，不跨裝置同步、不在匯出範圍
 - 固定術語表與禁用詞清單自動共用（改一處兩引擎同步生效）；術語表抽取也支援此引擎（不需 Gemini Key）
+- 與 Gemini 引擎共用同一套引擎層（`lib/llm-common.js`）：API 逾時與 429 / 5xx 退避重試、輸出截斷不採信、段數對齊與序號標記二次對齊、逐段 fallback、輸出語言驗證、術語表 JSON 剝殼皆為單一實作，兩引擎對同一種回應行為一致（僅錯誤 code 的文案依引擎區分）
 
 ### 3.9 翻譯目標語言（Target Language）
 
@@ -168,7 +169,7 @@ client 端不做預防性節流，配額由 API 端 429 回應把關：
 
 | navigator.language | 推導 target |
 |---|---|
-| `zh-TW` / `zh-Hant` / `zh-HK` 系 | `zh-TW` |
+| `zh-TW` / `zh-Hant` / `zh-HK` / `zh-MO` 系 | `zh-TW` |
 | 其他 `zh-*` | `zh-CN` |
 | `ja*` / `ko*` / `es*` / `fr*` / `de*` | 對應語言 |
 | 其他 | `en` |
@@ -217,7 +218,7 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 
 - 混合頁兩路並存：可轉段落走本地轉換、其餘照走 LLM；轉換結果不寫翻譯快取、不記用量（零 API）
 - **自動模式**（`settings.autoConvertZh`，預設開）：頁面載入 / SPA 導航自動轉換（只跑本地轉換、絕不打 API）；popup toggle「簡繁自動互轉（免費）」只在 target 為中文變體時顯示，切換即時生效（取消時僅還原本地轉換結果，LLM 翻譯成果不受影響）
-- 完成 toast 標示「免費未使用 API」；混合頁完整翻譯時標示其中 N 段本地轉換
+- toast 文案與 LLM 翻譯完全分開：進行中「簡繁本地轉換中⋯（不使用 AI 翻譯）」、完成「簡繁本地轉換完成」+「只做字典簡繁轉換，未觸發 AI 翻譯 · 免費」、SPA 新內容「簡繁本地轉換新內容⋯」/「已本地轉換 N 段新內容（未使用 AI）」；混合頁完整翻譯時標示其中 N 段是字典轉換未經 AI
 - **實作**：`lib/zh-convert.js` + `lib/vendor/opencc/`（字典 10 檔約 1.1MB，lazy load）；分流判定與 SPA 邊角處理見 SPEC-PRIVATE §32
 
 ---
@@ -307,6 +308,9 @@ shinkansen/
 │   ├── gemini.js             # Gemini API 呼叫、分批、重試
 │   ├── openai-compat.js      # 自訂 OpenAI-compatible adapter（§3.8）
 │   ├── openai-compat-thinking.js # 自訂模型 thinking 控制 mapping
+│   ├── llm-common.js         # 兩條 LLM adapter 共用的引擎層（fetch 重試 / 對齊與逐段 fallback / JSON 剝殼）
+│   ├── translate-pipeline.js # background 三條翻譯 handler 共用 pipeline（術語表 → cache key → 快取 → API → 寫快取 → 計費 → 落地）
+│   ├── billing.js            # 用量計費公式單一資料源（raw / 實付 / cache 折扣比例）
 │   ├── google-translate.js   # Google Translate 非官方 API 封裝（免 API Key）
 │   ├── system-instruction.js # 跨 provider 共用的翻譯 batch 構建 helper
 │   ├── bg-error.js           # 背景端錯誤 error code 協定
@@ -324,7 +328,8 @@ shinkansen/
 │   ├── readability.js        # vendored @mozilla/readability（Apache-2.0；授權正本 readability.LICENSE）
 │   ├── instapaper.js         # Instapaper Full API 封裝（§3.11）
 │   ├── instapaper-keys.js    # Instapaper consumer 憑證（gitignore 不入 repo）
-│   ├── i18n.js               # Extension UI 字串 i18n 字典（8 語，§3.10）
+│   ├── i18n.js               # Extension UI 字串 i18n 字典（8 語，§3.10；popup / options / translate-doc 載入）
+│   ├── i18n-content.js       # content script 專用子集（GENERATED，tools/build/generate-i18n-content.mjs 從 i18n.js 產出，只含 content 用到的 key）
 │   ├── compat.js             # Safari／Firefox 相容性 shim
 │   ├── platform.js           # runtime 平台偵測
 │   ├── distribution.js       # 編譯期注入的 MAS build flag（ES module 版）
@@ -344,6 +349,7 @@ shinkansen/
 │   ├── epub-writer.js        # 譯本 EPUB 重建（§17.10）
 │   ├── epub-session-db.js    # 書籍式文件翻譯工作階段存檔（IndexedDB）
 │   ├── doc-file-engine.js    # TXT / Markdown / HTML 解析與譯文檔重建 + 術語表 CSV 解析（§17.11）
+│   ├── block-output.js       # block 譯文輸出優先鏈（editedHtml → 佔位符反序列化 → 純文字）單一資料源
 │   ├── docx-engine.js        # Word（.docx）解析與譯本 docx 重建（§17.13）
 │   ├── subtitle-engine.js    # 字幕檔（SRT / WebVTT / ASS）解析、行內標記佔位符對映與譯文檔重建（§17.12）
 │   ├── dev-verify.js         # dev 驗證 harness hook（production 不載入）
@@ -457,7 +463,7 @@ shinkansen/
   "customShortcuts": { "2": null, "1": null, "3": null },
   "instapaperEnabled": false,
   "instapaperSummaryEnabled": true,
-  "forbiddenTerms": "（見 §3.7 / DEFAULT_FORBIDDEN_TERMS，26 條預設）",
+  "forbiddenTerms": "（見 §3.7 / DEFAULT_FORBIDDEN_TERMS，26 條預設；實際存 chrome.storage.local，見 §8.2）",
   "disableUpdateNotice": false,
   "popupButtonSlot": 2,
   "floatingIcon": null,
@@ -498,12 +504,13 @@ shinkansen/
 - **版本標記**：key `__cacheVersion` → manifest version（v1.8.45 起版本變更**不**清快取，只更新標記）
 - **累計費用顯示基準點**：key `usageResetAt` → ms epoch。popup「累計費用」的「清除」寫入；popup 只加總此時間點之後的 usage-db 紀錄。usage-db 與此 key 同為裝置本機，不跨裝置同步
 - **機密**：`apiKey`（Gemini）、`customProviderApiKey`（自訂 Provider）——不跨裝置同步
+- **大項設定**：`fixedGlossary`（固定術語表）、`forbiddenTerms`（禁用詞清單）——sync 每個 key 上限 8,192 bytes，術語表百餘條即超限；改存 local 後不跨裝置同步，匯出 / 匯入 JSON 仍包含。舊版寫在 sync 的值於下次讀取設定時自動搬到 local 並從 sync 移除（`lib/storage.js` `LOCAL_SETTINGS_KEYS`）
 - **通知狀態**：`welcomeNotice`（升級歡迎橫幅）、`updateAvailable`（`lib/update-check.js` 寫入的新版資訊）
 - **其他**：`exchangeRate`（匯率 cache）、`translateDocPresetSlot`（文件翻譯頁上次選的 preset）、`hostSettingsConsumedSeq`（Safari host app 設定交接序號）、`yt_debug_log` / `anomaly_log`（持久 log ring，§12）
 
 ### 8.3 同步策略
 
-- `chrome.storage.sync` 自動跨裝置同步設定（不含 API Key）
+- `chrome.storage.sync` 自動跨裝置同步設定（不含 API Key，也不含固定術語表 / 禁用詞清單——兩者存 local，§8.2）
 - 翻譯快取與術語表快取只存 local，不同步
 - 設定頁提供匯出/匯入 JSON（API Key 不含在匯出範圍），匯入時 `sanitizeImport()` 驗證所有欄位
 

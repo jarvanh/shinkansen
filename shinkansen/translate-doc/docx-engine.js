@@ -24,6 +24,7 @@
 // 直接 import 可測，parseDocxFile / buildTranslatedDocx 才需要瀏覽器環境。
 
 import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS, HAS_LETTER_RE } from './epub-engine.js';
+import { resolveBlockFragment } from './block-output.js';
 
 export class DocxParseError extends Error {
   constructor(code, message) {
@@ -886,30 +887,10 @@ export function buildTranslatedDocx(doc, targetLanguage, { bilingual = false, de
   return { bytes };
 }
 
-// block → 譯文 fragment（editedHtml → ⟦N⟧ 反序列化 → 純文字，
-// 優先序與 epub-writer applyBlockTranslation 同語意）
+// block → 譯文 fragment：優先鏈（editedHtml → ⟦N⟧ 反序列化 → 純文字）走 block-output.js
+// resolveBlockFragment（與 epub-writer / txt / 預覽同一份，2026-09-12 批次 6 收斂）
 function fragmentForBlock(SK, b, override) {
-  const edited = override?.editedHtml ?? b.editedHtml;
-  if (typeof edited === 'string' && edited.length > 0) {
-    const tpl = document.createElement('template');
-    tpl.innerHTML = edited;
-    return tpl.content;
-  }
-  const raw = override?.translationRaw ?? b.translationRaw;
-  if (typeof raw === 'string' && raw.length > 0 && Array.isArray(b.slots)) {
-    try {
-      // 接受規則與 epub-writer applyBlockTranslation 同語意
-      const { frag, ok } = SK.deserializeWithPlaceholders(raw, b.slots, { cloneReuse: true });
-      if (ok || (b.slots.length === 0 && frag.childNodes.length > 0)) return frag;
-    } catch (_) { /* fall through */ }
-  }
-  const plain = override?.translation ?? b.translation;
-  if (typeof plain === 'string' && plain.length > 0) {
-    const frag = document.createDocumentFragment();
-    frag.appendChild(document.createTextNode(plain));
-    return frag;
-  }
-  return null;
+  return resolveBlockFragment(SK, b, override)?.frag ?? null;
 }
 
 // fragment → OOXML run 序列。text node 取最近 data-sk-rpr 祖先的 rpr

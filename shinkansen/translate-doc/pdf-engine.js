@@ -25,9 +25,9 @@ export const LIMITS = Object.freeze({
 
 // 已知不支援的 PDF 樣態（SPEC §17.2）——抽完文字後再判斷
 const SCANNED_PDF_TEXT_THRESHOLD = 50; // 整份 < 50 個非空白字 → 視為掃描檔
-const GARBLED_FONT_NON_PRINTABLE_RATIO = 0.5;
-const TINY_RUN_MIN_FONT_SIZE = 1.5;
-const ROTATED_PAGE_DOMINANT_RATIO = 0.8; // 丟掉的旋轉 run 佔全部 run ≥ 80% → 整頁旋轉內容，不是掃描檔 // 低於此字級的 text run 視為隱藏文字，不進版面 IR // 非 ASCII printable / 控制字元比例 > 50% → 字型映射不完整
+const GARBLED_FONT_NON_PRINTABLE_RATIO = 0.5; // 非 ASCII printable / 控制字元比例 > 50% → 字型映射不完整
+const TINY_RUN_MIN_FONT_SIZE = 1.5; // 低於此字級的 text run 視為隱藏文字，不進版面 IR
+const ROTATED_PAGE_DOMINANT_RATIO = 0.8; // 丟掉的旋轉 run 佔全部 run ≥ 80% → 整頁旋轉內容，不是掃描檔
 
 // run bbox 落在 viewport 外多遠時視為「PDF 邏輯邊界外」直接丟棄
 // (PowerPoint / Excel 匯出 PDF 常見:寬 table 繪製在邏輯 page 之外,page transform

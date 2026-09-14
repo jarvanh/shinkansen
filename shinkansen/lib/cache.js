@@ -280,23 +280,11 @@ async function proactiveEvictionCheck() {
   }
 }
 
-/**
- * v1.5.6: 把 keySuffix 參數正規化為單一字串。
- * 兩種接受形式：
- *   - 字串：直接當 suffix（既有 v0.70 ~ v1.4.x API，向下相容）
- *   - 物件：{ baseSuffix, glossaryHash, forbiddenHash }
- *           → baseSuffix + (glossaryHash ? '_g' + ... : '') + (forbiddenHash ? '_b' + ... : '')
- *           空字串 / null hash 一律不附加，向下相容既有快取。
- * 實作位置：放這邊可以讓 getBatch / setBatch 共用同一條規則，避免兩端組鍵不一致。
- */
+// keySuffix 一律是字串（background buildCacheKeySuffix 組好的完整後綴）。
+// 2026-09-12 批次 6：v1.5.6 的 { baseSuffix, glossaryHash, forbiddenHash } 物件形式自 v1.10.46
+// 三條路徑收斂到 buildCacheKeySuffix 後無呼叫端，移除；getBatch / setBatch 共用這條保證兩端組鍵一致
 function resolveKeySuffix(arg) {
-  if (arg == null) return '';
-  if (typeof arg === 'string') return arg;
-  if (typeof arg !== 'object') return '';
-  let s = arg.baseSuffix || '';
-  if (arg.glossaryHash) s += '_g' + arg.glossaryHash;
-  if (arg.forbiddenHash) s += '_b' + arg.forbiddenHash;
-  return s;
+  return (typeof arg === 'string') ? arg : '';
 }
 
 /**

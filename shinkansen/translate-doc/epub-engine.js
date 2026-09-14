@@ -525,7 +525,7 @@ export async function parseEpub(file, onProgress = () => {}, opts = {}) {
       isNavDoc,
       title: titleByPath.get(path) || '',
       xhtmlDoc,
-      rawText,
+      // rawText 不保留（原始 XHTML 每章常駐記憶體無消費者，2026-09-12 批次 6 移除）
       hadXmlDeclaration: /^\s*<\?xml/i.test(rawText),
       parseFailed,
       blocks,

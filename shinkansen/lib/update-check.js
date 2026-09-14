@@ -58,19 +58,6 @@ function parseVersion(v) {
   return parts.slice(0, 3);
 }
 
-/**
- * 判斷 latest 是否「嚴格大於」current。三段式 major.minor.patch 逐位比。
- * @returns {boolean} latest > current
- */
-function isNewer(latest, current) {
-  const a = parseVersion(latest);
-  const b = parseVersion(current);
-  for (let i = 0; i < 3; i++) {
-    if (a[i] > b[i]) return true;
-    if (a[i] < b[i]) return false;
-  }
-  return false;
-}
 
 /**
  * 判斷是否值得提示使用者更新。**只有 major 或 minor 升級才提示**，patch 級小修
@@ -243,16 +230,6 @@ export function buildUpdateDownloadUrl(updateAvailable, isSafari) {
       : 'https://github.com/jimmysu0309/shinkansen/releases');
 }
 
-/**
- * 是否「今日尚未顯示過 toast 提示」——content-toast.js 用此判斷是否在成功 toast
- * 加更新通知一行。
- */
-export async function shouldShowTodayNotice() {
-  const { [STORAGE_KEY]: cur } = await browser.storage.local.get(STORAGE_KEY);
-  if (!cur || !cur.version) return null;
-  if (cur.lastNoticeShownDate === localTodayKey()) return null;
-  return { version: cur.version, releaseUrl: cur.releaseUrl };
-}
 
 // 匯出供測試
-export { parseVersion, isNewer, isWorthNotifying };
+export { parseVersion, isWorthNotifying };

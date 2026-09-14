@@ -377,8 +377,7 @@
     if (!el || el.nodeType !== 1) return false;
     // <pre> 有專屬規則（pre+code→skip,pre 單獨→當文字段落，例如 Medium 留言),
     // 不能被結構性 monospace 規則覆蓋。<pre> 的 UA 預設 white-space:pre + monospace
-    // 字型剛好命中下面條件，但其語意應由 acceptNode 內 PRE+code 路徑（content-detect.js
-    // 第 ~265 行）決定，不在此處判斷。
+    // 字型剛好命中下面條件，但其語意應由 acceptNode 內 PRE+code 路徑決定，不在此處判斷。
     if (el.tagName === 'PRE') return false;
     const cs = window.getComputedStyle(el);
     if (!cs) return false;

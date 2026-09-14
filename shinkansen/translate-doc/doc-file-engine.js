@@ -28,6 +28,7 @@
 // renderBlockContent / session 存檔 / 一致性掃描全部原樣可用。
 
 import { collectChapterBlocks, getSerializerSK, EPUB_LIMITS, HAS_LETTER_RE } from './epub-engine.js';
+import { pickBlockOutput, editedHtmlToPlain } from './block-output.js';
 // epub-writer 走 lazy import（buildTranslatedHtmlDoc 內）：該檔頂層有
 // new XMLSerializer()，頂層 import 會讓 Node 端 unit spec 無法載入本模組
 //（txt / md / CSV 解析是純函式，unit 測試直接 import 驗）
@@ -514,34 +515,18 @@ export async function parseDocFile(file, kind, opts = {}) {
 }
 
 // ─── 譯文輸出（txt / md）──────────────────────────────────
-// editedHtml（預覽頁手動編輯 / 掃描替換 / 空格自動校正的存回形態）→ 純文字。
-// <br> 與 block 元素邊界視為換行;真實頁面走 DOM,node 測試環境 fallback regex
-export function editedHtmlToPlain(html) {
-  try {
-    if (typeof document !== 'undefined' && document.createElement) {
-      const div = document.createElement('div');
-      div.innerHTML = String(html).replace(/<br\s*\/?>/gi, '\n');
-      return div.textContent;
-    }
-  } catch (_) { /* fall through */ }
-  return String(html)
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-}
+// editedHtml → 純文字（<br> → \n）的唯一實作在 block-output.js，這裡 re-export 給 index.js /
+// subtitle-engine 既有 import 路徑（2026-09-12 批次 6 收斂；原本 epub-session-db 另有一份對 <br>
+// 不換行的 editedHtmlToText，已改走同一份）
+export { editedHtmlToPlain };
 
-// block 譯文輸出優先序（與 epub-writer applyBlockTranslation 同語意）：
+// block 譯文輸出優先序（與 epub-writer / docx / 預覽同一份 pickBlockOutput）：
 // editedHtml → translationRaw → translation；未翻 / 失敗回 null（writer 用原文）
 export function blockOutputText(b, override) {
   if (!b || b.translationStatus !== 'done') return null;
-  const edited = override?.editedHtml ?? b.editedHtml;
-  if (typeof edited === 'string' && edited.length > 0) return editedHtmlToPlain(edited);
-  const raw = override?.translationRaw ?? b.translationRaw;
-  if (typeof raw === 'string' && raw.length > 0) return raw;
-  const plain = override?.translation ?? b.translation;
-  if (typeof plain === 'string' && plain.length > 0) return plain;
-  return null;
+  const picked = pickBlockOutput(b, override);
+  if (!picked) return null;
+  return picked.source === 'edited' ? editedHtmlToPlain(picked.value) : picked.value;
 }
 
 /**

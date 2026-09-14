@@ -2,7 +2,7 @@
 //
 // 職責：
 //   1. 從版面 IR 收集所有「送翻譯」類 block(SPEC §17.4.4)
-//   2. 切 chunk(預設 CHUNK_SIZE = 20，跟 content.js 對齊)
+//   2. 切 chunk(DOC_CHUNK_SIZE = 20；使用者可在文件翻譯設定調每批段數)
 //   3. 逐 chunk 透過 chrome.runtime.sendMessage 送 background 的文件翻譯 handler
 //      (Gemini = TRANSLATE_DOC_BATCH / custom provider = TRANSLATE_DOC_BATCH_CUSTOM)
 //   4. 結果寫回 IR(每 block.translation / .translationStatus / .translationError)
@@ -10,8 +10,7 @@
 //
 // 不在這裡：
 //   - preset 選擇(由 caller 傳入 modelOverride)
-//   - cache key blockType / fontSize 桶位(W3-iter2)
-//   - 段落級 retry UI(W5)
+//   - 段落級 retry UI(reader.js / index.js)
 
 import { TRANSLATABLE_TYPES } from './block-types.js';
 import { normalizeNameSeparators } from './epub-engine.js';
@@ -548,16 +547,8 @@ export async function translateSingleBlock(block, options = {}) {
     ? alignTrailingPeriodWithSource(block.plainText, repairDocLlmArtifacts(response.result[0]))
     : response.result[0];
   if (typeof tr === 'string' && tr.length > 0) {
-    // EPUB block：同 translateDocument 的 epub 分支
-    if (block.epubSerializedText != null) {
-      const norm = normalizeNameSeparators(tr);
-      block.translationRaw = norm;
-      block.translation = stripPlaceholderTokens(norm);
-      block.editedHtml = null; // 重翻覆蓋預覽頁的手動編輯
-      block.translationStatus = 'done';
-      block.translationError = null;
-      return { ok: true };
-    }
+    // 只有 PDF reader（reader.js）走這條逐段重翻；EPUB / 文件檔的續翻走 translateDocument
+    //（2026-09-12 批次 6 移除這裡從未被呼叫的 epub 分支）
     const parsed = parseMarkedTranslation(tr, block.linkUrls || []);
     block.translationSegments = parsed.segments;
     block.translation = parsed.plainText;

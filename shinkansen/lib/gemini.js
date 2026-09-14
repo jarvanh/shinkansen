@@ -7,12 +7,14 @@ import { debugLog } from './logger.js';
 // 與 lib/openai-compat.js 共用同一份「翻譯 batch 構建」邏輯。
 import { DELIMITER, SEP_RE, MARKER_COMPACT, packChunks, buildEffectiveSystemInstruction, isValidGlossaryEntry, detectOutputLangMismatch, realignByMarkers } from './system-instruction.js';
 import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error code 過協定，content 端查 dict 翻譯
+// 2026-09-12 批次 6（§5.1）：fetchWithRetry / 逐段 fallback + realign / JSON 剝殼 / 空輸出 finishReason
+// 訊息表 / 分批外層全部收斂到 lib/llm-common.js，與 lib/openai-compat.js 共用單一實作。
+// 本檔只剩 Gemini 專屬：request body 組裝、回應形狀（candidates / usageMetadata）抽取、429 配額維度分類。
+import {
+  FETCH_TIMEOUT_MS, fetchWithRetry, readJsonBody, alignAndFallback, runChunkedBatch,
+  emptyContentError, parseLlmJson, emptyUsage,
+} from './llm-common.js';
 
-const MAX_BACKOFF_MS = 8000;
-// v1.10.46(批次 2-1):429 Retry-After 等待上限。provider 可能回數百秒的 Retry-After,
-// MV3 SW 等不到那麼久(30 秒 idle 即可能被回收),無上限等待等於永久卡批次。
-// cap 在 30 秒,等完仍 429 就走 maxRetries 放棄路徑回報錯誤。
-const RETRY_AFTER_CAP_MS = 30_000;
 // 「送到 Instapaper」摘要的輸入字元上限。摘要不需要全文,截斷把最壞 token 成本鎖死
 //(CLAUDE.md §4):flash-lite 下 ~12K 字元(~3-4K token)足夠抓主旨,每次摘要遠低於 $0.001。
 const MAX_SUMMARY_INPUT_CHARS = 12_000;
@@ -27,19 +29,6 @@ export class DailyQuotaExceededError extends Error {
     this.skParams = null;
   }
 }
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// 空內容 finishReason → error code（error.bg.* dict key 尾段）。
-// non-streaming / streaming 兩條路徑共用，沒列出的 finishReason 走 'emptyContent'（帶 {reason}）。
-const EMPTY_REASON_CODES = {
-  SAFETY: 'emptySafety',
-  RECITATION: 'emptyRecitation',
-  MAX_TOKENS: 'emptyMaxTokens',
-  OTHER: 'emptyOther',
-};
 
 /**
  * v1.6.12:依模型決定 thinkingConfig。Gemini 3+ 改用 thinkingLevel(舊
@@ -177,127 +166,18 @@ function extractQuotaDimension(json) {
 // 輸出時間遠超 15s(日文書實例:850 段全因 15s 逾時失敗,且 abort 掉的請求
 // Google 端照樣計費)。文件路徑由 background 經 geminiConfig.fetchTimeoutMs 覆蓋,
 // 本常數只是預設值
-const FETCH_TIMEOUT_MS = 15_000;
-
 /**
- * fetch Gemini API,帶 fetch-level timeout + 429 退避重試。
- * - timeoutMs(預設 15s)內沒回應 → AbortError → 走網路錯誤 retry path
- * - 收到 429 → 讀 Retry-After header(秒數)等待後重試
- * - Retry-After 沒給 → 指數退避 2^n * 500ms(上限 8s)
- * - 爆的是 RPD → 丟 DailyQuotaExceededError,不 retry
- * - 重試次數超過 maxRetries → 丟原錯誤
- * - timeoutRetries(預設同 maxRetries):逾時類單獨的重試上限。文件路徑設 1——
- *   放寬到 120s 還逾時代表批太大,重複燒同尺寸請求只會 4 倍計費 0 產出,
- *   交呼叫端(translate-doc 對切重試)縮批處理
+ * Gemini 專屬的 429 分類 hook（交 llm-common fetchWithRetry）：抽 quota dimension 進 log 與
+ * http429 錯誤參數；爆的是 RPD（每日配額）就 fatal，不重試直接丟 DailyQuotaExceededError。
  */
-// opts.headers:額外 request headers(API key 走 `x-goog-api-key` header 而非 URL
-// query string,避免金鑰漏進 proxy / 網路設備 / 錯誤訊息等會記 URL 的地方)
-async function fetchWithRetry(url, body, { maxRetries = 3, headers = {}, timeoutMs = FETCH_TIMEOUT_MS, timeoutRetries = null } = {}) {
-  const timeoutRetryCap = (typeof timeoutRetries === 'number') ? timeoutRetries : maxRetries;
-  let attempt = 0;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    // v1.10.46(批次 2-2):abortTimer 涵蓋範圍從「只到 headers 抵達」延伸到「body 讀完」。
-    // 原本 fetch resolve 即 clearTimeout,但 fetch resolve 只代表 headers 到,行動網路 /
-    // proxy 中途吊住時 resp.json() 可無限 pending → 該批永久卡住無錯誤。改成在 controller
-    // 還在 scope 的這裡把 body 讀完(逾時 → abort → body 讀取 reject → 走網路錯誤 retry),
-    // 成功路徑回傳以 body 文字重建的 Response,呼叫端 resp.json() / clone() 行為不變。
-    // timer 統一在 finally 清(每輪 continue / return / throw 都會經過)。
-    const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      let resp;
-      try {
-        resp = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-      } catch (err) {
-        const isTimeout = err.name === 'AbortError';
-        const errMsg = isTimeout ? `逾時(${timeoutMs}ms)` : err.message;
-        await debugLog('error', 'api', isTimeout ? 'gemini fetch timeout' : 'gemini fetch network error', { error: err.message, attempt, timeoutMs: isTimeout ? timeoutMs : undefined });
-        if (attempt >= (isTimeout ? timeoutRetryCap : maxRetries)) {
-          throw isTimeout
-            ? codedError('timeout', { ms: timeoutMs }, '網路錯誤：' + errMsg)
-            : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
-        }
-        await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
-        attempt += 1;
-        continue;
-      }
-
-      // v0.84: 5xx 伺服器錯誤也重試（Gemini 偶爾回 500/503 服務暫時不可用）
-      if (resp.status >= 500 && resp.status < 600) {
-        await debugLog('warn', 'api', `gemini ${resp.status} server error`, { status: resp.status, attempt });
-        if (attempt >= maxRetries) {
-          let errMsg = `HTTP ${resp.status}`;
-          try { const j = await resp.json(); errMsg = j?.error?.message || errMsg; } catch { /* noop */ }
-          throw new Error(errMsg);
-        }
-        await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
-        attempt += 1;
-        continue;
-      }
-
-      if (resp.status !== 429) {
-        // 成功 / 非 429 錯誤:body 在 timer 涵蓋下讀完(2-2)
-        let bodyText;
-        try {
-          bodyText = await resp.text();
-        } catch (err) {
-          const isTimeout = err.name === 'AbortError';
-          const errMsg = isTimeout ? `回應讀取逾時(${timeoutMs}ms)` : err.message;
-          await debugLog('error', 'api', isTimeout ? 'gemini body read timeout' : 'gemini body read error', { error: err.message, attempt });
-          if (attempt >= (isTimeout ? timeoutRetryCap : maxRetries)) {
-            throw isTimeout
-              ? codedError('readTimeout', { ms: timeoutMs }, '網路錯誤：' + errMsg)
-              : codedError('network', { msg: err.message }, '網路錯誤：' + errMsg);
-          }
-          await sleep(Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt)));
-          attempt += 1;
-          continue;
-        }
-        // bodyText 為空字串時傳 null(204 等 null-body status 帶 body 會 throw)
-        return new Response(bodyText || null, { status: resp.status, statusText: resp.statusText, headers: resp.headers });
-      }
-
-      // 429 處理
-      let bodyJson = null;
-      try { bodyJson = await resp.clone().json(); } catch { /* noop */ }
-      const dim = extractQuotaDimension(bodyJson);
-      const retryAfterHeader = resp.headers.get('retry-after');
-      const retryAfterSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : NaN;
-
-      await debugLog('warn', 'api', 'gemini 429 rate limit', {
-        dimension: dim,
-        retryAfter: retryAfterHeader,
-        attempt,
-        error: bodyJson?.error?.message,
-      });
-
-      if (dim === 'RPD') {
-        throw new DailyQuotaExceededError('今日 Gemini API 配額已用盡(RPD 達上限),請明天再試或升級付費層級。');
-      }
-
-      if (attempt >= maxRetries) {
-        // API 自帶 error.message（英文，ground truth）原樣傳遞不掛 code；
-        // 沒帶才用 http429 code 讓 content 端組「HTTP 429({dim})」
-        const apiMsg = bodyJson?.error?.message;
-        if (apiMsg) throw new Error(apiMsg);
-        throw codedError('http429', { dim: dim || 'unknown' }, `HTTP 429(${dim || '未知維度'})`);
-      }
-
-      const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
-        ? Math.min(retryAfterSec * 1000 + 100, RETRY_AFTER_CAP_MS)
-        : Math.min(MAX_BACKOFF_MS, 500 * Math.pow(2, attempt));
-      await sleep(waitMs);
-      attempt += 1;
-    } finally {
-      clearTimeout(abortTimer);
-    }
-  }
+function classifyGemini429(bodyJson) {
+  const dimension = extractQuotaDimension(bodyJson);
+  return {
+    dimension,
+    fatal: dimension === 'RPD'
+      ? new DailyQuotaExceededError('今日 Gemini API 配額已用盡(RPD 達上限),請明天再試或升級付費層級。')
+      : null,
+  };
 }
 
 /**
@@ -386,7 +266,7 @@ export async function extractGlossary(compressedText, settings) {
     clearTimeout(abortTimer);
     const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';
     await debugLog('error', 'glossary', `glossary extraction failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
-    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `${reason}: ${err.message}` };
+    return { glossary: [], usage: emptyUsage(), _diag: `${reason}: ${err.message}` };
   }
   // v1.10.46(批次 2-2):json 讀完才清 timer——body 中途吊住時 timer 到點 abort,
   // resp.json() reject 走下方 catch 回 best-effort 空結果,不再無限 pending
@@ -395,7 +275,7 @@ export async function extractGlossary(compressedText, settings) {
     json = await resp.json();
   } catch (parseErr) {
     await debugLog('error', 'glossary', 'glossary response body parse failed', { status: resp.status, error: parseErr.message });
-    return { glossary: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, _diag: `resp.json() failed: ${parseErr.message}` };
+    return { glossary: [], usage: emptyUsage(), _diag: `resp.json() failed: ${parseErr.message}` };
   } finally {
     clearTimeout(abortTimer);
   }
@@ -416,43 +296,17 @@ export async function extractGlossary(compressedText, settings) {
     elapsed: ms, usage, rawChars: rawText.length, finishReason,
   });
 
-  // v0.72: 不用 responseMimeType 後，模型可能在 JSON 前後附帶說明文字
-  // 或用 ```json ... ``` code fence 包裹。需要先提取 JSON 部分再 parse。
-  let jsonStr = rawText.trim();
-
-  // 移除 markdown code fence（```json ... ``` 或 ``` ... ```）
-  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
-  if (fenceMatch) {
-    jsonStr = fenceMatch[1].trim();
-  } else {
-    // 找第一個 [ 或 { 到最後一個 ] 或 } 之間的內容
-    const firstBracket = jsonStr.search(/[\[{]/);
-    const lastBracket = Math.max(jsonStr.lastIndexOf(']'), jsonStr.lastIndexOf('}'));
-    if (firstBracket !== -1 && lastBracket > firstBracket) {
-      jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
-    }
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch (parseErr) {
+  // v0.72：不用 responseMimeType 後，模型可能在 JSON 前後附帶說明文字或用 code fence 包裹，
+  // 剝殼邏輯走 llm-common parseLlmJson（與 openai-compat extractGlossary / extractTermRenderings 共用）
+  const parsedJson = parseLlmJson(rawText);
+  if (!parsedJson.ok) {
     await debugLog('warn', 'glossary', 'glossary JSON parse failed', {
-      error: parseErr.message, finishReason,
+      error: parsedJson.error.message, finishReason,
       preview: rawText.slice(0, 500),
     });
-    return { glossary: [], usage, _diag: `JSON parse error (finishReason=${finishReason}): ${parseErr.message}, preview: ${rawText.slice(0, 300)}` };
+    return { glossary: [], usage, _diag: `JSON parse error (finishReason=${finishReason}): ${parsedJson.error.message}, preview: ${rawText.slice(0, 300)}` };
   }
-
-  // 從各種可能的 JSON 結構中找出術語陣列
-  let entries;
-  if (Array.isArray(parsed)) {
-    entries = parsed;
-  } else if (parsed && typeof parsed === 'object') {
-    // 找第一個值是 array 的 key（模型可能用 "terms"、"glossary"、"entries" 等任何 key）
-    const arrKey = Object.keys(parsed).find(k => Array.isArray(parsed[k]));
-    entries = arrKey ? parsed[arrKey] : null;
-  }
+  const { parsed, entries } = parsedJson;
 
   if (!entries) {
     await debugLog('warn', 'glossary', 'glossary result: no array found in response', {
@@ -500,10 +354,10 @@ const SCAN_RENDERINGS_PROMPT = `You are given proper-noun terms from a source-la
  * @returns {Promise<{ renderings: Array<{term:string, renderings:string[]}>, usage, _diag?: string }>}
  */
 export async function extractTermRenderings(items, settings) {
-  const emptyUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+  const zeroUsage = emptyUsage();
   const { apiKey, geminiConfig, glossary: glossaryConfig } = settings;
   if (!Array.isArray(items) || items.length === 0) {
-    return { renderings: [], usage: emptyUsage };
+    return { renderings: [], usage: zeroUsage };
   }
   const model = (glossaryConfig?.model || '').trim() || geminiConfig.model;
   const fetchTimeoutMs = glossaryConfig?.fetchTimeoutMs ?? 20_000;
@@ -552,13 +406,13 @@ export async function extractTermRenderings(items, settings) {
     clearTimeout(abortTimer);
     const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';
     await debugLog('error', 'scan', `term renderings failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
-    return { renderings: [], usage: emptyUsage, _diag: `${reason}: ${err.message}` };
+    return { renderings: [], usage: zeroUsage, _diag: `${reason}: ${err.message}` };
   }
   let json;
   try {
     json = await resp.json();
   } catch (parseErr) {
-    return { renderings: [], usage: emptyUsage, _diag: `resp.json() failed: ${parseErr.message}` };
+    return { renderings: [], usage: zeroUsage, _diag: `resp.json() failed: ${parseErr.message}` };
   } finally {
     clearTimeout(abortTimer);
   }
@@ -569,29 +423,12 @@ export async function extractTermRenderings(items, settings) {
     return { renderings: [], usage, _diag: `API error ${resp.status}: ${errMsg}` };
   }
   const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  let jsonStr = rawText.trim();
-  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
-  if (fenceMatch) {
-    jsonStr = fenceMatch[1].trim();
-  } else {
-    const firstBracket = jsonStr.search(/[\[{]/);
-    const lastBracket = Math.max(jsonStr.lastIndexOf(']'), jsonStr.lastIndexOf('}'));
-    if (firstBracket !== -1 && lastBracket > firstBracket) {
-      jsonStr = jsonStr.slice(firstBracket, lastBracket + 1);
-    }
+  const parsedJson = parseLlmJson(rawText);
+  if (!parsedJson.ok) {
+    await debugLog('warn', 'scan', 'term renderings JSON parse failed', { error: parsedJson.error.message, preview: rawText.slice(0, 300) });
+    return { renderings: [], usage, _diag: `JSON parse error: ${parsedJson.error.message}` };
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch (parseErr) {
-    await debugLog('warn', 'scan', 'term renderings JSON parse failed', { error: parseErr.message, preview: rawText.slice(0, 300) });
-    return { renderings: [], usage, _diag: `JSON parse error: ${parseErr.message}` };
-  }
-  let entries = Array.isArray(parsed) ? parsed : null;
-  if (!entries && parsed && typeof parsed === 'object') {
-    const arrKey = Object.keys(parsed).find((k) => Array.isArray(parsed[k]));
-    entries = arrKey ? parsed[arrKey] : null;
-  }
+  const { entries } = parsedJson;
   const renderings = (entries || [])
     .filter((e) => e && typeof e.term === 'string' && Array.isArray(e.renderings))
     .map((e) => ({ term: e.term, renderings: e.renderings.map((r) => (typeof r === 'string' ? r : '')) }));
@@ -620,10 +457,10 @@ export async function extractTermRenderings(items, settings) {
  * @returns {Promise<{ summary: string, usage: { inputTokens:number, outputTokens:number, cachedTokens:number }, _diag?: string }>}
  */
 export async function summarizeArticle({ text, targetLangLabel, apiKey, model, serviceTier, fetchTimeoutMs = 15_000 }) {
-  const emptyUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+  const zeroUsage = emptyUsage();
   const clean = (text || '').trim();
   if (!clean || !apiKey || !model) {
-    return { summary: '', usage: emptyUsage, _diag: 'missing text/apiKey/model' };
+    return { summary: '', usage: zeroUsage, _diag: 'missing text/apiKey/model' };
   }
   const input = clean.length > MAX_SUMMARY_INPUT_CHARS ? clean.slice(0, MAX_SUMMARY_INPUT_CHARS) : clean;
   const lang = (targetLangLabel || '').trim() || 'the same language as the article';
@@ -676,14 +513,14 @@ export async function summarizeArticle({ text, targetLangLabel, apiKey, model, s
     clearTimeout(abortTimer);
     const reason = err.name === 'AbortError' ? `fetch timeout (${fetchTimeoutMs}ms)` : 'network error';
     await debugLog('error', 'summary', `instapaper summary failed (${reason})`, { error: err.message, elapsed: Date.now() - t0 });
-    return { summary: '', usage: emptyUsage, _diag: `${reason}: ${err.message}` };
+    return { summary: '', usage: zeroUsage, _diag: `${reason}: ${err.message}` };
   }
   let json;
   try {
     json = await resp.json();
   } catch (parseErr) {
     await debugLog('error', 'summary', 'instapaper summary body parse failed', { status: resp.status, error: parseErr.message });
-    return { summary: '', usage: emptyUsage, _diag: `resp.json() failed: ${parseErr.message}` };
+    return { summary: '', usage: zeroUsage, _diag: `resp.json() failed: ${parseErr.message}` };
   } finally {
     clearTimeout(abortTimer);
   }
@@ -711,54 +548,20 @@ export async function summarizeArticle({ text, targetLangLabel, apiKey, model, s
  *
  * 註：`cachedTokens` 來自 Gemini API 回應的 `usageMetadata.cachedContentTokenCount`，
  * 代表本次輸入中被 Gemini implicit context cache 命中的 token 數。
- * 命中的部分 Gemini 會以全價 25% 計費（2.5 系列 Flash/Pro 預設開啟 implicit cache，
+ * 命中的部分 Gemini 以折扣價計費（Gemini 3 系列預設開啟 implicit cache、90% off，
  * 命中條件是 prompt 前綴穩定且達到最低門檻：Flash ~1024、Pro ~2048）。
  * 這個數字跟 `lib/cache.js` 的本地 `tc_<sha1>` 翻譯快取是不同概念 ——
  * 本地快取命中的段落根本不會送 API，而 implicit cache 命中的段落有送 API
  * 但前綴（system prompt 那一大段）被 Gemini 內部 cache 省下。
  */
 export async function translateBatch(texts, settings, glossary, fixedGlossary, forbiddenTerms) {
-  if (!texts?.length) return { translations: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, hadMismatch: false };
-  const out = new Array(texts.length);
-  const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
-  let hadMismatch = false; // v0.94: 追蹤本批是否有 segment mismatch
-  // 批次 5-3：帶使用者設定的分批上限（原本寫死 20 段／3500 字，調高設定無效）
-  const chunks = packChunks(texts, {
-    maxUnits: settings?.maxUnitsPerBatch,
-    maxChars: settings?.maxCharsPerBatch,
-  });
-  for (const { start, end } of chunks) {
-    const slice = texts.slice(start, end);
-    let result;
-    try {
-      result = await translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms);
-    } catch (err) {
-      // v1.10.46(批次 2-5):多 chunk 中途失敗時,前面已完成的 chunk 已經付過費——
-      // 把累積 usage 附在 error 上讓呼叫端(background handleTranslate)記帳後再
-      // rethrow,否則 content 端收到 error 不會發 LOG_USAGE,已付費 token 系統性
-      // 漏記(對帳低估)。translateChunk 逐段 fallback 半途 throw 也會把已累積
-      // usage 掛在 err.usage,這裡一併加總。
-      if (err && typeof err === 'object') {
-        const partial = err.usage || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
-        err.usage = {
-          inputTokens: usage.inputTokens + (partial.inputTokens || 0),
-          outputTokens: usage.outputTokens + (partial.outputTokens || 0),
-          cachedTokens: usage.cachedTokens + (partial.cachedTokens || 0),
-        };
-      }
-      throw err;
-    }
-    for (let j = 0; j < result.parts.length; j++) out[start + j] = result.parts[j];
-    usage.inputTokens += result.usage.inputTokens;
-    usage.outputTokens += result.usage.outputTokens;
-    usage.cachedTokens += result.usage.cachedTokens || 0;
-    if (result.hadMismatch) hadMismatch = true;
-  }
-  return { translations: out, usage, hadMismatch };
+  // 分批外層（packChunks + 累加 usage + 中途 throw 掛已付費 usage）走 llm-common runChunkedBatch
+  return runChunkedBatch(texts, settings,
+    (slice) => translateChunk(slice, settings, glossary, fixedGlossary, forbiddenTerms), packChunks);
 }
 
 async function translateChunk(texts, settings, glossary, fixedGlossary, forbiddenTerms) {
-  if (!texts?.length) return [];
+  if (!texts?.length) return { parts: [], usage: emptyUsage() };
   const { apiKey, geminiConfig } = settings;
   const {
     model,
@@ -842,31 +645,19 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   //(15s / maxRetries),網頁翻譯行為不變
   const resp = await fetchWithRetry(url, body, {
     maxRetries,
+    logPrefix: 'gemini',
+    classify429: classifyGemini429,
     headers: { 'x-goog-api-key': apiKey },
     timeoutMs: (typeof geminiConfig.fetchTimeoutMs === 'number' && geminiConfig.fetchTimeoutMs > 0)
       ? geminiConfig.fetchTimeoutMs : undefined,
     timeoutRetries: (typeof geminiConfig.timeoutRetries === 'number') ? geminiConfig.timeoutRetries : null,
   });
 
-  // v0.84: resp.json() 加 try-catch。API 回傳非 JSON 時（HTML 錯誤頁、空回應、
-  // CDN 擋下的 502 HTML 頁面等）原本會直接 crash，現在包成可讀的錯誤訊息。
-  // 批次 8 E4:先 text() 再 JSON.parse——原寫法 resp.json() 失敗後 body 已 disturbed,
-  // resp.clone().text() 依 spec 必 throw 被 catch 吞 → rawPreview 恆空,診斷 preview
-  // 實質 dead code(CDN 回 HTML 錯誤頁時看不到前 200 字線索)
-  let json;
-  let rawBody = '';
-  try {
-    rawBody = await resp.text();
-    json = JSON.parse(rawBody);
-  } catch (parseErr) {
-    const ms = Date.now() - t0;
-    const rawPreview = rawBody.slice(0, 200);
-    await debugLog('error', 'api', 'gemini response body is not JSON', {
-      status: resp.status, elapsed: ms, parseError: parseErr.message, rawPreview,
-    });
-    throw codedError('badResponse', { status: resp.status, preview: rawPreview || 'N/A' },
-      `Gemini API 回應格式異常（非 JSON）：HTTP ${resp.status}。${rawPreview ? '回應前 200 字元：' + rawPreview : ''}`);
-  }
+  // API 回傳非 JSON 時（HTML 錯誤頁、空回應、CDN 擋下的 502 HTML 頁面等）帶前 200 字 preview 拋 badResponse
+  const json = await readJsonBody(resp, {
+    t0, logPrefix: 'gemini', errorCode: 'badResponse',
+    message: (status, preview) => `Gemini API 回應格式異常（非 JSON）：HTTP ${status}。${preview ? '回應前 200 字元：' + preview : ''}`,
+  });
   const ms = Date.now() - t0;
 
   if (!resp.ok) {
@@ -882,7 +673,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
   const text = candidate?.content?.parts?.[0]?.text || '';
 
   // v1.10.18:outputTokens 計入 thoughtsTokenCount（見 parseGeminiUsage)。
-  // cachedTokens 為 Gemini 2.5+ implicit cache 命中的 input 子集，未命中欄位不出現 → 0。
+  // cachedTokens 為 Gemini 3 系列 implicit cache 命中的 input 子集，未命中欄位不出現 → 0。
   // 2026-09-11 code review §3.5-2：提前到 blocked / empty 檢查之前——這兩條 throw 之前
   // input(+thinking)token 已計費，要掛 err.usage 讓 translateBatch 外層加總、background
   // 記帳（streaming 路徑早有掛，non-streaming 漏掉 → 兩路 drift,thinking 燒掉的 token 漏帳）。
@@ -905,18 +696,9 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
       candidatesLength: json?.candidates?.length || 0,
       promptFeedback: json?.promptFeedback,
     });
-    // 根據 finishReason 給出更有意義的錯誤訊息
-    const reasonMessages = {
-      SAFETY: '內容被 Gemini 安全過濾器擋下。可能是原文含有敏感內容，請嘗試跳過此段落。',
-      RECITATION: 'Gemini 偵測到輸出與已知作品高度重複（recitation filter），請嘗試縮短段落。',
-      MAX_TOKENS: '輸出超過 maxOutputTokens 上限。請到設定頁提高上限，或減少每批段落數。',
-      OTHER: 'Gemini 回傳空內容（finishReason: OTHER），原因不明。請稍後重試。',
-    };
-    const friendlyMsg = reasonMessages[finishReason]
-      || `Gemini 回傳空內容（finishReason: ${finishReason}）。`;
-    const err = codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason }, friendlyMsg);
-    err.usage = { ...chunkUsage }; // 空輸出時 input(+thinking)token 已計費，交呼叫端記帳
-    throw err;
+    // finishReason → error code / 訊息表走 llm-common（non-streaming / streaming 兩路共用）；
+    // 空輸出時 input(+thinking)token 已計費，usage 掛在 err 交呼叫端記帳
+    throw emptyContentError(finishReason, chunkUsage);
   }
 
   // finishReason 異常警告（有文字但不是正常結束）
@@ -937,104 +719,19 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
     outputPreview: text.slice(0, 300),
   });
 
-  // v0.89: split 後移除序號標記（若有）
-  const parts = text.split(SEP_RE).map(s => s.trim().replace(MARKER_COMPACT.re, ''));
-
-  // 逐段 fallback：每段都會真的再打一次 API，需累加 usage
-  // 注意：此時原本這一批的 chunkUsage 已經付過錢了，但結果沒法用要丟掉，
-  // 所以還是要算進總成本裡。（segment count mismatch 與輸出語言錯 chunk 共用）
-  const perSegmentFallback = async () => {
-    const aligned = [];
-    const aggUsage = { ...chunkUsage };
-    const tFallback0 = Date.now();
-    for (let fi = 0; fi < texts.length; fi++) {
-      const tSeg0 = Date.now();
-      let r;
-      try {
-        r = await translateChunk([texts[fi]], settings, glossary, fixedGlossary, forbiddenTerms);
-      } catch (err) {
-        // v1.10.46(批次 2-5):逐段 fallback 半途失敗——本批原始請求 + 已完成的逐段
-        // 都付過費,把累積 usage 掛在 error 上交給 translateBatch 外層加總(見上)。
-        // 2026-09-11 code review §3.5-2：失敗那一段自己的 usage(blocked / empty / 截斷
-        // throw 現在都掛 err.usage）要「相加」進來，不可覆蓋——與 openai-compat.js 同款。
-        if (err && typeof err === 'object') {
-          const own = err.usage || {};
-          err.usage = {
-            inputTokens: aggUsage.inputTokens + (own.inputTokens || 0),
-            outputTokens: aggUsage.outputTokens + (own.outputTokens || 0),
-            cachedTokens: (aggUsage.cachedTokens || 0) + (own.cachedTokens || 0),
-          };
-        }
-        throw err;
-      }
-      await debugLog('info', 'api', `fallback segment ${fi + 1}/${texts.length}`, { elapsed: Date.now() - tSeg0 });
-      aligned.push(r.parts[0] || '');
-      aggUsage.inputTokens += r.usage.inputTokens;
-      aggUsage.outputTokens += r.usage.outputTokens;
-      aggUsage.cachedTokens += r.usage.cachedTokens || 0;
-    }
-    await debugLog('warn', 'api', 'fallback complete', { segments: texts.length, fallbackElapsed: Date.now() - tFallback0, originalElapsed: ms });
-    return { parts: aligned, usage: aggUsage, hadMismatch: true };
-  };
-
-  // 2026-09-11 code review §3.5-1:MAX_TOKENS 帶部分文字 = 輸出在上限處被截斷，末段殘缺。
-  // 原本只 warn 就當成功往下走——段數恰好對齊（截在最後一段內部）或 realignByMarkers
-  // 救回時，截斷譯文會被 background 寫進永久快取，之後每次都命中壞譯文。多段 chunk 走
-  // 逐段 fallback（每段輸出小，不會再撞上限；與段數不符同款處理）；單段 chunk 沒有更小
-  // 的單位可退，拋 emptyMaxTokens 同碼錯誤讓使用者提高上限 / 縮批，usage 掛上供記帳。
-  // 必須排在 realign / 段數比對之前，否則截斷輸出可能被對齊成功而放行。
-  if (finishReason === 'MAX_TOKENS') {
-    if (texts.length > 1) {
-      await debugLog('warn', 'api', 'gemini output truncated (MAX_TOKENS) — fallback to per-segment', {
-        segments: texts.length, elapsed: ms, textLength: text.length,
-      });
-      return perSegmentFallback();
-    }
-    const err = codedError('emptyMaxTokens', { reason: finishReason },
-      '輸出超過 maxOutputTokens 上限（譯文被截斷）。請到設定頁提高上限，或減少每批段落數。');
-    err.usage = { ...chunkUsage };
-    throw err;
-  }
-
-  // 若回傳段數不符，且本批不只一段：先試序號標記二次對齊(v2.0.69,模型吃掉 SEP
-  // 但段首 «N» 都在的場景,見 realignByMarkers 註解),救不回才 fallback 逐段翻譯
-  let aligned = parts;
-  if (parts.length !== texts.length) {
-    if (texts.length === 1) {
-      // 單段模式:LLM 多吐了 SEP 字面。不可原樣回傳 text.trim()——協定 token 會注入
-      // DOM 並寫進快取(批次 8 E5;逐段 fallback 取 r.parts[0] 正是走這條)。
-      // parts 已是 split SEP + strip 序號標記後的段,取非空段以換行 join。
-      const joinedSingle = parts.filter(Boolean).join('\n') || text.trim();
-      return { parts: [joinedSingle], usage: chunkUsage };
-    }
-    const realigned = realignByMarkers(text, texts.length, MARKER_COMPACT);
-    if (!realigned) {
-      // rawHead:realign 也救不回時把原始輸出頭段進 log——outputPreview 300 字
-      // 看不到合併點,沒有這欄無法事後判斷是「marker 也被吃」還是其他病型
-      await debugLog('warn', 'api', 'segment count mismatch — fallback to per-segment', {
-        expected: texts.length, got: parts.length, elapsed: ms, rawHead: text.slice(0, 6000),
-      });
-      return perSegmentFallback();
-    }
-    await debugLog('info', 'api', 'segment count mismatch — realigned via seq markers', {
-      expected: texts.length, got: parts.length, elapsed: ms,
-    });
-    aligned = realigned;
-  }
-
-  // v2.0.52:段數對齊但整 chunk 輸出語言錯(模型把整個 chunk 翻成原文語言;
-  // 實測同 payload 立即重試高度 sticky,原樣重打大機率再錯)→ 走同款逐段
-  // fallback——逐段小 payload 能打破 sticky(persisted log 實證 16/16 全成功)。
-  // 只驗多段 chunk:單段 chunk 在逐段 fallback 內部呼叫,不驗避免無限遞迴;
-  // 逐段結果若仍翻錯,由 translate-doc 頁 batch 級最後防線攔(標 failed 不入庫)。
-  if (texts.length > 1 && detectOutputLangMismatch(aligned, settings.targetLanguage)) {
-    await debugLog('warn', 'api', 'chunk output language mismatch — fallback to per-segment', {
-      segments: texts.length, elapsed: ms, targetLanguage: settings.targetLanguage,
-    });
-    return perSegmentFallback();
-  }
-
-  return { parts: aligned, usage: chunkUsage, hadMismatch: false };
+  // split 對齊 / 截斷不採信（§3.5-1）/ 序號標記 realign（v2.0.69）/ 逐段 fallback / 輸出語言驗證
+  //（v2.0.52）全部走 llm-common alignAndFallback——與 openai-compat.js 同一份實作，順序固定。
+  // Gemini 主路徑固定用 COMPACT «N» 標記；截斷 finishReason 是 MAX_TOKENS。
+  return alignAndFallback({
+    texts, text, marker: MARKER_COMPACT, chunkUsage, finishReason,
+    truncatedFinishReason: 'MAX_TOKENS',
+    makeTruncatedError: () => codedError('emptyMaxTokens', { reason: finishReason },
+      '輸出超過 maxOutputTokens 上限（譯文被截斷）。請到設定頁提高上限，或減少每批段落數。'),
+    translateOne: (t) => translateChunk([t], settings, glossary, fixedGlossary, forbiddenTerms),
+    targetLanguage: settings.targetLanguage,
+    elapsedMs: ms,
+    logPrefix: 'gemini',
+  });
 }
 
 /**
@@ -1067,7 +764,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
  */
 export async function translateBatchStream(texts, settings, glossary, fixedGlossary, forbiddenTerms, callbacks = {}, signal = undefined) {
   if (!texts?.length) {
-    return { translations: [], usage: { inputTokens: 0, outputTokens: 0, cachedTokens: 0 }, hadMismatch: false, finishReason: 'STOP' };
+    return { translations: [], usage: emptyUsage(), hadMismatch: false, finishReason: 'STOP' };
   }
 
   const { apiKey, geminiConfig } = settings;
@@ -1158,7 +855,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   let allText = '';
   let firstChunkFired = false;
   let segmentsEmitted = 0;
-  let lastUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+  let lastUsage = emptyUsage();
   let finishReason = 'unknown';
   let blockReason = null;
 
@@ -1204,7 +901,7 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
         try {
           json = JSON.parse(dataStr);
         } catch (_) {
-          continue;  // SSE chunk 切到 JSON 中間;buffer 下一輪會接上
+          continue;  // 以空行切出的 event 才會走到這裡，非 JSON 代表該 event 本身異常（註解 / 心跳等），跳過
         }
 
         const candidate = json?.candidates?.[0];
@@ -1271,16 +968,8 @@ export async function translateBatchStream(texts, settings, glossary, fixedGloss
   }
 
   if (allText.length === 0) {
-    const reasonMsg = {
-      SAFETY: '內容被 Gemini 安全過濾器擋下',
-      RECITATION: 'Gemini 偵測到輸出與已知作品高度重複(recitation filter)',
-      MAX_TOKENS: '輸出超過 maxOutputTokens 上限',
-      OTHER: 'Gemini 回傳空內容(finishReason: OTHER)',
-    };
-    const err = codedError(EMPTY_REASON_CODES[finishReason] || 'emptyContent', { reason: finishReason },
-      reasonMsg[finishReason] || `Gemini 回傳空內容(finishReason: ${finishReason})`);
-    err.usage = lastUsage; // 空輸出時 input(+thinking)token 已計費，交呼叫端記帳
-    throw err;
+    // finishReason → error code / 訊息表與 non-streaming 共用（llm-common）；usage 已計費掛上
+    throw emptyContentError(finishReason, lastUsage);
   }
 
   // 計算對齊後的譯文 array(跟 non-streaming 一致),hadMismatch 留給呼叫端決定如何處理

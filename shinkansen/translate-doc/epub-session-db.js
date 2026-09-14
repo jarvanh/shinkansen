@@ -20,6 +20,7 @@
 // LLM 協定殘片修復 / 句尾句號對齊 / strip（v2.0.53 hydrate 自癒用；
 // translate.js 不 import 本檔，無循環）
 import { repairDocLlmArtifacts, alignTrailingPeriodWithSource, stripPlaceholderTokens } from './translate.js';
+import { editedHtmlToPlain } from './block-output.js';
 
 const DB_NAME = 'shinkansen-epub-sessions';
 const STORE = 'sessions';
@@ -181,22 +182,11 @@ export function collectSessionFailures(epubDoc) {
   return failures;
 }
 
-// editedHtml → 純文字（掃描 / 比對用的 b.translation）。頁面環境走 DOM
-// textContent（entity 正確解碼）;node 單元測試環境無 document,fallback 去標籤
-// regex + 常見 entity（測試涵蓋 fallback,真實頁面永遠走 DOM 分支）
+// editedHtml → 純文字（掃描 / 比對用的 b.translation）：走 block-output.js editedHtmlToPlain
+//（<br> → \n，與預覽存回 commitEditedBlock / 下載 blockOutputText 同一份；2026-09-12 批次 6 前
+// 這裡另有一份對 <br> 不換行的實作，字幕多行譯文續翻後換行會丟）
 function editedHtmlToText(html, fallbackPlain) {
-  try {
-    if (typeof document !== 'undefined' && document.createElement) {
-      const div = document.createElement('div');
-      div.innerHTML = html;
-      return div.textContent;
-    }
-  } catch (_) { /* fall through */ }
-  if (typeof html === 'string') {
-    return html.replace(/<[^>]*>/g, '')
-      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-  }
+  if (typeof html === 'string') return editedHtmlToPlain(html);
   return fallbackPlain ?? null;
 }
 

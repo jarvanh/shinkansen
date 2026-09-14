@@ -13,10 +13,6 @@
 //      list-item / footnote / page-number / table / paragraph
 //
 // 座標系：全部 canvas 座標(y 由上往下，套過 viewport.transform)。bbox = [left, top, right, bottom]
-//
-// 後續 iter:
-//   W2-iter5: plainText 構建加 de-hyphenation + 行尾續行銜接(SPEC §17.4.4)
-//   W2-iter6: caption / formula / figure 偵測(需 getOperatorList 抓圖片框線 op)
 
 // ----- 啟發式參數 -----
 
@@ -141,7 +137,7 @@ const WRAP_MERGE_MIN_X_OVERLAP_RATIO = 0.7;
 const NARROW_BLOCK_MAX_RIGHT_RATIO = 0.25;
 
 // form-row merge:report / 報價單 / form 文件常出現「label_x_left ... value_x_right」同 y
-// 結構,PDF.js 抽出後會被視為兩 line(因為 SAME_LINE_MAX_X_GAP_FACTOR=4 太嚴),
+// 結構,PDF.js 抽出後會被視為兩 line(因為 SAME_LINE_MAX_X_GAP_FACTOR=2 太嚴),
 // 後續又因 left 跳躍被誤判 table 而不送翻譯。groupIntoLines 後合併「同 y + 左 line
 // 結尾為 : 或 : (label-shape)」的 label-value pair 成單一 line,讓後續 type 分類
 // 看到一致 left 不再誤判 table
@@ -1047,6 +1043,7 @@ function buildBlockFromLines(lines, columnIdx) {
     // 內部 lines 結構，供 list sub-split 與 type 啟發式用
     _lines: internalLines,
     // dev probe alias(harness summary 用，W3 移除)
+    // _devLines：名字帶 dev 但是 production 路徑在用（表格偵測 detectTableBlock 讀 block._devLines 判 row 結構），不可拿掉
     _devLines: internalLines.map((l) => ({ bbox: l.bbox, text: l.plainText.slice(0, 60) })),
   };
 }

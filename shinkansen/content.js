@@ -2,7 +2,7 @@
 // 職責：Debug Bridge、translatePage、restorePage、translateUnits、
 // 編輯模式、訊息處理、Debug API、初始化。
 // 注意：content script 不支援 ES module import。
-// v1.1.9: 拆分為 7 個檔案，本檔為主協調層，依賴 content-ns/toast/detect/serialize/inject/spa。
+// v1.1.9 起拆成多個 content script 檔（完整清單與各檔職責見 SPEC.md §6），本檔為主協調層。
 
 (function(SK) {
   if (!SK || SK.disabled) return;  // v1.5.2: iframe gate（見 content-ns.js）
@@ -128,7 +128,8 @@
       if (SK.isYouTubePage?.() && SK.YT) {
         out.yt = {
           active:          SK.YT.active,
-          translating:     SK.YT.translating,
+          // YT 沒有單一 translating 旗標，以「有視窗翻譯中」推導（2026-09-11 review §3.1-8）
+          translating:     (SK.YT.translatingWindows?.size ?? 0) > 0,
           rawCount:        SK.YT.rawSegments?.length ?? 0,
           captionMapSize:  SK.YT.captionMap?.size ?? 0,
           captionLang:     SK.YT.captionLang,
@@ -152,8 +153,12 @@
         if (!_storage || !_storage.sync) {
           respond({ ok: false, error: 'storage.sync unavailable in this context' });
         } else {
-          _storage.sync.get(keys)
-            .then((data) => respond({ ok: true, sync: data }))
+          // 固定術語表 / 禁用詞 2026-09-12 起存 local（lib/storage.js LOCAL_SETTINGS_KEYS），
+          // 為了 cage 除錯一致性一併讀出覆蓋進回應（欄位名維持 sync 向下相容）
+          const LARGE_LOCAL = ['fixedGlossary', 'forbiddenTerms'];
+          const wantLocal = keys === null ? LARGE_LOCAL : LARGE_LOCAL.filter((k) => keys.includes(k));
+          Promise.all([_storage.sync.get(keys), wantLocal.length ? _storage.local.get(wantLocal) : Promise.resolve({})])
+            .then(([data, local]) => respond({ ok: true, sync: { ...data, ...local } }))
             .catch((err) => respond({ ok: false, error: err?.message || String(err) }));
         }
       } catch (err) {
@@ -279,7 +284,8 @@
       // / byModel——對帳 Google 帳單 + 看有沒有套 cache 折扣(input vs billedInput 差)用。
       forwardToBackground('QUERY_USAGE_STATS', { from: e.detail?.from, to: e.detail?.to });
     } else if (action === 'YT_TRANSLATE') {
-      // Debug Bridge:觸發 YouTube 字幕翻譯(等同 Alt+S 在 YT 頁的行為)
+      // Debug Bridge:觸發 YouTube 字幕翻譯(等同 popup 字幕翻譯開關 / autoTranslate 啟動路徑；
+      // Alt+S 是頁面文字翻譯,與字幕翻譯無關)
       if (!SK.isYouTubePage?.()) {
         respond({ ok: false, error: 'not on YouTube page' });
       } else {
@@ -311,7 +317,7 @@
       respond({
         ok: true,
         active:           YT.active,
-        translating:      YT.translating,
+        translating:      (YT.translatingWindows?.size ?? 0) > 0,
         rawCount:         YT.rawSegments.length,
         rawNormTexts:     rawNorms,
         rawTexts:         rawTexts,
@@ -1027,7 +1033,7 @@
         doneReject(err);
       });
 
-      // first_chunk 1.5 秒 timeout fallback
+      // first_chunk 3 秒 timeout fallback（FIRST_CHUNK_TIMEOUT_MS）
       const firstChunkOrTimeout = Promise.race([
         firstChunkPromise.then((v) => ({ kind: v ? 'first_chunk' : 'failed' })),
         new Promise((r) => setTimeout(() => r({ kind: 'timeout' }), FIRST_CHUNK_TIMEOUT_MS)),
@@ -1338,7 +1344,6 @@
     {
       const mode = settings.displayMode;
       STATE.translatedMode = (mode === 'dual') ? 'dual' : 'single';
-      STATE.displayMode = STATE.translatedMode;
       // 雙語視覺標記樣式
       const ms = settings.translationMarkStyle;
       SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
@@ -1598,7 +1603,13 @@
       STATE._glossaryPromise = null;
     }
 
-    SK.showToast('loading', SK.t('toast.translateProgress', { prefix: labelPrefix, done: 0, total }), {
+    // 簡繁自動互轉（convertOnly）用獨立的進度文案——「翻譯中⋯」會讓使用者以為觸發了 LLM 翻譯
+    //（2026-09-14 Jimmy 回報）；本地字典轉換不打 API，文案明示「不使用 AI 翻譯」
+    //（字面 key 保留給 i18n-key-references forcing function 掃描）
+    const progressText = (d, t) => (convertOnly
+      ? SK.t('toast.zhConvertProgress', { prefix: labelPrefix, done: d, total: t })
+      : SK.t('toast.translateProgress', { prefix: labelPrefix, done: d, total: t }));
+    SK.showToast('loading', progressText(0, total), {
       progress: 0,
       startTimer: true,
     });
@@ -1622,7 +1633,7 @@
         ignorePartialMode: !!options.ignorePartialMode,
         onProgress: (d, t, mismatch) => {
           if (_progressClosed) return;
-          SK.showToast('loading', SK.t('toast.translateProgress', { prefix: labelPrefix, done: d, total: t }), {
+          SK.showToast('loading', progressText(d, t), {
             progress: d / t,
             mismatch: !!mismatch,
           });
@@ -1710,7 +1721,8 @@
         // v1.8.7: partialMode + 有剩餘未翻段落 → 訊息對齊「節省模式」語意
         let successMsg;
         if (convertOnly) {
-          // 簡繁自動互轉:標示「免費、未使用 API」——讓使用者每次都看見這個價值
+          // 簡繁自動互轉:文案明示「本地轉換、未觸發 AI 翻譯」——與 LLM 翻譯完成的 toast 區分
+          //（2026-09-14 Jimmy 回報兩者容易混淆）
           successMsg = SK.t('toast.zhConvertDone', { total });
         } else if (pmActive && pmSkippedCount > 0) {
           successMsg = SK.t('toast.donePartial', { total, all: total + pmSkippedCount });
@@ -1852,7 +1864,7 @@
   // `isPageTranslated()` = true 而 `STATE.translated` = false（v1.10.57 要消滅的殭屍態）；
   // 殘留 data-shinkansen-dual-source 讓下一輪 injectDual 對這些段落早退。收斂成單一
   // 函式雙路徑共用。回傳 skip 掉的 detached 數供 caller log。
-  // SPA reset（content-spa.js:resetForSpaNavigation）另有 STATE.cache / badge / toast
+  // SPA reset（content-spa.js:resetForSpaNavigation）另有 badge / toast
   // 生命週期差異，維持獨立實作不抽進來。
   function restoreInjectedDom() {
     // dual wrapper（同時清原段落的 data-shinkansen-dual-source attribute）。
@@ -2329,7 +2341,6 @@
     {
       const mode = settings.displayMode;
       STATE.translatedMode = (mode === 'dual') ? 'dual' : 'single';
-      STATE.displayMode = STATE.translatedMode;
       const ms = settings.translationMarkStyle;
       SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
       SK.currentDualAccent = SK.sanitizeDualAccent?.(settings.dualAccentColor) ?? 'auto';
@@ -3021,7 +3032,6 @@
         translating: STATE.translating,
         stickyTranslate: STATE.stickyTranslate,
         replacedCount: STATE.originalHTML.size,
-        cacheSize: STATE.cache.size,
         guardCacheSize: STATE.translatedHTML.size,
       };
     },

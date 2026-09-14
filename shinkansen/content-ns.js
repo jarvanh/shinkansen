@@ -116,7 +116,6 @@ if (window.__shinkansen_loaded) {
     translating: false,      // v0.80: 翻譯進行中（防止重複觸發 + 支援中途取消）
     translatingConvertOnly: false, // 2026-08-20: 本輪是否為背景簡繁轉換 run(手動翻譯可靜默擠掉它,不被 toggle 吃)
     abortController: null,   // v0.80: AbortController，翻譯中按 Alt+S 或離開頁面時 abort
-    cache: new Map(),       // 段落文字 → 譯文
     // 記錄每個被替換過的元素與它原本的 innerHTML，供還原使用。
     // v0.36 起改為 Map，key 是 element，value 是 originalHTML。這樣同一個
     // element 被多個 fragment 單位改動時，只會快照一次「真正的原始 HTML」，
@@ -150,11 +149,10 @@ if (window.__shinkansen_loaded) {
     // null = 非 preset 觸發（例如 autoTranslate 白名單、popup 按鈕舊路徑）。
     stickySlot: null,
     // v1.5.0: 雙語對照模式
-    // displayMode：本次翻譯要用的模式（'single' 覆蓋 / 'dual' 雙語對照），讀自 storage 的設定值
-    // translatedMode：本次實際翻譯時用的模式（restorePage 依此分派 single / dual 還原邏輯）
+    // translatedMode：本次實際翻譯時用的模式（restorePage 依此分派 single / dual 還原邏輯；
+    // 讀自 storage 的 displayMode 設定值，2026-09-12 批次 6 起不再另存一份只寫不讀的 STATE.displayMode）
     // translationCache：dual 模式下，原段落 → wrapper 的對照表，供 Content Guard 在 SPA 刪掉
     //   wrapper 時 re-append 用。Map<originalEl, wrapperEl>
-    displayMode: 'single',
     translatedMode: null,
     translationCache: new Map(),
     // P1 (v1.8.59): 翻譯目標語言。content.js translatePage 開始時從 storage 注入。
@@ -759,8 +757,6 @@ if (window.__shinkansen_loaded) {
     const n = parseInt(hex.slice(1), 16);
     return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
   };
-  // 顯示模式合法值
-  SK.VALID_DISPLAY_MODES = new Set(['single', 'dual']);
   // 計算「最近的 block 祖先」用的 display 值（雙語模式 inline 段落 wrapper 用）
   SK.BLOCK_DISPLAY_VALUES = new Set([
     'block', 'flex', 'grid', 'table', 'list-item', 'flow-root',
@@ -960,20 +956,10 @@ if (window.__shinkansen_loaded) {
   //
   // 結構性通則(§8):依「無 translatable 文字 + 含保留媒體 + block-level display」判斷,
   // 不綁站點 / class / hostname。任何用 block 容器分組頭像 / 縮圖 / icon 列的站點都套用。
-  SK.isTextlessBlockMediaGroup = function isTextlessBlockMediaGroup(el) {
-    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
-    if ((el.textContent || '').trim().length > 0) return false;
-    if (!SK.containsMedia(el)) return false;
-    const cs = el.ownerDocument?.defaultView?.getComputedStyle?.(el);
-    if (!cs) return false;
-    const d = cs.display;
-    // inline-level display → 行內媒體,不排除;其餘(block-level)→ 媒體群組,排除
-    if (d === 'inline' || d === 'inline-block' || d === 'inline-flex'
-        || d === 'inline-grid' || d === 'inline-table' || d === 'contents') return false;
-    return true;
-  };
+  // （2026-09-12 批次 6：v2.0.6 的 isTextlessBlockMediaGroup 自 v2.0.61 起無呼叫端，已移除；
+  //   判斷本體由下方 isBlockMediaGroup 承接）
 
-  // v2.0.61:isBlockMediaGroup——isTextlessBlockMediaGroup 的放寬版,允許帶文字。
+  // v2.0.61:isBlockMediaGroup——原 isTextlessBlockMediaGroup 的放寬版,允許帶文字。
   // 「block-level display + 含 media-like」= 圖(或 widget)+ 圖說的結構群組,不是
   // 行內文字流;被 extractInlineFragments 併進 run 的話,fragment 注入 startNode..
   // endNode 整段移除重建會把整顆群組(含媒體)換成純譯文 text node
@@ -997,7 +983,7 @@ if (window.__shinkansen_loaded) {
     if (SK.HARD_EXCLUDE_TAGS.has(child.tagName)) return false;
     if (SK.BLOCK_TAGS_SET.has(child.tagName)) return false;
     if (SK.containsBlockDescendant(child)) return false;
-    // v2.0.61:從 isTextlessBlockMediaGroup 換成放寬版 isBlockMediaGroup
+    // v2.0.61:從(已移除的)isTextlessBlockMediaGroup 換成放寬版 isBlockMediaGroup
     //(帶圖說文字的媒體群組也要斷 run;textless 版為其子集,語意見各自註解)
     if (SK.isBlockMediaGroup(child)) return false;
     return true;

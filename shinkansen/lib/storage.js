@@ -387,21 +387,31 @@ Return a JSON array. Each element {"s": startMs, "e": endMs, "t": "translation"}
 - Output pure JSON only. No code fence. No prefaces, no postscripts.
 </output_format>`;
 
-// 預設 target 推導(navigator.language)。Q3 拍板:
-//   zh-TW / zh-Hant / zh-HK    → zh-TW(同繁體圈,zh-HK 雖港式詞彙不同但比 zh-CN/en 接近)
-//   其他 zh-*(zh-CN/zh-Hans/zh-SG)→ zh-CN
-//   ja / ko / es / fr / de prefix → 對應 target
-//   其他                          → en
-export function detectDefaultTargetLanguage() {
-  const nav = ((typeof navigator !== 'undefined' && navigator.language) || 'en').toLowerCase();
-  if (nav.startsWith('zh-tw') || nav.startsWith('zh-hant') || nav.startsWith('zh-hk')) return 'zh-TW';
-  if (nav.startsWith('zh')) return 'zh-CN';
-  if (nav.startsWith('ja')) return 'ja';
-  if (nav.startsWith('ko')) return 'ko';
-  if (nav.startsWith('es')) return 'es';
-  if (nav.startsWith('fr')) return 'fr';
-  if (nav.startsWith('de')) return 'de';
+// navigator.language → 支援語言的推導規則（前綴比對，依序命中）。Q3 拍板：
+//   zh-TW / zh-Hant / zh-HK / zh-MO → zh-TW（同繁體圈；zh-HK / zh-MO 詞彙不同但比 zh-CN / en 接近。
+//                                      zh-MO 2026-09-12 批次 6 起對齊 content-ns.js 的繁體判定，原本三份都落 zh-CN）
+//   其他 zh-*（zh-CN / zh-Hans / zh-SG）→ zh-CN
+//   ja / ko / es / fr / de 前綴        → 對應語言
+//   其他                              → en
+// 單一資料源：detectDefaultTargetLanguage（預設翻譯目標）與 resolveUiLanguage（UI 語系 'auto'）
+// 共用；lib/i18n.js getUiLanguage 內有一份鏡像表（content script 不能 import），
+// test/unit/mirror-drift.spec.js 鎖兩份逐條相同——改這裡必同步那邊。
+export const NAV_LANG_RULES = [
+  ['zh-tw', 'zh-TW'], ['zh-hant', 'zh-TW'], ['zh-hk', 'zh-TW'], ['zh-mo', 'zh-TW'],
+  ['zh', 'zh-CN'],
+  ['ja', 'ja'], ['ko', 'ko'], ['es', 'es'], ['fr', 'fr'], ['de', 'de'],
+];
+export function langFromNavigator(navLang) {
+  const nav = String(navLang || 'en').toLowerCase();
+  for (const [prefix, lang] of NAV_LANG_RULES) {
+    if (nav.startsWith(prefix)) return lang;
+  }
   return 'en';
+}
+
+// 預設 target 推導（navigator.language）：規則見 NAV_LANG_RULES
+export function detectDefaultTargetLanguage() {
+  return langFromNavigator((typeof navigator !== 'undefined' && navigator.language) || 'en');
 }
 
 // P3 (v1.8.62):把 UI 語系偏好(可能 'auto' / 8 語其一)解析為實際 dict 用的 8 語之一。
@@ -412,15 +422,7 @@ export function resolveUiLanguage(uiLanguagePref) {
       && ['zh-TW', 'zh-CN', 'en', 'ja', 'ko', 'es', 'fr', 'de'].includes(uiLanguagePref)) {
     return uiLanguagePref;
   }
-  const nav = ((typeof navigator !== 'undefined' && navigator.language) || 'en').toLowerCase();
-  if (nav.startsWith('zh-tw') || nav.startsWith('zh-hant') || nav.startsWith('zh-hk')) return 'zh-TW';
-  if (nav.startsWith('zh')) return 'zh-CN';
-  if (nav.startsWith('ja')) return 'ja';
-  if (nav.startsWith('ko')) return 'ko';
-  if (nav.startsWith('es')) return 'es';
-  if (nav.startsWith('fr')) return 'fr';
-  if (nav.startsWith('de')) return 'de';
-  return 'en';
+  return langFromNavigator((typeof navigator !== 'undefined' && navigator.language) || 'en');
 }
 
 // v2.0.78（批次 4 F1）：區塊 strip 規則必須錨定「預設字面值」，不可用 [\s\S]*? 吞任意
@@ -939,6 +941,45 @@ async function migrateApiKeyIfNeeded(syncSaved) {
   await browser.storage.sync.remove('apiKey');
 }
 
+// 大項設定存 storage.local（2026-09-12 code review 批次 6，P1-1 長期解）：chrome.storage.sync 每個
+// key 上限 8,192 bytes，固定術語表 / 禁用詞清單是無上限的使用者清單（約 150–200 條就爆），
+// 超限後整包 sync.set reject → 所有欄位 autosave 一起失敗。改存 local（10MB）；代價是這兩項
+// 不再跨裝置同步（匯出 / 匯入 JSON 仍含），SPEC §8.2。
+//   - getSettings：讀 local 覆蓋到 saved（local 沒 key = 未寫入，forbiddenTerms 依 target 給預設的語意不變）
+//   - setSettings / options / 匯入：以 splitSettingsPatch 分流
+//   - migrateLargeKeysToLocalIfNeeded：sync 仍有 key（舊版寫入 / 其他裝置同步回來 / 舊備份匯入）
+//     → sync 值視為較新，蓋到 local 後從 sync 移除，之後不會再被同步回來
+export const LOCAL_SETTINGS_KEYS = ['fixedGlossary', 'forbiddenTerms'];
+export async function migrateLargeKeysToLocalIfNeeded(syncSaved) {
+  if (!syncSaved) return;
+  const present = LOCAL_SETTINGS_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(syncSaved, k));
+  if (present.length === 0) return;
+  const patch = {};
+  for (const k of present) patch[k] = syncSaved[k];
+  await browser.storage.local.set(patch);
+  await browser.storage.sync.remove(present);
+}
+/** 把設定 patch 分成 sync 與 local 兩份（local 只含 LOCAL_SETTINGS_KEYS 內實際存在的 key） */
+export function splitSettingsPatch(patch) {
+  const syncPart = { ...(patch || {}) };
+  const localPart = {};
+  for (const k of LOCAL_SETTINGS_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(syncPart, k)) {
+      localPart[k] = syncPart[k];
+      delete syncPart[k];
+    }
+  }
+  return { syncPart, localPart };
+}
+/** 讀 local 的大項設定並覆蓋進 saved（就地修改並回傳） */
+export async function overlayLocalSettings(saved) {
+  const local = await browser.storage.local.get(LOCAL_SETTINGS_KEYS);
+  for (const k of LOCAL_SETTINGS_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(local, k)) saved[k] = local[k];
+  }
+  return saved;
+}
+
 // 一次性遷移（2026-09-11 code review S-1）：Instapaper OAuth token / secret 從 sync 搬到
 // local。sync 整包會被 Debug Bridge GET_STORAGE 與 options「匯出設定」帶出，帳號憑證不該
 // 跟設定偏好同一個池（與 apiKey 同設計）。username 非機密，留在 sync 供 options 顯示連結狀態。
@@ -1057,10 +1098,12 @@ function _bindSettingsCacheInvalidator() {
   // v1.10.46(批次 2-6):過濾掉與 settings 無關的 local 高頻寫入——翻譯期間 logger
   // persistLog(yt_debug_log)與 tc_* 快取 flush 都寫 storage.local,原本任何變動都
   // invalidate → cache 在翻譯熱路徑的實際命中率近零(v1.8.14 的初衷整個失效)。
-  // getSettings 的資料來源只有:sync 全部 key + local 的 apiKey / customProviderApiKey。
+  // getSettings 的資料來源只有:sync 全部 key + local 的 apiKey / customProviderApiKey +
+  // local 的大項設定（LOCAL_SETTINGS_KEYS，批次 6）。
   browser.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync' && !(area === 'local' && changes
-      && (API_KEY_STORAGE_KEY in changes || CUSTOM_PROVIDER_API_KEY in changes))) return;
+      && (API_KEY_STORAGE_KEY in changes || CUSTOM_PROVIDER_API_KEY in changes
+        || LOCAL_SETTINGS_KEYS.some((k) => k in changes)))) return;
     _settingsCachePromise = null;
   });
 }
@@ -1084,8 +1127,14 @@ export async function getSettings() {
   await migrateGemini35FlashModelIfNeeded(saved);
   await migrateGemini36FlashModelIfNeeded(saved);
   await migrateGemini37FlashModelIfNeeded(saved);
-  // 從 local 讀 apiKey（v0.62 起的正規位置）
-  const { [API_KEY_STORAGE_KEY]: apiKey = '' } = await browser.storage.local.get(API_KEY_STORAGE_KEY);
+  // 大項設定（固定術語表 / 禁用詞）存 local：sync 殘留先搬過去，再以 local 為準（批次 6）
+  await migrateLargeKeysToLocalIfNeeded(saved);
+  // local 一次讀完：apiKey（v0.62 起的正規位置）+ customProvider apiKey + 大項設定
+  const localAll = await browser.storage.local.get([API_KEY_STORAGE_KEY, CUSTOM_PROVIDER_API_KEY, ...LOCAL_SETTINGS_KEYS]);
+  for (const k of LOCAL_SETTINGS_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(localAll, k)) saved[k] = localAll[k];
+  }
+  const apiKey = localAll[API_KEY_STORAGE_KEY] || '';
   // P1: 先決定 targetLanguage,後面 forbiddenTerms 預設依此分歧。
   // saved 不在合法集合(舊使用者沒此 key / 值損壞)→ navigator 推導。
   const target = (typeof saved.targetLanguage === 'string' && TARGET_LANGUAGES.includes(saved.targetLanguage))
@@ -1127,9 +1176,8 @@ export async function getSettings() {
     translateDoc: { ...DEFAULT_SETTINGS.translateDoc, ...(saved.translateDoc || {}) },
   };
   merged.apiKey = apiKey;
-  // v1.5.7: 從 storage.local 讀 customProvider apiKey 注入
-  const { [CUSTOM_PROVIDER_API_KEY]: cpApiKey = '' } = await browser.storage.local.get(CUSTOM_PROVIDER_API_KEY);
-  merged.customProvider.apiKey = cpApiKey;
+  // v1.5.7: customProvider apiKey 也在 local（上面一次讀完）
+  merged.customProvider.apiKey = localAll[CUSTOM_PROVIDER_API_KEY] || '';
   return merged;
 }
 
@@ -1180,7 +1228,12 @@ export async function setSettings(patch) {
     rest.customProvider = cp;
   }
 
-  if (Object.keys(rest).length > 0) {
-    await browser.storage.sync.set(rest);
+  // 大項設定（固定術語表 / 禁用詞）走 local（批次 6）
+  const { syncPart, localPart } = splitSettingsPatch(rest);
+  if (Object.keys(localPart).length > 0) {
+    await browser.storage.local.set(localPart);
+  }
+  if (Object.keys(syncPart).length > 0) {
+    await browser.storage.sync.set(syncPart);
   }
 }

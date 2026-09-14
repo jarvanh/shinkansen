@@ -2,7 +2,7 @@
 // v1.0.4: 改為 ES module，從 lib/ 匯入共用常數與工具函式，消除重複程式碼。
 
 import { browser } from '../lib/compat.js';
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, isLegacyDefaultForbiddenTerms, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault } from '../lib/storage.js';
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_GLOSSARY_PROMPT, DEFAULT_SUBTITLE_SYSTEM_PROMPT, DEFAULT_FORBIDDEN_TERMS, isLegacyDefaultForbiddenTerms, TARGET_LANGUAGES, UI_LANGUAGES, getEffectiveSystemPrompt, getEffectiveSubtitleSystemPrompt, getEffectiveGlossaryPrompt, isPromptUnchangedFromDefault, isPromptUnchangedFromAnyTargetDefault, LOCAL_SETTINGS_KEYS, migrateLargeKeysToLocalIfNeeded, overlayLocalSettings, splitSettingsPatch } from '../lib/storage.js';
 import { formatTokens, formatUSD, formatMoney, parseUserNum, buildUsageCsvFilename, formatYmdHms } from '../lib/format.js';
 import { sanitizeImport as sanitizeImportImpl } from './import-sanitize.js';
 import { isWorthNotifying, buildUpdateDownloadUrl } from '../lib/update-check.js'; // v1.6.5
@@ -65,6 +65,9 @@ let _uiLangChangeSubscribed = false;
 
 async function load() {
   const saved = await browser.storage.sync.get(null);
+  // 固定術語表 / 禁用詞存 local（批次 6）：sync 殘留先搬，再以 local 覆蓋
+  await migrateLargeKeysToLocalIfNeeded(saved);
+  await overlayLocalSettings(saved);
   // v0.62 起：apiKey 改存 browser.storage.local，不跟 Google 帳號同步
   const { apiKey: localApiKey = '' } = await browser.storage.local.get('apiKey');
   const s = {
@@ -87,7 +90,7 @@ async function load() {
   $('maxOutputTokens').value = s.geminiConfig.maxOutputTokens;
   $('systemInstruction').value = s.geminiConfig.systemInstruction;
   // v1.6.16: 後備路徑單價 UI 已移除（對應 input element 不存在），不再從 settings 載入到 UI。
-  // settings.pricing 仍保留 storage 結構作 belt-and-suspenders(background.js:610 fallback 路徑保留）。
+  // settings.pricing 仍保留 storage 結構作 belt-and-suspenders(background.js pricing fallback 路徑保留）。
   // v1.6.14: per-model 計價覆蓋
   // v1.9.2: 加 cachedDiscount(0-1)欄位,UI 顯示百分比(0-100);儲存仍為比例(0-1)
   const overrides = s.modelPricingOverrides || {};
@@ -1198,12 +1201,16 @@ async function _saveImpl() {
   // 預設表更新、切 target 後 prompt 仍帶舊 target 的替換規則)。zh-TW 空表(刻意停用)照寫。
   if (isForbiddenTermsDefaultFor(settings.forbiddenTerms, _currentTargetLang, DEFAULT_FORBIDDEN_TERMS)) {
     delete settings.forbiddenTerms;
-    await browser.storage.sync.remove('forbiddenTerms');
+    await browser.storage.local.remove('forbiddenTerms');
+    await browser.storage.sync.remove('forbiddenTerms'); // 舊版殘留
   }
   // v1.5.7: customProvider.apiKey 走 storage.local（與主 apiKey 同樣設計），先抽出再寫 sync
   const cpApiKeyValue = ($('cp-apiKey').value || '').trim();
   await browser.storage.local.set({ customProviderApiKey: cpApiKeyValue });
-  await browser.storage.sync.set(settings);
+  // 固定術語表 / 禁用詞走 local（避開 sync 每 key 8KB 上限，批次 6）；其餘 sync
+  const { syncPart, localPart } = splitSettingsPatch(settings);
+  if (Object.keys(localPart).length > 0) await browser.storage.local.set(localPart);
+  await browser.storage.sync.set(syncPart);
   // 顯示綠色「已自動儲存」提示條（手動儲存按鈕已移除，改自動存檔）
   showSaveBar('saved', _t('options.action.savedBar'));
 }
@@ -1386,6 +1393,7 @@ function _syncForbiddenTermsToTarget(newTl, oldTl) {
   renderForbiddenTermsTable();
   // 未客製 → storage 不該殘留 key：回收既有物化殘留 + 修「listener 只改 UI 不寫
   // storage」的 desync，讓 getSettings「未寫入才依 target 給預設」立即恢復生效
+  browser.storage.local.remove('forbiddenTerms');
   browser.storage.sync.remove('forbiddenTerms');
 }
 
@@ -1817,6 +1825,8 @@ $('reset-defaults').addEventListener('click', async () => {
   if (!confirm(_t('options.reset.confirm'))) return;
   // v0.62 起：apiKey 在 browser.storage.local，不在 sync 裡，clear sync 不影響 apiKey。
   await resetSyncPreservingLinks(browser.storage.sync);
+  // 固定術語表 / 禁用詞存 local（批次 6）：回復預設也要清
+  await browser.storage.local.remove(LOCAL_SETTINGS_KEYS);
   await load();
   showSaveBar('saved', _t('options.reset.done'));
 });
@@ -1825,6 +1835,8 @@ $('reset-defaults').addEventListener('click', async () => {
 
 $('export-settings').addEventListener('click', async () => {
   const all = await browser.storage.sync.get(null);
+  // 固定術語表 / 禁用詞存 local（批次 6），備份檔仍要含
+  await overlayLocalSettings(all);
   // apiKey 不納入匯出（apiKey 本來就存在 local 不在 sync，defensive 再 delete 一次）
   delete all.apiKey;
   // 2026-09-11 code review：Instapaper 帳號連結（token / secret 已搬 local，username 是
@@ -1863,7 +1875,10 @@ $('import-input').addEventListener('change', async (e) => {
       alert(_t('options.io.importNoFields'));
       return;
     }
-    await browser.storage.sync.set(clean);
+    // 固定術語表 / 禁用詞走 local（批次 6）
+    const { syncPart, localPart } = splitSettingsPatch(clean);
+    if (Object.keys(localPart).length > 0) await browser.storage.local.set(localPart);
+    if (Object.keys(syncPart).length > 0) await browser.storage.sync.set(syncPart);
     await load();
     const msg = warnings.length > 0
       ? _t('options.io.importPartial', { warnings: warnings.join('\n') })

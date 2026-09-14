@@ -304,15 +304,6 @@ body {
   border-color: var(--text-muted);
 }
 
-.result-hint {
-  margin: 12px 0 20px;
-  padding: 10px 14px;
-  background: var(--primary-soft);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text);
-}
-
 .result-actions {
   display: flex;
   gap: 8px;
@@ -491,19 +482,6 @@ body {
   font-size: 11px;
   color: var(--text-faint);
   line-height: 1.5;
-}
-
-.settings-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.settings-checkbox-row input[type="checkbox"] {
-  margin: 0;
 }
 
 /* ----- 雙頁並排閱讀器(W4) ----- */
