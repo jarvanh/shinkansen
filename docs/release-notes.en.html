@@ -99,6 +99,35 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.5.0 <span class="release-date">Released 2026-09-15</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.4.0</p>
+
+  <p class="lead">"Translate document" gains Word and subtitle-file translation; PDF limits are raised, a page range can be chosen, and layout is heavily fixed; first-run setup is reworked and Gemini 3.8 Flash is added, alongside three rounds of code-review fixes and performance work. <strong>If upgrading from v2.4.0, clear the translation cache once in Settings</strong> — some fixes change translation output.</p>
+
+  <ul>
+    <li><strong>New: Word (.docx) translation</strong>: translations are written back into the original file, with layout, styles, and images preserved by Word; headers / footers, footnotes, and comments are translated too; monolingual or bilingual output. Encrypted files and files with tracked changes are flagged; .doc / .docm are not supported.</li>
+
+    <li><strong>New: subtitle-file translation (SRT / WebVTT / ASS)</strong>: timing and style tags preserved, bilingual download available; filenames follow the player convention <code>name.zh.srt</code>; new "no trailing period" switch; Big5 / GBK and other encodings detected automatically.</li>
+
+    <li><strong>PDF: higher limits, fixed layout</strong>: 10 MB → 50 MB and 50 → 300 pages, with a selectable page range; 13 layout and rendering issues fixed (orphaned short lines in two-column text, colored backgrounds turning white, misplaced text on rotated pages, overflowing paragraphs, and more); Simplified Chinese / Japanese / Korean output uses matching fonts, downloaded once on first use (10–20 MB).</li>
+
+    <li><strong>Smoother first-run setup</strong>: "Get an API key" goes straight to the key page; iOS onboarding shrinks from 7 steps to 4 and shows live enable status; pasted keys are checked automatically; desktop builds open Settings on first install.</li>
+
+    <li><strong>Gemini models updated</strong>: adds <code>gemini-3.8-flash</code>; 3.7 is retired and migrates automatically; the Alt+A "Flash" shortcut now uses 3.8 Flash, Alt+S stays on Flash Lite.</li>
+
+    <li><strong>Content the page marks as "do not translate" stays untranslated</strong>: names, codes, and snippets that site authors mark with the standard HTML <code>translate="no"</code> are now preserved as-is and never sent to the API; icons drawn with icon fonts (words like <code>star</code> or <code>menu</code> in the HTML) are no longer translated into text, which used to make the icons disappear.</li>
+
+    <li><strong>Glossary and forbidden terms stored locally</strong>: no longer bound by the 8KB synced-storage cap, so hundreds of entries fit; they no longer sync across devices — use export / import to move them. Glossary names no longer get an unwanted "(original)" gloss from the model.</li>
+
+    <li><strong>YouTube / Drive subtitles</strong>: per-line timing for auto captions, translations appear 1 second early; switching videos leaves no stale captions; "Translating…" no longer gets stuck after a failure; custom providers honor the target language.</li>
+
+    <li><strong>Correctness and accounting</strong>: truncated translations are no longer cached; link-bearing paragraphs are no longer mistranslated into Traditional Chinese for English / Simplified targets; changed prompt or temperature no longer hits stale cache; usage is logged per batch, so closing the tab loses nothing.</li>
+
+    <li><strong>Document resume</strong>: cancelled or partly failed chapters only fill in unfinished segments, with no re-billing; closing the page keeps finished work; cost estimates corrected for CJK sources (previously about 2.6× too low).</li>
+
+    <li><strong>Stability and performance</strong>: held shortcuts no longer flicker, quick SPA navigations no longer cancel each other, one bad paragraph no longer aborts its batch, only one Shinkansen copy runs per tab; long-page detection is about 30% faster and the per-page UI string file shrank from 770KB to 55KB.</li>
+  </ul>
+
   <h2>v2.4.0 <span class="release-date">Released 2026-08-20</span></h2>
   <p class="release-meta">Compared with the previous store version v2.3.2</p>
 

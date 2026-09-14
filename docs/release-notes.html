@@ -99,6 +99,35 @@
   <h1>商店上架版本更新紀錄</h1>
   <p class="subtitle">給 Chrome Web Store、Firefox Add-ons 與 App Store（iOS / iPadOS Safari）使用者的更新摘要，只列出對使用者直接有感的功能變更與重要修正。完整的版本歷史（含每一個 patch 與技術細節）請見 GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>。</p>
 
+  <h2>v2.5.0 <span class="release-date">2026-09-15 上架</span></h2>
+  <p class="release-meta">相對於上一個商店版本 v2.4.0</p>
+
+  <p class="lead">「翻譯文件」新增 Word 與字幕檔翻譯，PDF 放寬上限、可指定頁數並大幅修正版面；首次設定流程重做、Gemini 3.8 Flash 上架，另有三輪完整程式碼檢查的修正與效能改善。<strong>從 v2.4.0 升上來建議到設定頁清一次翻譯快取</strong>（部分修正會改變譯文）</p>
+
+  <ul>
+    <li><strong>新增 Word（.docx）翻譯</strong>：譯文寫回原檔，版面、樣式、圖表由 Word 維持；頁首頁尾、註腳、註解一併翻譯；可輸出單語或雙語譯本。加密檔與含追蹤修訂的檔案會提示，.doc / .docm 不支援</li>
+
+    <li><strong>新增字幕檔翻譯（SRT / WebVTT / ASS）</strong>：時間軸與樣式標記保留，可下載雙語字幕；檔名改用 <code>原檔名.zh.srt</code> 播放器慣例；新增「句末不加句號」開關；自動判斷 Big5 / GBK 等編碼</li>
+
+    <li><strong>PDF 翻譯放寬並修正版面</strong>：上限 10 MB → 50 MB、50 → 300 頁，可指定翻譯頁數；修掉 13 項版面與渲染問題（雙欄短行孤立、彩色底變白塊、旋轉頁錯位、塞不下的段落溢出等）；簡中 / 日 / 韓譯文改用對應字型，首次使用時下載一次（10–20 MB）</li>
+
+    <li><strong>首次設定更順</strong>：「取得 API Key」直達金鑰頁；iOS 導覽 7 步縮成 4 步並即時顯示啟用狀態；貼上金鑰自動檢查；桌面版首次安裝自動開設定頁</li>
+
+    <li><strong>Gemini 模型更新</strong>：加入 <code>gemini-3.8-flash</code>，3.7 下架並自動遷移；Alt+A「Flash」快速鍵改用 3.8 Flash，Alt+S 維持 Flash Lite</li>
+
+    <li><strong>網頁標記「不要翻譯」的內容不再被翻</strong>：網站作者標成不翻譯的人名、代號、程式碼（HTML 標準 <code>translate="no"</code>）現在會原樣保留，也不送 API；用字型顯示的圖示（HTML 裡其實是 <code>star</code>、<code>menu</code> 這類字）不再被翻成中文而讓圖示消失</li>
+
+    <li><strong>術語表與禁用詞改存本機</strong>：不再受同步空間 8KB 上限影響，幾百條都放得下；代價是不跨裝置同步，搬機請用匯出 / 匯入。術語表譯名不再被模型自加「（原文）」對照</li>
+
+    <li><strong>YouTube / Drive 字幕</strong>：自動字幕多行時間軸修正，譯文提前 1 秒出現；切換影片不殘留舊字幕；失敗後不再卡「翻譯中…」；自訂翻譯服務尊重目標語言</li>
+
+    <li><strong>譯文正確性與記帳</strong>：被截斷的譯文不再寫進快取；英文 / 簡中目標的含連結段落不再誤翻繁中；改 prompt 或溫度後不再命中舊譯文；用量每批即入帳，關分頁不漏記</li>
+
+    <li><strong>文件續翻</strong>：中途取消或部分失敗的章節只補未完成段落，不再重新計費；關頁不丟已翻內容；費用預估對中日韓原文修正（原本低估約 2.6 倍）</li>
+
+    <li><strong>穩定性與效能</strong>：快速鍵按住不閃動、SPA 連續導航不互相取消、單段出錯不拖累整批、同頁多份 Shinkansen 只跑一份；長網頁偵測約快三成，每頁注入的介面字串檔 770KB → 55KB</li>
+  </ul>
+
   <h2>v2.4.0 <span class="release-date">2026-08-20 上架</span></h2>
   <p class="release-meta">相對於上一個商店版本 v2.3.2</p>
 
