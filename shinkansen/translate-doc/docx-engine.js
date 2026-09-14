@@ -665,7 +665,9 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
         islands: [],
         block: null,
       };
-      const el = buildParagraphHtml(htmlDoc, para, groups, rels);
+      // 批次 7 §6.4：索引 = 目前已掛進 body 的 para 元素數（= paraEls.length），不再每段
+      // querySelectorAll 整份 htmlDoc 數一次（O(n²)）
+      const el = buildParagraphHtml(htmlDoc, para, groups, rels, paraEls.length);
       if (el) {
         paraEls.push({ para, el });
         htmlDoc.body.appendChild(el);
@@ -770,7 +772,7 @@ export async function parseDocxFile(file, onProgress = () => {}, opts = {}) {
 // 段落 → HTML 元素（heading / p）。回 null = 無可翻文字（純 island /
 // 空段落），該段不進 htmlDoc、不會有 block、寫回不動。
 // wrapper 規則見檔頭；rpr / island 存 para 側表，HTML 只帶索引。
-function buildParagraphHtml(htmlDoc, para, groups, rels) {
+function buildParagraphHtml(htmlDoc, para, groups, rels, paraIdx) {
   let hasLetter = false;
   for (const g of groups) {
     if (g.k !== 'group') continue;
@@ -845,10 +847,13 @@ function buildParagraphHtml(htmlDoc, para, groups, rels) {
       else target.appendChild(htmlDoc.createElement('br'));
     }
   }
-  // para 索引屬性由呼叫端統一設（paraEls 順序）
-  el.setAttribute('data-sk-docx-para', String(countParaEls(htmlDoc)));
+  // para 索引 = 呼叫端傳入的「已掛進 body 的 para 數」（paraEls 順序）；未傳時退回數
+  // body 內既有 para 元素（舊呼叫端）
+  el.setAttribute('data-sk-docx-para', String(typeof paraIdx === 'number' ? paraIdx : countParaEls(htmlDoc)));
   return el;
 }
+
+const PRECOMPRESSED_MEDIA_RE = /\.(?:png|jpe?g|gif|webp|avif|bmp|tiff?|ico|ttf|otf|woff2?|eot|mp3|m4a|aac|ogg|oga|wav|mp4|m4v|webm|ogv|zip|jar|gz|br|pdf)$/i;  // 與 epub-writer.js 同一份判準（module 隔離鏡像）
 
 function countParaEls(htmlDoc) {
   return htmlDoc.body.querySelectorAll('[data-sk-docx-para]').length;
@@ -878,7 +883,9 @@ export function buildTranslatedDocx(doc, targetLanguage, { bilingual = false, de
   }
 
   const outEntries = {};
-  for (const [path, u8] of Object.entries(doc.docxEntries)) outEntries[path] = u8;
+  // 批次 7 §6.4：word/media（圖片）/ word/fonts 等已壓縮 entry 用 STORED（level 0），
+  // 不再逐次 deflate；內容位元組不變（判準與 epub-writer isPrecompressedMediaPath 同一份）
+  for (const [path, u8] of Object.entries(doc.docxEntries)) outEntries[path] = PRECOMPRESSED_MEDIA_RE.test(path) ? [u8, { level: 0 }] : u8;
   for (const [path, edits] of editsByPart) {
     const xml = doc.docxPartsXml.get(path);
     outEntries[path] = window.fflate.strToU8(spliceEdits(xml, edits));

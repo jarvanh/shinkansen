@@ -1607,12 +1607,15 @@
   SK.refreshAncestorSavedHTML = function refreshAncestorSavedHTML(el) {
     if (!STATE.translatedHTML || STATE.translatedHTML.size === 0) return;
     if (!el || !el.parentNode) return;
+    // 2026-09-14 批次 7：原本每次呼叫掃整張 translatedHTML（O(N) 對每個 key 跑 contains），
+    // A7 注入每個 node 都呼叫一次 → O(N²)。「map 內包含 el 的 key」= el 的祖先中有進 map 的
+    // 那些，改沿 parentNode 鏈查 map（O(depth)）。contains 不跨 shadow boundary，parentNode
+    // 走到 ShadowRoot 後為 null，集合相同。
     const ancestors = [];
-    for (const ancestor of STATE.translatedHTML.keys()) {
-      if (ancestor === el) continue;
-      if (ancestor.contains && ancestor.contains(el)) {
-        ancestors.push(ancestor);
-      }
+    let a = el.parentNode;
+    while (a) {
+      if (STATE.translatedHTML.has(a)) ancestors.push(a);
+      a = a.parentNode;
     }
     for (const ancestor of ancestors) {
       STATE.translatedHTML.set(ancestor, ancestor.innerHTML);

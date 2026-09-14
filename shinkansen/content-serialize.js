@@ -8,6 +8,40 @@
   const PH_OPEN = SK.PH_OPEN;
   const PH_CLOSE = SK.PH_CLOSE;
 
+  // ─── 反序列化 regex 模組層常數（2026-09-14 code review 批次 7 §6.2）────────
+  // 原本每個 helper 每次呼叫都 `new RegExp(字串拼接)`：千段頁一輪反序列化十萬次
+  // 物件配置。pattern 全部由模組載入時已定的常數（PH_OPEN / PH_CLOSE / SK.CJK_CHAR /
+  // SK.BRACKET_ALIASES_*）拼成，提到模組層一次建立即可。
+  // 帶 g flag 的 regex 用於 replace() 時 lastIndex 由引擎重設，可安全共用；用於 exec
+  // 迴圈的（parseSegment / repairHalfBrokenPlaceholders / selectBestSlotOccurrences）
+  // 迴圈前手動 lastIndex = 0，parseSegment 迴圈內有遞迴（巢狀 slot），每輪結束
+  // 把 lastIndex 設回 cursor 防被內層 exec 改動。
+  const _C = SK.CJK_CHAR;
+  const _PH_TOKEN_SRC = PH_OPEN + '[*\\/]?\\d+' + PH_CLOSE;
+  const RE_PH_TOKEN_G = new RegExp(_PH_TOKEN_SRC, 'g');
+  const RE_PH_ANY_TOKEN_G = new RegExp(PH_OPEN + '\\*?\\/?\\d+' + PH_CLOSE, 'g');
+  const RE_CJK_SP_OPEN = new RegExp('(' + _C + ')[ \\t]+(' + PH_OPEN + '\\d+' + PH_CLOSE + _C + ')', 'g');
+  const RE_CJK_SP_CLOSE = new RegExp('(' + _C + PH_OPEN + '\\/\\d+' + PH_CLOSE + ')[ \\t]+(' + _C + ')', 'g');
+  const RE_CJK_SP_ATOMIC_L = new RegExp('(' + _C + ')[ \\t]+(' + PH_OPEN + '\\*\\d+' + PH_CLOSE + ')', 'g');
+  const RE_CJK_SP_ATOMIC_R = new RegExp('(' + PH_OPEN + '\\*\\d+' + PH_CLOSE + ')[ \\t]+(' + _C + ')', 'g');
+  const RE_CJK_RUN_MID = new RegExp('(' + _C + ')((?:[ \\t]*(?:' + _PH_TOKEN_SRC + '))+[ \\t]*)(?=' + _C + ')', 'g');
+  const RE_CJK_RUN_HEAD = new RegExp('^((?:[ \\t]*(?:' + _PH_TOKEN_SRC + '))+[ \\t]*)(?=' + _C + ')');
+  const RE_CJK_RUN_TAIL = new RegExp('(' + _C + ')((?:[ \\t]*(?:' + _PH_TOKEN_SRC + '))+[ \\t]*)$');
+  const RE_STRAY_HALF_CLOSE_G = new RegExp('[\\*\\/]\\d+' + PH_CLOSE, 'g');
+  const RE_STRAY_BRACKETS_G = new RegExp('[' + PH_OPEN + PH_CLOSE +
+    SK.BRACKET_ALIASES_OPEN.join('') + SK.BRACKET_ALIASES_CLOSE.join('') + ']', 'g');
+  const RE_NORM_ANNOTATED_G = new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)[ \\t]+\\S[^' + PH_CLOSE + ']{0,28}' + PH_CLOSE, 'g');
+  const RE_NORM_SPACED_G = new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)\\s*' + PH_CLOSE, 'g');
+  const RE_NORM_MANGLED_CLOSE_G = new RegExp(PH_OPEN + '(\\*?\\/?\\d+)(?:[»›❱》〉≫]|(?=[^' + PH_CLOSE + '0-9])|$)', 'g');
+  const RE_HALF_BROKEN_TOK_G = new RegExp(PH_OPEN + '(\\*)?(\\/)?(\\d+)' + PH_CLOSE, 'g');
+  const RE_PAIRED_OCC_G = new RegExp(PH_OPEN + '(\\d+)' + PH_CLOSE + '([\\s\\S]*?)' + PH_OPEN + '\\/\\1' + PH_CLOSE, 'g');
+  const RE_PARSE_SEGMENT_G = new RegExp(
+    PH_OPEN + '(\\d+)' + PH_CLOSE + '([\\s\\S]*?)' + PH_OPEN + '\\/\\1' + PH_CLOSE
+      + '|' + PH_OPEN + '\\*(\\d+)' + PH_CLOSE,
+    'g'
+  );
+  const RE_BOUNDARY_G = /[。？！；，、.!?;,\n]/g;
+
   // 父 element 的 effective white-space 是 pre/pre-wrap/pre-line/break-spaces 時,
   // textContent 內的 \n 是視覺換行(不是會被瀏覽器 collapse 成 space 的純 source whitespace)。
   // 序列化時這些 \n 必須跟 <br> 共用  sentinel 路徑,否則接著 /\s+/g normalize 會
@@ -406,8 +440,7 @@
 
   function serializeNodeIterable(topLevelNodes, opts) {
     const first = serializeNodeIterableOnce(topLevelNodes, opts);
-    const tokenRe = new RegExp(PH_OPEN + '[*\\/]?\\d+' + PH_CLOSE, 'g');
-    if (allTextLockedInCodeSlots(first, tokenRe)) {
+    if (allTextLockedInCodeSlots(first, RE_PH_TOKEN_G)) {
       return serializeNodeIterableOnce(topLevelNodes, { ...(opts || {}), codeAsPaired: true });
     }
     return first;
@@ -543,26 +576,14 @@
 
   SK.collapseCjkSpacesAroundPlaceholders = function collapseCjkSpacesAroundPlaceholders(s) {
     if (!s) return s;
-    const C = SK.CJK_CHAR;
     // 注意：用 [ \t]+ 而非 \s+，刻意保留 \n 不移除。
     // \n 代表原文有 <br> 換行（序列化時 <br> → \u0001 → \n），
     // 若用 \s+ 會把 ⟦/N⟧\n漢字 的 \n 吃掉，導致 <br> 無法還原（v1.4.4 修正）。
-    s = s.replace(
-      new RegExp('(' + C + ')[ \\t]+(' + PH_OPEN + '\\d+' + PH_CLOSE + C + ')', 'g'),
-      '$1$2'
-    );
-    s = s.replace(
-      new RegExp('(' + C + PH_OPEN + '\\/\\d+' + PH_CLOSE + ')[ \\t]+(' + C + ')', 'g'),
-      '$1$2'
-    );
-    s = s.replace(
-      new RegExp('(' + C + ')[ \\t]+(' + PH_OPEN + '\\*\\d+' + PH_CLOSE + ')', 'g'),
-      '$1$2'
-    );
-    s = s.replace(
-      new RegExp('(' + PH_OPEN + '\\*\\d+' + PH_CLOSE + ')[ \\t]+(' + C + ')', 'g'),
-      '$1$2'
-    );
+    // regex 本體見檔頭模組層常數（RE_CJK_SP_* / RE_CJK_RUN_*）
+    s = s.replace(RE_CJK_SP_OPEN, '$1$2');
+    s = s.replace(RE_CJK_SP_CLOSE, '$1$2');
+    s = s.replace(RE_CJK_SP_ATOMIC_L, '$1$2');
+    s = s.replace(RE_CJK_SP_ATOMIC_R, '$1$2');
     // 標記串通用收斂（v2.0.53）：模型偶發在「每個」標記前後都塞空格
     //（日文書實測:「⟦0⟧ 兩個男人…稍微 ⟦/0⟧ ⟦1⟧ 歪 ⟦/1⟧ ⟦2⟧ 著頭…⟦/2⟧」），
     // 上面四條窄規則只蓋「標記外側貼 CJK」單一形態,漏接內側與標記串之間。
@@ -572,20 +593,10 @@
     // 也不動 CJK/拉丁邊界的空格（中英空格是合法排版）。
     // 與 translate-doc/translate.js collapseCjkPlaceholderSpaces 是同一份事實的
     // 雙實作（module 系統隔離）,改這裡必同步那邊
-    const PH_TOKEN = PH_OPEN + '[*\\/]?\\d+' + PH_CLOSE;
     const stripRunSpaces = (run) => run.replace(/[ \t]+/g, '');
-    s = s.replace(
-      new RegExp('(' + C + ')((?:[ \\t]*(?:' + PH_TOKEN + '))+[ \\t]*)(?=' + C + ')', 'g'),
-      (m, a, run) => a + stripRunSpaces(run)
-    );
-    s = s.replace(
-      new RegExp('^((?:[ \\t]*(?:' + PH_TOKEN + '))+[ \\t]*)(?=' + C + ')'),
-      (m, run) => stripRunSpaces(run)
-    );
-    s = s.replace(
-      new RegExp('(' + C + ')((?:[ \\t]*(?:' + PH_TOKEN + '))+[ \\t]*)$'),
-      (m, a, run) => a + stripRunSpaces(run)
-    );
+    s = s.replace(RE_CJK_RUN_MID, (m, a, run) => a + stripRunSpaces(run));
+    s = s.replace(RE_CJK_RUN_HEAD, (m, run) => stripRunSpaces(run));
+    s = s.replace(RE_CJK_RUN_TAIL, (m, a, run) => a + stripRunSpaces(run));
     return s;
   };
 
@@ -593,10 +604,9 @@
     // 先修復畸形標記（⟦/2» 等）再掃——否則畸形 token 只會被下方「殘留括號」規則
     // 削掉 ⟦ 留下「/2»」碎片洩漏到譯文（v2.0.53，日文書實例）
     s = SK.normalizeLlmPlaceholders(s);
-    s = s.replace(new RegExp(PH_OPEN + '\\*?\\/?\\d+' + PH_CLOSE, 'g'), '');
-    s = s.replace(new RegExp('[\\*\\/]\\d+' + PH_CLOSE, 'g'), '');
-    s = s.replace(new RegExp('[' + PH_OPEN + PH_CLOSE +
-      SK.BRACKET_ALIASES_OPEN.join('') + SK.BRACKET_ALIASES_CLOSE.join('') + ']', 'g'), '');
+    s = s.replace(RE_PH_ANY_TOKEN_G, '');
+    s = s.replace(RE_STRAY_HALF_CLOSE_G, '');
+    s = s.replace(RE_STRAY_BRACKETS_G, '');
     return s;
   };
 
@@ -613,14 +623,8 @@
     // 觸發情境：slot 內容涉及醫藥 / 術語時，模型會「加注」slot 代表的類別
     // （例如 ⟦0⟧ 對應 <strong>ファーストエイド用品（鎮痛剤...）</strong>，輸出 ⟦0 drug⟧）。
     // 修法：匹配「數字後有空白 + 非空白文字」的 pattern，統一清除（v1.4.5 修正）。
-    s = s.replace(
-      new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)[ \\t]+\\S[^' + PH_CLOSE + ']{0,28}' + PH_CLOSE, 'g'),
-      PH_OPEN + '$1' + PH_CLOSE
-    );
-    s = s.replace(
-      new RegExp(PH_OPEN + '\\s*(\\*?\\/?\\d+)\\s*' + PH_CLOSE, 'g'),
-      PH_OPEN + '$1' + PH_CLOSE
-    );
+    s = s.replace(RE_NORM_ANNOTATED_G, PH_OPEN + '$1' + PH_CLOSE);
+    s = s.replace(RE_NORM_SPACED_G, PH_OPEN + '$1' + PH_CLOSE);
     // 畸形閉合括號修復（v2.0.53）：模型偶發把標記的 ⟧ 寫成 »（⟦/2⟧ → ⟦/2»），
     // 或整個漏寫（段尾 ⟦/2 就結束）。錨定「⟦ + (*/?)數字 + 非 ⟧」pattern——
     // ⟦ 是協定專用字元，這個前綴必然是壞標記；» 等常見替代閉合字元順帶吃掉，
@@ -629,10 +633,7 @@
     // ⟦0 drug⟧ 錯修成 ⟦0⟧ drug⟧。與 translate-doc/translate.js
     // repairMangledPlaceholders 是同一份事實的雙實作（module 系統隔離：IIFE vs
     // ES module），改這裡必同步那邊
-    return s.replace(
-      new RegExp(PH_OPEN + '(\\*?\\/?\\d+)(?:[»›❱》〉≫]|(?=[^' + PH_CLOSE + '0-9])|$)', 'g'),
-      PH_OPEN + '$1' + PH_CLOSE
-    );
+    return s.replace(RE_NORM_MANGLED_CLOSE_G, PH_OPEN + '$1' + PH_CLOSE);
   };
 
   // 半殘配對修復(2026-07-20):輕量模型(gemini-3.1-flash-lite 實測)對高密度巢狀
@@ -666,7 +667,8 @@
       slot.nodeType === Node.ELEMENT_NODE || (slot.reuseNode && !slot.atomic)
     );
 
-    const tokRe = new RegExp(PH_OPEN + '(\\*)?(\\/)?(\\d+)' + PH_CLOSE, 'g');
+    const tokRe = RE_HALF_BROKEN_TOK_G;
+    tokRe.lastIndex = 0;
     const toks = [];
     let m;
     while ((m = tokRe.exec(text)) !== null) {
@@ -738,7 +740,7 @@
       const gap = text.slice(nearestTokEnd, closeTok.start);
       // 取「最近標記 token 之後」與「gap 內最後一個邊界標點之後」較近(較右)者
       let lastBoundary = -1;
-      const g = gap.match(new RegExp(BOUNDARY_RE.source, 'g'));
+      const g = gap.match(RE_BOUNDARY_G);
       if (g) lastBoundary = gap.lastIndexOf(g[g.length - 1]);
       pos = lastBoundary >= 0 ? nearestTokEnd + lastBoundary + 1 : nearestTokEnd;
       // tieOrder:同點時外層(關得晚)的 open 要在左邊
@@ -761,12 +763,13 @@
 
   SK.selectBestSlotOccurrences = function selectBestSlotOccurrences(text) {
     if (!text) return text;
-    const re = new RegExp(PH_OPEN + '(\\d+)' + PH_CLOSE + '([\\s\\S]*?)' + PH_OPEN + '\\/\\1' + PH_CLOSE, 'g');
+    const re = RE_PAIRED_OCC_G;
+    re.lastIndex = 0;
     const occurrences = [];
     let m;
     while ((m = re.exec(text)) !== null) {
       const inner = m[2];
-      const innerStripped = inner.replace(new RegExp(PH_OPEN + '\\*?\\/?\\d+' + PH_CLOSE, 'g'), '').trim();
+      const innerStripped = inner.replace(RE_PH_ANY_TOKEN_G, '').trim();
       occurrences.push({
         idx: Number(m[1]),
         start: m.index,
@@ -922,11 +925,9 @@
     const frag = document.createDocumentFragment();
     if (!text) return frag;
 
-    const re = new RegExp(
-      PH_OPEN + '(\\d+)' + PH_CLOSE + '([\\s\\S]*?)' + PH_OPEN + '\\/\\1' + PH_CLOSE
-        + '|' + PH_OPEN + '\\*(\\d+)' + PH_CLOSE,
-      'g'
-    );
+    // 共用模組層 regex；迴圈內有遞迴（巢狀 slot 再進 parseSegment），每輪結束把
+    // lastIndex 設回 cursor，內層 exec 不會干擾外層掃描位置
+    const re = RE_PARSE_SEGMENT_G;
 
     function pushText(s) {
       if (!s) return;
@@ -945,6 +946,7 @@
 
     let cursor = 0;
     let m;
+    re.lastIndex = 0;
     while ((m = re.exec(text)) !== null) {
       if (m.index > cursor) {
         pushText(text.slice(cursor, m.index));
@@ -1019,6 +1021,7 @@
         }
       }
       cursor = m.index + m[0].length;
+      re.lastIndex = cursor;
     }
     if (cursor < text.length) {
       pushText(text.slice(cursor));

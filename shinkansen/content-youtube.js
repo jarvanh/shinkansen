@@ -513,6 +513,25 @@
     const { url, responseText } = e.detail || {};
     if (!responseText) return;
 
+    // 2026-09-14（code review §8 runtime 驗證）：SPA 切影片後，前一支影片的 timedtext
+    // XHR 仍可能完成（cage 實測：舊片 XHR 在 yt-navigate-start 後 31ms 才 loadend，
+    // 此時 location 已是新片）。下方 sourceId 用「當前 URL 的 videoId」組身份 →
+    // 舊片字幕被當成新片來源收下、立即對舊片內容發翻譯批次（實測多打一筆 Gemini
+    // 請求記在新片名下）；若落在 yt-navigate-finish 的 SPA reset 之後，舊片的
+    // translatedWindows 還會讓新片同時段視窗被誤跳過。timedtext URL 自帶 v=<videoId>，
+    // 與 URL videoId 不符即為 stale 回應，一律忽略（兩者任一取不到時不擋，維持舊行為）。
+    {
+      let _xhrVideoId = null;
+      try { _xhrVideoId = new URL(url, location.href).searchParams.get('v'); } catch (_) {}
+      const _urlVideoId = getVideoIdFromUrl();
+      if (_xhrVideoId && _urlVideoId && _xhrVideoId !== _urlVideoId) {
+        SK.sendLog('info', 'youtube', 'XHR captions ignored (stale videoId)', {
+          xhrVideoId: _xhrVideoId, urlVideoId: _urlVideoId,
+        });
+        return;
+      }
+    }
+
     // ASR 軌先從 URL 判定，parse 時套 perLineTiming（多行 event 各行獨立 startMs，見 parseJson3）
     let _isAsrUrl = false;
     try { _isAsrUrl = new URL(url, location.href).searchParams.get('kind') === 'asr'; } catch (_) {}
@@ -1937,7 +1956,19 @@
     return texts.join(sep);
   }
 
+  // 批次 7 量測用（2026-09-14）：dev tail 下累積 _updateOverlay 呼叫數 / 總耗時 / 最大單次，
+  // GET_STATE 的 yt.overlayProf 回報。flag 載入時算一次，商店版零成本。
+  const _OVERLAY_PROF = (() => { try { return !!SK.isDevTailBuild?.(); } catch (_) { return false; } })();
   function _updateOverlay() {
+    if (!_OVERLAY_PROF) return _updateOverlayImpl();
+    const t0 = performance.now();
+    try { return _updateOverlayImpl(); } finally {
+      const dt = performance.now() - t0;
+      const P = SK.YT._overlayProf || (SK.YT._overlayProf = { calls: 0, totalMs: 0, maxMs: 0 });
+      P.calls++; P.totalMs += dt; if (dt > P.maxMs) P.maxMs = dt;
+    }
+  }
+  function _updateOverlayImpl() {
     const YT = SK.YT;
     if (!YT.active || !YT.isAsr) return;
     // CC 關閉時清空 overlay(避免最後一條中文 cue 卡在畫面上)。

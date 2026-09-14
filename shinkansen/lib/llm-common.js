@@ -244,6 +244,27 @@ export const EMPTY_REASON_MESSAGES = {
  * @param {string} [opts.fallbackCode='emptyContent']
  * @param {string} [opts.fallbackMessage]
  */
+/**
+ * OpenAI 相容回應的 message.content 正規化為字串（2026-09-14 code review §8 Item G）。
+ * OpenAI Chat Completions 規格的回應 content 是 string | null，但少數相容伺服器
+ *（本機 proxy / gateway 回 Anthropic 式 content blocks）會回 array of parts
+ *（[{type:'text', text:'…'}]）。舊碼 `choice?.message?.content || ''` 對 array 回 array，
+ * 下游 text.split / parseLlmJson 直接 TypeError（`text.split is not a function`）→ 整批
+ * 翻譯崩掉。這裡把 array 攤成純文字、其餘型別 String 化，非決定內容不 throw。
+ * @param {*} content message.content（string | null | Array<{text?:string}> | 其他）
+ * @returns {string}
+ */
+export function normalizeMessageContent(content) {
+  if (typeof content === 'string') return content;
+  if (content == null) return '';
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === 'string' ? part : (part && typeof part.text === 'string' ? part.text : '')))
+      .join('');
+  }
+  return String(content);
+}
+
 export function emptyContentError(finishReason, usage, {
   codes = EMPTY_REASON_CODES,
   messages = EMPTY_REASON_MESSAGES,

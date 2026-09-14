@@ -5,6 +5,7 @@
 // block 切分 / type 分類）在 W2 才會加進來。
 
 import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
+import { pageMayHaveColoredBackground } from './pdf-oplist.js';
 
 // MV3 不能跨 origin 載 worker，必須 vendor 進 extension 並用 chrome.runtime.getURL 指過去
 pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/vendor/pdfjs/pdf.worker.min.mjs');
@@ -250,8 +251,10 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
       }
     }
     // 用 commonObjs 反查字型物件補完(family 沒 keyword 但 font.italic/.bold)
+    let mayHaveColoredBackground;   // 批次 7 §6.4：下方 opList 已載入，順便算給 renderer 用
     try {
-      await page.getOperatorList(); // 觸發 worker font load
+      const opList = await page.getOperatorList(); // 觸發 worker font load
+      mayHaveColoredBackground = pageMayHaveColoredBackground(opList);
       for (const fn of Object.keys(styleIsItalic)) {
         if (styleIsItalic[fn] && styleIsBold[fn]) continue;
         try {
@@ -396,6 +399,10 @@ async function extractRawDoc(pdfDoc, file, onProgress, options) {
       pageIndex,
       viewport: viewportInfo(page, viewport),
       textRuns,
+      // 批次 7 §6.4：renderer 底色取樣的前置判斷（純文字頁跳過 render）原本要在 renderer
+      // 再 getOperatorList 一次；解析階段已經為了字型載入拿過同一份 opList，在這裡算好
+      // 帶過去，renderer 只在旗標缺席（舊 doc / 這段 throw）時才自己再拿一次
+      mayHaveColoredBackground,
     });
     page.cleanup();
   }

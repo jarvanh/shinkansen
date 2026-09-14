@@ -306,6 +306,13 @@ export async function query({ from, to } = {}) {
  */
 export async function getStats({ from, to } = {}) {
   const records = await query({ from, to });
+  return statsFromRecords(records);
+}
+
+/**
+ * 純函式：由紀錄陣列算彙總（getStats 與 queryUsagePage 共用；2026-09-14 批次 7 §6.3）
+ */
+export function statsFromRecords(records) {
   const stats = {
     count: records.length,
     totalInputTokens: 0,
@@ -339,6 +346,13 @@ export async function getStats({ from, to } = {}) {
  */
 export async function getAggregated({ from, to, groupBy = 'day' } = {}) {
   const records = await query({ from, to });
+  return aggregateRecords(records, { from, to, groupBy });
+}
+
+/**
+ * 純函式：由紀錄陣列做日 / 週 / 月聚合（getAggregated 與 queryUsagePage 共用）
+ */
+export function aggregateRecords(records, { from, to, groupBy = 'day' } = {}) {
   const buckets = new Map(); // period string → aggregated data
 
   for (const r of records) {
@@ -363,6 +377,22 @@ export async function getAggregated({ from, to, groupBy = 'day' } = {}) {
   // 填補空白期間（讓折線圖不跳空）
   const result = fillGaps(buckets, from, to, groupBy);
   return result;
+}
+
+/**
+ * 用量分頁一次取齊（2026-09-14 批次 7 §6.3）：原本 options 用量分頁開頁 / 換區間各發
+ * QUERY_USAGE_STATS + QUERY_USAGE_CHART + QUERY_USAGE 三則訊息，背景各自對同一時間範圍
+ * 走一次 IndexedDB cursor（三次全掃）。改成一次 cursor 取紀錄，彙總與聚合都由同一份
+ * 陣列以純函式算出——三個欄位與原三則訊息逐一相等（statsFromRecords / aggregateRecords
+ * 就是 getStats / getAggregated 的本體）。
+ */
+export async function queryUsagePage({ from, to, groupBy = 'day' } = {}) {
+  const records = await query({ from, to });
+  return {
+    records,
+    stats: statsFromRecords(records),
+    data: aggregateRecords(records, { from, to, groupBy }),
+  };
 }
 
 /**

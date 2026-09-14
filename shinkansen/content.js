@@ -136,6 +136,7 @@
           isAsr:           SK.YT.isAsr,
           displayCuesLen:  SK.YT.displayCues?.length ?? 0,
           ytConfig:        SK.YT.config,
+          overlayProf:     SK.YT._overlayProf || null,   // 批次 7 量測（dev tail 才累積）
         };
       }
       respond(out);
@@ -303,6 +304,60 @@
       // background 重啟 SW；此 tab 的 content script 會變成 orphan，下次 navigate
       // 重新注入新 code。
       forwardToBackground('RELOAD_EXTENSION');
+    } else if (action === 'PROFILE_DETECT' || action === 'PROFILE_SERIALIZE') {
+      // 效能 profile（2026-09-14 code review 批次 7）：dev tail 專用。
+      // PROFILE_DETECT：重跑 collectParagraphs N 次量耗時，回每輪 ms + 最後一輪 skipStats
+      //   + 單元簽章（kind|tag|textLength|前 40 字），供改動前後等價比對。
+      // PROFILE_SERIALIZE：對全部單元序列化（含 fragment）再以「譯文 = 原序列化字串」
+      //   反序列化（identity round-trip），量兩段耗時，回序列化簽章（text + slots 數）。
+      //   反序列化只組 fragment 不注入 DOM，頁面不變。
+      // 不進商店版（走預設 dev tail gate），純唯讀。
+      try {
+        const d = e.detail || {};
+        const runs = Math.max(1, Math.min(20, Number(d.runs) || 5));
+        const times = [];
+        let units = [];
+        let stats = {};
+        for (let i = 0; i < runs; i++) {
+          stats = {};
+          const t0 = performance.now();
+          units = SK.collectParagraphs(document.body, stats);
+          times.push(Math.round((performance.now() - t0) * 100) / 100);
+        }
+        const summary = units.map((u) => {
+          const s = unitSummary(u, 0);
+          return `${s.kind}|${s.tag}|${s.textLength}|${s.textPreview.slice(0, 40)}`;
+        });
+        if (action === 'PROFILE_DETECT') {
+          respond({ ok: true, runs, timesMs: times, unitCount: units.length, skipStats: stats, summary });
+          return;
+        }
+        const serTimes = [];
+        const deserTimes = [];
+        let serialized = [];
+        for (let i = 0; i < runs; i++) {
+          const t0 = performance.now();
+          serialized = units.map((u) => {
+            if (u.kind === 'fragment') return SK.serializeFragmentWithPlaceholders(u);
+            if (!SK.hasPreservableInline(u.el)) return { text: (u.el.innerText ?? u.el.textContent ?? '').trim(), slots: [] };
+            return SK.serializeWithPlaceholders(u.el);
+          });
+          serTimes.push(Math.round((performance.now() - t0) * 100) / 100);
+          const t1 = performance.now();
+          for (const s of serialized) {
+            if (!s.text) continue;
+            SK.deserializeWithPlaceholders(s.text, s.slots, { cloneReuse: true });
+          }
+          deserTimes.push(Math.round((performance.now() - t1) * 100) / 100);
+        }
+        const serSummary = serialized.map((s) => `${s.slots.length}|${s.text.length}|${s.text.slice(0, 60)}`);
+        respond({
+          ok: true, runs, unitCount: units.length,
+          detectTimesMs: times, serializeTimesMs: serTimes, deserializeTimesMs: deserTimes,
+          totalSlots: serialized.reduce((a, s) => a + s.slots.length, 0),
+          serSummary,
+        });
+      } catch (err) { respond({ ok: false, error: err?.message || String(err) }); }
     } else if (action === 'GET_YT_DEBUG') {
       // 暴露 YT 字幕翻譯的內部狀態，供除錯比對用
       const YT = SK.YT;
@@ -1369,6 +1424,18 @@
     }
 
     const translateStartTime = Date.now();
+
+    // 批次 7（2026-09-14）：convertOnly 輕量預檢——整頁（含 open shadow root）文字若連一個
+    // 來源變體特徵字都沒有（cn2twp：簡體獨有字；twp2cn：任何 CJK 字），collectParagraphs
+    // 後的 isConvertibleVariant 過濾必為 0 段（判準需要該類字元 ≥ 1），直接靜默結束，
+    // 省掉英文頁上首跑 + 晚 render 補課最多 5 次的整頁偵測（Wikipedia 長文每次 ~110ms）。
+    // 預檢是過濾條件的嚴格超集（見 content-detect.js pageHasConvertibleSignal），結果等價。
+    if (convertOnly && SK.pageHasConvertibleSignal && !SK.pageHasConvertibleSignal(convertDirection)) {
+      SK.sendLog('info', 'translate', 'convertOnly: no source-variant chars on page, silent exit (precheck)', { direction: convertDirection });
+      releaseRunState(myAbortController);
+      SK.safeSendMessage({ type: 'CLEAR_BADGE' }).catch(() => {});
+      return;
+    }
 
     const t_collect_start = Date.now();
     let units = SK.collectParagraphs();

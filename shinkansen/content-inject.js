@@ -945,29 +945,48 @@
     if (!win) return el.textContent || '';
     let text = '';
     const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
-    let n;
-    while ((n = walker.nextNode())) {
-      let p = n.parentElement;
-      let hidden = false;
-      while (p && p !== el.parentElement) {
-        const cs = win.getComputedStyle(p);
-        if (cs.display === 'none' || cs.visibility === 'hidden') { hidden = true; break; }
+    // 2026-09-14 批次 7：同一呼叫內祖先「自身是否隱藏」結果快取——同段多個 text node
+    // 共用祖先鏈，原本每個 text node 都對每層祖先重跑 getComputedStyle +
+    // getBoundingClientRect。單次呼叫內 DOM 不變，結果等價。
+    const selfHiddenMemo = new Map();
+    const isSelfHidden = (p) => {
+      const hit = selfHiddenMemo.get(p);
+      if (hit !== undefined) return hit;
+      let h = false;
+      const cs = win.getComputedStyle(p);
+      if (cs.display === 'none' || cs.visibility === 'hidden') h = true;
+      else {
         if (cs.position === 'absolute') {
           const r = p.getBoundingClientRect();
-          if (r.width <= 1 && r.height <= 1) { hidden = true; break; }
+          if (r.width <= 1 && r.height <= 1) h = true;
         }
         // SVG `<desc>` / `<title>` 等 a11y metadata 元素 rect 是 0×0(瀏覽器
         // 完全不渲染，只給 screen reader / accessibility tree 用)。Medium
         // 文章按讚 / 留言計數 anchor 用 SVG `<desc>` 放 "A clap icon" 等說明
         // 文字，影響 textContent 但對 sighted user 完全不可見。
-        const r2 = p.getBoundingClientRect();
-        if (r2.width === 0 && r2.height === 0) { hidden = true; break; }
+        if (!h) {
+          const r2 = p.getBoundingClientRect();
+          if (r2.width === 0 && r2.height === 0) h = true;
+        }
+      }
+      selfHiddenMemo.set(p, h);
+      return h;
+    };
+    let n;
+    while ((n = walker.nextNode())) {
+      let p = n.parentElement;
+      let hidden = false;
+      while (p && p !== el.parentElement) {
+        if (isSelfHidden(p)) { hidden = true; break; }
         p = p.parentElement;
       }
       if (!hidden) text += n.nodeValue || '';
     }
     return text;
   }
+
+
+  SK._getVisibleText = getVisibleText;  // 測試 / profile seam（批次 7 等價 spec 與量測）
 
   /** 找最近的 block 祖先（computed display ∈ BLOCK_DISPLAY_VALUES）。
    * 若 el 自身 computed display 已是 block-ish(例如 `<a style="display:flex">`,

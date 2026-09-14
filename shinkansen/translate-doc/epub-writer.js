@@ -526,12 +526,22 @@ export function buildTranslatedEpub(epubDoc, targetLanguage, opts = {}) {
   for (const path of Object.keys(entries)) {
     if (path === 'mimetype') continue;
     if (path.endsWith('/')) continue; // 目錄 entry 不需重建
-    zipInput[path] = modified.has(path) ? strToU8(modified.get(path)) : entries[path];
+    const u8 = modified.has(path) ? strToU8(modified.get(path)) : entries[path];
+    // 批次 7 §6.4：圖片 / 字型 / 音訊等本身已壓縮的 entry 用 STORED（level 0）——
+    // 原本每次下載都對整本書的媒體同步重跑 deflate（大書最花時間的一段）且壓不出空間。
+    // entry 內容位元組不變，只有 zip 內的儲存方式不同
+    zipInput[path] = isPrecompressedMediaPath(path) ? [u8, { level: 0 }] : u8;
   }
   // 新增的 nav 文件（原 zip 沒有的 entry）
   if (navPath && !zipInput[navPath]) zipInput[navPath] = strToU8(modified.get(navPath));
   const bytes = zipSync(zipInput, { level: 6 });
   return { bytes, translatedChapters, appliedBlocks };
+}
+
+/** 已壓縮媒體 / 字型副檔名（epub / docx 重打包共用判準；docx-engine 有同一份鏡像） */
+const PRECOMPRESSED_MEDIA_RE = /\.(?:png|jpe?g|gif|webp|avif|bmp|tiff?|ico|ttf|otf|woff2?|eot|mp3|m4a|aac|ogg|oga|wav|mp4|m4v|webm|ogv|zip|jar|gz|br|pdf)$/i;
+export function isPrecompressedMediaPath(path) {
+  return PRECOMPRESSED_MEDIA_RE.test(String(path || ''));
 }
 
 /** 下載檔名：<原檔名>-shinkansen.epub（雙語版 -shinkansen-dual.epub，兩版可並存不互蓋） */

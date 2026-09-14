@@ -275,6 +275,9 @@ function releaseCurrentDoc() {
 }
 
 // dev hook(批次 8 G6):verify harness 抽到 dev-verify.js,harness / spec 端先呼叫
+// 批次 7 §6.4 等價 spec 用：autoFixCjkSpacing 的簽章跳過（同內容第二次不再離屏渲染）
+window.__skAutoFixCjkSpacing = (doc) => autoFixCjkSpacing(doc);
+
 // await window.__skInstallVerify() 再用 window.__skVerify。production 正常使用不載入。
 window.__skInstallVerify = async () => {
   if (!window.__skVerify) {
@@ -372,6 +375,7 @@ async function handleFile(file) {
         columnCount: p.columnCount,
         medianLineHeight: p.medianLineHeight,
         bodyFontSize: p.bodyFontSize,
+        mayHaveColoredBackground: p.mayHaveColoredBackground,   // 批次 7 §6.4（解析階段旗標，harness 驗用）
         blocks: p.blocks,
       })),
     };
@@ -3263,6 +3267,18 @@ async function refreshSubtitleStripPeriod() {
   return on;
 }
 
+// 批次 7 §6.4：autoFixCjkSpacing 每次開預覽 / 下載都把全書 done block 離屏渲染一次找
+// CJK / 拉丁間距；修正是冪等的（已補過空格的內容第二次 0 命中），對「上次處理後內容沒變」
+// 的 block 直接跳過。簽章 = 狀態 + translationRaw + editedHtml + translation 的 FNV-1a；
+// 用 WeakMap 掛在 block 物件上，不進 session 持久化（重載後首輪照跑一次）
+const _cjkFixSigByBlock = new WeakMap();
+function _cjkFixSignature(b) {
+  const str = `${b.translationStatus}\u0001${b.translationRaw ?? ''}\u0001${b.editedHtml ?? ''}\u0001${b.translation ?? ''}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return `${str.length}:${h}`;
+}
+
 async function autoFixCjkSpacing(doc) {
   const none = { hits: 0, blocks: 0 };
   if (!doc || !Array.isArray(doc.chapters)) return none;
@@ -3280,6 +3296,9 @@ async function autoFixCjkSpacing(doc) {
   for (const ch of doc.chapters) {
     for (const b of ch.blocks) {
       if (b.translationStatus !== 'done') continue;
+      const sig = _cjkFixSignature(b);
+      if (_cjkFixSigByBlock.get(b) === sig) continue;   // 上次處理後沒變：冪等，跳過
+      _cjkFixSigByBlock.set(b, sig);
       // 字幕 block（tagSlots 字串級佔位符）：DOM 路徑會把佔位符剝掉存成
       // editedHtml、行內標記全丟 → 改在 translationRaw 逐文字片段校正，
       // 佔位符原位保留（手動編輯過的 block 仍走下方 editedHtml 路徑）
@@ -3291,6 +3310,7 @@ async function autoFixCjkSpacing(doc) {
           b.translation = stripPlaceholderTokens(r.text);
           blocks++;
           hits += r.count;
+          _cjkFixSigByBlock.set(b, _cjkFixSignature(b));
         }
         continue;
       }
@@ -3317,6 +3337,7 @@ async function autoFixCjkSpacing(doc) {
         blocks++;
         hits += blockHits;
         commitEditedBlock(b, el);
+        _cjkFixSigByBlock.set(b, _cjkFixSignature(b));
       }
     }
   }

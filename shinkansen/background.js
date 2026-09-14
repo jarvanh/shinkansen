@@ -1296,6 +1296,11 @@ const messageHandlers = {
     async: true,
     handler: async (payload) => ({ data: await usageDB.getAggregated(payload || {}) }),
   },
+  // 用量分頁一次取齊（records + stats + chart 同一次 cursor；2026-09-14 批次 7 §6.3）
+  QUERY_USAGE_PAGE: {
+    async: true,
+    handler: async (payload) => usageDB.queryUsagePage(payload || {}),
+  },
   EXPORT_USAGE_CSV: {
     async: true,
     handler: async (payload) => ({ csv: await usageDB.exportCSV(payload || {}) }),

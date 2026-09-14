@@ -185,6 +185,8 @@ function analyzePage(rawPage) {
     medianLineHeight: 0,
     columnCount: 1,
   };
+  // 批次 7 §6.4：解析階段算好的「可能有彩色底」旗標透傳給 renderer（缺席時 renderer 自己算）
+  if (typeof rawPage.mayHaveColoredBackground === 'boolean') out.mayHaveColoredBackground = rawPage.mayHaveColoredBackground;
   const runs = (rawPage.textRuns || []).slice();
   if (runs.length === 0) return out;
 
@@ -526,6 +528,34 @@ function newLineFromRun(run) {
 function splitLinesAtCellGaps(lines, medianLineHeight) {
   const gapThreshold = (medianLineHeight || 12) * TABLE_CELL_GAP_FACTOR;
   const formMaxGap = FORM_ROW_MAX_X_GAP_FACTOR * (medianLineHeight || 12);
+  // y 分桶索引（lazy）：桶高 = mlh，每條 line 登記進它 bbox 縱向涵蓋的所有桶；
+  // 查詢 [y0, y1] 取涵蓋桶的聯集（去重）。桶內 line 仍經原本的精確縱向篩選，結果集合
+  // 與全掃相同；residualGapAfterSupFill 內部對區間排序，順序無關
+  const bucketH = Math.max(1, medianLineHeight || 12);
+  let yBuckets = null;
+  const linesOverlappingY = (y0, y1) => {
+    if (!yBuckets) {
+      yBuckets = new Map();
+      for (const l of lines) {
+        const b0 = Math.floor(l.bbox[1] / bucketH), b1 = Math.floor(l.bbox[3] / bucketH);
+        for (let b = b0; b <= b1; b++) {
+          let arr = yBuckets.get(b);
+          if (!arr) { arr = []; yBuckets.set(b, arr); }
+          arr.push(l);
+        }
+      }
+    }
+    const b0 = Math.floor(y0 / bucketH), b1 = Math.floor(y1 / bucketH);
+    if (b0 === b1) return yBuckets.get(b0) || [];
+    const seen = new Set();
+    const res = [];
+    for (let b = b0; b <= b1; b++) {
+      const arr = yBuckets.get(b);
+      if (!arr) continue;
+      for (const l of arr) { if (!seen.has(l)) { seen.add(l); res.push(l); } }
+    }
+    return res;
+  };
   const out = [];
   for (const line of lines) {
     const runs = (line.runs || []);
@@ -540,7 +570,10 @@ function splitLinesAtCellGaps(lines, medianLineHeight) {
     const isSupOccupiedGap = (x0, x1) => {
       const ly0 = line.bbox[1], ly1 = line.bbox[3];
       const otherRuns = [];
-      for (const other of lines) {
+      // 批次 7 §6.4：原本對每個超門檻 gap 掃整頁所有 line（密集表格頁 L 條 line × 多個
+      // gap = O(L²)），改由 y 分桶索引只取縱向可能重疊的 line 再做原本的精確篩選；
+      // 桶只在第一次需要時建（多數頁沒有超門檻 gap 不會建）
+      for (const other of linesOverlappingY(ly0, ly1)) {
         if (other === line) continue;
         if (other.bbox[3] < ly0 || other.bbox[1] > ly1) continue; // 縱向不重疊快篩
         for (const r of (other.runs || [])) otherRuns.push(r);

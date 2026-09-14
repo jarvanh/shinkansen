@@ -773,11 +773,34 @@ if (window.__shinkansen_loaded) {
       .join('');
   };
 
+  // ─── computed style 單輪快取（2026-09-14 code review 批次 7 §6.2）────────
+  // 一輪 collectParagraphs 對同一元素平均呼叫 getComputedStyle 3.8 次（Wikipedia
+  // 長文實測 62K 次 / 16K 元素：acceptNode font-size:0 守門、isVisible、isCodeContainer、
+  // Case F display 判斷各自取一次）。getComputedStyle 每次都建新的 CSSStyleDeclaration
+  // wrapper，wrapper 建立成本佔偵測總時間約 7%。宣告物件是 live 的——讀屬性永遠反映
+  // 當下樣式，快取 wrapper 本身不改變任何讀值，語意完全等價。
+  // 只在 beginStyleMemo / endStyleMemo 之間生效（collectParagraphs、序列化迴圈這類
+  // 同步、不改 DOM 的區段）；區段外直接 getComputedStyle，行為與從前相同。
+  let _styleMemo = null;
+  SK.beginStyleMemo = function beginStyleMemo() { _styleMemo = new WeakMap(); };
+  SK.endStyleMemo = function endStyleMemo() { _styleMemo = null; };
+  SK.getCS = function getCS(el) {
+    if (!el) return null;
+    if (_styleMemo) {
+      const hit = _styleMemo.get(el);
+      if (hit !== undefined) return hit;
+    }
+    let cs = null;
+    try { cs = el.ownerDocument?.defaultView?.getComputedStyle?.(el) || null; } catch (_e) { cs = null; }
+    if (_styleMemo) _styleMemo.set(el, cs);
+    return cs;
+  };
+
   // 過濾隱藏元素
   SK.isVisible = function isVisible(el) {
     if (!el) return false;
     if (el.tagName === 'BODY') return true;
-    const style = el.ownerDocument?.defaultView?.getComputedStyle?.(el);
+    const style = SK.getCS(el);
     if (style) {
       if (style.visibility === 'hidden' || style.display === 'none') return false;
     }
@@ -883,8 +906,10 @@ if (window.__shinkansen_loaded) {
     if (el.children.length > 0) return false;
     const txt = (el.textContent || '').trim();
     if (!txt || !_LIGATURE_TOKEN_RE.test(txt)) return false;
+    const _cs = SK.getCS(el);
+    if (!_cs) return false;
     let ff = '';
-    try { ff = el.ownerDocument?.defaultView?.getComputedStyle?.(el)?.fontFamily || ''; } catch (_e) { return false; }
+    try { ff = _cs.fontFamily || ''; } catch (_e) { return false; }
     const first = (ff.split(',')[0] || '').replace(/^["'\s]+|["'\s]+$/g, '');
     return _ICON_FONT_RE.test(first);
   };

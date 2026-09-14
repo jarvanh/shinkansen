@@ -436,7 +436,28 @@ export async function clearAll() {
  * v0.85: 向下相容新舊格式的大小估算。
  */
 export async function stats() {
-  const all = await browser.storage.local.get(null);
+  // 2026-09-14 批次 7 §6.3：每次開 popup 都 storage.local.get(null) 把整池（可達 9.5MB）
+  // 反序列化進記憶體只為數條數 / 估 bytes。Chrome 130+ / Firefox 135+ 有 getKeys()
+  //（只回 key 清單不載值），bytes 改問原生 getBytesInUse(keys)（Firefox local 沒有
+  // getBytesInUse → 走舊法）。原生 bytes 是 storage 實際佔用（key + JSON 序列化值），
+  // 與舊估算（ASCII 1 / 其他 3 bytes 近似）同量級但不逐 byte 相等；此值只供 popup /
+  // Debug Bridge 顯示，不參與 eviction 判斷（evictOldest 走 getCacheUsageBytes）。
+  const area = browser.storage.local;
+  if (typeof area.getKeys === 'function' && typeof area.getBytesInUse === 'function') {
+    try {
+      const keys = await area.getKeys();
+      const tcEntries = keys.filter(k => k.startsWith(KEY_PREFIX));
+      const glossEntries = keys.filter(k => k.startsWith(GLOSSARY_PREFIX));
+      const [bytes, glossaryBytes] = await Promise.all([
+        tcEntries.length ? area.getBytesInUse(tcEntries) : 0,
+        glossEntries.length ? area.getBytesInUse(glossEntries) : 0,
+      ]);
+      return { count: tcEntries.length, bytes, glossaryCount: glossEntries.length, glossaryBytes };
+    } catch (_) {
+      // 落回全表掃描（下方）
+    }
+  }
+  const all = await area.get(null);
   const tcEntries = Object.keys(all).filter(k => k.startsWith(KEY_PREFIX));
   const glossEntries = Object.keys(all).filter(k => k.startsWith(GLOSSARY_PREFIX));
   let bytes = 0;

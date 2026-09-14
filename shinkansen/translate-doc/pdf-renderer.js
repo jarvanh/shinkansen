@@ -46,6 +46,7 @@
 
 import * as pdfjsLib from '../lib/vendor/pdfjs/pdf.min.mjs';
 import { TRANSLATABLE_TYPES } from './block-types.js';
+import { pageMayHaveColoredBackground } from './pdf-oplist.js';
 import { loadRemoteFontForLanguage, remoteFontKeyFor } from '../lib/font-loader.js';
 import { getSettings } from '../lib/storage.js';
 
@@ -966,14 +967,7 @@ function sampleBlockColors(img, w, h, bbox, scale) {
   return { bg: isWhiteBg ? null : bg, fg: isBlackFg ? null : fg };
 }
 // 頁面繪圖指令是否含「可能畫出底色」的操作：填色路徑 / 影像 / 漸層 / 巢狀 form（form 內容看不到，保守當有）
-function pageMayHaveColoredBackground(opList) {
-  const OPS = pdfjsLib.OPS;
-  if (!opList || !opList.fnArray || !OPS) return true;
-  const colorOps = new Set([OPS.fill, OPS.eoFill, OPS.fillStroke, OPS.eoFillStroke, OPS.closeFillStroke, OPS.closeEOFillStroke,
-    OPS.shadingFill, OPS.paintImageXObject, OPS.paintInlineImageXObject, OPS.paintJpegXObject, OPS.paintImageMaskXObject,
-    OPS.paintImageXObjectRepeat, OPS.paintImageMaskXObjectRepeat, OPS.paintImageMaskXObjectGroup, OPS.paintFormXObjectBegin, OPS.beginGroup].filter((v) => v != null));
-  return opList.fnArray.some((fn) => colorOps.has(fn));
-}
+// pageMayHaveColoredBackground：移到 pdf-oplist.js（解析階段與 renderer 單一資料源，批次 7 §6.4）
 async function renderPageSamples(page, viewport, layoutPage) {
   const blocks = ((layoutPage && layoutPage.blocks) || []).filter((b) => TRANSLATABLE_TYPES.has(b.type) && b.translation && Array.isArray(b.bbox));
   if (blocks.length === 0) return {};
@@ -1019,7 +1013,10 @@ async function extractPdfMetaForOverlay(arrayBuffer, pageCount, layoutDoc = null
         console.warn(`[Shinkansen] 第 ${i + 1} 頁 overlay metadata 抽取失敗，該頁不含 link / 底色：`, err && err.message);
         out.push(null);
       } finally {
-        if (owned && page) { try { page.cleanup(); } catch (_) { /* ignore */ } }
+        // 批次 7 §6.4：共用的 doc 也逐頁 cleanup——這裡拿過的 annotations / textContent /
+        // （fallback 時的）opList 用完即釋放，reader 之後 lazy render 會再向 worker 取；
+        // 沒有 render 進行中，cleanup 安全
+        if (page) { try { page.cleanup(); } catch (_) { /* ignore */ } }
       }
     }
     return out;
@@ -1045,7 +1042,6 @@ async function extractPageMetaForOverlay(page, i, layoutDoc) {
   // items（mask 範圍擴展用的原文 item bbox）。原本另抓每個 font 的 bold flag——
   // W7 起 bold 走 styleSegments，items.isBold 沒有任何消費者，每頁多付
   // commonObjs.get 純屬死工作（§5.2 已刪）
-  const opList = await page.getOperatorList();
   const tc = await page.getTextContent();
 
   const items = tc.items
@@ -1073,8 +1069,14 @@ async function extractPageMetaForOverlay(page, i, layoutDoc) {
   try {
     // 純文字頁（沒有任何填色 / 影像 / 漸層 / form 繪圖指令）不可能有彩色底，跳過 render：
     // 書籍 / 論文類 200 頁文件實測 render 每頁 ≈ 0.2s，跳過後生成時間回到取樣前
-    if (pageMayHaveColoredBackground(opList)) {
-      blockColors = await renderPageSamples(page, viewport, layoutDoc && layoutDoc.pages ? layoutDoc.pages[i] : null);
+    // 批次 7 §6.4：解析階段已算好旗標（layoutPage.mayHaveColoredBackground）就不再
+    // getOperatorList（每頁第二次評估）；舊 doc / 該頁解析時 throw 沒旗標才自己拿
+    const layoutPage = layoutDoc && layoutDoc.pages ? layoutDoc.pages[i] : null;
+    const mayColor = (layoutPage && typeof layoutPage.mayHaveColoredBackground === 'boolean')
+      ? layoutPage.mayHaveColoredBackground
+      : pageMayHaveColoredBackground(await page.getOperatorList());
+    if (mayColor) {
+      blockColors = await renderPageSamples(page, viewport, layoutPage);
     }
   } catch (err) {
     console.warn('[Shinkansen] 底色取樣失敗，該頁維持白底黑字：', err && err.message);

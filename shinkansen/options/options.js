@@ -2323,11 +2323,14 @@ async function loadUsageData() {
   // unhandled rejection,用量分頁停在舊資料無提示(同檔 fetchLogs 有包,這條漏)
   let statsRes, chartRes, recordsRes;
   try {
-    [statsRes, chartRes, recordsRes] = await Promise.all([
-      browser.runtime.sendMessage({ type: 'QUERY_USAGE_STATS', payload: { from, to } }),
-      browser.runtime.sendMessage({ type: 'QUERY_USAGE_CHART', payload: { from, to, groupBy: currentGranularity } }),
-      browser.runtime.sendMessage({ type: 'QUERY_USAGE', payload: { from, to } }),
-    ]);
+    // 2026-09-14 批次 7 §6.3：三則訊息（stats / chart / records）改一則 QUERY_USAGE_PAGE，
+    // 背景同一次 IndexedDB cursor 取齊；回傳結構拆回原三個變數，下方渲染邏輯不動
+    const pageRes = await browser.runtime.sendMessage({ type: 'QUERY_USAGE_PAGE', payload: { from, to, groupBy: currentGranularity } });
+    const ok = !!(pageRes && pageRes.ok);
+    statsRes = { ok, stats: pageRes?.stats };
+    chartRes = { ok, data: pageRes?.data };
+    recordsRes = { ok, records: pageRes?.records };
+    if (!ok) throw new Error(pageRes?.error || 'QUERY_USAGE_PAGE failed');
   } catch (err) {
     if (reqId === _loadUsageDataReqId) {
       $('usage-total-cost').textContent = '—';

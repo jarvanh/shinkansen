@@ -28,6 +28,7 @@ import { codedError } from './bg-error.js'; // 使用者面對錯誤帶 error co
 
 import {
   fetchWithRetry, readJsonBody, alignAndFallback, runChunkedBatch, emptyContentError, parseLlmJson, emptyUsage,
+  normalizeMessageContent,
 } from './llm-common.js';
 
 // 主翻譯 fetch 層級 timeout 預設值。使用者可透過 customProvider.fetchTimeoutSec 覆蓋。
@@ -180,7 +181,7 @@ async function translateChunk(texts, settings, glossary, fixedGlossary, forbidde
 
   const choice = json?.choices?.[0];
   const finishReason = choice?.finish_reason || 'unknown';
-  const text = choice?.message?.content || '';
+  const text = normalizeMessageContent(choice?.message?.content);
 
   // 抽 usage（OpenAI / OpenRouter 標準結構）
   // 2026-09-11 code review §3.5-2：提前到 empty 檢查之前——空內容（reasoning 模型把
@@ -329,7 +330,7 @@ export async function extractGlossary(compressedText, settings) {
 
   const choice = json?.choices?.[0];
   const finishReason = choice?.finish_reason || 'unknown';
-  const rawText = choice?.message?.content || '';
+  const rawText = normalizeMessageContent(choice?.message?.content);
   await debugLog('info', 'glossary', 'openai-compat glossary extraction response', {
     elapsed: ms, usage: u, rawChars: rawText.length, finishReason,
   });
