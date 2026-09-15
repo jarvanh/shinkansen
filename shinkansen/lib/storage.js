@@ -133,8 +133,12 @@ export const DEFAULT_SUBTITLE_SYSTEM_PROMPT = `你是專業的影片字幕翻譯
 export const DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT = `你是專業的{sourceLanguage} ASR（自動語音辨識）字幕翻譯員，將{sourceLanguage} YouTube 自動字幕翻譯成台灣繁體中文。
 
 <input_format>
-輸入是 JSON 陣列，每個元素 {"s": 起始毫秒， "e": 結束毫秒， "t": {sourceLanguage}片段}。
-範例：[{"s":500,"e":1200,"t":"the auto"},{"s":1200,"e":1800,"t":"captions are"},{"s":1800,"e":3500,"t":"really broken"}]
+輸入是逐行的{sourceLanguage}片段，每行格式「編號|片段文字」，編號從 1 開始依時間順序遞增；片段之間若有明顯停頓，會插入一個空行。
+範例：
+1|the auto
+2|captions are
+
+3|really broken
 </input_format>
 
 <task>
@@ -145,19 +149,19 @@ export const DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT = `你是專業的{sourceLanguag
 </task>
 
 <output_format>
-回傳 JSON 陣列，每個元素 {"s": 該句起始 ms, "e": 該句結束 ms, "t": 中文譯文}。
-- s 必須等於某個輸入元素的 s
-- e 必須等於某個輸入元素的 e（通常是該句最後一個片段的 e)
-- 不要包 \`\`\`json fence，直接輸出純 JSON 陣列
-- 不要任何解釋、開場白、後記
-範例：[{"s":500,"e":3500,"t":"自動字幕真的壞了"}]
+逐行輸出，每行格式「起始編號-結束編號|中文譯文」，代表該句涵蓋輸入的哪一段連續片段；只涵蓋一個片段時寫「編號|中文譯文」。
+- 編號必須來自輸入，各行範圍依序遞增、不可重疊、不可跳過任何片段（所有輸入片段都要被某一行涵蓋）
+- 每行只有一句譯文，譯文內不可出現換行
+- 不要 JSON、不要 code fence、不要任何解釋、開場白、後記
+範例：
+1-3|自動字幕真的壞了
 </output_format>
 
 <critical_rules>
 1. 禁用中國用語（網絡→網路、視頻→影片、軟件→軟體、數據→資料、用戶→使用者）
 2. 專有名詞保留原文寫法（人名、品牌、技術縮寫如 AI、NASA、CPU 不譯成中文）
 3. 忠實保留粗俗用語（Fuck → 幹），不審查、不委婉化
-4. 不要遺漏輸入片段：輸出陣列加總應涵蓋所有輸入時間範圍
+4. 不要遺漏輸入片段：每個輸入編號都必須被某一行的範圍涵蓋
 5. 這批輸入可能從句子中間開始、或在句子中間結束（前後還有其他批次接續）：開頭與結尾的殘句照字面翻譯即可，絕對不可為了讓句子完整而補上輸入片段裡沒有的詞語，也不可丟棄殘句
 </critical_rules>`;
 
@@ -368,8 +372,12 @@ export const UNIVERSAL_SUBTITLE_SYSTEM_PROMPT = `You are a professional video su
 export const UNIVERSAL_ASR_SUBTITLE_SYSTEM_PROMPT = `You are translating {sourceLanguage} ASR (auto-generated) subtitles into {targetLanguage}.
 
 <input_format>
-JSON array. Each element {"s": startMs, "e": endMs, "t": "{sourceLanguage} fragment"}.
-Example: [{"s":500,"e":1200,"t":"the auto"},{"s":1200,"e":1800,"t":"captions are"}]
+One {sourceLanguage} fragment per line in the form "index|fragment text"; indexes start at 1 and increase in time order. A blank line marks a noticeable pause between fragments.
+Example:
+1|the auto
+2|captions are
+
+3|really broken
 </input_format>
 
 <task>
@@ -381,10 +389,12 @@ Example: [{"s":500,"e":1200,"t":"the auto"},{"s":1200,"e":1800,"t":"captions are
 </task>
 
 <output_format>
-Return a JSON array. Each element {"s": startMs, "e": endMs, "t": "translation"}.
-- s must equal some input element's s
-- e must equal some input element's e (typically the last fragment's e in that sentence)
-- Output pure JSON only. No code fence. No prefaces, no postscripts.
+Output one line per sentence in the form "startIndex-endIndex|translation", where the range is the run of consecutive input fragments that sentence covers; use "index|translation" when a sentence covers a single fragment.
+- Indexes must come from the input; ranges must be in increasing order, must not overlap, and must not skip any fragment (every input fragment must be covered by some line)
+- Exactly one sentence per line; no line breaks inside a translation
+- No JSON, no code fence, no explanations, prefaces, or postscripts
+Example:
+1-3|自動字幕真的壞了
 </output_format>`;
 
 // navigator.language → 支援語言的推導規則（前綴比對，依序命中）。Q3 拍板：
@@ -727,7 +737,7 @@ export const DEFAULT_SETTINGS = {
   maxConcurrentBatches: 30,
   // v1.0.2: 每批段數上限與字元預算，使用者可在設定頁自行調整。
   // 段數上限：避免單批 placeholder slot 過多導致 LLM 對齊失準。
-  // 字元預算：作為 token proxy（3500 chars ≈ 1000 英文 tokens），留足 output headroom。
+  // 字元預算：作為 token proxy（7000 chars ≈ 2000 英文 tokens；2026-09-14 起 3500 → 7000，見 lib/constants.js）。
   maxUnitsPerBatch: DEFAULT_UNITS_PER_BATCH,
   maxCharsPerBatch: DEFAULT_CHARS_PER_BATCH,
   // v1.0.1: 單頁翻譯段落數上限。超大頁面（如維基百科長條目）超過此上限時截斷。

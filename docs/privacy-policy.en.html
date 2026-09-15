@@ -113,14 +113,14 @@
   <p class="lang-switch"><a href="privacy-policy.html">繁體中文</a> | <strong>English</strong></p>
 
   <h1>Shinkansen Privacy Policy</h1>
-  <p class="subtitle">Last updated: May 9, 2026</p>
+  <p class="subtitle">Last updated: September 14, 2026</p>
 
   <div class="highlight">
     <strong>TL;DR:</strong> Shinkansen does not collect, store, or transmit any personal data to our servers. All your settings and data live only in your own browser.
   </div>
 
   <h2>1. About Shinkansen</h2>
-  <p>Shinkansen is a browser extension that translates foreign-language web pages, PDF documents, and YouTube subtitles into your chosen target language (Traditional Chinese, Simplified Chinese, English, Japanese, Korean, Spanish, French, or German). Shinkansen performs translation through a translation engine you select; three engines are currently supported:</p>
+  <p>Shinkansen is a browser extension that translates foreign-language web pages, documents (PDF / EPUB / Word / TXT / Markdown / HTML / subtitle files), and YouTube and Google Drive video subtitles into your chosen target language (Traditional Chinese, Simplified Chinese, English, Japanese, Korean, Spanish, French, or German). Shinkansen performs translation through a translation engine you select; three engines are currently supported:</p>
   <ul>
     <li><strong>Google Gemini API</strong>: requires you to provide your own Gemini API Key</li>
     <li><strong>Google Translate</strong> (free): uses Google's unofficial public endpoint; no API Key required</li>
@@ -143,12 +143,12 @@
 
   <section>
     <h3>User Preferences</h3>
-    <p>Translation-related settings (target language, UI language, model selection, temperature, auto-translate domains list, glossary, blocked-word list, etc.) are stored in <code>storage.sync</code>, synced only between your own devices via the browser's built-in sync mechanism.</p>
+    <p>Translation-related settings (target language, UI language, model selection, temperature, auto-translate domains list, etc.) are stored in <code>storage.sync</code>, synced only between your own devices via the browser's built-in sync mechanism. The fixed glossary and blocked-word list are stored in <code>storage.local</code> (not synced across devices; move them with export / import on the settings page). On iOS, the app and the Safari extension on the same device share the API key and settings through an App Group; the data never leaves the device.</p>
   </section>
 
   <section>
     <h3>Translation Cache</h3>
-    <p>Already-translated web page segments and document segments are cached in <code>storage.local</code> to avoid redundant API calls. By default, Shinkansen does <em>not</em> auto-clear the cache on extension version updates (to prevent users from losing data); you can manually clear the translation cache from the popup or settings page at any time.</p>
+    <p>Already-translated web page segments and document segments are cached in <code>storage.local</code> to avoid redundant API calls. By default, Shinkansen does <em>not</em> auto-clear the cache on extension version updates (to prevent users from losing data); you can manually clear the translation cache from the toolbar icon menu or the document-translation page at any time.</p>
   </section>
 
   <section>
@@ -158,11 +158,16 @@
 
   <section>
     <h3>Instapaper link credentials (optional feature)</h3>
-    <p>If you enable "Send to Instapaper" and link your account, Shinkansen stores an Instapaper access token (OAuth token) and your account email in <code>storage.sync</code>. Your Instapaper password is only used at link time to exchange for the token, then discarded — it is never stored. The token is used solely to send page content to Instapaper when you trigger it.</p>
+    <p>If you enable "Send to Instapaper" and link your account, Shinkansen stores an Instapaper access token (OAuth token) in <code>storage.local</code> (not synced across devices, not included in exports) and your account email in <code>storage.sync</code>. Your Instapaper password is only used at link time to exchange for the token, then discarded — it is never stored. The token is used solely to send page content to Instapaper when you trigger it.</p>
+  </section>
+
+  <section>
+    <h3>Document-translation sessions and font cache</h3>
+    <p>Sessions for EPUB / Word / text / subtitle-file translation (translations, your manual edits, the whole-document glossary, accumulated cost) are stored in your browser's local IndexedDB so you can resume after closing the page. This data is not affected by "clear translation cache"; it is deleted when you discard the document on the document-translation page. Fonts downloaded for translated PDFs in Simplified Chinese / Japanese / Korean are kept in the browser's Cache Storage and downloaded only once.</p>
   </section>
 
   <h2>4. Data Sent to Third Parties</h2>
-  <p>Shinkansen's outbound network connections are limited to the following, and are only initiated when the corresponding feature is used:</p>
+  <p>Shinkansen's outbound network connections are limited to the following. Apart from the once-a-day exchange-rate refresh, they are only initiated when the corresponding feature is used:</p>
 
   <table>
     <thead>
@@ -191,18 +196,23 @@
       </tr>
       <tr>
         <td><code>api.github.com</code></td>
-        <td>Check for new Shinkansen versions (release metadata only)</td>
+        <td>Check for new Shinkansen versions (release metadata only; only builds installed manually from GitHub connect, at most once a day — store builds never do)</td>
         <td>No user data</td>
       </tr>
       <tr>
         <td><code>open.er-api.com</code></td>
-        <td>Fetch USD↔TWD exchange rate (to display API costs in TWD)</td>
+        <td>Fetch the USD↔TWD exchange rate (to display API costs in TWD; refreshed once a day in the background regardless of the currency setting)</td>
         <td>No user data</td>
+      </tr>
+      <tr>
+        <td><code>youtube.googleapis.com</code></td>
+        <td>Google Drive video subtitle translation: re-fetches the caption file the player has already loaded</td>
+        <td>The caption file URL, without login credentials</td>
       </tr>
       <tr>
         <td><code>www.instapaper.com</code></td>
         <td>Send to Instapaper (optional, user-initiated)</td>
-        <td>Your Instapaper access token, and the content, URL, and title of the current (translated) page</td>
+        <td>Your Instapaper access token, and the content, URL, and title of the current (translated) page. By default a short summary is generated with Gemini first (the article text is sent to Gemini; can be turned off in settings)</td>
       </tr>
     </tbody>
   </table>
@@ -225,7 +235,7 @@
 
   <section>
     <h3><code>&lt;all_urls&gt;</code> (access to all websites)</h3>
-    <p>Translation needs to read and modify the text content of arbitrary web pages, which requires this permission. The extension only modifies a page when you actively trigger a translation (or visit a domain on your auto-translate list).</p>
+    <p>Translation needs to read and modify the text content of arbitrary web pages, which requires this permission. The extension only modifies a page when you actively trigger a translation (or visit a domain on your auto-translate list). Additionally, automatic local Chinese-variant conversion is on by default: pages in the opposite Chinese variant are converted in place with a built-in dictionary, with no network access; it can be turned off in the toolbar icon menu.</p>
   </section>
 
   <section>
@@ -245,12 +255,12 @@
 
   <section>
     <h3><code>alarms</code></h3>
-    <p>Used to schedule service-worker idle wake-ups (e.g., maintaining translation streaming connections, periodic update checks). It does not collect data in the background.</p>
+    <p>Used to schedule service-worker idle wake-ups (e.g., maintaining translation streaming connections, periodic update checks, the daily exchange-rate refresh). It does not collect data in the background.</p>
   </section>
 
   <section>
     <h3><code>webNavigation</code></h3>
-    <p>Used to detect SPA navigation changes (so translation state can follow page transitions) and to support cross-tab translation continuity (when you open a link from an already-translated page in a new tab, the new tab inherits the translation settings). Browsing history is not collected.</p>
+    <p>Used for cross-tab translation continuity (when you open a link from an already-translated page in a new tab, the new tab inherits the translation settings). Browsing history is not collected.</p>
   </section>
 
   <h2>7. Data Security</h2>

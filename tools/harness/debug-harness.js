@@ -33,7 +33,8 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const EXT_PATH = path.resolve(__dirname, '..', '..', 'shinkansen');
+// EXT_PATH:可用環境變數指到「加了 version_name test-build 的暫存副本」——三段商店版 manifest 下 Debug Bridge 會被 gate 擋掉
+const EXT_PATH = process.env.EXT_PATH || path.resolve(__dirname, '..', '..', 'shinkansen');
 const TARGET_URL = process.env.TARGET_URL || 'https://en.wikipedia.org/wiki/Taiwan';
 const HEADED = process.env.SHINKANSEN_HEADED === '1';
 const KEEP = process.argv.includes('--keep');
@@ -209,14 +210,27 @@ async function main() {
     await debugBridge(evaluate, 'CLEAR_CACHE');
     await debugBridge(evaluate, 'CLEAR_LOGS');
 
-    // 觸發翻譯
-    console.log('[harness] TRANSLATE...');
-    const trigger = await debugBridge(evaluate, 'TRANSLATE');
+    // 觸發翻譯。TRIGGER_ACTION=YT_TRANSLATE 走字幕翻譯（等同 popup 字幕開關），並在
+    // 主世界按下播放讓視窗隨播放推進；YT_PLAY_MS 指定觀測多久後收資料（預設 60s）。
+    const TRIGGER_ACTION = process.env.TRIGGER_ACTION || 'TRANSLATE';
+    console.log(`[harness] ${TRIGGER_ACTION}...`);
+    const trigger = await debugBridge(evaluate, TRIGGER_ACTION);
     console.log('[harness] trigger response:', trigger);
+    if (TRIGGER_ACTION === 'YT_TRANSLATE') {
+      const playMs = Number(process.env.YT_PLAY_MS) || 60000;
+      await page.evaluate(() => { const v = document.querySelector('video'); if (v) { v.muted = true; v.play().catch(() => {}); } });
+      const t0 = Date.now();
+      while (Date.now() - t0 < playMs) {
+        await sleep(5000);
+        const st = await debugBridge(evaluate, 'GET_STATE');
+        const ct = await page.evaluate(() => { const v = document.querySelector('video'); return v ? Math.round(v.currentTime) : -1; });
+        console.log(`[harness] yt t=${Math.round((Date.now() - t0) / 1000)}s video=${ct}s`, JSON.stringify(st && st.yt));
+      }
+    }
 
-    // 輪詢等翻譯完成(translating === false 且 translated === true)
+    // 輪詢等翻譯完成(translating === false 且 translated === true)；YT 模式上面已觀測完，跳過
     const POLL_MS = 500;
-    const MAX_POLLS = 240;  // 120s
+    const MAX_POLLS = TRIGGER_ACTION === 'YT_TRANSLATE' ? 0 : 240;  // 120s
     let pollCount = 0;
     let lastSegmentCount = -1;
     while (pollCount < MAX_POLLS) {

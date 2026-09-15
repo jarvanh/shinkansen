@@ -543,8 +543,9 @@ if (window.__shinkansen_loaded) {
   // ─── 翻譯流程常數 ─────────────────────────────────────
   // 注意：content script 無法 import ES module，以下兩個值鏡像 lib/constants.js，
   // 修改時必須同步更新 lib/constants.js（lib/gemini.js 與 lib/storage.js 的單一來源）。
-  SK.DEFAULT_UNITS_PER_BATCH = 20;
-  SK.DEFAULT_CHARS_PER_BATCH = 3500;
+  // 2026-09-14：20 / 3500 → 40 / 7000（固定 prompt 開銷佔 input 65%，翻倍批次省三成 input token；量測見 lib/constants.js 註解）
+  SK.DEFAULT_UNITS_PER_BATCH = 40;
+  SK.DEFAULT_CHARS_PER_BATCH = 7000;
   SK.DEFAULT_MAX_CONCURRENT = 10;
   SK.DEFAULT_MAX_TOTAL_UNITS = 1000;
   // v1.7.2: batch 0 專用較小 limit;batch 1+ 仍用 DEFAULT_*_PER_BATCH 維持並行吞吐。
@@ -559,9 +560,25 @@ if (window.__shinkansen_loaded) {
   // 「整篇文章塞在一個 <div> 用 <br><br> 分段」(Christie's 拍品專文等)原本整塊當單一
   // element 單元 → 變成 2 萬字單一 streaming segment,Gemini flash/flash-lite 串流極慢
   // 甚至 stall「無法結束」。文字超過此值且能按段落切出 ≥2 段時,改切成多個 fragment 平行翻。
-  // 取 DEFAULT_CHARS_PER_BATCH:超過單批 char 上限的單元本來就無法併批、只能自己一批,
+  // 原取 DEFAULT_CHARS_PER_BATCH（3500）:超過單批 char 上限的單元本來就無法併批、只能自己一批,
+  // 2026-09-14 批次預算調成 7000 後此值刻意維持 3500——切分門檻是「單元多大才值得拆」,
+  // 與批次預算脫鉤,避免 detect-br-block-* 系列行為變動。
   // 切分後反而能塞回正常批次平行吞吐。
   SK.BR_BLOCK_SPLIT_CHARS = 3500;
+
+  // 2026-09-14：頁面只被背景簡繁本地轉換標成已翻譯時，使用者按翻譯要「翻外語內容」還是
+  // 「還原轉換」的判準——未翻候選段落的原文總字元數達此門檻即視為有外語內容要翻
+  // （約一個正文段落；避免整頁簡體頁上零星的英文按鈕 / 標籤把 toggle 還原變成整頁送翻）。
+  SK.CONVERTED_PAGE_RETRANSLATE_MIN_CHARS = 200;
+  SK.hasSubstantialUntranslated = function hasSubstantialUntranslated() {
+    const units = SK.collectParagraphs();
+    let chars = 0;
+    for (const u of units) {
+      chars += ((u.el?.innerText || u.text || '') + '').trim().length;
+      if (chars >= SK.CONVERTED_PAGE_RETRANSLATE_MIN_CHARS) return true;
+    }
+    return false;
+  };
 
   // SPA 動態載入常數
   SK.SPA_OBSERVER_DEBOUNCE_MS = 1000;

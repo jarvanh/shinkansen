@@ -30,7 +30,7 @@ API Key 會立刻顯示，格式像 `AIzaSy...`（約 39 個字元）。點旁�
 
 1. 點工具列的 Shinkansen 圖示 →「設定」（第一次安裝時設定頁會自動打開）
 2. 在「**Gemini API Key**」欄位貼上剛才複製的 Key，貼上後會自動檢查是否有效（也可按「測試」再驗一次），設定會自動儲存
-3. 開任何英文網頁，按 Option+S（Mac）或 Alt+S（Windows）試翻譯
+3. 開任何英文網頁，按 Option+S（Mac）或 Alt+S（Windows）試翻譯。Firefox 的 Alt+S 會被瀏覽器本身搶走，請改點工具列圖示選單的「翻譯本頁」，或到 about:addons 改快速鍵
 
 **iPhone / iPad**
 

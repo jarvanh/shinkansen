@@ -310,12 +310,8 @@
     // 同源修法,固定 +1500ms 讓每批最後一句系統性提早消失)
     const lastSeg = batch[batch.length - 1];
     const batchEndMs = SK.ASR.batchEndMs(lastSeg.startMs, DRIVE.rawSegments);
-    const inputArr = batch.map((seg, i) => {
-      const next = batch[i + 1];
-      const endMs = next ? next.startMs : batchEndMs;
-      return { s: seg.startMs, e: endMs, t: seg.text };
-    });
-    const inputJson = JSON.stringify(inputArr);
+    // 2026-09-15：傳輸格式改「編號|片段」逐行（SK.ASR.buildLlmInput，與 YT _runAsrSubBatch 同源）
+    const inputJson = SK.ASR.buildLlmInput(batch);
 
     let res;
     try {
@@ -347,7 +343,7 @@
     const rawText = res.result?.[0] || '';
     let entries;
     try {
-      entries = SK.ASR.parseAsrResponse(rawText);
+      entries = SK.ASR.parseLlmOutput(rawText, batch, batchEndMs);
     } catch (e) {
       SK.sendLog('warn', 'drive', `batch ${batchIdx + 1}/${totalBatches} parseAsrResponse failed (${engineLabel})`, {
         error: e?.message || String(e),

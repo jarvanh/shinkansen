@@ -113,14 +113,14 @@
   <p class="lang-switch"><strong>繁體中文</strong> | <a href="privacy-policy.en.html">English</a></p>
 
   <h1>Shinkansen 隱私權政策</h1>
-  <p class="subtitle">最後更新：2026 年 5 月 9 日</p>
+  <p class="subtitle">最後更新：2026 年 9 月 14 日</p>
 
   <div class="highlight">
     <strong>簡短版：</strong>Shinkansen 不會收集、儲存或傳送任何個人資料到我們的伺服器。您的所有設定與資料都只存在您自己的瀏覽器中。
   </div>
 
   <h2>1. 關於 Shinkansen</h2>
-  <p>Shinkansen 是一款瀏覽器擴充功能，可將外語網頁、PDF 文件、YouTube 字幕翻譯成多種目標語言（繁體中文、簡體中文、英文、日文、韓文、西班牙文、法文、德文）。Shinkansen 透過使用者選擇的翻譯引擎完成翻譯，目前支援三種：</p>
+  <p>Shinkansen 是一款瀏覽器擴充功能，可將外語網頁、文件（PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔）、YouTube 與 Google Drive 影片字幕翻譯成多種目標語言（繁體中文、簡體中文、英文、日文、韓文、西班牙文、法文、德文）。Shinkansen 透過使用者選擇的翻譯引擎完成翻譯，目前支援三種：</p>
   <ul>
     <li><strong>Google Gemini API</strong>：需要使用者自備 Gemini API Key</li>
     <li><strong>Google Translate</strong>（免費）：透過 Google 的非官方公開端點，完全不需要 API Key</li>
@@ -143,12 +143,12 @@
 
   <section>
     <h3>使用者偏好設定</h3>
-    <p>翻譯相關設定（目標語言、UI 語言、模型選擇、溫度參數、自動翻譯網站名單、術語表、禁用詞清單等）儲存在 <code>storage.sync</code>，僅透過瀏覽器的內建同步機制在您自己的裝置之間同步。</p>
+    <p>翻譯相關設定（目標語言、UI 語言、模型選擇、溫度參數、自動翻譯網站名單等）儲存在 <code>storage.sync</code>，僅透過瀏覽器的內建同步機制在您自己的裝置之間同步。固定術語表與禁用詞清單則儲存在 <code>storage.local</code>（不跨裝置同步，可透過設定頁的匯出 / 匯入搬移）。iOS 版會在同一裝置的 App 與 Safari 延伸功能之間透過 App Group 共用 API Key 與設定，資料不離開裝置。</p>
   </section>
 
   <section>
     <h3>翻譯快取</h3>
-    <p>已翻譯過的網頁段落與文件段落會快取在 <code>storage.local</code>，以避免重複呼叫 API。Shinkansen 預設不會在版本更新時自動清除快取（避免使用者掉資料）；您可以隨時在 popup 或設定頁手動清除翻譯快取。</p>
+    <p>已翻譯過的網頁段落與文件段落會快取在 <code>storage.local</code>，以避免重複呼叫 API。Shinkansen 預設不會在版本更新時自動清除快取（避免使用者掉資料）；您可以隨時在工具列圖示選單或翻譯文件頁手動清除翻譯快取。</p>
   </section>
 
   <section>
@@ -158,11 +158,16 @@
 
   <section>
     <h3>Instapaper 連結憑證（選用功能）</h3>
-    <p>若您啟用「送到 Instapaper」並完成帳號連結，Shinkansen 會在 <code>storage.sync</code> 儲存一組 Instapaper 存取權杖（OAuth token）與您的帳號 Email；您的 Instapaper 密碼只在連結當下用於換取權杖，用完即丟、不會儲存。這組權杖僅用於在您主動觸發時把頁面內容送往 Instapaper。</p>
+    <p>若您啟用「送到 Instapaper」並完成帳號連結，Shinkansen 會在 <code>storage.local</code>（不跨裝置同步、不在匯出範圍）儲存一組 Instapaper 存取權杖（OAuth token），帳號 Email 存在 <code>storage.sync</code>；您的 Instapaper 密碼只在連結當下用於換取權杖，用完即丟、不會儲存。這組權杖僅用於在您主動觸發時把頁面內容送往 Instapaper。</p>
+  </section>
+
+  <section>
+    <h3>文件翻譯工作階段與字型快取</h3>
+    <p>EPUB / Word / 文字檔 / 字幕檔翻譯的工作階段（譯文、您的手動編輯、全書術語表、累計費用）儲存在瀏覽器本機的 IndexedDB，讓您關頁重開後接續翻譯；這份資料不受「清除翻譯快取」影響，可在翻譯文件頁放棄該文件時刪除。目標語言為簡體中文 / 日文 / 韓文時下載的譯文 PDF 字型存在瀏覽器的 Cache Storage，只下載一次。</p>
   </section>
 
   <h2>4. 傳送到第三方的資料</h2>
-  <p>Shinkansen 對外網路連線範圍如下，並僅在功能需要時才發起：</p>
+  <p>Shinkansen 對外網路連線範圍如下，除匯率更新為每日一次的背景更新外，其餘僅在功能需要時才發起：</p>
 
   <table>
     <thead>
@@ -191,18 +196,23 @@
       </tr>
       <tr>
         <td><code>api.github.com</code></td>
-        <td>檢查 Shinkansen 新版（僅讀取 release metadata）</td>
+        <td>檢查 Shinkansen 新版（僅讀取 release metadata；只有從 GitHub 手動安裝的版本會連線、每日最多一次，商店版不連線）</td>
         <td>無使用者資料</td>
       </tr>
       <tr>
         <td><code>open.er-api.com</code></td>
-        <td>取得美元↔台幣即時匯率（用於以台幣顯示 API 成本）</td>
+        <td>取得美元↔台幣匯率（用於以台幣顯示 API 成本；每日一次背景更新，不論是否選擇台幣顯示）</td>
         <td>無使用者資料</td>
+      </tr>
+      <tr>
+        <td><code>youtube.googleapis.com</code></td>
+        <td>Google Drive 影片字幕翻譯：重新抓取播放器已載入的字幕檔</td>
+        <td>該字幕檔的網址，不帶登入資訊</td>
       </tr>
       <tr>
         <td><code>www.instapaper.com</code></td>
         <td>送到 Instapaper（選用，使用者主動觸發）</td>
-        <td>您的 Instapaper 存取權杖、目前（翻譯後）頁面的內容、網址與標題</td>
+        <td>您的 Instapaper 存取權杖、目前（翻譯後）頁面的內容、網址與標題。預設會先以 Gemini 為文章產生一段摘要（文章文字會送往 Gemini，可在設定頁關閉）</td>
       </tr>
     </tbody>
   </table>
@@ -225,7 +235,7 @@
 
   <section>
     <h3><code>&lt;all_urls&gt;</code>（存取所有網站）</h3>
-    <p>翻譯功能需要讀取並修改任意網頁的文字內容，因此需要此權限。擴充功能只在您主動觸發翻譯（或開啟自動翻譯的網域）時才會介入頁面。</p>
+    <p>翻譯功能需要讀取並修改任意網頁的文字內容，因此需要此權限。擴充功能只在您主動觸發翻譯（或開啟自動翻譯的網域）時才會介入頁面；另有預設開啟的本地簡繁自動轉換，在頁面為相反中文變體時以內建字典就地轉換，不連網、可在工具列圖示選單關閉。</p>
   </section>
 
   <section>
@@ -245,12 +255,12 @@
 
   <section>
     <h3><code>alarms</code></h3>
-    <p>用於 service worker 排定閒置喚醒時機（例如維持翻譯串流連線、定期檢查更新），不背景收集資料。</p>
+    <p>用於 service worker 排定閒置喚醒時機（例如維持翻譯串流連線、定期檢查更新、每日更新匯率），不背景收集資料。</p>
   </section>
 
   <section>
     <h3><code>webNavigation</code></h3>
-    <p>用於偵測 SPA 站點導航變化（讓翻譯狀態能跟著頁面切換）以及跨 tab 延續翻譯（您從翻譯過的頁面開連結到新 tab 時自動繼承翻譯設定）。不收集瀏覽歷史。</p>
+    <p>用於跨 tab 延續翻譯（您從翻譯過的頁面開連結到新 tab 時自動繼承翻譯設定）。不收集瀏覽歷史。</p>
   </section>
 
   <h2>7. 資料安全</h2>

@@ -42,7 +42,7 @@ winget install jqlang.jq
      content-*.js
      ...
    firefox-build.sh
-   BUILD.md  (this file)
+   BUILD-FIREFOX.md  (this file)
    ```
 
 2. Run the build script from the extracted root directory:
@@ -108,9 +108,12 @@ This:
    Firefox 128+ only).
 3. Adds `browser_specific_settings.gecko.data_collection_permissions: {"required": ["none"]}`
    (Mozilla's 2025 built-in data-consent rule. Shinkansen does NOT collect
-   any user data — translation calls go directly from the user's browser to
-   the Gemini API with the user-supplied API key; no Shinkansen-controlled
-   server is involved.)
+   any user data — every network request goes directly from the user's
+   browser to the third-party endpoint the user chose (Gemini, Google
+   Translate, a custom OpenAI-compatible endpoint, Instapaper, GitHub
+   release check, exchange rate, on-demand PDF fonts); no
+   Shinkansen-controlled server is involved. Full list in the privacy
+   policy, section 4.)
 
 ### Note on `strict_min_version: 128.0` vs `data_collection_permissions: 140+`
 
@@ -135,7 +138,8 @@ years of Firefox users from a feature that works fine for them; raising
 it would be unnecessarily restrictive.
 
 All other files (`background.js`, `content-*.js`, `lib/**/*`, `popup/**/*`,
-`options/**/*`, `_locales/**/*`, icons, CSS) are copied unchanged.
+`options/**/*`, `translate-doc/**/*`, `_locales/**/*`, icons, CSS,
+`THIRD-PARTY-NOTICES.md`, `LICENSE`) are copied unchanged.
 
 ---
 
@@ -172,16 +176,20 @@ Expected output:
 
 ## innerHTML Usage Rationale (for AMO reviewer)
 
-`web-ext lint` flags 21 `UNSAFE_VAR_ASSIGNMENT` warnings on `innerHTML`
-assignments. **None of these accept untrusted user input.** Each
-assignment is annotated with `// AMO source review: ...` in the source,
-explaining the source of the assigned string. The categories are:
+`web-ext lint` flags `UNSAFE_VAR_ASSIGNMENT` on every `innerHTML`
+assignment (about 60 sites across the codebase, `grep -rn "innerHTML ="`).
+**None of these accept untrusted remote input.** Roughly 20 sites carry an
+inline `// AMO source review: ...` comment; the rest fall into the same
+categories and can be verified from the surrounding lines:
 
 | Category | Locations | Source |
 |---|---|---|
-| **Restore self-saved DOM (translation guard)** | `content-spa.js` × 4, `content.js` × 2 | The string was previously read from the same element via `el.innerHTML` and saved to `STATE.translatedHTML` / `STATE.originalHTML`. We are restoring it back to the same element. |
-| **Sanitized via `_escapeHtml`** | `content-youtube.js` × 4 | The string is `_escapeHtml(text) + '<br>' + _escapeHtml(text)`. The `<br>` is a developer-controlled literal; user input is escaped. |
-| **Static template + numeric data** | `content-toast.js` × 1, `popup.js` × 1, `options.js` × 9 | All variables interpolated into the template are either: (a) developer-hardcoded strings (`RELEASE_HIGHLIGHTS` literal), (b) numeric values from internal calculation, or (c) escaped via `escapeHtml` / `escapeAttr` helpers. |
+| **Clear an element** (`el.innerHTML = ''`) | `translate-doc/index.js`, `translate-doc/reader.js` | Empty string literal. |
+| **Restore self-saved DOM (translation guard / restore)** | `content-spa.js`, `content.js`, `content-inject.js` | The string was previously read from the same element via `el.innerHTML` and saved to `STATE.translatedHTML` / `STATE.originalHTML`; it is written back to the same element. |
+| **Sanitized via `_escapeHtml` / `escapeHtml` / `escapeAttr`** | `content-youtube.js`, `options/options.js`, `popup/popup.js`, `content-toast.js`, `translate-doc/index.js` | Every interpolated value is escaped; tags in the template are developer-controlled literals. |
+| **Static template + i18n dictionary strings** | `lib/i18n.js` (`data-i18n-html` applier), `lib/i18n-content.js`, `translate-doc/reader.js`, `content-drive.js`, `content-floating-icon.js` (Shadow DOM markup) | Strings come from the bundled i18n dictionary or hardcoded markup; parameters are escaped by the `t()` helper. |
+| **Parse into a detached element** | `content-ns.js`, `translate-doc/block-output.js`, `translate-doc/epub-session-db.js`, `translate-doc/epub-writer.js` | HTML is parsed in a detached `div` (never attached to the page) to serialize / normalize it; the source is the extension's own translation output or the user's own edits made inside the extension UI. |
+| **Vendored library** | `lib/readability.js` | Upstream @mozilla/readability code, unchanged (see `THIRD-PARTY-NOTICES.md`). |
 
 User input (translation source text, glossary entries, model names,
 domain whitelist entries) is always escaped via `escapeHtml` /
@@ -198,8 +206,9 @@ size and cost without a security benefit.
 Public repository: https://github.com/jimmysu0309/shinkansen
 
 The Chrome version (`shinkansen/manifest.json` as-is) is the canonical
-source of truth. The Firefox build script lives in `.github/workflows/release.yml`
-and is mirrored in `firefox-build.sh` for reproducibility outside of CI.
+source of truth. The Firefox build script is `tools/release/firefox-build.sh`
+(the copy at the root of this source ZIP); `.github/workflows/release.yml`
+calls the same script, so CI and manual rebuilds share one implementation.
 
 License: Elastic License 2.0 (ELv2). See `LICENSE` in the repo.
 
@@ -212,6 +221,6 @@ For convenience, the typical AMO source submission form answers:
 | Question | Answer |
 |---|---|
 | Do you use any tools to compile / minify / process source? | Yes — `jq` only, to patch 5 lines of JSON in `manifest.json`. No JS / CSS / HTML transformation. |
-| Are there any third-party libraries? | `lib/vendor/chart.min.js` (Chart.js v4.5.1, MIT). Distributed as-is from upstream. |
+| Are there any third-party libraries? | Yes, all vendored unmodified under `lib/vendor/` (PDF.js, pdf-lib + fontkit, Chart.js, fflate, opencc-js + OpenCC dictionaries, Noto Sans TC font) plus `lib/readability.js` (@mozilla/readability). Noto Sans SC / JP / KR fonts are downloaded at runtime from the project site, not bundled. Versions and licenses: `shinkansen/THIRD-PARTY-NOTICES.md`. |
 | Build environment | bash + jq + zip (any Linux / macOS / WSL) |
 | How to reproduce | `./firefox-build.sh` (see steps above) |

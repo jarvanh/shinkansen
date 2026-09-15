@@ -8,14 +8,14 @@ Shinkansen 整合下列第三方軟體與字型，本檔列出來源、授權與
 
 - **用途**：翻譯文件功能解析 PDF / render 頁面 canvas / 抽取 text run
 - **檔案**:`shinkansen/lib/vendor/pdfjs/pdf.min.mjs`、`pdf.worker.min.mjs`
-- **來源**:Mozilla(github.com/mozilla/pdf.js)
+- **來源**:Mozilla(github.com/mozilla/pdf.js),vendored 版本 4.10.38
 - **授權**:Apache License 2.0
 - **授權檔**:`shinkansen/lib/vendor/pdfjs/LICENSE`
 
 ### pdf-lib (@cantoo/pdf-lib)
 
-- **用途**：翻譯文件功能下載「雙頁並排對照 PDF」時用 pdf-lib 創新 PDFDocument、
-  copyPages 把原 page embed 進新 doc、addPage 創新譯文頁、page.drawText 畫譯文
+- **用途**：翻譯文件功能產生譯文 PDF——以 pdf-lib 把原頁嵌為底層、在原文位置
+  蓋上遮罩後 drawText 寫入譯文（單頁覆蓋，非雙頁並排），並重建連結 annotation
 - **檔案**:`shinkansen/lib/vendor/pdf-lib/pdf-lib.min.js`(@cantoo/pdf-lib 2.6.5,
   Andrew Dillon 原作 hopding/pdf-lib 1.17.1 的活躍 fork，補上 mozilla/pdf.js 的
   AES decrypt 邏輯，讓含 owner-password 安全限制的弱加密 PDF 也能匯出譯文 PDF)
@@ -46,7 +46,7 @@ Shinkansen 整合下列第三方軟體與字型，本檔列出來源、授權與
 
 ### fflate
 
-- **用途**：文件翻譯的 EPUB 讀寫——解壓原書 zip 容器、翻譯後重新打包譯文 EPUB
+- **用途**：文件翻譯的 EPUB 與 Word（.docx）讀寫——解壓 zip 容器、翻譯後重新打包譯本
 - **檔案**：`shinkansen/lib/vendor/fflate/fflate.umd.js`
 - **來源**：Arjun Barrett（github.com/101arrowz/fflate）
 - **授權**：MIT License
@@ -90,3 +90,13 @@ Shinkansen 整合下列第三方軟體與字型，本檔列出來源、授權與
 - **授權**:SIL Open Font License Version 1.1
 - **授權檔**:`shinkansen/lib/vendor/fonts/LICENSE-NotoSansTC.txt`
 - **限制**：依 SIL OFL 條款，字型本身不可作為其他產品的行銷名稱
+
+### Noto Sans SC / JP / KR（Regular + Bold，按需下載）
+
+- **用途**：目標語言為簡體中文 / 日文 / 韓文時的譯文 PDF 內嵌字型。**安裝包不內建**，
+  第一次翻譯該語言的 PDF 時由 `lib/font-loader.js` 從專案網站
+  （`jimmysu0309.github.io/shinkansen/fonts/`）下載一次，SHA-256 驗證後存瀏覽器 Cache Storage
+- **檔案**：repo `docs/fonts/NotoSans{SC,JP,KR}-{Regular,Bold}.ttf`（GitHub Pages 發布）
+- **來源**：Google Noto CJK Sans 計畫（github.com/notofonts/noto-cjk）
+- **授權**：SIL Open Font License Version 1.1
+- **授權檔**：`docs/fonts/LICENSE-NotoSansCJK.txt`

@@ -126,6 +126,12 @@
     <li><strong>Document resume</strong>: cancelled or partly failed chapters only fill in unfinished segments, with no re-billing; closing the page keeps finished work; cost estimates corrected for CJK sources (previously about 2.6× too low).</li>
 
     <li><strong>Stability and performance</strong>: held shortcuts no longer flicker, quick SPA navigations no longer cancel each other, one bad paragraph no longer aborts its batch, only one Shinkansen copy runs per tab; long-page detection is about 30% faster and the per-page UI string file shrank from 770KB to 55KB.</li>
+
+    <li><strong>Web translation batches doubled</strong>: default 20 paragraphs / 3,500 characters per batch → 40 / 7,000, halving API requests per page and saving about a third of input tokens with no change to first-paint speed; custom settings are untouched.</li>
+
+    <li><strong>Translate after auto Chinese-variant conversion no longer restores</strong>: an English page with a few converted Simplified segments counted as "translated", so the first translate only undid those segments and you had to press twice; it now translates the whole page.</li>
+
+    <li><strong>YouTube auto-caption AI segmentation about half the cost</strong>: fragments are no longer sent with per-word timestamps but in a compact format; previously watched auto-caption videos are translated once more (the cache format changed).</li>
   </ul>
 
   <h2>v2.4.0 <span class="release-date">Released 2026-08-20</span></h2>

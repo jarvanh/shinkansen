@@ -1280,8 +1280,19 @@
         SK.sendLog('info', 'translate', 'convertOnly: page already translated, silent exit');
         return;
       }
-      restorePage();
-      return;
+      // 2026-09-14：頁面若只是被背景簡繁本地轉換標成已翻譯（translatedBy 'opencc-local'，
+      // 例如英文條目的資訊框有幾段簡體），使用者按翻譯的意圖是「翻這頁的外語內容」，
+      // 不是還原那幾段轉換——舊行為第一下變成 toggle 還原、整頁英文不翻、要按第二次
+      // （harness 實測 en.wikipedia 條目：資訊框 8 段轉換後 TRANSLATE 只還原了 8 段）。
+      // 仍有夠份量的未翻候選（已轉換段落帶 data-shinkansen-translated 不會被重收）→
+      // 視為未翻譯往下走整頁翻譯；沒有（整頁本來就是簡體）才維持 toggle 還原。
+      if (STATE.translatedBy === 'opencc-local' && SK.hasSubstantialUntranslated()) {
+        SK.sendLog('info', 'translate', 'page only locally converted, proceed to full translate instead of toggle restore');
+        STATE.translated = false;
+      } else {
+        restorePage();
+        return;
+      }
     }
     // ignorePartialMode 路徑：STATE.translated=true 進來時，先靜默重置 translated state
     // 讓後續流程能跑完整翻譯（否則 STATE.translated=true 會讓 translateUnits 內 inject 邏輯異常）

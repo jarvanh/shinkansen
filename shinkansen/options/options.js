@@ -120,7 +120,7 @@ async function load() {
   // v1.8.19: 安全邊際從 UI 移除，程式碼內部維持 storage default 0.1 即可
   $('maxConcurrentBatches').value = s.maxConcurrentBatches ?? 10;
   $('maxUnitsPerBatch').value = s.maxUnitsPerBatch ?? 20;
-  $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? 3500;
+  $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? 7000;
   $('maxTranslateUnits').value = s.maxTranslateUnits ?? 1000;
   // v1.8.3: partialMode toggle + size
   const pm = { ...DEFAULTS.partialMode, ...(s.partialMode || {}) };

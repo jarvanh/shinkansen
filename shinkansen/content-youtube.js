@@ -853,6 +853,53 @@
     return parsed;
   }
 
+  // 2026-09-15：ASR LLM 傳輸格式改「編號|片段」逐行，取代逐片段 JSON {s,e,t}。
+  // 量測（countTokens）：舊格式每個 1–3 字的片段包成 {"s":12000,"e":12400,"t":"the"} 約 21 token，
+  // 純文字只佔 input 4%；一個 8 秒子批 1,044 token 裡真正內容 40 token。真 API 實測新格式
+  // input −32%～−43%、output −48%，模型服從度 100%（涵蓋所有編號、順序正確、逐行可解析）。
+  // 時間軸不再送 LLM：顯示區間由片段時刻表決定（_resolveAsrEntryTimeline 本來就不採信 LLM 的 e），
+  // 輸出以「起始編號-結束編號|譯文」回，content 端把編號對回 startMs 再走同一條 timeline 解析。
+  // 片段間 start-to-start 間隔達門檻時插入空行當停頓提示（原本 LLM 從 s/e 隱含看到的資訊）。
+  // YT _runAsrSubBatch 與 Drive _runOneBatchLlm 共用（SK.ASR.buildLlmInput / parseLlmOutput）。
+  SK.ASR_LLM_PAUSE_GAP_MS = 1500;
+  function _buildAsrLlmInput(segs) {
+    const lines = [];
+    for (let i = 0; i < segs.length; i++) {
+      const seg = segs[i];
+      if (!seg) continue;
+      if (i > 0 && segs[i - 1] && seg.startMs - segs[i - 1].startMs >= SK.ASR_LLM_PAUSE_GAP_MS) lines.push('');
+      const text = String(seg.text || '').replace(/[\r\n]+/g, ' ').replace(/\|/g, '/').trim();
+      lines.push(`${i + 1}|${text}`);
+    }
+    return lines.join('\n');
+  }
+  const _ASR_LLM_LINE_RE = /^\s*(\d+)\s*(?:[-–~]\s*(\d+))?\s*[|｜]\s*(.+?)\s*$/;
+  // 回傳與舊協定同形的 entries [{s, e, t}]，下游 _resolveAsrEntryTimeline 不變。
+  // 模型無視格式回舊 JSON 時走 _parseAsrResponse fallback；編號超出範圍的行以 s=NaN 進 entries，
+  // 由 resolveEntryTimeline 計入 droppedCount（與舊協定的幻覺 s 同一路徑）。
+  function _parseAsrLlmOutput(text, segs, batchEndMs) {
+    const stripped = _stripJsonFence(text || '');
+    if (/^\s*\[/.test(stripped)) return _parseAsrResponse(stripped);
+    const entries = [];
+    let matched = 0;
+    for (const line of stripped.split('\n')) {
+      if (!line.trim()) continue;
+      const m = line.match(_ASR_LLM_LINE_RE);
+      if (!m) continue;
+      matched++;
+      let a = Number(m[1]);
+      let b = m[2] != null ? Number(m[2]) : a;
+      if (b < a) [a, b] = [b, a];
+      const segA = segs[a - 1];
+      const segB = segs[b - 1];
+      if (!segA || !segB) { entries.push({ s: NaN, e: NaN, t: m[3] }); continue; }
+      const next = segs[b];
+      entries.push({ s: segA.startMs, e: next ? next.startMs : batchEndMs, t: m[3] });
+    }
+    if (matched === 0) throw new Error('ASR response: no parsable lines');
+    return entries;
+  }
+
   // v2.0.54(症狀:句尾詞跨視窗重複,例「…181 匹馬力」/「馬力,但…」):
   // ASR 視窗是純時間對齊切分(floor 到 windowSizeMs),邊界常落在句中;前後視窗
   // 各自獨立送 LLM、互看不到——前窗看到殘句會腦補句尾(「It makes 181」→
@@ -2630,12 +2677,8 @@
     // v2.0.54:子批末條 e 改用 rawSegments 真實後繼片段起點(下一子批首條 = 本值,
     // 子批間仍不重疊),不再固定 +1500ms——固定值讓 LLM 對末句時距的認知系統性偏短
     const batchEndMs = _asrBatchEndMs(lastSeg.startMs, YT.rawSegments);
-    const inputArr = subSegs.map((seg, i) => {
-      const next = subSegs[i + 1];
-      const endMs = next ? next.startMs : batchEndMs;
-      return { s: seg.startMs, e: endMs, t: seg.text };
-    });
-    const inputJson = JSON.stringify(inputArr);
+    // 2026-09-15：傳輸格式改「編號|片段」逐行（見 _buildAsrLlmInput 註解）
+    const inputJson = _buildAsrLlmInput(subSegs);
 
     // 依 ytSubtitle.engine 路由：openai-compat → CUSTOM，其餘(含 google，因 Google MT
     // 不支援 JSON timestamp 模式) → Gemini ASR handler
@@ -2664,7 +2707,7 @@
     _logWindowUsage(subSegs.length, res.usage);
 
     const rawText = res.result?.[0] || '';
-    const entries = _parseAsrResponse(rawText);
+    const entries = _parseAsrLlmOutput(rawText, subSegs, batchEndMs);
 
     // v2.0.54:顯示時間軸改由 _resolveAsrEntryTimeline 以片段時間軸分割(不採信 LLM 的 e),
     // 修「AI 分句字幕太早消失 / 下一句太晚出現」:LLM 挑錯句中片段的 e 時,舊邏輯讓
@@ -4571,6 +4614,9 @@
     parseJson3,
     mergeAsr: _heuristicMergeAsr,
     parseAsrResponse: _parseAsrResponse,
+    // 2026-09-15：「編號|片段」傳輸格式（YT / Drive 共用；parseLlmOutput 對舊 JSON 回應仍 fallback）
+    buildLlmInput: _buildAsrLlmInput,
+    parseLlmOutput: _parseAsrLlmOutput,
     // v2.0.54: entry 驗證 + 顯示時間軸分割（YT / Drive 共用,取代 normalizeAsrEntry
     // 逐條驗證——LLM 的 e 不再採信,詳見 _resolveAsrEntryTimeline 註解)
     resolveEntryTimeline: _resolveAsrEntryTimeline,

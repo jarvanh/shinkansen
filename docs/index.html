@@ -397,7 +397,7 @@
         </a>
         <a href="https://github.com/jimmysu0309/shinkansen/releases" class="btn-download secondary">
           <span data-i18n="btn.github.text">GitHub 下載 beta 版手動安裝</span>
-          <span class="btn-version">v2.4.19 · beta</span>
+          <span class="btn-version">v2.5.0 · beta</span>
         </a>
       </div>
       <p class="hero-sub" data-i18n="hero.sub">開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="release-notes.html">更新紀錄</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a></p>
@@ -416,7 +416,8 @@
         <li data-i18n="recent.docfiles">新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）</li>
         <li data-i18n="recent.opencc">新增<strong>簡繁網頁轉換（免費）</strong>，簡繁中文互轉走內建字典本地轉換，不需 API Key、離線可用</li>
         <li data-i18n="recent.youtube"><strong>YouTube 字幕多項修正</strong>，youtube.com/live/ 直播連結也能翻譯字幕、英文單字不再被切成兩半，整體可靠性提升</li>
-        <li data-i18n="recent.pdf"><strong>PDF 翻譯品質大幅強化</strong>，表格與規格書的版面偵測、譯文渲染全面重修</li>
+        <li data-i18n="recent.notranslate"><strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字</li>
+        <li data-i18n="recent.pdf"><strong>PDF 翻譯全面強化</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，表格與規格書的版面偵測與譯文渲染重修，簡體 / 日文 / 韓文譯文字型用到才下載</li>
         <li data-i18n="recent.stability"><strong>大量翻譯品質與穩定性修正</strong>，網域專用術語表正確套用、譯文編輯模式強化、譯文被前端框架打回原文的守護補強</li>
       </ul>
     </div>
@@ -430,10 +431,10 @@
       <p data-i18n="privacy.intro2">Shinkansen 的出發點就是保護您的隱私：</p>
       <div class="privacy-points">
         <div class="privacy-point" data-i18n="privacy.point1">
-          <strong>資料不外傳</strong>：翻譯請求直連 Google Gemini，不經過任何第三方伺服器
+          <strong>資料不外傳</strong>：翻譯請求直連 Google Gemini（選 Google Translate 或自訂模型時則直連你選的服務端點），不經過任何第三方伺服器
         </div>
         <div class="privacy-point" data-i18n="privacy.point2">
-          <strong>設定留在本地</strong>：所有資料只存在你自己的電腦上
+          <strong>設定留在本地</strong>：設定與快取只留在你的瀏覽器（設定可隨瀏覽器帳號同步），不會送到 Shinkansen 的伺服器——因為根本沒有伺服器
         </div>
         <div class="privacy-point" data-i18n="privacy.point3">
           <strong>原始碼完全公開</strong>：任何人都可以檢視程式碼，確認沒有後門
@@ -466,11 +467,11 @@
       <div class="features">
         <div class="feature">
           <h3 data-i18n="feature.fast.title">極速秒翻</h3>
-          <p data-i18n="feature.fast.body">按下翻譯 1 秒看到頁面開始變中文，不用等整批 API 回完再一次塞回頁面（限 Gemini）</p>
+          <p data-i18n="feature.fast.body">按下翻譯 1 秒看到頁面開始出現譯文，不用等整批 API 回完再一次塞回頁面（限 Gemini）</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.layout.title">保留網頁排版</h3>
-          <p data-i18n="feature.layout.body">原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生中文頁面</p>
+          <p data-i18n="feature.layout.body">原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生頁面</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.dual.title">雙語對照</h3>
@@ -481,8 +482,12 @@
           <p data-i18n="feature.multilang.body">翻譯目標支援繁體中文 / 簡體中文 / 英文 / 日文 / 韓文 / 西班牙文 / 法文 / 德文，介面語言也跟著切換</p>
         </div>
         <div class="feature">
+          <h3 data-i18n="feature.docs.title">文件翻譯</h3>
+          <p data-i18n="feature.docs.body">PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔整份翻譯，全部在瀏覽器本機解析；PDF 保留原版面、Word 譯文寫回原檔、EPUB 與字幕可輸出雙語版</p>
+        </div>
+        <div class="feature">
           <h3 data-i18n="feature.youtube.title">YouTube 字幕翻譯</h3>
-          <p data-i18n="feature.youtube.body">看 YouTube 影片時，英文字幕自動翻譯為中文，並可選擇雙語對照</p>
+          <p data-i18n="feature.youtube.body">看 YouTube 影片時，字幕自動翻譯成你設定的目標語言（人工或自動產生字幕皆可），並可選擇雙語對照</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.spa.title">跨頁自動延續翻譯</h3>
@@ -599,15 +604,16 @@
           'recent.docfiles': '新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）',
           'recent.opencc': '新增<strong>簡繁網頁轉換（免費）</strong>，簡繁中文互轉走內建字典本地轉換，不需 API Key、離線可用',
           'recent.youtube': '<strong>YouTube 字幕多項修正</strong>，youtube.com/live/ 直播連結也能翻譯字幕、英文單字不再被切成兩半，整體可靠性提升',
-          'recent.pdf': '<strong>PDF 翻譯品質大幅強化</strong>，表格與規格書的版面偵測、譯文渲染全面重修',
+          'recent.notranslate': '<strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字',
+          'recent.pdf': '<strong>PDF 翻譯全面強化</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，表格與規格書的版面偵測與譯文渲染重修，簡體 / 日文 / 韓文譯文字型用到才下載',
           'recent.stability': '<strong>大量翻譯品質與穩定性修正</strong>，網域專用術語表正確套用、譯文編輯模式強化、譯文被前端框架打回原文的守護補強',
           'recent.ios': '<strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配四指觸控翻譯與懸浮按鈕，開箱即用',
 
           'privacy.heading': '為什麼做 Shinkansen?',
           'privacy.intro1': '既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光',
           'privacy.intro2': 'Shinkansen 的出發點就是保護您的隱私：',
-          'privacy.point1': '<strong>資料不外傳</strong>：翻譯請求直連 Google Gemini，不經過任何第三方伺服器',
-          'privacy.point2': '<strong>設定留在本地</strong>：所有資料只存在你自己的電腦上',
+          'privacy.point1': '<strong>資料不外傳</strong>：翻譯請求直連 Google Gemini（選 Google Translate 或自訂模型時則直連你選的服務端點），不經過任何第三方伺服器',
+          'privacy.point2': '<strong>設定留在本地</strong>：設定與快取只留在你的瀏覽器（設定可隨瀏覽器帳號同步），不會送到 Shinkansen 的伺服器——因為根本沒有伺服器',
           'privacy.point3': '<strong>原始碼完全公開</strong>：任何人都可以檢視程式碼，確認沒有後門',
 
           'compare.before': '翻譯前',
@@ -618,15 +624,17 @@
 
           'features.heading': '功能特色',
           'feature.fast.title': '極速秒翻',
-          'feature.fast.body': '按下翻譯 1 秒看到頁面開始變中文，不用等整批 API 回完再一次塞回頁面（限 Gemini）',
+          'feature.fast.body': '按下翻譯 1 秒看到頁面開始出現譯文，不用等整批 API 回完再一次塞回頁面（限 Gemini）',
           'feature.layout.title': '保留網頁排版',
-          'feature.layout.body': '原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生中文頁面',
+          'feature.layout.body': '原地替換文字，字型、字級、顏色、連結全部保留，看起來就像原生頁面',
           'feature.dual.title': '雙語對照',
           'feature.dual.body': '原文與譯文並列顯示，一眼對照學語言或核對譯文；單語覆蓋與雙語對照可隨時切換',
           'feature.multilang.title': '多語翻譯 + 多語介面',
           'feature.multilang.body': '翻譯目標支援繁體中文 / 簡體中文 / 英文 / 日文 / 韓文 / 西班牙文 / 法文 / 德文，介面語言也跟著切換',
+          'feature.docs.title': '文件翻譯',
+          'feature.docs.body': 'PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔整份翻譯，全部在瀏覽器本機解析；PDF 保留原版面、Word 譯文寫回原檔、EPUB 與字幕可輸出雙語版',
           'feature.youtube.title': 'YouTube 字幕翻譯',
-          'feature.youtube.body': '看 YouTube 影片時，英文字幕自動翻譯為中文，並可選擇雙語對照',
+          'feature.youtube.body': '看 YouTube 影片時，字幕自動翻譯成你設定的目標語言（人工或自動產生字幕皆可），並可選擇雙語對照',
           'feature.spa.title': '跨頁自動延續翻譯',
           'feature.spa.body': '翻譯過的頁面點連結開新分頁、按返回鍵回上一頁都自動翻譯，不用每頁再按一次',
           'feature.glossary.title': '固定術語表',
@@ -685,15 +693,16 @@
           'recent.docfiles': 'Added <strong>TXT / Markdown / HTML file</strong> translation — the translated file keeps the same format as the original; glossary import also accepts <strong>CSV</strong> (two columns: source,translation).',
           'recent.opencc': 'Added <strong>Simplified ↔ Traditional Chinese page conversion (free)</strong> — conversion runs on built-in local dictionaries: no API key, works offline.',
           'recent.youtube': 'Several <strong>YouTube subtitle fixes</strong> — youtube.com/live/ links now get subtitle translation, English words are no longer split in half, and overall reliability is improved.',
-          'recent.pdf': '<strong>Greatly improved PDF translation quality</strong> — layout detection and rendering for tables and spec sheets have been thoroughly reworked.',
+          'recent.notranslate': '<strong>Respects pages\' do-not-translate markup</strong> — text marked <code>translate="no"</code> / <code>notranslate</code> stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.',
+          'recent.pdf': '<strong>PDF translation overhauled</strong> — limits raised to 50 MB / 300 pages, translate a chosen page range, reworked layout detection and rendering for tables and spec sheets, and on-demand fonts for Simplified Chinese / Japanese / Korean output.',
           'recent.stability': '<strong>A large batch of translation-quality and stability fixes</strong> — site-specific glossaries now apply correctly, translation editing is improved, and translations are better protected against front-end frameworks reverting them.',
           'recent.ios': '<strong>iOS / iPadOS version</strong> is now on the <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a> — Safari extension with four-finger touch translate and the floating button, ready out of the box.',
 
           'privacy.heading': 'Why Shinkansen?',
           'privacy.intro1': 'Existing immersive web-translation tools forward every page you read to a third-party server — every article, every email, all of it potentially visible to someone else.',
           'privacy.intro2': 'Shinkansen exists to protect your privacy:',
-          'privacy.point1': '<strong>No data forwarding</strong>: translation requests go directly to Google Gemini. No third-party server in between.',
-          'privacy.point2': '<strong>Settings stay local</strong>: all data lives on your own computer.',
+          'privacy.point1': '<strong>No data forwarding</strong>: translation requests go directly to Google Gemini (or, with Google Translate or a custom model, straight to the endpoint you chose). No third-party server in between.',
+          'privacy.point2': '<strong>Settings stay local</strong>: settings and cache stay in your browser (settings may sync with your browser account); nothing goes to a Shinkansen server — there isn\'t one.',
           'privacy.point3': '<strong>Fully open source</strong>: anyone can read the code and verify there is no backdoor.',
 
           'compare.before': 'Before',
@@ -704,15 +713,17 @@
 
           'features.heading': 'Features',
           'feature.fast.title': 'Instant translation',
-          'feature.fast.body': 'See the page start turning Chinese within 1 second of pressing translate. No need to wait for the entire batch to return (Gemini only).',
+          'feature.fast.body': 'See the page start showing the translation within 1 second of pressing translate. No need to wait for the entire batch to return (Gemini only).',
           'feature.layout.title': 'Preserves page layout',
-          'feature.layout.body': 'In-place text replacement keeps fonts, sizes, colors, and links intact — it looks like a native Chinese page.',
+          'feature.layout.body': 'In-place text replacement keeps fonts, sizes, colors, and links intact — it looks like a native page in your language.',
           'feature.dual.title': 'Bilingual side-by-side',
           'feature.dual.body': 'Original and translation shown together for language learning or proofreading. Switch between overlay and bilingual modes anytime.',
           'feature.multilang.title': 'Multi-language translation + UI',
           'feature.multilang.body': 'Translate into Traditional Chinese / Simplified Chinese / English / Japanese / Korean / Spanish / French / German, with the UI switching language too.',
+          'feature.docs.title': 'Document translation',
+          'feature.docs.body': 'PDF / EPUB / Word / TXT / Markdown / HTML / subtitle files, parsed entirely in your browser — PDFs keep their layout, Word output is written back into the original file, EPUB and subtitles can be exported bilingual.',
           'feature.youtube.title': 'YouTube subtitle translation',
-          'feature.youtube.body': 'Watch YouTube videos with English captions auto-translated to Chinese, with optional bilingual display.',
+          'feature.youtube.body': 'YouTube captions (manual or auto-generated) are translated live into your target language, with optional bilingual display.',
           'feature.spa.title': 'Auto-translate across pages',
           'feature.spa.body': 'Once a page is translated, clicking links or pressing Back also auto-translates the next page — no need to trigger translation per page.',
           'feature.glossary.title': 'Custom glossary',
