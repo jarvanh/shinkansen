@@ -4,19 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Shinkansen｜極速、私密、高品質的網頁翻譯體驗</title>
-  <meta name="description" content="快速、私密的網頁、YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。">
+  <meta name="description" content="快速、私密的網頁、文件與 YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。">
 
   <!-- Open Graph / Social Preview -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Shinkansen — Chrome 網頁翻譯擴充功能">
-  <meta property="og:description" content="使用 Google Gemini 翻譯網頁，保留原始排版，瀏覽資料不經過第三方伺服器">
+  <meta property="og:title" content="Shinkansen — 網頁翻譯擴充功能">
+  <meta property="og:description" content="用 AI 翻譯網頁、文件與 YouTube 字幕，保留原始排版，瀏覽資料不經過第三方伺服器">
   <meta property="og:image" content="https://jimmysu0309.github.io/shinkansen/og-image.png">
   <meta property="og:url" content="https://jimmysu0309.github.io/shinkansen/">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Shinkansen — Chrome 網頁翻譯擴充功能">
-  <meta name="twitter:description" content="使用 Google Gemini 翻譯網頁，保留原始排版，瀏覽資料不經過第三方伺服器">
+  <meta name="twitter:title" content="Shinkansen — 網頁翻譯擴充功能">
+  <meta name="twitter:description" content="用 AI 翻譯網頁、文件與 YouTube 字幕，保留原始排版，瀏覽資料不經過第三方伺服器">
   <meta name="twitter:image" content="https://jimmysu0309.github.io/shinkansen/og-image.png">
 
   <link rel="icon" type="image/png" href="icon-128.png">
@@ -410,15 +410,16 @@
       <h2 data-i18n="recent.heading">近期重大更新</h2>
       <ul class="recent-updates">
         <li data-i18n="recent.ios"><strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配四指觸控翻譯與懸浮按鈕，開箱即用</li>
-        <li data-i18n="recent.epub">新增 <strong>EPUB 電子書翻譯</strong>（beta），全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版</li>
         <li data-i18n="recent.word">新增 <strong>Word（.docx）文件翻譯</strong>，譯文寫回原檔，版面、樣式、表格、註解全保留，可輸出雙語對照版</li>
         <li data-i18n="recent.subtitles">新增<strong>字幕檔翻譯</strong>，SRT / WebVTT / ASS 字幕檔逐則翻譯，時間軸與樣式標記原樣保留，可輸出單語或雙語字幕</li>
+        <li data-i18n="recent.pdf"><strong>PDF 翻譯放寬上限並修正版面</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，修正雙欄短行、彩色底、旋轉頁、段落溢出等版面問題，簡體 / 日文 / 韓文譯文字型用到才下載</li>
+        <li data-i18n="recent.epub">新增 <strong>EPUB 電子書翻譯</strong>，全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版</li>
         <li data-i18n="recent.docfiles">新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）</li>
-        <li data-i18n="recent.opencc">新增<strong>簡繁網頁轉換（免費）</strong>，簡繁中文互轉走內建字典本地轉換，不需 API Key、離線可用</li>
-        <li data-i18n="recent.youtube"><strong>YouTube 字幕多項修正</strong>，youtube.com/live/ 直播連結也能翻譯字幕、英文單字不再被切成兩半，整體可靠性提升</li>
+        <li data-i18n="recent.tokens"><strong>網頁翻譯更省</strong>，每批容量翻倍，同一頁的 API 請求數減半、input token 省約三成，速度不變；YouTube 自動字幕的 AI 分句改用精簡傳輸格式，費用約減半</li>
+        <li data-i18n="recent.opencc"><strong>簡繁自動互轉預設開啟</strong>，簡體（或繁體）網頁載入即走內建字典本地轉換，不需 API Key、離線可用；不需要可在工具列圖示選單關閉</li>
         <li data-i18n="recent.notranslate"><strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字</li>
-        <li data-i18n="recent.pdf"><strong>PDF 翻譯全面強化</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，表格與規格書的版面偵測與譯文渲染重修，簡體 / 日文 / 韓文譯文字型用到才下載</li>
-        <li data-i18n="recent.stability"><strong>大量翻譯品質與穩定性修正</strong>，網域專用術語表正確套用、譯文編輯模式強化、譯文被前端框架打回原文的守護補強</li>
+        <li data-i18n="recent.youtube"><strong>YouTube 字幕多項修正</strong>，自動字幕時間軸修正、譯文提前 1 秒出現、切換影片不殘留舊字幕，youtube.com/live/ 直播連結也能翻譯字幕</li>
+        <li data-i18n="recent.stability"><strong>大量翻譯品質與穩定性修正</strong>，簡繁自動轉換後第一下翻譯不再被當成還原、被截斷的譯文不再寫進快取、譯文被前端框架打回原文的守護補強、長網頁偵測約快三成</li>
       </ul>
     </div>
   </section>
@@ -492,6 +493,14 @@
         <div class="feature">
           <h3 data-i18n="feature.spa.title">跨頁自動延續翻譯</h3>
           <p data-i18n="feature.spa.body">翻譯過的頁面點連結開新分頁、按返回鍵回上一頁都自動翻譯，不用每頁再按一次</p>
+        </div>
+        <div class="feature">
+          <h3 data-i18n="feature.floating.title">懸浮按鈕</h3>
+          <p data-i18n="feature.floating.body">頁面邊緣的懸浮按鈕點一下翻譯、長按切換引擎或叫出選單，位置、大小、透明度可調</p>
+        </div>
+        <div class="feature">
+          <h3 data-i18n="feature.instapaper.title">送到 Instapaper</h3>
+          <p data-i18n="feature.instapaper.body">把翻譯後的整篇文章一鍵存進 Instapaper，附翻譯目標語言的文章摘要，日後可以重讀</p>
         </div>
         <div class="feature">
           <h3 data-i18n="feature.glossary.title">固定術語表</h3>
@@ -580,9 +589,9 @@
       var I18N = {
         'zh-TW': {
           'meta.title': 'Shinkansen｜極速、私密、高品質的網頁翻譯體驗',
-          'meta.description': '快速、私密的網頁、YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。',
-          'og.title': 'Shinkansen — Chrome 網頁翻譯擴充功能',
-          'og.description': '使用 Google Gemini 翻譯網頁，保留原始排版，瀏覽資料不經過第三方伺服器',
+          'meta.description': '快速、私密的網頁、文件與 YouTube 字幕翻譯擴充功能，支援 8 種目標語言與多種 AI 引擎，原地替換文字保留排版，瀏覽資料不經過第三方伺服器。',
+          'og.title': 'Shinkansen — 網頁翻譯擴充功能',
+          'og.description': '用 AI 翻譯網頁、文件與 YouTube 字幕，保留原始排版，瀏覽資料不經過第三方伺服器',
 
           'hero.subtitle': '極速、私密、高品質的網頁翻譯體驗',
           'hero.tagline': '你的瀏覽內容不該經過別人的伺服器<br>Shinkansen 由你的電腦直接呼叫 Google Gemini 翻譯，不經過任何第三方',
@@ -598,16 +607,17 @@
           'hero.sub': '開放原始碼 · <a href="https://github.com/jimmysu0309/shinkansen#readme">使用說明</a> · <a href="release-notes.html">更新紀錄</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
 
           'recent.heading': '近期重大更新',
-          'recent.epub': '新增 <strong>EPUB 電子書翻譯</strong>（beta），全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版',
+          'recent.ios': '<strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配四指觸控翻譯與懸浮按鈕，開箱即用',
           'recent.word': '新增 <strong>Word（.docx）文件翻譯</strong>，譯文寫回原檔，版面、樣式、表格、註解全保留，可輸出雙語對照版',
           'recent.subtitles': '新增<strong>字幕檔翻譯</strong>，SRT / WebVTT / ASS 字幕檔逐則翻譯，時間軸與樣式標記原樣保留，可輸出單語或雙語字幕',
+          'recent.pdf': '<strong>PDF 翻譯放寬上限並修正版面</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，修正雙欄短行、彩色底、旋轉頁、段落溢出等版面問題，簡體 / 日文 / 韓文譯文字型用到才下載',
+          'recent.epub': '新增 <strong>EPUB 電子書翻譯</strong>，全書術語表與譯後一致性掃描確保人名譯名前後一致，譯本可下載單語或雙語對照版',
           'recent.docfiles': '新增 <strong>TXT / Markdown / HTML 檔案</strong>文件翻譯，譯文輸出格式與原檔相同；術語表匯入同步支援 <strong>CSV</strong>（兩欄「原文,譯名」）',
-          'recent.opencc': '新增<strong>簡繁網頁轉換（免費）</strong>，簡繁中文互轉走內建字典本地轉換，不需 API Key、離線可用',
-          'recent.youtube': '<strong>YouTube 字幕多項修正</strong>，youtube.com/live/ 直播連結也能翻譯字幕、英文單字不再被切成兩半，整體可靠性提升',
+          'recent.tokens': '<strong>網頁翻譯更省</strong>，每批容量翻倍，同一頁的 API 請求數減半、input token 省約三成，速度不變；YouTube 自動字幕的 AI 分句改用精簡傳輸格式，費用約減半',
+          'recent.opencc': '<strong>簡繁自動互轉預設開啟</strong>，簡體（或繁體）網頁載入即走內建字典本地轉換，不需 API Key、離線可用；不需要可在工具列圖示選單關閉',
           'recent.notranslate': '<strong>尊重網頁的「不要翻譯」標記</strong>，<code>translate="no"</code> / <code>notranslate</code> 標成不翻譯的人名、代號原樣保留、不送 API，字型圖示也不再被翻成文字',
-          'recent.pdf': '<strong>PDF 翻譯全面強化</strong>，檔案上限放寬到 50 MB / 300 頁、可指定翻譯頁數範圍，表格與規格書的版面偵測與譯文渲染重修，簡體 / 日文 / 韓文譯文字型用到才下載',
-          'recent.stability': '<strong>大量翻譯品質與穩定性修正</strong>，網域專用術語表正確套用、譯文編輯模式強化、譯文被前端框架打回原文的守護補強',
-          'recent.ios': '<strong>iOS / iPadOS 版</strong>正式登陸 <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a>，Safari 擴充功能搭配四指觸控翻譯與懸浮按鈕，開箱即用',
+          'recent.youtube': '<strong>YouTube 字幕多項修正</strong>，自動字幕時間軸修正、譯文提前 1 秒出現、切換影片不殘留舊字幕，youtube.com/live/ 直播連結也能翻譯字幕',
+          'recent.stability': '<strong>大量翻譯品質與穩定性修正</strong>，簡繁自動轉換後第一下翻譯不再被當成還原、被截斷的譯文不再寫進快取、譯文被前端框架打回原文的守護補強、長網頁偵測約快三成',
 
           'privacy.heading': '為什麼做 Shinkansen?',
           'privacy.intro1': '既有的沈浸式網頁翻譯工具會把你瀏覽的每一頁內容傳到第三方伺服器——無論你讀了什麼文章、看了什麼信件，全部都可能被看光',
@@ -637,6 +647,10 @@
           'feature.youtube.body': '看 YouTube 影片時，字幕自動翻譯成你設定的目標語言（人工或自動產生字幕皆可），並可選擇雙語對照',
           'feature.spa.title': '跨頁自動延續翻譯',
           'feature.spa.body': '翻譯過的頁面點連結開新分頁、按返回鍵回上一頁都自動翻譯，不用每頁再按一次',
+          'feature.floating.title': '懸浮按鈕',
+          'feature.floating.body': '頁面邊緣的懸浮按鈕點一下翻譯、長按切換引擎或叫出選單，位置、大小、透明度可調',
+          'feature.instapaper.title': '送到 Instapaper',
+          'feature.instapaper.body': '把翻譯後的整篇文章一鍵存進 Instapaper，附翻譯目標語言的文章摘要，日後可以重讀',
           'feature.glossary.title': '固定術語表',
           'feature.glossary.body': '自訂翻譯對照表，確保專有名詞一律使用你指定的譯名',
           'feature.blocklist.title': '禁用詞清單',
@@ -669,9 +683,9 @@
         },
         'en': {
           'meta.title': 'Shinkansen | Fast, private, high-quality web translation',
-          'meta.description': 'A fast, privacy-first translation extension for web pages and YouTube subtitles. 8 target languages, multiple AI engines. In-place text replacement preserves the original layout; your browsing never touches a third-party server.',
-          'og.title': 'Shinkansen — Chrome web translation extension',
-          'og.description': 'Translate web pages with Google Gemini. Original layout preserved. Browsing data never touches a third-party server.',
+          'meta.description': 'A fast, privacy-first translation extension for web pages, documents and YouTube subtitles. 8 target languages, multiple AI engines. In-place text replacement preserves the original layout; your browsing never touches a third-party server.',
+          'og.title': 'Shinkansen — web translation extension',
+          'og.description': 'AI translation for web pages, documents and YouTube subtitles. Original layout preserved. Browsing data never touches a third-party server.',
 
           'hero.subtitle': 'Fast, private, high-quality web translation',
           'hero.tagline': 'Your browsing should not pass through someone else\'s server.<br>Shinkansen calls Google Gemini directly from your browser — no third party in between.',
@@ -687,16 +701,17 @@
           'hero.sub': 'Open source · <a href="https://github.com/jimmysu0309/shinkansen#readme">Documentation</a> · <a href="release-notes.en.html">Release notes</a> · <a href="https://github.com/jimmysu0309/shinkansen">GitHub</a>',
 
           'recent.heading': 'Recent major updates',
-          'recent.epub': 'Added <strong>EPUB book translation</strong> (beta) — a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters; download the translated book in monolingual or bilingual format.',
+          'recent.ios': '<strong>iOS / iPadOS version</strong> is now on the <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a> — Safari extension with four-finger touch translate and the floating button, ready out of the box.',
           'recent.word': 'Added <strong>Word (.docx) document translation</strong> — the translation is written back into the original file with layout, styles, tables, and comments fully preserved; bilingual output available.',
           'recent.subtitles': 'Added <strong>subtitle file translation</strong> — SRT / WebVTT / ASS files are translated cue by cue with timing and style tags preserved; download monolingual or bilingual subtitles.',
+          'recent.pdf': '<strong>PDF translation: higher limits and layout fixes</strong> — limits raised to 50 MB / 300 pages, translate a chosen page range, fixes for two-column short lines, colored backgrounds, rotated pages and overflowing paragraphs, and on-demand fonts for Simplified Chinese / Japanese / Korean output.',
+          'recent.epub': 'Added <strong>EPUB book translation</strong> — a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters; download the translated book in monolingual or bilingual format.',
           'recent.docfiles': 'Added <strong>TXT / Markdown / HTML file</strong> translation — the translated file keeps the same format as the original; glossary import also accepts <strong>CSV</strong> (two columns: source,translation).',
-          'recent.opencc': 'Added <strong>Simplified ↔ Traditional Chinese page conversion (free)</strong> — conversion runs on built-in local dictionaries: no API key, works offline.',
-          'recent.youtube': 'Several <strong>YouTube subtitle fixes</strong> — youtube.com/live/ links now get subtitle translation, English words are no longer split in half, and overall reliability is improved.',
-          'recent.notranslate': '<strong>Respects pages\' do-not-translate markup</strong> — text marked <code>translate="no"</code> / <code>notranslate</code> stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.',
-          'recent.pdf': '<strong>PDF translation overhauled</strong> — limits raised to 50 MB / 300 pages, translate a chosen page range, reworked layout detection and rendering for tables and spec sheets, and on-demand fonts for Simplified Chinese / Japanese / Korean output.',
-          'recent.stability': '<strong>A large batch of translation-quality and stability fixes</strong> — site-specific glossaries now apply correctly, translation editing is improved, and translations are better protected against front-end frameworks reverting them.',
-          'recent.ios': '<strong>iOS / iPadOS version</strong> is now on the <a href="https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298">App Store</a> — Safari extension with four-finger touch translate and the floating button, ready out of the box.',
+          'recent.tokens': '<strong>Cheaper web translation</strong> — batches are twice as large, so each page needs half the API requests and about a third fewer input tokens at the same speed; YouTube auto-caption AI segmentation uses a compact transport format, roughly halving its cost.',
+          'recent.opencc': '<strong>Automatic Simplified ↔ Traditional Chinese conversion is on by default</strong> — pages in the opposite variant convert locally on load with built-in dictionaries: no API key, works offline; turn it off in the toolbar icon menu.',
+          'recent.notranslate': '<strong>Respects pages' do-not-translate markup</strong> — text marked <code>translate="no"</code> / <code>notranslate</code> stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.',
+          'recent.youtube': '<strong>Several YouTube subtitle fixes</strong> — auto-caption timing corrected, translations appear 1 second earlier, no stale captions when switching videos, and youtube.com/live/ links get subtitle translation.',
+          'recent.stability': '<strong>A large batch of translation-quality and stability fixes</strong> — translating right after automatic Chinese-variant conversion no longer just restores the converted segments, truncated outputs are no longer cached, translations are better protected against front-end frameworks reverting them, and long-page detection is about 30% faster.',
 
           'privacy.heading': 'Why Shinkansen?',
           'privacy.intro1': 'Existing immersive web-translation tools forward every page you read to a third-party server — every article, every email, all of it potentially visible to someone else.',
@@ -726,6 +741,10 @@
           'feature.youtube.body': 'YouTube captions (manual or auto-generated) are translated live into your target language, with optional bilingual display.',
           'feature.spa.title': 'Auto-translate across pages',
           'feature.spa.body': 'Once a page is translated, clicking links or pressing Back also auto-translates the next page — no need to trigger translation per page.',
+          'feature.floating.title': 'Floating button',
+          'feature.floating.body': 'A draggable button at the page edge: tap to translate, long-press to switch engines or open the menu. Position, size and opacity are adjustable.',
+          'feature.instapaper.title': 'Send to Instapaper',
+          'feature.instapaper.body': 'Save the whole translated article to Instapaper in one click, with a summary in your target language, for later re-reading.',
           'feature.glossary.title': 'Custom glossary',
           'feature.glossary.body': 'Pin specific terms to your preferred translations so proper nouns are always rendered consistently.',
           'feature.blocklist.title': 'Blocked-word list',
