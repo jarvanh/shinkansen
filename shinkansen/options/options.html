@@ -246,6 +246,30 @@
         </div>
       </div>
       <div id="shortcut-hint"></div>
+      <!-- 懸停翻譯（issue #67）：按住修飾鍵、游標停在段落上只翻該段，content-hover.js。
+           iOS build 預設隱藏整塊，只有裝置有 hover 能力（iPad 接觸控板 / 滑鼠，
+           matchMedia hover+fine pointer）才顯示，options.js 控制 hidden -->
+      <div id="hover-translate-section">
+      <div class="hover-translate-row">
+        <label>
+          <span data-i18n="options.hover.label">懸停翻譯</span>
+          <select id="hoverTranslateModifier">
+            <option value="off" data-i18n="options.hover.mode.off">關閉</option>
+            <option value="shift" data-i18n="options.hover.mode.shift">⇧ Shift</option>
+            <option value="alt" data-i18n="options.hover.mode.alt">⌥ Option / Alt</option>
+            <option value="ctrl" data-i18n="options.hover.mode.ctrl">⌃ Control</option>
+          </select>
+        </label>
+        <label>
+          <span data-i18n="options.hover.display.label">懸停翻譯顯示方式</span>
+          <select id="hoverTranslateMode">
+            <option value="dual" data-i18n="options.hover.display.dual">雙語對照</option>
+            <option value="single" data-i18n="options.hover.display.single">單語覆蓋</option>
+          </select>
+        </label>
+      </div>
+      <small class="muted" data-i18n="options.hover.hint">按住所選的鍵、把游標移到段落上停一下，只翻譯游標所在的那一段，譯文原地顯示。顯示方式獨立於整頁翻譯的顯示模式，預設雙語對照方便邊讀原文邊看譯文</small>
+      </div>
     </section>
 
     <section>

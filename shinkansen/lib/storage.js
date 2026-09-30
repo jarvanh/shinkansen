@@ -836,6 +836,12 @@ export const DEFAULT_SETTINGS = {
   // 使用者行為不變。content-touch.js 只接受 3 / 4，其他值回 4；options 以「關閉 / 三指 /
   // 四指」單一 picker 同時寫 fourFingerGesture（enable）與本值。
   touchGestureFingers: 4,
+  // 懸停翻譯（issue #67）：按住修飾鍵把游標停在段落上即翻該段。'off' | 'shift' | 'alt' | 'ctrl'，
+  // 預設關閉（新入口，使用者自選才開）。content-hover.js 的初始值必須同值（該處不走 merge）。
+  hoverTranslateModifier: 'off',
+  // 懸停翻譯的顯示方式：'single' | 'dual'，獨立於整頁 displayMode。預設雙語（懸停情境是
+  // 「邊讀原文邊看譯文」，2026-09-30 Jimmy 指定）。content-hover.js 初始值必須同值。
+  hoverTranslateMode: 'dual',
   // v1.6.13: 自動翻譯網站（白名單）觸發時要用哪一組 preset。預設 slot 2 = Flash。
   // 修法前自動翻譯路徑直接 SK.translatePage() 不帶 slot,fallback 全域 geminiConfig.model;
   // 使用者改 preset model 後 Alt+S 走新 model，但白名單路徑仍走全域 → UX 不一致。

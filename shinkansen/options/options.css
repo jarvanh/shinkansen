@@ -1114,6 +1114,10 @@ shinkansen-translation[data-sk-accent="custom"][data-sk-mark="dashed"] { text-de
 /* v1.8.52: 強調色 swatch row + 自訂 hex
    active 樣式用 2px ring(box-shadow，不疊在色塊裡)— CLAUDE.md UI 指引
    要求 WYSIWYG 按鈕群 active 不填色,色塊本身就是預覽。 */
+/* 懸停翻譯：修飾鍵 + 顯示模式兩顆 picker 並排（label 各佔一半，寬度對齊） */
+.hover-translate-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.hover-translate-row > label { flex: 1 1 220px; margin: 12px 0 4px; }
+.hover-translate-row > label > select { width: 100%; }
 .dual-accent-row {
   display: flex;
   flex-wrap: wrap;

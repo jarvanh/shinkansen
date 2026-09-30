@@ -41,6 +41,7 @@ We stress-tested Shinkansen on the English Wikipedia article for *Taiwan* (over 
 - **Free Chinese variant conversion**: when your target language is Traditional or Simplified Chinese, content in the opposite variant is converted locally with built-in OpenCC dictionaries — no API key, no API calls, works offline, with phrase-level Taiwan-convention mapping (软件→軟體, 视频→影片, 内存→記憶體). "Auto-convert Chinese variants" is on by default — pages in the opposite variant convert automatically on load, no manual trigger needed; you can turn it off in the toolbar icon menu (unchecking reverts the current page immediately); on mixed-language pages only the Chinese paragraphs use the free conversion while the rest go through your chosen engine.
 - **Custom AI models**: any OpenAI-compatible endpoint — OpenRouter / Together / Groq / local Ollama, hundreds of models.
 - **Three customizable shortcuts**: `Alt+A` / `Alt+S` / `Alt+D` each bound to its own translation preset (engine + model + label). Pick the right engine per content type with one keystroke (e.g., Flash for reading material, Google MT for casual browsing). Details in "Translation shortcuts and presets" below.
+- **Hover translate**: pick a modifier key (Shift / Option / Control) in settings, then hold it and rest the pointer on a paragraph to translate just that paragraph in place — handy when you want to read the original first or only need part of a page. Pressing a shortcut afterwards translates the rest of the page; press again to restore. Hover translations are bilingual by default (original stays, translation appended below) and can be switched to replace-original in the same place, independently of the full-page display mode.
 - **Floating button**: a floating button pinned to the left/right edge of the page — tap to translate the page, long-press to switch translation engine or open the menu; on by default on all platforms, with adjustable button size and opacity.
 - **Document translation (PDF / EPUB / Word / TXT / Markdown / HTML / subtitles)**: upload a file and translate the whole thing — PDFs keep the original layout in the translated output; EPUB supports a book-wide glossary (consistent name translations across chapters), per-chapter translation, preview editing, and bilingual output; Word (.docx) files get the translation written back into the original file with layout, styles, and tables fully preserved, with optional bilingual output; TXT / Markdown / HTML files reuse the same chapter pipeline, and the translated file keeps the same format as the original; SRT / WebVTT / ASS subtitle files are translated cue by cue with timing preserved, with optional bilingual output. Details in "Document translation" below.
 - **YouTube subtitle translation**: detects YouTube captions and replaces them in real time with your target language (Traditional Chinese by default); styling matches the native YouTube subtitle look. Details in "YouTube subtitle translation" below.
@@ -335,7 +336,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.5.3 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.5.4 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

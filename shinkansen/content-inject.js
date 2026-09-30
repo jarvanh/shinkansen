@@ -661,6 +661,17 @@
       }
     }
 
+    // 混合模式守門（懸停翻譯 dual + 整頁 single，2026-09-30 issue #67）：元素自己 / 祖先已是
+    // dual 原文槽（data-shinkansen-dual-source）= 這段已有譯文 wrapper；detect 層刻意不擋
+    // dual-source（SPA 重抓場景），單語路徑若再原地覆蓋會變成「原地中文 + 下方 wrapper 中文」
+    // 雙重譯文。元素 unit 內含 dual 原文槽（父段落包住懸停翻過的子段）同理——innerHTML 覆蓋
+    // 會連 wrapper 一起吃掉。dual 路徑由 injectDual 內部去重，不在此擋。fragment unit 只動
+    // 自己的節點區段，容器內別處有 dual 槽不受影響，只看祖先。
+    if (STATE.translatedMode !== 'dual' && unit.el && unit.el.nodeType === 1) {
+      if (unit.el.closest && unit.el.closest('[data-shinkansen-dual-source]')) return;
+      if (unit.kind !== 'fragment' && unit.el.querySelector && unit.el.querySelector('[data-shinkansen-dual-source]')) return;
+    }
+
     // v1.5.0: 雙語對照模式分派——dual 走 SK.injectDual 走另一條路徑。
     // 只 element 走得到 dual（fragment unit 結構特殊，dual 模式直接 fallback 走 single）。
     // 模式由 STATE.translatedMode 決定（translatePage 進入時依 settings.displayMode 設定）。

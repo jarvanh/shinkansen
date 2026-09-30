@@ -7,7 +7,7 @@
 - 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.5.3
+- 目前 Extension 版本：2.5.4
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.5.3 為止）
+### 2.1 已實作（v2.5.4 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -301,6 +301,7 @@ shinkansen/
 ├── content-touch.js          # iOS 多指 tap 手勢（三指 / 四指；IS_IOS_BUILD gate，桌面 build 為 no-op）
 ├── content.js                # 主協調層（translatePage、Debug API、初始化）
 ├── content-shortcuts.js      # 自訂快速鍵 keydown capture 比對 → 本地 dispatch（§10.1）
+├── content-hover.js          # 懸停翻譯：修飾鍵 + 游標停留只翻該段（§10.2.5）
 ├── content-floating-icon.js  # 懸浮翻譯控制按鈕
 ├── content.css
 ├── background.js             # Service Worker（ES module）
@@ -575,6 +576,10 @@ shinkansen/
 ### 10.2 iOS／iPadOS 多指手勢
 
 多指輕點 = 主要預設快速鍵完整 toggle、多指長按（600ms）= 次要預設 slot 1（`content-touch.js`）。指數由 `touchGestureFingers` 決定（3 或 4，預設 4；比設定指數多一指落下即取消，三指 / 四指語意互斥）；`fourFingerGesture` 為總開關，預設開。options「觸控手勢翻譯」以單一 picker（關閉 / 三指輕點 / 四指輕點）同時對應這兩個 key；懸浮按鈕與硬體鍵盤快速鍵不受影響。popup 的快速鍵提示跟著指數顯示「三指／四指輕點切換翻譯」，手勢關閉時退回顯示鍵盤快速鍵。
+
+### 10.2.5 懸停翻譯（桌面 / 有滑鼠的裝置）
+
+按住修飾鍵、游標停在段落上約 0.15 秒即只翻譯該段（`content-hover.js`）。設定 `hoverTranslateModifier`：`off`（預設）/ `shift` / `alt` / `ctrl`；`hoverTranslateMode`：`dual`（預設，雙語對照）/ `single`（單語覆蓋），獨立於整頁 `displayMode`，兩顆 picker 並排在 options「翻譯快速鍵」card 底部。譯文原地注入；引擎沿用主要預設（slot 2），整頁已翻譯時延用該次引擎。懸停雙語 + 整頁單語可混在同一頁，還原一併清掉。已翻譯段落不重翻、快取命中不計費；等待回應時該段畫虛線外框，不彈進度 toast。懸停翻過幾段後按任一快速鍵 = 補翻整頁其餘段落（不是還原），再按一次才整頁還原（含懸停段落）。觸控裝置無 hover（iPad 接觸控板 / 滑鼠可用）；iOS build 的設定頁只在 `matchMedia('(hover: hover) and (pointer: fine)')` 成立時顯示這組設定，接上 / 拔掉指標裝置即時更新。
 
 ### 10.3 iOS background keep-alive
 

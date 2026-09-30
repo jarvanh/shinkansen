@@ -565,6 +565,27 @@
     return jobs;
   }
 
+  // ─── 翻譯前的顯示設定注入（Gemini / Google 整頁路徑與懸停翻譯共用）─────────
+  // 目標語言（content-detect.js isCandidateText 走 target-aware）、顯示模式（single / dual，
+  // 寫進 STATE.translatedMode 鎖定本輪）、雙語標記樣式與強調色、dual wrapper CSS。
+  // 同一份事實三條路徑各寫一份會 drift（工作流原則 §5），收斂於此。回傳 target language。
+  SK.applyTranslateDisplaySettings = function applyTranslateDisplaySettings(settings) {
+    settings = settings || {};
+    const TARGET = (typeof settings.targetLanguage === 'string' && ['zh-TW','zh-CN','en','ja','ko','es','fr','de'].includes(settings.targetLanguage))
+      ? settings.targetLanguage : 'zh-TW';
+    STATE.targetLanguage = TARGET;
+    const mode = settings.displayMode;
+    STATE.translatedMode = (mode === 'dual') ? 'dual' : 'single';
+    // 雙語視覺標記樣式
+    const ms = settings.translationMarkStyle;
+    SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
+    // v1.8.52: 強調色（token / hex / 'auto'），sanitize 後給 injectDual 套到 wrapper
+    SK.currentDualAccent = SK.sanitizeDualAccent?.(settings.dualAccentColor) ?? 'auto';
+    // 雙語模式才注入 wrapper CSS（單語模式不需要）
+    if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
+    return TARGET;
+  };
+
   // ─── translateUnits ──────────────────────────────────
 
   SK.translateUnits = async function translateUnits(units, { onProgress, glossary, signal, modelOverride, engine, ignorePartialMode, convertDirection, convertOnly } = {}) {
@@ -1378,9 +1399,8 @@
     SK.sendLog('info', 'translate', 'milestone:storage_loaded', { t: Date.now() - entryTime });
 
     // P1: 注入 STATE.targetLanguage(供 content-detect.js isCandidateText 走 target-aware)
-    const TARGET = (typeof settings.targetLanguage === 'string' && ['zh-TW','zh-CN','en','ja','ko','es','fr','de'].includes(settings.targetLanguage))
-      ? settings.targetLanguage : 'zh-TW';
-    STATE.targetLanguage = TARGET;
+    // + 顯示模式 / 雙語標記樣式（與 Google 路徑、懸停翻譯共用 SK.applyTranslateDisplaySettings）
+    const TARGET = SK.applyTranslateDisplaySettings(settings);
 
     // 簡繁本地轉換方向:target 為中文變體時,偵測為相反變體的段落走 OpenCC 本地
     // 轉換(translateUnits 內分流),其他 target 無方向可言 → null(全走 LLM)。
@@ -1405,19 +1425,8 @@
     // 對應移除:storage.skipTraditionalChinesePage / options.html#skipTraditionalChinesePage /
     // options.js _renderLangDetectLabels / i18n options.langDetect.* + toast.alreadyInTarget。
 
-    // v1.5.0: 讀顯示模式設定，寫進 STATE.translatedMode 鎖定本次翻譯用的模式。
-    // 同一頁中途切模式不會即時生效（避免半翻半改），需重新觸發翻譯。
-    {
-      const mode = settings.displayMode;
-      STATE.translatedMode = (mode === 'dual') ? 'dual' : 'single';
-      // 雙語視覺標記樣式
-      const ms = settings.translationMarkStyle;
-      SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
-      // v1.8.52: 強調色（token / hex / 'auto'），sanitize 後給 injectDual 套到 wrapper
-      SK.currentDualAccent = SK.sanitizeDualAccent?.(settings.dualAccentColor) ?? 'auto';
-      // 雙語模式才注入 wrapper CSS（單語模式不需要）
-      if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
-    }
+    // v1.5.0: 顯示模式已在上方 SK.applyTranslateDisplaySettings 寫進 STATE.translatedMode
+    // 鎖定本次翻譯用的模式。同一頁中途切模式不會即時生效（避免半翻半改），需重新觸發翻譯。
 
     // v1.8.41：把 displayCurrency + 最新匯率灌進 SK.currencyState，讓 toast line2
     // 的 SK.formatMoney 知道用 USD 還是 TWD 顯示。匯率讀 storage.local.exchangeRate
@@ -1995,6 +2004,7 @@
     STATE.originalLang?.clear?.();
     STATE.originalFontFamily?.clear?.();
     STATE.translationCache?.clear?.();  // v1.5.0
+    STATE.hoverTranslated = false;  // 懸停翻譯（content-hover.js）的段落一併還原，旗標歸零
     SK.restoreDocLang?.();  // v2.0.73：還原 <html lang> 原值
     // v2.0.85: Map 已全清,此時 DOM 上還掛注入痕跡的節點都是簿記追不到的無主殘留
     // (站點 clone / 換回舊節點),掃掉才不會讓 isPageTranslated() 永遠 true
@@ -2409,21 +2419,9 @@
     // 繁中偵測（與 Gemini 相同邏輯）
     let settings = {};
     try { settings = await browser.storage.sync.get(null); } catch (_) {}
-    // P1: 注入 STATE.targetLanguage(同 Gemini 路徑)
-    const TARGET = (typeof settings.targetLanguage === 'string' && ['zh-TW','zh-CN','en','ja','ko','es','fr','de'].includes(settings.targetLanguage))
-      ? settings.targetLanguage : 'zh-TW';
-    STATE.targetLanguage = TARGET;
+    // P1: 注入 STATE.targetLanguage + 顯示模式（同 Gemini 路徑，共用 helper）
+    SK.applyTranslateDisplaySettings(settings);
     // v1.9.26:整頁同 target skip 移除(同 Gemini 路徑,見上方註解)
-
-    // v1.5.0: 顯示模式（與 Gemini 路徑相同邏輯）
-    {
-      const mode = settings.displayMode;
-      STATE.translatedMode = (mode === 'dual') ? 'dual' : 'single';
-      const ms = settings.translationMarkStyle;
-      SK.currentMarkStyle = (ms && SK.VALID_MARK_STYLES.has(ms)) ? ms : SK.DEFAULT_MARK_STYLE;
-      SK.currentDualAccent = SK.sanitizeDualAccent?.(settings.dualAccentColor) ?? 'auto';
-      if (STATE.translatedMode === 'dual') SK.ensureDualWrapperStyle?.();
-    }
 
     const translateStartTime = Date.now();
 
@@ -2834,8 +2832,17 @@
     //   - force（長按選單選引擎）：先還原既有譯文，再 fall through 用新 preset 重新翻譯，
     //     避免在已注入的譯文上再疊一層；換引擎=重譯，不是 toggle 回原文。
     if (SK.isPageTranslated()) {
-      restorePage();
-      if (!force) return;
+      // 懸停翻譯（content-hover.js）只翻過幾段、整頁未翻：使用者按快速鍵的意圖是「翻這頁
+      // 剩下的內容」，不是還原那幾段——與簡繁本地轉換後第一下翻譯的規則同型（translatePage
+      // 內 opencc-local 分支）。已標記的段落偵測層不會重收，整頁翻譯自然只補剩餘；之後再按
+      // 才還原（懸停段落的還原簿記與整頁同一份 STATE.originalHTML）。仍有夠份量的未翻候選
+      // 才適用；沒有（整頁都被懸停翻完了）維持 toggle 還原。
+      if (!force && !STATE.translated && STATE.hoverTranslated && SK.hasSubstantialUntranslated()) {
+        SK.sendLog('info', 'translate', 'page only hover-translated, proceed to full translate instead of toggle restore');
+      } else {
+        restorePage();
+        if (!force) return;
+      }
     }
     // 閒置：讀 preset 定義。若 storage 還沒寫入（例如從 v1.4.11 升級第一次按快捷鍵）
     // 就 fallback 到 SK.DEFAULT_PRESETS，避免「按鍵無反應」。

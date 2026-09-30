@@ -163,6 +163,10 @@ if (window.__shinkansen_loaded) {
     // 設為 targetLanguage 讓瀏覽器選對 CJK 字形變體(避免 zh-TW 頁面下日文譯文用到
     // 中文字形變體 → 視覺不協調),restorePage / abort 路徑用這份還原回原 lang。
     originalLang: new Map(), // el → string | null
+    // 懸停翻譯（content-hover.js）曾成功翻過至少一段。整頁未翻（translated=false）但 DOM 有
+    // 注入痕跡時，handleTranslatePreset 靠它判「按快速鍵 = 翻剩下的段落」而非 toggle 還原。
+    // restoreInjectedDom（還原 / 取消）與 SPA reset 歸零。
+    hoverTranslated: false,
     // 注入前 element 的 inline style.fontFamily 原值(空字串 = 原本沒設 inline)。
     // 譯文注入時若 target 是 CJK locale,會把 LOCALE_FONT_PREPEND 對應字體 stack
     // prepend 到 inline fontFamily,確保站點 hardcode 單一 locale 字體
@@ -574,6 +578,8 @@ if (window.__shinkansen_loaded) {
     const units = SK.collectParagraphs();
     let chars = 0;
     for (const u of units) {
+      // dual 原文槽（懸停 dual 翻過的段落）偵測層不擋，但它已有譯文，不算未翻
+      if (u.el?.closest?.('[data-shinkansen-dual-source]')) continue;
       chars += ((u.el?.innerText || u.text || '') + '').trim().length;
       if (chars >= SK.CONVERTED_PAGE_RETRANSLATE_MIN_CHARS) return true;
     }

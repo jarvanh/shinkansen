@@ -172,6 +172,9 @@ async function load() {
   if (window.__SK?.i18n?.iosAppStoreUrl) {
     $('ios-promo').href = window.__SK.i18n.iosAppStoreUrl(s.uiLanguage || 'auto');
   }
+  // 懸停翻譯修飾鍵（issue #67）
+  $('hoverTranslateModifier').value = ['off', 'shift', 'alt', 'ctrl'].includes(s.hoverTranslateModifier) ? s.hoverTranslateModifier : 'off';
+  $('hoverTranslateMode').value = s.hoverTranslateMode === 'single' ? 'single' : 'dual';
   // 單一 picker ← (fourFingerGesture enable, touchGestureFingers 3|4)。關閉時仍記住
   // 指數（存進 dataset），重新開啟時回到原本的指數而不是硬回 4
   {
@@ -1043,6 +1046,9 @@ async function _saveImpl() {
     touchGestureFingers: $('touchGestureMode').value === 'off'
       ? (parseInt($('touchGestureMode').dataset.fingers, 10) || 4)
       : parseInt($('touchGestureMode').value, 10),
+    // 懸停翻譯修飾鍵（issue #67）
+    hoverTranslateModifier: $('hoverTranslateModifier').value,
+    hoverTranslateMode: $('hoverTranslateMode').value,
     // v1.5.0: 雙語對照視覺標記
     translationMarkStyle: getSelectedMarkStyle(),
     // v1.8.52: 雙語強調色（已在 setDualAccent 時 sanitize 過,直接寫）
@@ -1929,6 +1935,16 @@ document.body.classList.add(`runtime-${_shortcutsPlatform}`);
 if (IS_IOS_BUILD) {
   document.body.classList.add('runtime-ios');
   if (isTouchScreenDevice()) document.body.classList.add('runtime-ios-touch');
+  // 懸停翻譯需要指標裝置 + hover 能力：iPhone / 純觸控 iPad 沒有，設定列是雜訊；iPad 接
+  // 觸控板 / 滑鼠時 iPadOS 會送真 mousemove 與修飾鍵，可用。用 media query 判「有沒有
+  // hover 能力」而非裝置型號，接上 / 拔掉指標裝置時 change 事件即時更新（桌面 build 永遠顯示）
+  const _hoverMql = window.matchMedia ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
+  const _syncHoverSection = () => {
+    const sec = document.getElementById('hover-translate-section');
+    if (sec) sec.hidden = !(_hoverMql && _hoverMql.matches);
+  };
+  _syncHoverSection();
+  _hoverMql?.addEventListener?.('change', _syncHoverSection);
 }
 
 // Event delegation:綁 document,anchor 被 data-i18n-html replace 重建後仍有效
