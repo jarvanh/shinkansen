@@ -263,7 +263,7 @@ Every translation's token usage, cost, and cache hit rate is logged and viewable
 
 In the "Glossary" tab in settings, you can pin specific source terms to your preferred translations. For example, force "Arrow" to always translate as "艾蘿" instead of "箭頭", or specifically as "乙太翠雀之箭" on DC Comics-related sites.
 
-The glossary has two layers: "Global" applies to all sites; "Domain-specific" only applies to designated domains. When the same term appears in both, domain rules override global.
+The glossary has two layers: "Global" applies to all sites; "Domain-specific" only applies to designated domains. When the same term appears in both, domain rules override global. Append a path to a domain (e.g. `example.com/news`) to limit the scope to pages under that path, so different sections or series on the same site can each have their own glossary; path rules override site-wide rules.
 
 The custom glossary takes priority over auto glossary consistency. During translation, glossary instructions are placed at the very end of the system prompt — the position the LLM weights most heavily. After editing the glossary, no need to manually clear the cache; Shinkansen invalidates old entries automatically.
 
@@ -335,7 +335,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.5.2 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.5.3 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

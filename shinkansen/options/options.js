@@ -2049,10 +2049,11 @@ $('fixed-domain-select').addEventListener('change', () => {
 
 $('fixed-domain-add-btn').addEventListener('click', () => {
   const input = $('fixed-domain-input');
-  // 使用者常貼完整網址（https:// / 路徑 / 尾斜線），存進 byDomain 前收斂成純主機名
-  //（與自動翻譯白名單同一份正規化規則）。runtime 比對端（background
-  // buildFixedGlossaryEntries）另有 matchingDomainKeys 容錯舊資料的未正規化 key
-  const domain = window.__SKDomain.normalizeDomainEntry(input.value || '');
+  // 使用者常貼完整網址（https:// / 尾斜線 / query），存進 byDomain 前收斂成
+  // `host` 或 `host/path` 標準形（主機名走自動翻譯白名單同一份正規化規則；路徑保留
+  // = 只對該路徑之下的頁面生效）。runtime 比對端（background buildFixedGlossaryEntries）
+  // 另有 matchingDomainKeys 容錯舊資料的未正規化 key
+  const domain = window.__SKDomain.normalizeScopeEntry(input.value || '');
   if (!domain) return;
   if (!fixedGlossary.byDomain[domain]) {
     fixedGlossary.byDomain[domain] = [];

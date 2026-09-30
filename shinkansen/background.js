@@ -305,12 +305,14 @@ function buildFixedGlossaryEntries(fixedGlossary, sender) {
   let domainEntries = [];
   if (fixedGlossary.byDomain && sender?.tab?.url) {
     try {
-      const hostname = new URL(sender.tab.url).hostname;
+      const pageUrl = new URL(sender.tab.url);
       // byDomain key 是使用者輸入的任意形式（可能含 https:// / www. / 尾斜線），
       // 不可對 hostname 做 exact match（`medium.com` 永遠比不中 `www.medium.com`，
       // 使用者被迫全搬全域）。比對統一走 lib/domain-utils.js 的白名單同款規則
-      //（正規化 + www. 互通 + `*.` 萬用字元），多 key 命中時依排序後合併。
-      const keys = globalThis.__SKDomain.matchingDomainKeys(hostname, fixedGlossary.byDomain);
+      //（正規化 + www. 互通 + `*.` 萬用字元）；key 帶路徑前綴（`host/path`）時只對
+      // 該路徑之下的頁面生效（同站不同作品 / 專欄各用一份術語表）。多 key 命中時
+      // 依「整站 → 路徑」具體度排序後合併，後者覆蓋前者。
+      const keys = globalThis.__SKDomain.matchingDomainKeys(pageUrl.hostname, fixedGlossary.byDomain, pageUrl.pathname);
       for (const key of keys) {
         const entries = Array.isArray(fixedGlossary.byDomain[key])
           ? fixedGlossary.byDomain[key].filter((e) => e.source && e.target)
