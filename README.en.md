@@ -10,7 +10,7 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
-- **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with four-finger touch translate and the floating button, ready out of the box.
+- **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with multi-finger touch translate and the floating button, ready out of the box.
 - Added **Word (.docx) document translation** — the translation is written back into the original file with layout, styles, tables, and comments fully preserved; bilingual output available.
 - Added **subtitle file translation** — SRT / WebVTT / ASS files are translated cue by cue with timing and style tags preserved; download monolingual or bilingual subtitles.
 - **PDF translation: higher limits and layout fixes** — limits raised to 50 MB / 300 pages, translate a chosen page range, fixes for two-column short lines, colored backgrounds, rotated pages and overflowing paragraphs, and on-demand fonts for Simplified Chinese / Japanese / Korean output.
@@ -97,7 +97,7 @@ Go to the [Firefox Add-ons listing](https://addons.mozilla.org/firefox/addon/shi
     - All three keybindings, engines, models, and labels are customizable in the "Translation shortcuts" section of settings
     - Press any shortcut while translated → restore original
     - Press any shortcut while translating → cancel translation
-- **iOS / iPadOS four-finger touch**: on iPhone / iPad Safari, tap the page with four fingers to translate (same as the primary preset shortcut — tap again to restore or cancel); a four-finger long-press uses the secondary preset. On by default; if it triggers accidentally, turn it off under "Four-finger touch translate" in settings — the floating button and external-keyboard shortcuts are unaffected.
+- **iOS / iPadOS touch gesture**: on iPhone / iPad Safari, tap the page with several fingers to translate (same as the primary preset shortcut — tap again to restore or cancel); a multi-finger long-press uses the secondary preset. Four fingers by default; switch to three for one-handed use on iPhone under "Touch gesture translate" in settings, or turn it off there if it triggers accidentally — the floating button and external-keyboard shortcuts are unaffected.
 - **YouTube subtitle translation**: open a video with captions (manual or auto-generated), make sure CC is on, click the toolbar icon → toggle "YouTube subtitle translation" on
 - **Auto-translate sites**: add domains to the "Auto-translate sites" list in settings; pages on those sites translate on load (toast shows the `[Auto]` prefix)
 - **Custom glossary**: add term mappings in the "Glossary" tab; translations are forced to use your preferred renderings
@@ -335,7 +335,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.5.1 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.5.2 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

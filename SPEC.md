@@ -7,7 +7,7 @@
 - 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.5.1
+- 目前 Extension 版本：2.5.2
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.5.1 為止）
+### 2.1 已實作（v2.5.2 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -61,7 +61,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 簡繁本地互轉 | ✅ | 簡繁段落走本地 OpenCC 字典轉換，免費零 API；`autoConvertZh` 自動模式 |
 | 送到 Instapaper | ✅ | 把已翻譯整頁存進 Instapaper（含 AI 摘要）；popup 按鈕 + Alt+I 快速鍵 |
 | 文件翻譯（PDF / EPUB / Word / TXT / Markdown / HTML / 字幕檔） | ✅ | 上傳整份翻譯；PDF 保留版面輸出譯文 PDF；EPUB 全書術語表 / 章節選翻 / 預覽編輯 / 雙語譯本；Word（.docx）譯文寫回原檔格式與版面全保留、可輸出雙語對照；TXT / Markdown / HTML 沿用章節管線，譯文輸出格式 = 輸入格式；字幕檔（SRT / WebVTT / ASS）每則字幕為翻譯單位、時間軸原樣保留、可輸出雙語字幕；詳見 §17 |
-| iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；四指輕點觸發；popup／options 觸控調整；不含 PDF 翻譯 |
+| iOS／iPadOS Safari | ✅ | 已上架 App Store（app ID 6776958298「Shinkansen Web Translator」）；多指輕點觸發（預設四指，可改三指）；popup／options 觸控調整；不含 PDF 翻譯 |
 
 ### 2.3 明確不做
 
@@ -247,6 +247,8 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 
 **YouTube 字幕顏色**：overlay 文字與背景顏色跟隨使用者在 YouTube 播放器「字幕樣式」設定的字型／背景顏色（含透明度），不硬編。
 
+**播放器選單開著時不動 CC**：字幕翻譯啟動或重載字幕時需要程式化切換播放器的 CC 按鈕，若此時播放器的齒輪設定選單／右鍵選單等 popup 正開著，會先等使用者關掉選單再切換（每 0.5 秒檢查一次，最多等 60 秒後照常進行），避免使用者正在選畫質或播放速度時選單被關掉。細節見 SPEC-PRIVATE §32.ag。
+
 **模式切換時機**：已翻譯狀態下切換顯示模式會顯示提示 toast，要求按快速鍵重新翻譯以套用；當前頁面不動（避免半翻半改）。
 
 **SPA 防護**：譯文被站點 framework 覆蓋 / 拔除時自動偵測並修復（Content Guard），不重複呼叫 LLM。注入規則、防護判準、與姊妹擴充 JRead 的互讓機制等細節見 SPEC-PRIVATE §32。
@@ -296,7 +298,7 @@ shinkansen/
 ├── content-fw-detect-main.js # main world framework 偵測 bridge（MAIN world）
 ├── content-drive.js          # Google Drive 影片 ASR 字幕翻譯（top frame 浮層 overlay）
 ├── content-drive-iframe.js   # Drive ASR 字幕 URL 偵測（iframe）
-├── content-touch.js          # iOS 四指 tap 手勢（IS_IOS_BUILD gate，桌面 build 為 no-op）
+├── content-touch.js          # iOS 多指 tap 手勢（三指 / 四指；IS_IOS_BUILD gate，桌面 build 為 no-op）
 ├── content.js                # 主協調層（translatePage、Debug API、初始化）
 ├── content-shortcuts.js      # 自訂快速鍵 keydown capture 比對 → 本地 dispatch（§10.1）
 ├── content-floating-icon.js  # 懸浮翻譯控制按鈕
@@ -481,6 +483,7 @@ shinkansen/
   "floatingIconSize": 24,
   "floatingIconPos": { "edge": "right", "offsetY": 1 },
   "fourFingerGesture": true,
+  "touchGestureFingers": 4,
   "iosPromoDismissed": false,
   "autoTranslateSlot": 2,
   "modelPricingOverrides": {},
@@ -559,7 +562,7 @@ shinkansen/
 | 快捷鍵 | command id | slot | 預設 engine / model |
 |---|---|---|---|
 | Alt+S（Opt+S） | `translate-preset-0` | 2 | Gemini Flash Lite（主要預設） |
-| Alt+A（Opt+A） | `translate-preset-1` | 1 | Gemini 3.8 Flash（次要預設，四指長按亦走此組） |
+| Alt+A（Opt+A） | `translate-preset-1` | 1 | Gemini 3.8 Flash（次要預設，多指長按亦走此組） |
 | Alt+D（Opt+D） | `translate-preset-3` | 3 | Google MT |
 | Alt+I（Opt+I） | `send-to-instapaper` | — | 送到 Instapaper（§3.11） |
 
@@ -569,9 +572,9 @@ shinkansen/
 
 三組 preset 的鍵位可在 options「翻譯快速鍵」card 用 in-page recorder 自訂（存 `customShortcuts`，`content-shortcuts.js` 在頁面層攔截比對）。全平台通用——特別是 Safari／iPad 外接鍵盤沒有瀏覽器層改鍵入口。manifest 預設鍵仍並存有效。
 
-### 10.2 iOS／iPadOS 四指手勢
+### 10.2 iOS／iPadOS 多指手勢
 
-四指輕點 = 主要預設快速鍵完整 toggle（`content-touch.js`）；`fourFingerGesture` 設定控制，預設開（易誤觸發的使用者可在 options 關閉；懸浮按鈕與硬體鍵盤快速鍵不受此開關影響）。
+多指輕點 = 主要預設快速鍵完整 toggle、多指長按（600ms）= 次要預設 slot 1（`content-touch.js`）。指數由 `touchGestureFingers` 決定（3 或 4，預設 4；比設定指數多一指落下即取消，三指 / 四指語意互斥）；`fourFingerGesture` 為總開關，預設開。options「觸控手勢翻譯」以單一 picker（關閉 / 三指輕點 / 四指輕點）同時對應這兩個 key；懸浮按鈕與硬體鍵盤快速鍵不受影響。popup 的快速鍵提示跟著指數顯示「三指／四指輕點切換翻譯」，手勢關閉時退回顯示鍵盤快速鍵。
 
 ### 10.3 iOS background keep-alive
 

@@ -673,7 +673,60 @@
     YT._mwebCcRetries = 0;
   }
 
+  // issue #68（2026-09-30）：播放器 popup（齒輪設定選單 / 右鍵選單等 .ytp-popup）開著時，
+  // 程式化點 CC 按鈕（或 API 重載 captions module）會讓 YouTube 把 popup 收掉——使用者正要
+  // 選畫質 / 播放速度就被關掉；autoTranslate 預設開，且字幕沒到前每 3s 重試一次，等於選單
+  // 一分鐘內反覆被關（probe-yt-gear-menu.js 實測：觸發後 +1.0s 選單關閉，之後每 3s 一次）。
+  // 結構性通則（§8）：播放器內任一 .ytp-popup 正在顯示（display ≠ none 且非 aria-hidden）=
+  // 使用者正在跟播放器 UI 互動 → 延後重載，每 POPUP_POLL_MS 回頭看，popup 收起才真的跑。
+  // 上限 POPUP_WAIT_MAX_MS，超過照跑（避免使用者一直開著選單讓字幕永遠不啟動）。
+  // stop / 新影片 reset 清 timer。
+  const POPUP_POLL_MS = 500;
+  const POPUP_WAIT_MAX_MS = 60000;
+
+  function _isPlayerPopupOpen() {
+    const player = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+    if (!player) return false;
+    for (const el of player.querySelectorAll('.ytp-popup')) {
+      if (el.getAttribute('aria-hidden') === 'true') continue; // 收合動畫中 = 已關
+      if (getComputedStyle(el).display === 'none') continue;
+      return true;
+    }
+    return false;
+  }
+
+  // 回傳 true = 本次 forceSubtitleReload 已延後（呼叫端直接 return）
+  function _deferReloadWhilePopupOpen() {
+    const YT = SK.YT;
+    if (YT._popupDeferTimer) return true; // 已在等 popup 收起，不重複排
+    if (!_isPlayerPopupOpen()) { YT._popupDeferSince = 0; return false; }
+    if (!YT._popupDeferSince) {
+      YT._popupDeferSince = Date.now();
+      SK.sendLog('info', 'youtube', 'forceSubtitleReload deferred: player popup open');
+    } else if (Date.now() - YT._popupDeferSince > POPUP_WAIT_MAX_MS) {
+      SK.sendLog('info', 'youtube', 'forceSubtitleReload: popup open too long, proceeding anyway');
+      YT._popupDeferSince = 0;
+      return false;
+    }
+    YT._popupDeferTimer = setTimeout(() => {
+      YT._popupDeferTimer = null;
+      if (!YT.active) { YT._popupDeferSince = 0; return; }
+      forceSubtitleReload();
+    }, POPUP_POLL_MS);
+    return true;
+  }
+
+  function _clearPopupDefer() {
+    const YT = SK.YT;
+    if (YT._popupDeferTimer) {
+      clearTimeout(YT._popupDeferTimer);
+      YT._popupDeferTimer = null;
+    }
+    YT._popupDeferSince = 0;
+  }
+
   async function forceSubtitleReload() {
+    if (_deferReloadWhilePopupOpen()) return; // issue #68：播放器選單開著就先不動 CC
     const btn = document.querySelector('.ytp-subtitles-button');
     if (!btn) {
       // 結構特徵 fallback:CC 按鈕不存在(mweb 播放器 UI 沒有此按鈕)→ player API 路徑。
@@ -4264,6 +4317,7 @@
       YT._ccButtonObserver = null;
     }
     _clearMwebCcRetry(); // mweb auto-CC 重試排程一併停掉
+    _clearPopupDefer();  // issue #68：等 popup 收起的延後重載一併停掉
     _setCcPausedHidingMode(false);
     _setAsrHidingMode(false);
     _removeOverlay();
@@ -4345,6 +4399,7 @@
     YT._firstCacheHitLogged      = false;     // v1.2.51
     YT._autoCcToggled            = false;     // v1.6.20 A 路徑:每次啟動翻譯重置 auto-CC 旗標
     _clearMwebCcRetry();                      // mweb auto-CC 重試計數 / 排程歸零(新影片重新計)
+    _clearPopupDefer();                       // issue #68：popup 延後重載歸零
     YT._errorNotified            = false;
     YT.ccPaused                  = false;     // attachVideoListener → _observeCcButton 會依 CC 實際狀態重設
     YT.displayCues               = [];        // G 路徑:啟動時清空 overlay cue,等本影片字幕回來

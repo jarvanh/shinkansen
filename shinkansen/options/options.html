@@ -394,13 +394,19 @@
       </label>
     </section>
 
-    <!-- 四指觸控翻譯：iOS / iPadOS only，由 options.js 依 IS_IOS_BUILD 控制 hidden -->
-    <section id="four-finger-section" hidden>
-      <h2 data-i18n="options.fourFinger.heading">四指觸控翻譯</h2>
-      <p class="muted" data-i18n="options.fourFinger.intro">預設開啟。在手機 / 平板用四隻手指輕點頁面即翻譯、四指長按用次要預設；容易誤觸發時可在此關閉，懸浮按鈕與硬體鍵盤快速鍵不受此開關影響</p>
-      <label class="toggle">
-        <input type="checkbox" id="fourFingerGesture">
-        <span data-i18n="options.fourFinger.enable">啟用四指觸控手勢</span>
+    <!-- 多指觸控翻譯：iOS / iPadOS only，由 options.js 依 IS_IOS_BUILD 控制 hidden。
+         單一 picker（關閉 / 三指 / 四指）對應 storage 的 fourFingerGesture（enable）+
+         touchGestureFingers（3 | 4），options.js 負責雙向映射 -->
+    <section id="touch-gesture-section" hidden>
+      <h2 data-i18n="options.touchGesture.heading">觸控手勢翻譯</h2>
+      <p class="muted" data-i18n="options.touchGesture.intro">在手機 / 平板用多指輕點頁面即翻譯、多指長按用次要預設。預設四指；iPhone 單手操作可改三指。容易誤觸發時可關閉，懸浮按鈕與硬體鍵盤快速鍵不受影響</p>
+      <label>
+        <span data-i18n="options.touchGesture.label">觸控手勢</span>
+        <select id="touchGestureMode">
+          <option value="off" data-i18n="options.touchGesture.mode.off">關閉</option>
+          <option value="3" data-i18n="options.touchGesture.mode.three">三指輕點</option>
+          <option value="4" data-i18n="options.touchGesture.mode.four">四指輕點</option>
+        </select>
       </label>
     </section>
 

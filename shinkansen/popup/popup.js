@@ -189,14 +189,24 @@ async function refreshShortcutHint() {
   // v1.8.19: 主要預設 command id 改為 translate-preset-0（字典序保證 chrome://extensions/shortcuts 顯示在最上）
   const el = $('shortcut-hint');
   if (!el) return;
-  // iOS build 真觸控裝置：主要觸發是四指輕點（= 主要預設完整 toggle，
+  // iOS build 真觸控裝置：主要觸發是多指輕點（= 主要預設完整 toggle，
   // content-touch.js），提示改顯示手勢而非鍵盤快速鍵（接實體鍵盤時
-  // Alt+S 照常可用，options 快速鍵 section 有完整說明）。
+  // Alt+S 照常可用，options 快速鍵 section 有完整說明）。指數跟 options 的
+  // touchGestureFingers（3 | 4）走；手勢關閉時退回顯示鍵盤快速鍵。
   // iOS build 跑在 Mac（無觸控）時不走這條 → fall through 顯示鍵盤快速鍵，
   // 尊重 macOS 特性（見 lib/platform.js）。
   if (IS_IOS_BUILD && isTouchScreenDevice()) {
-    el.textContent = t('popup.shortcut.iosTouch');
-    return;
+    let gestureOn = true;
+    let fingers = 4;
+    try {
+      const s = await browser.storage.sync.get(['fourFingerGesture', 'touchGestureFingers']);
+      gestureOn = s.fourFingerGesture !== false;
+      if (s.touchGestureFingers === 3) fingers = 3;
+    } catch { /* storage 失效時保守用預設 */ }
+    if (gestureOn) {
+      el.textContent = t(fingers === 3 ? 'popup.shortcut.iosTouch3' : 'popup.shortcut.iosTouch4');
+      return;
+    }
   }
   try {
     const cmds = await browser.commands.getAll();

@@ -164,16 +164,22 @@ async function load() {
   _renderFloatingOpacityLabel(floatingOpacityPct);
   _renderFloatingSizeDemo();
 
-  // 四指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
-  // 預設關（=== true 才開）；改由懸浮按鈕當主要觸控入口，四指易誤觸發故預設關。
-  $('four-finger-section').hidden = !IS_IOS_BUILD;
+  // 多指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
+  $('touch-gesture-section').hidden = !IS_IOS_BUILD;
   // iOS 上架提示 pill:iOS build 本身不顯示(使用者已在 iOS 上,提示無意義)。
   // href 依 UI 語系決定 storefront(applyUiLanguageRefresh 於語系切換時同步更新)
   $('ios-promo').hidden = IS_IOS_BUILD;
   if (window.__SK?.i18n?.iosAppStoreUrl) {
     $('ios-promo').href = window.__SK.i18n.iosAppStoreUrl(s.uiLanguage || 'auto');
   }
-  $('fourFingerGesture').checked = s.fourFingerGesture === true;
+  // 單一 picker ← (fourFingerGesture enable, touchGestureFingers 3|4)。關閉時仍記住
+  // 指數（存進 dataset），重新開啟時回到原本的指數而不是硬回 4
+  {
+    const fingers = (s.touchGestureFingers === 3 || s.touchGestureFingers === 4) ? s.touchGestureFingers : 4;
+    const sel = $('touchGestureMode');
+    sel.value = s.fourFingerGesture === true ? String(fingers) : 'off';
+    sel.dataset.fingers = String(fingers);
+  }
 
   // 送到 Instapaper：enable 開關 + 連結狀態（已連結時顯示帳號 + 解除連結）
   $('instapaperEnabled').checked = s.instapaperEnabled === true;
@@ -1031,8 +1037,12 @@ async function _saveImpl() {
     floatingIcon: $('floatingIcon').checked,
     floatingIconSize: (() => { const v = document.querySelector('input[name="floatingIconSize"]:checked')?.value; return ['16', '24', '32'].includes(v) ? Number(v) : 24; })(),
     floatingIconOpacity: parseUserNum($('floatingIconOpacity').value, (DEFAULTS.floatingIconOpacity ?? 0.7) * 100) / 100,
-    // 四指觸控手勢 enable（iOS only；桌面 checkbox 隱藏但維持 loaded 值，不誤寫）
-    fourFingerGesture: $('fourFingerGesture').checked,
+    // 多指觸控手勢（iOS only；桌面 picker 隱藏但維持 loaded 值，不誤寫）：
+    // picker 'off' → enable=false、指數維持 loaded 值；'3' / '4' → enable=true + 指數
+    fourFingerGesture: $('touchGestureMode').value !== 'off',
+    touchGestureFingers: $('touchGestureMode').value === 'off'
+      ? (parseInt($('touchGestureMode').dataset.fingers, 10) || 4)
+      : parseInt($('touchGestureMode').value, 10),
     // v1.5.0: 雙語對照視覺標記
     translationMarkStyle: getSelectedMarkStyle(),
     // v1.8.52: 雙語強調色（已在 setDualAccent 時 sanitize 過,直接寫）
