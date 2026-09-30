@@ -41,6 +41,7 @@
 		9E22C77C2FD2A78F00CDA923 /* content-serialize.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7642FD2A78F00CDA923 /* content-serialize.js */; };
 		9E22C77D2FD2A78F00CDA923 /* content-inject.js in Resources */ = {isa = PBXBuildFile; fileRef = 9E22C7652FD2A78F00CDA923 /* content-inject.js */; };
 		9EFFFF00AA01000000000011 /* content-shortcuts.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA01000000000012 /* content-shortcuts.js */; };
+		9EFFFF00AA0F000000000011 /* content-hover.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA0F000000000012 /* content-hover.js */; };
 		9EFFFF00AA02000000000011 /* content-floating-icon.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF00AA02000000000012 /* content-floating-icon.js */; };
 		9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */ = {isa = PBXBuildFile; fileRef = 9EFFFF112FD2A78F00CDA923 /* content-touch.js */; };
 /* End PBXBuildFile section */
@@ -109,6 +110,7 @@
 		9EF9CDA52FD791E700AEDE11 /* Shinkansen.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Shinkansen.entitlements; sourceTree = "<group>"; };
 		9EF9CDA62FD7935900AEDE11 /* Shinkansen Extension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Shinkansen Extension.entitlements"; sourceTree = "<group>"; };
 		9EFFFF00AA01000000000012 /* content-shortcuts.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-shortcuts.js"; path = "Resources/content-shortcuts.js"; sourceTree = "<group>"; };
+		9EFFFF00AA0F000000000012 /* content-hover.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-hover.js"; path = "Resources/content-hover.js"; sourceTree = "<group>"; };
 		9EFFFF00AA02000000000012 /* content-floating-icon.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-floating-icon.js"; path = "Resources/content-floating-icon.js"; sourceTree = "<group>"; };
 		9EFFFF112FD2A78F00CDA923 /* content-touch.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "content-touch.js"; path = "Resources/content-touch.js"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -211,6 +213,7 @@
 				9E22C7622FD2A78F00CDA923 /* content.js */,
 				9EFFFF112FD2A78F00CDA923 /* content-touch.js */,
 				9EFFFF00AA01000000000012 /* content-shortcuts.js */,
+				9EFFFF00AA0F000000000012 /* content-hover.js */,
 				9EFFFF00AA02000000000012 /* content-floating-icon.js */,
 				9E22C7642FD2A78F00CDA923 /* content-serialize.js */,
 				9E22C7652FD2A78F00CDA923 /* content-inject.js */,
@@ -334,6 +337,7 @@
 				9E22C77A2FD2A78F00CDA923 /* content.js in Resources */,
 				9EFFFF102FD2A78F00CDA923 /* content-touch.js in Resources */,
 				9EFFFF00AA01000000000011 /* content-shortcuts.js in Resources */,
+				9EFFFF00AA0F000000000011 /* content-hover.js in Resources */,
 				9EFFFF00AA02000000000011 /* content-floating-icon.js in Resources */,
 				9E22C76E2FD2A78F00CDA923 /* content-drive.js in Resources */,
 				9E22C7662FD2A78F00CDA923 /* options in Resources */,
@@ -530,7 +534,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Shinkansen Extension/Shinkansen Extension.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.5.3;
+				CURRENT_PROJECT_VERSION = 2.5.4;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
@@ -542,7 +546,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.3;
+				MARKETING_VERSION = 2.5.4;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -566,7 +570,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Shinkansen Extension/Shinkansen Extension.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.5.3;
+				CURRENT_PROJECT_VERSION = 2.5.4;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Shinkansen Extension/Info.plist";
@@ -578,7 +582,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.3;
+				MARKETING_VERSION = 2.5.4;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -604,7 +608,7 @@
 				CODE_SIGN_ENTITLEMENTS = Shinkansen/Shinkansen.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.5.3;
+				CURRENT_PROJECT_VERSION = 2.5.4;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
@@ -619,7 +623,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.5.3;
+				MARKETING_VERSION = 2.5.4;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -647,7 +651,7 @@
 				CODE_SIGN_ENTITLEMENTS = Shinkansen/Shinkansen.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 2.5.3;
+				CURRENT_PROJECT_VERSION = 2.5.4;
 				DEVELOPMENT_TEAM = PR6NG3PH45;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Shinkansen/Info.plist;
@@ -662,7 +666,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.5.3;
+				MARKETING_VERSION = 2.5.4;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
