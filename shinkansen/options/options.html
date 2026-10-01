@@ -418,10 +418,12 @@
       </label>
     </section>
 
-    <!-- 多指觸控翻譯：iOS / iPadOS only，由 options.js 依 IS_IOS_BUILD 控制 hidden。
+    <!-- 多指觸控翻譯：只在真觸控裝置（iPhone / iPad）顯示——.ios-only 預設隱藏，
+         body.runtime-ios-touch 才顯示（平台屬性，見 lib/platform.js）；桌面瀏覽器與
+         iOS build 跑在 Mac（無觸控）都不顯示。
          單一 picker（關閉 / 三指 / 四指）對應 storage 的 fourFingerGesture（enable）+
          touchGestureFingers（3 | 4），options.js 負責雙向映射 -->
-    <section id="touch-gesture-section" hidden>
+    <section id="touch-gesture-section" class="ios-only">
       <h2 data-i18n="options.touchGesture.heading">觸控手勢翻譯</h2>
       <p class="muted" data-i18n="options.touchGesture.intro">在手機 / 平板用多指輕點頁面即翻譯、多指長按用次要預設。預設四指；iPhone 單手操作可改三指。容易誤觸發時可關閉，懸浮按鈕與硬體鍵盤快速鍵不受影響</p>
       <label>

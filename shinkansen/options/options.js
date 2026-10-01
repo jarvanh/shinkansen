@@ -164,8 +164,8 @@ async function load() {
   _renderFloatingOpacityLabel(floatingOpacityPct);
   _renderFloatingSizeDemo();
 
-  // 多指觸控手勢：只在 iOS / iPadOS build 顯示（桌面無此手勢，隱藏整個 section）。
-  $('touch-gesture-section').hidden = !IS_IOS_BUILD;
+  // 多指觸控手勢 section 的顯示由 CSS 控制（.ios-only + body.runtime-ios-touch，
+  // 只在真觸控裝置顯示；iOS build 跑在 Mac 無觸控 → 不顯示），這裡不設 hidden。
   // iOS 上架提示 pill:iOS build 本身不顯示(使用者已在 iOS 上,提示無意義)。
   // href 依 UI 語系決定 storefront(applyUiLanguageRefresh 於語系切換時同步更新)
   $('ios-promo').hidden = IS_IOS_BUILD;

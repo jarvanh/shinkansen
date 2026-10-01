@@ -7,7 +7,7 @@
 - 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.5.5
+- 目前 Extension 版本：2.5.6
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.5.5 為止）
+### 2.1 已實作（v2.5.6 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -575,7 +575,7 @@ shinkansen/
 
 ### 10.2 iOS／iPadOS 多指手勢
 
-多指輕點 = 主要預設快速鍵完整 toggle、多指長按（600ms）= 次要預設 slot 1（`content-touch.js`）。指數由 `touchGestureFingers` 決定（3 或 4，預設 4；比設定指數多一指落下即取消，三指 / 四指語意互斥）；`fourFingerGesture` 為總開關，預設開。options「觸控手勢翻譯」以單一 picker（關閉 / 三指輕點 / 四指輕點）同時對應這兩個 key；懸浮按鈕與硬體鍵盤快速鍵不受影響。popup 的快速鍵提示跟著指數顯示「三指／四指輕點切換翻譯」，手勢關閉時退回顯示鍵盤快速鍵。
+多指輕點 = 主要預設快速鍵完整 toggle、多指長按（600ms）= 次要預設 slot 1（`content-touch.js`）。指數由 `touchGestureFingers` 決定（3 或 4，預設 4；比設定指數多一指落下即取消，三指 / 四指語意互斥）；`fourFingerGesture` 為總開關，預設開。options「觸控手勢翻譯」以單一 picker（關閉 / 三指輕點 / 四指輕點）同時對應這兩個 key，只在真觸控裝置（iPhone / iPad）顯示——桌面瀏覽器與 iOS 版跑在 Mac（無觸控螢幕）時整個 section 隱藏；懸浮按鈕與硬體鍵盤快速鍵不受影響。popup 的快速鍵提示跟著指數顯示「三指／四指輕點切換翻譯」，手勢關閉時退回顯示鍵盤快速鍵。
 
 ### 10.2.5 懸停翻譯（桌面 / 有滑鼠的裝置）
 

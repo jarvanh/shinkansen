@@ -7,6 +7,8 @@
 
 ## v2.5.x
 
+**v2.5.6**——**設定頁「觸控手勢翻譯」只在真觸控裝置顯示**。iOS 版裝在 Mac 上執行時（Apple Silicon 的「iPhone 與 iPad App 在 Mac 上執行」），設定頁過去仍會顯示三指 / 四指輕點的選項，但 Mac 沒有觸控螢幕，這個選項沒有作用。現在這個區塊只在 iPhone / iPad 顯示，桌面一律隱藏；已存的手勢設定不受影響。regression：`ios-on-mac-platform-split.spec.js` 補「桌面 / iOS 版跑在 Mac 不顯示、真觸控裝置才顯示」斷言（SANITY 已驗）。
+
 **v2.5.5**——**設定頁「測試」按鈕不再把「HTTP 2xx 但回應不是 JSON」誤判為連線成功**（PR #70，外部貢獻者 thx93116）。自訂 Provider 的 Base URL 填錯、指到會回 SPA fallback 頁的網址時，伺服器回 200 + HTML，測試按鈕過去只看 HTTP status、把 JSON 解析錯誤吞掉照樣顯示綠燈，正式翻譯才失敗，排查時使用者會先排除 Base URL。現在 2xx 但 body 不是 JSON 一律回失敗，並提示確認 Base URL 是否為正確的 OpenAI-compatible API endpoint。同 pattern 的 Gemini API Key 測試一併修（公司 proxy / 登入頁 / captive portal 攔截後回 200 + HTML 是同一種病），失敗訊息提示可能是網路環境攔截。非 2xx 路徑行為不變。regression：`bg-test-connection-non-json.spec.js` 真 extension + SW fetch stub，從 options 頁走真實訊息分派驗兩條測試路徑的 2xx + HTML / 2xx + JSON / 401 三種回應。
 
 **v2.5.4**——**懸停翻譯（issue #67）**。按住修飾鍵、游標停在段落上約 0.15 秒，只翻譯游標所在的那一段，譯文原地注入，想先自己讀或只看部分內容時不用翻整頁。設定頁「翻譯快速鍵」區塊底部新增兩個選項：修飾鍵（關閉 / Shift / Option / Control，預設關閉）與懸停譯文顯示方式（雙語對照 / 單語覆蓋，預設雙語，與整頁翻譯的顯示模式各自獨立）。引擎沿用主要預設，整頁已翻譯時沿用該次引擎；已翻過的段落不重送、快取命中不計費；等待回應時該段畫虛線外框，不彈進度通知。懸停翻過幾段後按任一快速鍵會補翻整頁其餘段落（不是還原），再按一次才整頁還原。iPhone / 純觸控 iPad 沒有 hover，設定頁不顯示這組選項，iPad 接觸控板或滑鼠時才出現。順帶修正混合模式（懸停雙語 + 整頁單語）下整頁翻譯會把懸停翻過的段落原地覆蓋成「原地譯文 + 下方對照譯文」雙重內容——單語路徑不再覆蓋已有雙語對照的段落；整頁翻譯與 Google 翻譯路徑重複的顯示設定區塊收斂成同一份。regression：`hover-translate-paragraph`（真實滑鼠移動 + 修飾鍵走真 extension，3 條，含混合模式雙向）；inject / content-guard / SPA / restore 家族 243 條全綠。**不需清快取**。
