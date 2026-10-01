@@ -1854,7 +1854,18 @@ async function testGeminiKey(payload) {
   try {
     const resp = await fetchWithTimeout(url, { method: 'GET', headers: { 'x-goog-api-key': apiKey } }, 10000);
     if (resp.ok) {
-      const j = await resp.json().catch(() => ({}));
+      // 2xx 但 body 不是 JSON（公司 proxy / 登入頁 / captive portal 攔截後回 200 + HTML）不算連線成功，
+      // 否則測試綠燈、正式翻譯才炸。與 testCustomProvider 同 pattern（PR #70 修自訂 Provider，此處同步）
+      let j;
+      try {
+        j = await resp.json();
+      } catch {
+        return {
+          ok: false,
+          status: resp.status,
+          message: `HTTP ${resp.status}，但回應不是有效的 JSON。可能是網路環境（公司 proxy / 登入頁）攔截了請求，請換網路再試。`,
+        };
+      }
       return { ok: true, status: resp.status, message: `連線成功（model: ${j?.name || model}）` };
     }
     let errMsg = `HTTP ${resp.status}`;
