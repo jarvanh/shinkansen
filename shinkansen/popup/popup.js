@@ -163,15 +163,20 @@ async function refreshTranslateButton() {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
     const resp = await browser.tabs.sendMessage(tab.id, { type: 'GET_STATE' });
+    // translated = 下一次按是還原；injected = 頁面有譯文可編輯。兩者在「只被簡繁自動轉換 /
+    // 懸停翻譯處理過、還有未翻內容」的頁面上不同：按鈕是「翻譯本頁」，但已注入的段落仍可編輯
     if (resp?.translated) {
       btn.textContent = t('popup.action.restore');
       btn.dataset.mode = 'restore';
-      // v1.0.3: 已翻譯時顯示編輯按鈕
-      editBtn.hidden = false;
-      editBtn.textContent = resp?.editing ? t('popup.action.editDone') : t('popup.action.editStart');
     } else {
       btn.textContent = t('popup.action.translate');
       btn.dataset.mode = 'translate';
+    }
+    // v1.0.3: 有譯文時顯示編輯按鈕
+    if (resp?.translated || resp?.injected) {
+      editBtn.hidden = false;
+      editBtn.textContent = resp?.editing ? t('popup.action.editDone') : t('popup.action.editStart');
+    } else {
       editBtn.hidden = true;
     }
   } catch {

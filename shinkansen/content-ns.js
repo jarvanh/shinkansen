@@ -570,18 +570,21 @@ if (window.__shinkansen_loaded) {
   // 切分後反而能塞回正常批次平行吞吐。
   SK.BR_BLOCK_SPLIT_CHARS = 3500;
 
-  // 2026-09-14：頁面只被背景簡繁本地轉換標成已翻譯時，使用者按翻譯要「翻外語內容」還是
-  // 「還原轉換」的判準——未翻候選段落的原文總字元數達此門檻即視為有外語內容要翻
-  // （約一個正文段落；避免整頁簡體頁上零星的英文按鈕 / 標籤把 toggle 還原變成整頁送翻）。
-  SK.CONVERTED_PAGE_RETRANSLATE_MIN_CHARS = 200;
-  SK.hasSubstantialUntranslated = function hasSubstantialUntranslated() {
+  // 頁面只有「部分段落」帶注入痕跡（懸停翻譯過幾段 / 背景簡繁本地轉換）時，使用者按翻譯要
+  // 「翻剩下的內容」還是「還原」的判準——未翻候選段落的原文總字元數達 minChars 即視為還有內容要翻。
+  //   - 懸停翻譯：預設門檻 HOVER_PAGE_RETRANSLATE_MIN_CHARS（約一個正文段落；避免整頁幾乎都被
+  //     懸停翻完後，零星的按鈕 / 標籤把 toggle 還原變成整頁送翻）
+  //   - 簡繁自動轉換：呼叫端傳 1（有任何未翻候選就直接翻）——自動轉換是背景行為，使用者按
+  //     翻譯的意圖一律是「翻譯」，不該第一下變成還原轉換
+  SK.HOVER_PAGE_RETRANSLATE_MIN_CHARS = 200;
+  SK.hasSubstantialUntranslated = function hasSubstantialUntranslated(minChars = SK.HOVER_PAGE_RETRANSLATE_MIN_CHARS) {
     const units = SK.collectParagraphs();
     let chars = 0;
     for (const u of units) {
       // dual 原文槽（懸停 dual 翻過的段落）偵測層不擋，但它已有譯文，不算未翻
       if (u.el?.closest?.('[data-shinkansen-dual-source]')) continue;
       chars += ((u.el?.innerText || u.text || '') + '').trim().length;
-      if (chars >= SK.CONVERTED_PAGE_RETRANSLATE_MIN_CHARS) return true;
+      if (chars >= minChars) return true;
     }
     return false;
   };

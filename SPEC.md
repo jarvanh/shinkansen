@@ -7,7 +7,7 @@
 - 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.5.6
+- 目前 Extension 版本：2.5.7
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.5.6 為止）
+### 2.1 已實作（v2.5.7 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -218,7 +218,7 @@ target 為中文變體時，偵測為**相反變體**的段落不送 LLM，改�
 - 混合頁兩路並存：可轉段落走本地轉換、其餘照走 LLM；轉換結果不寫翻譯快取、不記用量（零 API）
 - **自動模式**（`settings.autoConvertZh`，預設開）：頁面載入 / SPA 導航自動轉換（只跑本地轉換、絕不打 API）；popup toggle「簡繁自動互轉（免費）」只在 target 為中文變體時顯示，切換即時生效（取消時僅還原本地轉換結果，LLM 翻譯成果不受影響）
 - toast 文案與 LLM 翻譯完全分開：進行中「簡繁本地轉換中⋯（不使用 AI 翻譯）」、完成「簡繁本地轉換完成」+「只做字典簡繁轉換，未觸發 AI 翻譯 · 免費」、SPA 新內容「簡繁本地轉換新內容⋯」/「已本地轉換 N 段新內容（未使用 AI）」；混合頁完整翻譯時標示其中 N 段是字典轉換未經 AI。完成通知預設不顯示（`hideZhConvertToast: true`，設定頁可關閉此隱藏），進行中 toast 仍顯示
-- 轉換後按翻譯：頁面若只是被本地轉換標成已翻譯（`translatedBy = 'opencc-local'`）且仍有夠份量的未翻外語段落（`SK.hasSubstantialUntranslated()`，門檻 200 字元），按翻譯視為「翻這頁的外語內容」直接整頁翻譯、已轉換段不還原；整頁本來就是簡體（沒有其他候選）才維持 toggle 還原
+- 轉換後按翻譯：自動轉換是背景行為，不算「已翻譯」狀態——工具列 icon 不亮紅點；頁面只被本地轉換過（`translatedBy = 'opencc-local'`）且還有任何未翻段落時，按翻譯（快速鍵 / 工具列圖示選單按鈕 / 懸浮按鈕）第一下就直接翻譯剩餘內容、已轉換段不還原，工具列圖示選單的按鈕也顯示「翻譯本頁」；再按一次才整頁還原（含轉換段）。整頁完全沒有其他可翻內容（純簡體頁）才維持 toggle 還原
 - **實作**：`lib/zh-convert.js` + `lib/vendor/opencc/`（字典 10 檔約 1.1MB，lazy load）；分流判定與 SPA 邊角處理見 SPEC-PRIVATE §32
 
 ---
@@ -277,7 +277,7 @@ single 模式譯文**一律注入回原 element**（不做 sibling overlay——
 - **技術性排除**：script / style / 程式碼區塊（含語法高亮 `<pre>`）/ 表單控制項 / 站底 footer（無文章祖先時）/ ARIA search 等；`<nav>` 不硬排除（交給 prompt）
 - **頁面作者宣告的不翻譯訊號**：HTML 標準 `translate="no"` 屬性與 `notranslate` class（Google Translate 慣例）整顆跳過，`translate="yes"` 可在其中重新開放；段落內 inline 的同類元素（人名、代號）原樣保留不送翻譯。掛在 `<html>` / `<body>` 或涵蓋頁面大半文字的 app root 上的文件級宣告不採信（那是 SPA 避開 Google Translate 改 DOM 的 workaround，不代表內容不可翻）
 - **icon 字型 ligature**：以文字當 icon 名的元素（computed font-family 為 icon / symbol 類字型、內容為單一識別字 token，如 Material Icons 的 `star`）不翻譯也不送翻譯，避免 icon 變成中文字
-- **可見性**：隱藏元素與 a11y visually-hidden 元素不收
+- **可見性**：隱藏元素與 a11y visually-hidden 元素不收；純圖示按鈕（唯一文字是 visually-hidden 標籤）整顆不收，圖示與按鈕尺寸維持原樣
 - 特定站點結構補抓 selector、mixed-content fragment 切分、BUTTON 長文放行等細節見 SPEC-PRIVATE §32
 
 ---
@@ -654,7 +654,7 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 - 主按鈕：「翻譯本頁」/「顯示原文」+「送到 Instapaper」按鈕（啟用時，§3.11）
 - 顯示模式 segmented control（單語覆蓋 / 雙語對照，§4.1）
 - 「翻譯成」目標語言 picker（§3.9）
-- 編輯譯文按鈕（翻譯完成後顯示）：進入編輯模式後頁面浮動工具列提供「復原」/「完成」；編輯中貼上降為純文字；連結邊界打字自動補回連結內（`lib/edit-link-repair.js`，與 EPUB 預覽編輯共用）
+- 編輯譯文按鈕（頁面有譯文時顯示，含只被簡繁自動轉換 / 懸停翻譯處理過的頁面）：進入編輯模式後頁面浮動工具列提供「復原」/「完成」；編輯中貼上降為純文字；連結邊界打字自動補回連結內（`lib/edit-link-repair.js`，與 EPUB 預覽編輯共用）
 - 白名單自動翻譯 toggle
 - 簡繁自動互轉 toggle（target 為中文變體時顯示，§3.12）
 - 術語表一致化 toggle
@@ -677,7 +677,7 @@ iOS Safari 背景 event page 掛起的續命處理（長批次翻譯期間保持
 
 對外可觀察的行為要點：
 
-- 翻譯完成後工具列 icon 點亮紅點 badge，分頁導航自動清除
+- 使用者主動觸發的翻譯完成後工具列 icon 點亮紅點 badge，分頁導航自動清除；背景簡繁自動轉換（§3.12）不點亮
 - **跨 tab sticky 翻譯**：從已翻譯頁面以連結開新分頁（Cmd+Click / `target="_blank"` 等）時，新分頁自動以同一組 preset 續翻；手動開新分頁 / bookmark 不繼承
 - 設定讀寫由 popup / options 直接走 `chrome.storage`，不經訊息層
 

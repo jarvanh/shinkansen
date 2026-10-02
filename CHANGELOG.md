@@ -7,6 +7,8 @@
 
 ## v2.5.x
 
+**v2.5.7**——**簡繁自動轉換不再點亮工具列圖示，轉換後按快速鍵第一下就翻譯；修正簡體版 Wikipedia 側欄目錄跑版**。①背景的簡繁自動轉換不再點亮工具列 icon 的紅點——紅點只代表你主動觸發的翻譯。②自動轉換過的頁面按翻譯（快速鍵 / 工具列圖示選單按鈕 / 懸浮按鈕）過去第一下會先還原轉換、第二下才翻譯：三個入口都先看頁面上有沒有注入痕跡，自動轉換的痕跡也被算成「已翻譯」。現在只要頁面還有任何未翻內容，第一下就直接翻譯剩餘內容、已轉換段落保留，再按一次才整頁還原；工具列圖示選單的按鈕文字同步顯示「翻譯本頁」。整頁完全沒有其他可翻內容（純簡體頁）才維持還原。③純圖示按鈕（箭頭圖示 + 只給螢幕閱讀器的隱藏標籤）過去會被整顆當成段落，注入後圖示消失、隱藏文字露在窄按鈕裡變成重疊的直排字（Wikipedia 側欄目錄的展開鈕，簡繁轉換與整頁翻譯都中）；現在沒有可見文字的按鈕整顆不處理。④段落內容只有一個包裝層時，譯文改寫進包裝層而不是把它清掉，掛在包裝層上的間距得以保留（目錄短標題轉換後行距變擠、對不齊箭頭）。regression：`inject-converted-page-hotkey.spec.js`（背景送快速鍵訊息 + 讀真實 badge，4 條）、`detect-icon-button-sr-only-label.spec.js`（2 條）、`inject-sole-wrapper-descent.spec.js`（2 條），SANITY 已驗。
+
 **v2.5.6**——**設定頁「觸控手勢翻譯」只在真觸控裝置顯示**。iOS 版裝在 Mac 上執行時（Apple Silicon 的「iPhone 與 iPad App 在 Mac 上執行」），設定頁過去仍會顯示三指 / 四指輕點的選項，但 Mac 沒有觸控螢幕，這個選項沒有作用。現在這個區塊只在 iPhone / iPad 顯示，桌面一律隱藏；已存的手勢設定不受影響。regression：`ios-on-mac-platform-split.spec.js` 補「桌面 / iOS 版跑在 Mac 不顯示、真觸控裝置才顯示」斷言（SANITY 已驗）。
 
 **v2.5.5**——**設定頁「測試」按鈕不再把「HTTP 2xx 但回應不是 JSON」誤判為連線成功**（PR #70，外部貢獻者 thx93116）。自訂 Provider 的 Base URL 填錯、指到會回 SPA fallback 頁的網址時，伺服器回 200 + HTML，測試按鈕過去只看 HTTP status、把 JSON 解析錯誤吞掉照樣顯示綠燈，正式翻譯才失敗，排查時使用者會先排除 Base URL。現在 2xx 但 body 不是 JSON 一律回失敗，並提示確認 Base URL 是否為正確的 OpenAI-compatible API endpoint。同 pattern 的 Gemini API Key 測試一併修（公司 proxy / 登入頁 / captive portal 攔截後回 200 + HTML 是同一種病），失敗訊息提示可能是網路環境攔截。非 2xx 路徑行為不變。regression：`bg-test-connection-non-json.spec.js` 真 extension + SW fetch stub，從 options 頁走真實訊息分派驗兩條測試路徑的 2xx + HTML / 2xx + JSON / 401 三種回應。
