@@ -7,7 +7,7 @@
 // 帶對照的 target 自相矛盾,模型讀到後主動剝掉（原文）。
 //
 // 本 probe 忠實重現 production 組裝(import 真 buildEffectiveSystemInstruction、
-// 抽真 DEFAULT_SYSTEM_PROMPT、«N» marker + DELIMITER、temperature 1.0),打真 API。
+// 抽真 DEFAULT_SYSTEM_PROMPT、«N» marker + DELIMITER，不帶取樣參數),打真 API。
 // 跑法:改 code 前跑一次(baseline,舊指令)→ 改指令後再跑(驗證修法)。
 //   node tools/probe-glossary-annotation.mjs [rounds=3]
 //
@@ -64,7 +64,7 @@ async function callOnce(model) {
   const body = {
     contents: [{ role: 'user', parts: [{ text: joined }] }],
     systemInstruction: { parts: [{ text: effectiveSystem }] },
-    generationConfig: { temperature: 1.0, maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: 'minimal' } },
+    generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: 'minimal' } },
   };
   const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',

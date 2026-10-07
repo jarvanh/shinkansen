@@ -7,7 +7,7 @@
 - 最後更新：2026-09-14（v2.4.19，對照程式碼校正）
 - 目標平台：Chrome（Manifest V3）
 - 作業系統：macOS 26
-- 目前 Extension 版本：2.5.8
+- 目前 Extension 版本：2.6.0
 
 ---
 
@@ -32,7 +32,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 
 ## 2. 功能範圍
 
-### 2.1 已實作（v2.5.8 為止）
+### 2.1 已實作（v2.6.0 為止）
 
 詳細版本歷史見 [`CHANGELOG.md`](CHANGELOG.md)。
 
@@ -46,7 +46,7 @@ Shinkansen 是一款 Chrome 擴充功能，將英文（或其他外語）網頁�
 | 佔位符序列化 | ✅ | 行內元素（連結 / 粗斜體等）與媒體在譯文中完整保留 |
 | 並行翻譯 | ✅ | 併發批次池（`maxConcurrentBatches`）；429 退避重試 |
 | 自動術語擷取 | ✅ | 預翻前擷取全文專有名詞對照表；長度三級策略；術語快取 |
-| 固定術語表 | ✅ | 全域 + 網域兩層（網域可加路徑前綴限定範圍，路徑規則覆蓋整站）；設定頁編輯；優先覆蓋 LLM 自動術語 |
+| 固定術語表 | ✅ | 全域 + 網域兩層（網域可加路徑前綴限定範圍，路徑規則覆蓋整站；設定頁清單對含路徑的網域標「（路徑範圍）」）；設定頁編輯；優先覆蓋 LLM 自動術語 |
 | 翻譯快取 | ✅ | `chrome.storage.local`；SHA-1 key；v1.8.45 起版本變更不清快取 |
 | 設定頁 | ✅ | 8 Tab：一般設定 / YouTube 字幕 / Gemini / 自訂模型 / 術語表 / 禁用詞清單 / 用量紀錄 / Debug；匯入匯出 |
 | Popup 面板 | ✅ | 翻譯/還原；快取/費用統計；自動翻譯開關；YouTube 字幕 toggle |
@@ -579,7 +579,7 @@ shinkansen/
 
 ### 10.2.5 懸停翻譯（桌面 / 有滑鼠的裝置）
 
-按住修飾鍵、游標停在段落上約 0.15 秒即只翻譯該段（`content-hover.js`）。設定 `hoverTranslateModifier`：`off`（預設）/ `shift` / `alt` / `ctrl`；`hoverTranslateMode`：`dual`（預設，雙語對照）/ `single`（單語覆蓋），獨立於整頁 `displayMode`，兩顆 picker 並排在 options「翻譯快速鍵」card 底部。譯文原地注入；引擎沿用主要預設（slot 2），整頁已翻譯時延用該次引擎。懸停雙語 + 整頁單語可混在同一頁，還原一併清掉。已翻譯段落不重翻、快取命中不計費；等待回應時該段畫虛線外框，不彈進度 toast。懸停翻過幾段後按任一快速鍵 = 補翻整頁其餘段落（不是還原），再按一次才整頁還原（含懸停段落）。觸控裝置無 hover（iPad 接觸控板 / 滑鼠可用）；iOS build 的設定頁只在 `matchMedia('(hover: hover) and (pointer: fine)')` 成立時顯示這組設定，接上 / 拔掉指標裝置即時更新。
+按住修飾鍵、游標停在段落上約 0.15 秒即只翻譯該段（`content-hover.js`）。設定 `hoverTranslateModifier`：`off`（預設）/ `shift` / `alt` / `ctrl`；`hoverTranslateMode`：`dual`（預設，雙語對照）/ `single`（單語覆蓋），獨立於整頁 `displayMode`，兩顆 picker 並排在 options「翻譯快速鍵」card 底部。譯文原地注入；引擎沿用主要預設（slot 2），整頁已翻譯時延用該次引擎。懸停雙語 + 整頁單語可混在同一頁，還原一併清掉。已翻譯段落不重翻、快取命中不計費；等待回應時該段畫虛線外框（游標所在的只是容器內一段文字時，外框只框那一段，不框整個容器），不彈進度 toast。懸停翻過幾段後按任一快速鍵 = 補翻整頁其餘段落（不是還原），再按一次才整頁還原（含懸停段落）。觸控裝置無 hover（iPad 接觸控板 / 滑鼠可用）；iOS build 的設定頁只在 `matchMedia('(hover: hover) and (pointer: fine)')` 成立時顯示這組設定，接上 / 拔掉指標裝置即時更新。
 
 ### 10.3 iOS background keep-alive
 

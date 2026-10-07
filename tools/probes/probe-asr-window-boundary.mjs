@@ -97,7 +97,7 @@ async function translateWindow(inputArr) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ role: 'user', parts: [{ text: JSON.stringify(inputArr) }] }],
-      generationConfig: { temperature: 0.1 },
+      generationConfig: {},
     }),
   });
   if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 300)}`);

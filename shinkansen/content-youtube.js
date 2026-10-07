@@ -679,7 +679,10 @@
   // 一分鐘內反覆被關（probe-yt-gear-menu.js 實測：觸發後 +1.0s 選單關閉，之後每 3s 一次）。
   // 結構性通則（§8）：播放器內任一 .ytp-popup 正在顯示（display ≠ none 且非 aria-hidden）=
   // 使用者正在跟播放器 UI 互動 → 延後重載，每 POPUP_POLL_MS 回頭看，popup 收起才真的跑。
-  // 上限 POPUP_WAIT_MAX_MS，超過照跑（避免使用者一直開著選單讓字幕永遠不啟動）。
+  // 等待 POPUP_WAIT_MAX_MS 後放行一次並歸零計時（避免使用者一直開著選單讓字幕永遠不啟動）；
+  // 放行後若選單仍開著，下一次重載再從零等起——所以這是「週期」不是一次性上限：選單一直開著
+  // 時字幕約每 POPUP_WAIT_MAX_MS + 一次重試重載一次。刻意如此：改成「超時後不再讓位」會讓
+  // 每次 POPUP_POLL_MS 重試都重載，比每分鐘一次更糟（2026-10-07 code review §4.6 評估後維持）。
   // stop / 新影片 reset 清 timer。
   const POPUP_POLL_MS = 500;
   const POPUP_WAIT_MAX_MS = 60000;

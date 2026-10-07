@@ -418,6 +418,8 @@ async function load() {
     // picker.value 還沒從 storage sync(走 navigator.language 推 auto),Jimmy 機器是
     // 繁中環境就拿到繁中,即使 stored uiLanguage='en' 也無效。picker.value sync 後重 render 一次。
     updateYtPromptCostHint();
+    // 網域術語表清單的「（路徑範圍）」後綴是動態 _t()，picker value sync 後重組
+    refreshDomainKeyLabels();
     // 只訂閱一次(load() 多次呼叫,見 _uiLangChangeSubscribed 宣告處註解)
     if (!_uiLangChangeSubscribed) {
     _uiLangChangeSubscribed = true;
@@ -1362,6 +1364,8 @@ function applyUiLanguageRefresh(dictLang) {
   _renderToastOpacityLabel($('toastOpacity')?.value || 70);
   _renderFloatingOpacityLabel($('floatingIconOpacity')?.value || 70);
   updateYtPromptCostHint();
+  // 網域術語表清單 / 面板標題的「（路徑範圍）」後綴跟上新語言
+  refreshDomainKeyLabels();
 }
 
 // P2 (v1.8.60):#uiLanguage picker change handler — 立刻寫 storage(UI 跟著切),
@@ -2039,6 +2043,25 @@ $('fixed-global-tbody').addEventListener('focusout', () => {
 });
 
 // 網域術語表
+// key 含路徑（`host/path` 標準形）時在清單與面板標題後面加「（路徑範圍）」。v2.0.86 之前
+// 使用者貼「無協定、含路徑」的網址會原樣存成 key，當年 runtime 去路徑比對、語意是整站；路徑
+// 範圍生效後這些舊 key 靜默變成只對該路徑之下生效。程式判不出新舊 key（無時間戳）不做
+// migration，改在 UI 標示讓使用者一眼看出範圍（含協定 / query 的舊 key runtime 仍視為整站，
+// splitScopeKey 回空 path，不標）。2026-10-07 code review P2-4
+function domainKeyLabel(key) {
+  const scope = window.__SKDomain.splitScopeKey(key);
+  return scope.path ? key + _t('options.glossary.fixed.domainPathScope') : key;
+}
+
+// UI 語系切換 / 載入時 picker value 同步後重組清單與面板標題（option value 不變，選取狀態保留）
+function refreshDomainKeyLabels() {
+  if (!$('fixed-domain-select')) return;
+  updateDomainSelect();
+  if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
+    $('fixed-domain-label').textContent = domainKeyLabel(currentDomain);
+  }
+}
+
 function updateDomainSelect() {
   const sel = $('fixed-domain-select');
   const domains = Object.keys(fixedGlossary.byDomain).sort();
@@ -2048,7 +2071,7 @@ function updateDomainSelect() {
   // 能持續更新文字(不加的話 init 時用 picker.value=auto 推導的語言,使用者切 UI
   // 語言後 placeholder 不會跟著切)。
   sel.innerHTML = `<option value="" data-i18n="options.glossary.fixed.domainSelectPlaceholder">${escapeHtml(_t('options.glossary.fixed.domainSelectPlaceholder'))}</option>` +
-    domains.map(d => `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join('');
+    domains.map(d => `<option value="${escapeAttr(d)}">${escapeHtml(domainKeyLabel(d))}</option>`).join('');
   if (currentDomain && fixedGlossary.byDomain[currentDomain]) {
     sel.value = currentDomain;
   }
@@ -2061,7 +2084,7 @@ function showDomainPanel(domain) {
     return;
   }
   $('fixed-domain-panel').hidden = false;
-  $('fixed-domain-label').textContent = domain;
+  $('fixed-domain-label').textContent = domainKeyLabel(domain);
   renderGlossaryTable($('fixed-domain-tbody'), fixedGlossary.byDomain[domain]);
 }
 

@@ -3,7 +3,7 @@
 // 背景:Playwright fresh profile 拿不到 timedtext(POT 防護,200 空 body),
 // 改用 yt-dlp 抓真實 ASR json3,忠實重現 _runAsrSubBatch 的輸入建構
 // (視窗切分 → 子批切分 → [{s,e,t}] JSON),打真 Gemini API(同 production 設定:
-// gemini-3.1-flash-lite、temperature 0.1、DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT),
+// gemini-3.1-flash-lite、DEFAULT_ASR_SUBTITLE_SYSTEM_PROMPT),
 // 然後分析回傳 entries 的 s/e 對時間軸的失真:
 //   - e 是否合法輸入值(某片段的 e / 某片段的 s / 幻覺值 / e<s)
 //   - 「提早收」= 分割真值(下一 entry 的 s 或子批末片段 e)- LLM e
@@ -113,7 +113,7 @@ async function callGemini(inputJson) {
   const body = {
     contents: [{ role: 'user', parts: [{ text: inputJson }] }],
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    generationConfig: { temperature: 0.1, thinkingConfig: { thinkingLevel: 'minimal' } },
+    generationConfig: { thinkingConfig: { thinkingLevel: 'minimal' } },
   };
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY }, body: JSON.stringify(body),

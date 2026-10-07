@@ -10,14 +10,14 @@ The name *Shinkansen* (新幹線, "bullet train") evokes a fast, smooth, frictio
 
 ## Recent major updates
 
+- **Hover translation** — hold a modifier key and rest the cursor on a paragraph to translate just that one, in place; pick the modifier and bilingual / monolingual display under "Translation shortcuts" in Settings (off by default).
+- **Glossary scoped to a site path** — enter "domain/path" to apply a domain glossary only under that path, so sections or series on one site can each have their own; path rules override site-wide rules.
 - **iOS / iPadOS version** is now on the [App Store](https://apps.apple.com/tw/app/shinkansen-web-translator/id6776958298) — Safari extension with multi-finger touch translate and the floating button, ready out of the box.
 - Added **Word (.docx) document translation** — the translation is written back into the original file with layout, styles, tables, and comments fully preserved; bilingual output available.
 - Added **subtitle file translation** — SRT / WebVTT / ASS files are translated cue by cue with timing and style tags preserved; download monolingual or bilingual subtitles.
 - **PDF translation: higher limits and layout fixes** — limits raised to 50 MB / 300 pages, translate a chosen page range, fixes for two-column short lines, colored backgrounds, rotated pages and overflowing paragraphs, and on-demand fonts for Simplified Chinese / Japanese / Korean output.
 - Added **EPUB book translation** — a book-wide glossary and a post-translation consistency scan keep name translations consistent across chapters; download the translated book in monolingual or bilingual format.
 - Added **TXT / Markdown / HTML file** translation — the translated file keeps the same format as the original; glossary import also accepts **CSV** (two columns: source,translation).
-- **Cheaper web translation** — batches are twice as large, so each page needs half the API requests and about a third fewer input tokens at the same speed; YouTube auto-caption AI segmentation uses a compact transport format, roughly halving its cost.
-- **Automatic Simplified ↔ Traditional Chinese conversion is on by default** — pages in the opposite variant convert locally on load with built-in dictionaries: no API key, works offline; turn it off in the toolbar icon menu.
 - **Respects pages' do-not-translate markup** — text marked `translate="no"` / `notranslate` stays untouched and is never sent to the API; icon-font glyphs are no longer translated into words.
 - **Several YouTube subtitle fixes** — auto-caption timing corrected, translations appear 1 second earlier, no stale captions when switching videos, and youtube.com/live/ links get subtitle translation.
 - **A large batch of translation-quality and stability fixes** — translating right after automatic Chinese-variant conversion no longer just restores the converted segments, truncated outputs are no longer cached, translations are better protected against front-end frameworks reverting them, and long-page detection is about 30% faster.
@@ -264,7 +264,7 @@ Every translation's token usage, cost, and cache hit rate is logged and viewable
 
 In the "Glossary" tab in settings, you can pin specific source terms to your preferred translations. For example, force "Arrow" to always translate as "艾蘿" instead of "箭頭", or specifically as "乙太翠雀之箭" on DC Comics-related sites.
 
-The glossary has two layers: "Global" applies to all sites; "Domain-specific" only applies to designated domains. When the same term appears in both, domain rules override global. Append a path to a domain (e.g. `example.com/news`) to limit the scope to pages under that path, so different sections or series on the same site can each have their own glossary; path rules override site-wide rules.
+The glossary has two layers: "Global" applies to all sites; "Domain-specific" only applies to designated domains. When the same term appears in both, domain rules override global. Append a path to a domain (e.g. `example.com/news`) to limit the scope to pages under that path, so different sections or series on the same site can each have their own glossary; path rules override site-wide rules. In the settings page, the domain list marks path-limited entries with " (path scope)" so you can see at a glance which ones apply to only part of a site.
 
 The custom glossary takes priority over auto glossary consistency. During translation, glossary instructions are placed at the very end of the system prompt — the position the LLM weights most heavily. After editing the glossary, no need to manually clear the cache; Shinkansen invalidates old entries automatically.
 
@@ -336,7 +336,7 @@ Off by default. Recommended only for articles where precision matters (e.g., lon
 
 ## Current version
 
-v2.5.8 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
+v2.6.0 — full feature list and specs in [SPEC.md](SPEC.md) (Traditional Chinese only).
 
 ## License
 

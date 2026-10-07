@@ -99,6 +99,27 @@
   <h1>Store Release Notes</h1>
   <p class="subtitle">Update summary for users on Chrome Web Store, Firefox Add-ons, and the App Store (iOS / iPadOS Safari). Lists only changes that directly affect end users; bug fixes and refactors are omitted unless user-visible. The full version history (every patch and technical detail) lives in the GitHub <a href="https://github.com/jimmysu0309/shinkansen/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG.md</a>.</p>
 
+  <h2>v2.6.0 <span class="release-date">Released 2026-10-XX</span></h2>
+  <p class="release-meta">Compared with the previous store version v2.5.1</p>
+
+  <p class="lead">New hover translation translates only the paragraph under the cursor, and domain glossaries can be scoped to a site path; iOS touch gestures gain a three-finger option; plus a round of fixes to automatic Chinese-variant conversion, YouTube subtitles, the Settings test button and performance.</p>
+
+  <ul>
+    <li><strong>Hover translation</strong>: hold a modifier key and rest the cursor on a paragraph for about 0.15 s to translate just that paragraph, so you can sample a page without translating all of it. Two new options under "Translation shortcuts" in Settings: the modifier (Off / Shift / Option / Control, off by default) and the hover display mode (bilingual / monolingual, bilingual by default, independent of full-page mode). On iPad the options appear only when a trackpad or mouse is connected.</li>
+
+    <li><strong>Glossary scoped to a site path</strong>: enter <code>example.com/news</code> under "Domain-specific" to apply the glossary only under that path, so different sections or series on one site can each have their own; when both a site-wide and a path rule match, the path rule wins; path-scoped entries are marked "(path scope)" in the Settings list. Existing entries need no changes.</li>
+
+    <li><strong>Three-finger touch gesture on iOS</strong>: the Settings control is now a dropdown (Off / three-finger tap / four-finger tap), four-finger by default.</li>
+
+    <li><strong>Automatic Chinese-variant conversion</strong>: background conversion no longer lights the toolbar icon (the badge now only means a translation you triggered); on a converted page the first press translates the remaining content instead of restoring first; icon-only buttons are no longer treated as paragraphs and broken, and short converted headings keep their spacing.</li>
+
+    <li><strong>YouTube subtitles</strong>: the player's settings menu is no longer closed by subtitle translation while open.</li>
+
+    <li><strong>More reliable Settings "Test" button</strong>: a wrong Base URL, a corporate proxy or a login page returning 200 + HTML is no longer reported as success; result messages now follow the interface language.</li>
+
+    <li><strong>Performance</strong>: hover detection on long pages drops from hundreds of milliseconds to single digits; opening the toolbar menu no longer rescans the page; hover and full-page translation no longer overwrite each other or double-call the API when they overlap.</li>
+  </ul>
+
   <h2>v2.5.1 <span class="release-date">Released 2026-09-25</span></h2>
   <p class="release-meta">Compared with the previous store version v2.5.0</p>
 
