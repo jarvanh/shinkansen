@@ -119,8 +119,10 @@ async function load() {
   // 設定意圖，|| 會把 0 當 falsy 默默改回預設值，造成 UI 「我設了 0 卻看到 10%」。
   // v1.8.19: 安全邊際從 UI 移除，程式碼內部維持 storage default 0.1 即可
   $('maxConcurrentBatches').value = s.maxConcurrentBatches ?? 10;
-  $('maxUnitsPerBatch').value = s.maxUnitsPerBatch ?? 20;
-  $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? 7000;
+  // 批次預設直接讀 DEFAULTS（lib/constants.js 單一來源），不再各寫一份數字（2026-10-07 review P2-6：
+  // v2.5.0 改 40 / 7000 時這裡的 20 漏改）
+  $('maxUnitsPerBatch').value = s.maxUnitsPerBatch ?? DEFAULTS.maxUnitsPerBatch;
+  $('maxCharsPerBatch').value = s.maxCharsPerBatch ?? DEFAULTS.maxCharsPerBatch;
   $('maxTranslateUnits').value = s.maxTranslateUnits ?? 1000;
   // v1.8.3: partialMode toggle + size
   const pm = { ...DEFAULTS.partialMode, ...(s.partialMode || {}) };
@@ -1655,10 +1657,18 @@ async function runApiTest({ btn, resultEl, sendMessage }) {
     const resp = await sendMessage();
     if (resp?.ok) {
       resultEl.dataset.state = 'ok';
-      resultEl.textContent = '✓ ' + (resp.message || _t('options.action.connectOk'));
+      // 2026-10-07 code review P2-5：成功文案由這裡依 UI 語系組（背景只回 code + params），
+      // 字面 key 走靜態對映讓 i18n-key-references 掃得到
+      const OK_KEYS = { okModel: 'options.action.connectOkModel', okUsage: 'options.action.connectOkUsage' };
+      const okKey = OK_KEYS[resp.code];
+      resultEl.textContent = '✓ ' + (okKey ? _t(okKey, resp.params) : (resp.message || _t('options.action.connectOk')));
     } else {
       resultEl.dataset.state = 'fail';
-      resultEl.textContent = '✗ ' + (resp?.message || resp?.error || _t('common.errorUnknown'));
+      // 失敗：背景帶 errorCode 的走 error code 協定查 error.bg.*（八語）；provider 自己回的
+      // 英文 error.message 沒 code，原樣顯示（ground truth 證據不翻）
+      const I18N = window.__SK?.i18n;
+      const coded = (resp?.errorCode && I18N?.bgErrorMessage) ? I18N.bgErrorMessage(resp, $('uiLanguage')?.value || 'auto') : '';
+      resultEl.textContent = '✗ ' + (coded || resp?.message || resp?.error || _t('common.errorUnknown'));
     }
   } catch (err) {
     resultEl.dataset.state = 'fail';

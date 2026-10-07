@@ -217,6 +217,10 @@
   async function translateUnit(unit) {
     const el = unit.el;
     const runner = await resolveRunner();
+    // resolveRunner 內可能 await storage（讀 presets）：同上，整頁翻譯在這段期間開跑就讓位。
+    // 這裡是取 rescan signal 之前的最後一個 await——translatePage 開跑時 abort 的是「當時」
+    // 的 signal，晚於 abort 才取得的新 signal 不會被殺，所以要靠這條重判擋住
+    if (STATE.translating) return;
     if (el && el.setAttribute) el.setAttribute(PENDING_ATTR, '');
     ensurePendingStyle();
     const signal = SK.getRescanSignal();
@@ -252,7 +256,10 @@
         try { settings = await browser.storage.sync.get(null); } catch (_) { /* 用預設 */ }
         SK.applyTranslateDisplaySettings?.(settings);
       }
-      if (!armed) return;
+      // 上方 await 期間整頁翻譯可能已開跑（Alt+S）：translatePage 同步設 translating 後也在
+      // await storage，誰先 resolve 不保證——若本輪晚回還無條件寫 translatedMode，會把整頁剛
+      // 鎖定的 single 蓋成懸停的 dual，整頁每一段都注成雙語。await 之後必須重判
+      if (!armed || STATE.translating) return;
       // 懸停譯文的顯示方式獨立於整頁 displayMode：注入層（content-inject.js）與 dual 合併
       // （consolidateDualInlineUnits）都讀 STATE.translatedMode，本輪暫時切成懸停設定，結束後
       // 還原成整頁的鎖定值（混合 single / dual 的還原簿記本就支援，translationCache 有項即清
